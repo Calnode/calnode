@@ -58,6 +58,14 @@ func Load() *Config {
 func loadEncryptionKey() string {
 	key := os.Getenv("CALNODE_ENCRYPTION_KEY")
 	if key != "" {
+		if len(key) != 64 {
+			slog.Error("CALNODE_ENCRYPTION_KEY must be exactly 64 hex characters (32 bytes)", "got_len", len(key))
+			os.Exit(1)
+		}
+		if _, err := hex.DecodeString(key); err != nil {
+			slog.Error("CALNODE_ENCRYPTION_KEY is not valid hex", "error", err)
+			os.Exit(1)
+		}
 		return key
 	}
 	// Dev-only fallback: ephemeral random key. Tokens encrypted with this key

@@ -20,6 +20,10 @@ func (iv Interval) overlaps(other Interval) bool {
 // subtract returns the portions of windows that are not covered by any busy interval.
 // Both slices may be in any order and may contain overlaps — they are normalised internally.
 func subtract(windows, busy []Interval) []Interval {
+	if len(windows) == 0 {
+		return nil
+	}
+	windows = mergeIntervals(windows)
 	if len(busy) == 0 {
 		return windows
 	}

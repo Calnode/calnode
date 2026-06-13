@@ -560,8 +560,8 @@ func TestGenerate_priority_firstHostPreferred(t *testing.T) {
 		t.Fatalf("Generate: %v", err)
 	}
 	for _, s := range got {
-		if s.HostID != "h1" {
-			t.Errorf("expected h1 (first in priority list); got %q", s.HostID)
+		if len(s.HostIDs) != 1 || s.HostIDs[0] != "h1" {
+			t.Errorf("expected h1 (first in priority list); got %v", s.HostIDs)
 		}
 	}
 }
@@ -580,8 +580,8 @@ func TestGenerate_priority_fallsBackToSecond(t *testing.T) {
 		t.Fatal("expected slots from h2; got none")
 	}
 	for _, s := range got {
-		if s.HostID != "h2" {
-			t.Errorf("expected h2 (fallback); got %q", s.HostID)
+		if len(s.HostIDs) != 1 || s.HostIDs[0] != "h2" {
+			t.Errorf("expected h2 (fallback); got %v", s.HostIDs)
 		}
 	}
 }
@@ -688,6 +688,112 @@ func TestGenerate_multiDay(t *testing.T) {
 		utcTime(2026, 6, 15, 9, 0, 0),
 		utcTime(2026, 6, 16, 9, 0, 0),
 	})
+}
+
+// ─── collective HostIDs ───────────────────────────────────────────────────────
+
+func TestGenerate_collective_hostIDsContainsAll(t *testing.T) {
+	// collective mode: every slot's HostIDs must list all hosts.
+	h1Rules := []slots.AvailabilityRule{{DayOfWeek: time.Monday, StartTime: "09:00", EndTime: "11:00"}}
+	h2Rules := []slots.AvailabilityRule{{DayOfWeek: time.Monday, StartTime: "10:00", EndTime: "12:00"}}
+
+	got, err := slots.Generate(twoHostReq("collective", h1Rules, h2Rules, nil, nil))
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	if len(got) == 0 {
+		t.Fatal("expected slots in overlap window")
+	}
+	for _, s := range got {
+		if len(s.HostIDs) != 2 {
+			t.Errorf("collective slot HostIDs = %v; want [h1 h2]", s.HostIDs)
+			continue
+		}
+		if s.HostIDs[0] != "h1" || s.HostIDs[1] != "h2" {
+			t.Errorf("collective slot HostIDs = %v; want [h1 h2]", s.HostIDs)
+		}
+	}
+}
+
+func TestGenerate_fixed_doesNotFallBack(t *testing.T) {
+	// fixed mode: if hosts[0] is fully busy, no slots are offered — no fallback to hosts[1].
+	date := utcDate(2026, 6, 15)
+	h1Busy := []slots.Interval{busyUTC(9, 0, 17, 0, date)}
+	rules := monRules("09:00", "10:00")
+
+	got, err := slots.Generate(twoHostReq("fixed", rules, rules, h1Busy, nil))
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("fixed mode should not fall back to h2; got %d slots", len(got))
+	}
+}
+
+// ─── input validation ─────────────────────────────────────────────────────────
+
+func TestGenerate_zeroDuration_returnsError(t *testing.T) {
+	req := slots.Request{
+		Event:    slots.EventConfig{DurationMinutes: 0, SlotIntervalMinutes: 30, MaxFutureDays: 30},
+		Hosts:    []slots.HostAvailability{singleHost("h1", time.UTC, monRules("09:00", "17:00"))},
+		DateFrom: utcDate(2026, 6, 15),
+		DateTo:   utcDate(2026, 6, 15),
+		BookerTZ: time.UTC,
+		Now:      utcTime(2026, 6, 14, 0, 0, 0),
+	}
+	_, err := slots.Generate(req)
+	if err == nil {
+		t.Error("expected error for DurationMinutes=0")
+	}
+}
+
+func TestGenerate_zeroInterval_returnsError(t *testing.T) {
+	req := slots.Request{
+		Event:    slots.EventConfig{DurationMinutes: 30, SlotIntervalMinutes: 0, MaxFutureDays: 30},
+		Hosts:    []slots.HostAvailability{singleHost("h1", time.UTC, monRules("09:00", "17:00"))},
+		DateFrom: utcDate(2026, 6, 15),
+		DateTo:   utcDate(2026, 6, 15),
+		BookerTZ: time.UTC,
+		Now:      utcTime(2026, 6, 14, 0, 0, 0),
+	}
+	_, err := slots.Generate(req)
+	if err == nil {
+		t.Error("expected error for SlotIntervalMinutes=0")
+	}
+}
+
+func TestGenerate_nilBookerTZ_returnsError(t *testing.T) {
+	req := slots.Request{
+		Event:    slots.EventConfig{DurationMinutes: 30, SlotIntervalMinutes: 30, MaxFutureDays: 30},
+		Hosts:    []slots.HostAvailability{singleHost("h1", time.UTC, monRules("09:00", "17:00"))},
+		DateFrom: utcDate(2026, 6, 15),
+		DateTo:   utcDate(2026, 6, 15),
+		BookerTZ: nil,
+		Now:      utcTime(2026, 6, 14, 0, 0, 0),
+	}
+	_, err := slots.Generate(req)
+	if err == nil {
+		t.Error("expected error for nil BookerTZ")
+	}
+}
+
+func TestGenerate_nilHostLocation_returnsError(t *testing.T) {
+	req := slots.Request{
+		Event: slots.EventConfig{DurationMinutes: 30, SlotIntervalMinutes: 30, MaxFutureDays: 30},
+		Hosts: []slots.HostAvailability{{
+			HostID:   "h1",
+			Location: nil,
+			Rules:    monRules("09:00", "17:00"),
+		}},
+		DateFrom: utcDate(2026, 6, 15),
+		DateTo:   utcDate(2026, 6, 15),
+		BookerTZ: time.UTC,
+		Now:      utcTime(2026, 6, 14, 0, 0, 0),
+	}
+	_, err := slots.Generate(req)
+	if err == nil {
+		t.Error("expected error for nil host Location")
+	}
 }
 
 // ─── helpers ─────────────────────────────────────────────────────────────────

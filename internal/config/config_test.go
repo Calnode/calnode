@@ -57,9 +57,10 @@ func TestLoad_encryptionKeyGenerated(t *testing.T) {
 }
 
 func TestLoad_encryptionKeyFromEnv(t *testing.T) {
-	t.Setenv("CALNODE_ENCRYPTION_KEY", "my-test-key")
+	const validKey = "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20" // 64 hex chars = 32 bytes
+	t.Setenv("CALNODE_ENCRYPTION_KEY", validKey)
 	cfg := config.Load()
-	if cfg.EncryptionKey != "my-test-key" {
-		t.Errorf("EncryptionKey = %q; want my-test-key", cfg.EncryptionKey)
+	if cfg.EncryptionKey != validKey {
+		t.Errorf("EncryptionKey = %q; want %q", cfg.EncryptionKey, validKey)
 	}
 }

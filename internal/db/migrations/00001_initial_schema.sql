@@ -103,7 +103,7 @@ CREATE TABLE IF NOT EXISTS calendar_connections (
 
 CREATE TABLE IF NOT EXISTS bookings (
     id                  TEXT PRIMARY KEY,
-    event_type_id       TEXT NOT NULL REFERENCES event_types(id),
+    event_type_id       TEXT NOT NULL REFERENCES event_types(id) ON DELETE RESTRICT,  -- explicit: historical bookings block event-type deletion
     host_id             TEXT NOT NULL REFERENCES users(id),
     start_at            TEXT NOT NULL,  -- UTC ISO 8601 (§6.3)
     end_at              TEXT NOT NULL,
@@ -146,7 +146,7 @@ CREATE TABLE IF NOT EXISTS webhooks (
     team_id     TEXT REFERENCES teams(id) ON DELETE CASCADE,
     url         TEXT NOT NULL,
     events      TEXT NOT NULL,   -- JSON array: ["booking.created","booking.cancelled",...]
-    secret_hash TEXT NOT NULL,   -- HMAC secret stored hashed
+    secret_enc  TEXT NOT NULL,   -- HMAC signing secret, AES-GCM encrypted with CALNODE_ENCRYPTION_KEY (§15)
     is_active   INTEGER NOT NULL DEFAULT 1,
     created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
@@ -171,8 +171,9 @@ CREATE TABLE IF NOT EXISTS jobs (
     run_at     TEXT NOT NULL,  -- UTC ISO 8601; worker polls WHERE run_at <= now
     status     TEXT NOT NULL DEFAULT 'pending'
                  CHECK (status IN ('pending', 'running', 'done', 'failed')),
-    attempts   INTEGER NOT NULL DEFAULT 0,
-    last_error TEXT,
+    attempts     INTEGER NOT NULL DEFAULT 0,
+    max_attempts INTEGER NOT NULL DEFAULT 3,
+    last_error   TEXT,
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 

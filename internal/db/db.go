@@ -26,7 +26,11 @@ func Open(databaseURL string) (*sql.DB, error) {
 	// SQLite performs best with a single writer connection; WAL allows
 	// concurrent readers. Keeping max open conns at 1 prevents "database is
 	// locked" under concurrent writes without WAL tuning.
+	// SetConnMaxLifetime(0) and SetMaxIdleConns(1) ensure the single connection
+	// is never recycled — PRAGMAs are connection-scoped and must not be lost.
 	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+	db.SetConnMaxLifetime(0)
 
 	if _, err := db.Exec(`PRAGMA journal_mode=WAL`); err != nil {
 		return nil, fmt.Errorf("set WAL mode: %w", err)
