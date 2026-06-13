@@ -1,0 +1,4 @@
+* text=auto eol=lf
+*.sql text eol=lf
+*.go text eol=lf
+Dockerfile text eol=lf
