@@ -13,6 +13,7 @@
 
 	const navItems = [
 		{ href: `${base}/event-types`, label: 'Event Types', icon: '📅' },
+		{ href: `${base}/availability`, label: 'Availability', icon: '🕐' },
 		{ href: `${base}/bookings`, label: 'Bookings', icon: '📋' },
 		{ href: `${base}/api-keys`, label: 'API Keys', icon: '🔑' },
 		{ href: `${base}/webhooks`, label: 'Webhooks', icon: '🔔' },

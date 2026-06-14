@@ -50,6 +50,22 @@ export type CalendarStatus = {
 	provider?: string;
 };
 
+export type AvailabilityRule = {
+	id: string;
+	event_type_id: string | null;
+	day_of_week: number;
+	start_time: string;
+	end_time: string;
+};
+
+export type AvailabilityOverride = {
+	id: string;
+	date: string;
+	is_available: boolean;
+	start_time: string | null;
+	end_time: string | null;
+};
+
 async function apiFetch<T>(path: string, opts: RequestInit = {}): Promise<T> {
 	const res = await fetch(path, {
 		credentials: 'same-origin',

@@ -1,0 +1,1 @@
+import{s as o,o as s}from"../chunks/C66BSGU6.js";import{S as n,i as a}from"../chunks/BpX3tVN-.js";import{g as r,b as i}from"../chunks/DKXjhtK-.js";function p(t){return s(()=>r(`${i}/event-types`,{replaceState:!0})),[]}class l extends n{constructor(e){super(),a(this,e,p,null,o,{})}}export{l as component};
