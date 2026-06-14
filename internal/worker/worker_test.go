@@ -220,6 +220,44 @@ func TestWorker_respectsBackoff(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Expired manage-token cleanup
+// ---------------------------------------------------------------------------
+
+func TestWorker_purgesExpiredManageTokens(t *testing.T) {
+	database, svc := setup(t)
+	ctx := context.Background()
+
+	// Seed minimal records to satisfy FK constraints (PRAGMA foreign_keys=ON).
+	database.ExecContext(ctx,
+		`INSERT INTO event_types (id, user_id, slug, name, duration_minutes) VALUES ('et-purge','host-01','purge-test','Purge Test',30)`)
+	database.ExecContext(ctx,
+		`INSERT INTO bookings (id, event_type_id, host_id, start_at, end_at)
+		 VALUES ('bk-purge','et-purge','host-01','2026-06-14T09:00:00Z','2026-06-14T09:30:00Z')`)
+
+	past := time.Now().UTC().Add(-time.Hour).Format(time.RFC3339)
+	future := time.Now().UTC().Add(time.Hour).Format(time.RFC3339)
+
+	database.ExecContext(ctx,
+		`INSERT INTO booking_manage_tokens (token_hash, booking_id, expires_at) VALUES ('dead','bk-purge',?)`, past)
+	database.ExecContext(ctx,
+		`INSERT INTO booking_manage_tokens (token_hash, booking_id, expires_at) VALUES ('live','bk-purge',?)`, future)
+
+	w := newWorker(t, database, svc)
+	w.Poll(ctx)
+
+	var count int
+	database.QueryRowContext(ctx, `SELECT COUNT(*) FROM booking_manage_tokens`).Scan(&count)
+	if count != 1 {
+		t.Errorf("token count = %d; want 1 (expired token should be purged)", count)
+	}
+	var remaining string
+	database.QueryRowContext(ctx, `SELECT token_hash FROM booking_manage_tokens`).Scan(&remaining)
+	if remaining != "live" {
+		t.Errorf("remaining token = %q; want live", remaining)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Stuck-job reaper
 // ---------------------------------------------------------------------------
 

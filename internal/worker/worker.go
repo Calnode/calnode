@@ -89,8 +89,15 @@ func (w *Worker) Run(ctx context.Context) {
 
 // Poll processes one batch of pending jobs. Exported for testing.
 func (w *Worker) Poll(ctx context.Context) {
-	// Reaper: reset running jobs whose lock has expired (process crashed mid-job).
 	now := time.Now().UTC().Format(time.RFC3339)
+
+	// Purge expired manage tokens to keep the table small.
+	if _, err := w.db.ExecContext(ctx,
+		`DELETE FROM booking_manage_tokens WHERE expires_at < ?`, now); err != nil {
+		w.logger.Error("worker: purge expired tokens", "error", err)
+	}
+
+	// Reaper: reset running jobs whose lock has expired (process crashed mid-job).
 	if _, err := w.db.ExecContext(ctx, `
 		UPDATE jobs SET status = 'pending', run_at = ?, last_error = 'recovered after crash'
 		WHERE status = 'running' AND locked_until < ?`, now, now); err != nil {
