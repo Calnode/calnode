@@ -27,6 +27,12 @@
 	let rulesLoading = true;
 	let rulesError = '';
 
+	// Reactive sort: respects week_start pref (0=Sun first, 1=Mon first)
+	$: sortedRules = [...rules].sort((a, b) => {
+		const ws = $prefs.week_start;
+		return ((a.day_of_week - ws + 7) % 7) - ((b.day_of_week - ws + 7) % 7);
+	});
+
 	let ruleForm = { day_of_week: 1, start_time: '09:00', end_time: '17:00' };
 	let addingRule = false;
 	let ruleAddError = '';
@@ -41,7 +47,7 @@
 		rulesError = '';
 		try {
 			const res = await api.get<{ items: AvailabilityRule[] }>('/v1/availability-rules');
-			rules = (res.items ?? []).sort((a, b) => a.day_of_week - b.day_of_week);
+			rules = res.items ?? [];
 		} catch (e: any) {
 			rulesError = e.message;
 		} finally {
@@ -252,7 +258,7 @@
 				</tr>
 			</thead>
 			<tbody>
-				{#each rules as r}
+				{#each sortedRules as r}
 					{#if editingRuleId === r.id}
 						<tr class="editing-row">
 							<td>

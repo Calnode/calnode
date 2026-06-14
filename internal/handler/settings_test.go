@@ -44,6 +44,9 @@ func TestGetMe_returnsDefaultPrefs(t *testing.T) {
 	if me["timezone"] != "UTC" {
 		t.Errorf("timezone = %v; want UTC", me["timezone"])
 	}
+	if me["date_format"] != "dmy" {
+		t.Errorf("date_format = %v; want dmy (default)", me["date_format"])
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -91,7 +94,7 @@ func TestPatchMe_updateWeekStart(t *testing.T) {
 
 func TestPatchMe_updateAll(t *testing.T) {
 	h, key, _ := setupWorkspace(t)
-	rec := patchMe(t, h, `{"timezone":"America/New_York","time_format":"24h","week_start":0}`, key)
+	rec := patchMe(t, h, `{"timezone":"America/New_York","time_format":"24h","week_start":0,"date_format":"mdy"}`, key)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("patch: %d — %s", rec.Code, rec.Body.String())
 	}
@@ -105,6 +108,34 @@ func TestPatchMe_updateAll(t *testing.T) {
 	}
 	if me["week_start"] != float64(0) {
 		t.Errorf("week_start = %v; want 0", me["week_start"])
+	}
+	if me["date_format"] != "mdy" {
+		t.Errorf("date_format = %v; want mdy", me["date_format"])
+	}
+}
+
+func TestPatchMe_updateDateFormat(t *testing.T) {
+	h, key, _ := setupWorkspace(t)
+	for _, fmt := range []string{"dmy", "mdy", "ymd"} {
+		rec := patchMe(t, h, `{"date_format":"`+fmt+`"}`, key)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("date_format %s: %d — %s", fmt, rec.Code, rec.Body.String())
+		}
+		var me map[string]any
+		json.Unmarshal(rec.Body.Bytes(), &me)
+		if me["date_format"] != fmt {
+			t.Errorf("date_format = %v; want %s", me["date_format"], fmt)
+		}
+	}
+}
+
+func TestPatchMe_invalidDateFormat(t *testing.T) {
+	h, key, _ := setupWorkspace(t)
+	for _, bad := range []string{`"DMY"`, `"dd/mm/yyyy"`, `"iso"`, `""`} {
+		rec := patchMe(t, h, `{"date_format":`+bad+`}`, key)
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("date_format %s: got %d; want 400", bad, rec.Code)
+		}
 	}
 }
 
@@ -135,7 +166,7 @@ func TestPatchMe_partialUpdate_othersUnchanged(t *testing.T) {
 
 func TestPatchMe_persistedAcrossRequests(t *testing.T) {
 	h, key, _ := setupWorkspace(t)
-	patchMe(t, h, `{"time_format":"24h","week_start":0}`, key)
+	patchMe(t, h, `{"time_format":"24h","week_start":0,"date_format":"ymd"}`, key)
 
 	// Re-fetch via GET to confirm DB was written.
 	req := authReq(http.MethodGet, "/v1/users/me", "", key)
@@ -151,6 +182,9 @@ func TestPatchMe_persistedAcrossRequests(t *testing.T) {
 	}
 	if me["week_start"] != float64(0) {
 		t.Errorf("week_start = %v; want 0 (persisted)", me["week_start"])
+	}
+	if me["date_format"] != "ymd" {
+		t.Errorf("date_format = %v; want ymd (persisted)", me["date_format"])
 	}
 }
 

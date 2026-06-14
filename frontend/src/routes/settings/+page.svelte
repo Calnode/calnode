@@ -13,6 +13,7 @@
 	let timezone = 'UTC';
 	let time_format: '12h' | '24h' = '12h';
 	let week_start = 1;
+	let date_format: 'dmy' | 'mdy' | 'ymd' = 'dmy';
 
 	onMount(async () => {
 		try {
@@ -20,6 +21,7 @@
 			timezone = user.timezone;
 			time_format = user.time_format ?? '12h';
 			week_start = user.week_start ?? 1;
+			date_format = user.date_format ?? 'dmy';
 		} catch (e: any) {
 			error = e.message;
 		} finally {
@@ -32,7 +34,7 @@
 		saved = false;
 		error = '';
 		try {
-			const updated = await api.patch<User>('/v1/users/me', { timezone, time_format, week_start });
+			const updated = await api.patch<User>('/v1/users/me', { timezone, time_format, week_start, date_format });
 			currentUser.set(updated);
 			prefs.set(prefsFromUser(updated));
 			saved = true;
@@ -44,6 +46,7 @@
 				timezone = user.timezone;
 				time_format = user.time_format ?? '12h';
 				week_start = user.week_start ?? 1;
+				date_format = user.date_format ?? 'dmy';
 			}
 		} finally {
 			saving = false;
@@ -110,6 +113,15 @@
 					{#each [0, 1] as d}
 						<option value={d}>{WEEK_DAYS[d]}</option>
 					{/each}
+				</select>
+			</div>
+
+			<div class="field">
+				<label for="date-format">Date format</label>
+				<select id="date-format" bind:value={date_format}>
+					<option value="dmy">DD/MM/YYYY <span style="color:var(--text-muted);">(15/06/2026)</span></option>
+					<option value="mdy">MM/DD/YYYY <span style="color:var(--text-muted);">(06/15/2026)</span></option>
+					<option value="ymd">YYYY-MM-DD <span style="color:var(--text-muted);">(2026-06-15)</span></option>
 				</select>
 			</div>
 		</div>

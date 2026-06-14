@@ -5,6 +5,7 @@ export type User = {
 	timezone: string;
 	time_format: '12h' | '24h';
 	week_start: number; // 0=Sunday, 1=Monday
+	date_format: 'dmy' | 'mdy' | 'ymd';
 	is_admin: boolean;
 };
 

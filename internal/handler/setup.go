@@ -109,11 +109,12 @@ func (h *Handler) GetMe(w http.ResponseWriter, r *http.Request) {
 		"timezone":    user.IANATZ,
 		"time_format": user.TimeFormat,
 		"week_start":  user.WeekStart,
+		"date_format": user.DateFormat,
 		"is_admin":    user.IsAdmin,
 	})
 }
 
-// PatchMe handles PATCH /v1/users/me — updates timezone, time_format, week_start.
+// PatchMe handles PATCH /v1/users/me — updates timezone, time_format, week_start, date_format.
 func (h *Handler) PatchMe(w http.ResponseWriter, r *http.Request) {
 	user, _ := userFromContext(r.Context())
 	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
@@ -122,6 +123,7 @@ func (h *Handler) PatchMe(w http.ResponseWriter, r *http.Request) {
 		Timezone   *string `json:"timezone"`
 		TimeFormat *string `json:"time_format"`
 		WeekStart  *int    `json:"week_start"`
+		DateFormat *string `json:"date_format"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.writeError(w, http.StatusBadRequest, "invalid JSON")
@@ -132,7 +134,8 @@ func (h *Handler) PatchMe(w http.ResponseWriter, r *http.Request) {
 		Timezone   string
 		TimeFormat string
 		WeekStart  int
-	}{user.IANATZ, user.TimeFormat, user.WeekStart}
+		DateFormat string
+	}{user.IANATZ, user.TimeFormat, user.WeekStart, user.DateFormat}
 
 	if req.Timezone != nil {
 		if _, err := time.LoadLocation(*req.Timezone); err != nil {
@@ -155,10 +158,19 @@ func (h *Handler) PatchMe(w http.ResponseWriter, r *http.Request) {
 		}
 		current.WeekStart = *req.WeekStart
 	}
+	if req.DateFormat != nil {
+		switch *req.DateFormat {
+		case "dmy", "mdy", "ymd":
+			current.DateFormat = *req.DateFormat
+		default:
+			h.writeError(w, http.StatusBadRequest, "date_format must be 'dmy', 'mdy', or 'ymd'")
+			return
+		}
+	}
 
 	if _, err := h.db.ExecContext(r.Context(), `
-		UPDATE users SET iana_timezone = ?, time_format = ?, week_start = ? WHERE id = ?`,
-		current.Timezone, current.TimeFormat, current.WeekStart, user.ID); err != nil {
+		UPDATE users SET iana_timezone = ?, time_format = ?, week_start = ?, date_format = ? WHERE id = ?`,
+		current.Timezone, current.TimeFormat, current.WeekStart, current.DateFormat, user.ID); err != nil {
 		h.logger.ErrorContext(r.Context(), "patch me", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -171,6 +183,7 @@ func (h *Handler) PatchMe(w http.ResponseWriter, r *http.Request) {
 		"timezone":    current.Timezone,
 		"time_format": current.TimeFormat,
 		"week_start":  current.WeekStart,
+		"date_format": current.DateFormat,
 		"is_admin":    user.IsAdmin,
 	})
 }
