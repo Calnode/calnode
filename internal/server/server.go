@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/calnode/calnode/frontend"
 	"github.com/calnode/calnode/internal/config"
 	"github.com/calnode/calnode/internal/gcal"
 	"github.com/calnode/calnode/internal/handler"
@@ -122,6 +123,16 @@ func New(cfg *config.Config, db *sql.DB, logger *slog.Logger) http.Handler {
 	mux.HandleFunc("GET /v1/calendar/callback", h.CalendarCallback)
 	mux.HandleFunc("GET /v1/calendar/status", h.RequireAuth(h.CalendarStatus))
 	mux.HandleFunc("DELETE /v1/calendar", h.RequireAuth(h.DisconnectCalendar))
+
+	// API keys
+	mux.HandleFunc("GET /v1/api-keys", h.RequireAuth(h.ListAPIKeys))
+	mux.HandleFunc("POST /v1/api-keys", h.RequireAuth(h.CreateAPIKey))
+	mux.HandleFunc("DELETE /v1/api-keys/{id}", h.RequireAuth(h.DeleteAPIKey))
+
+	// Admin SPA — served at /admin/* with SPA fallback for client-side routing.
+	adminSPA := frontend.Handler()
+	mux.Handle("GET /admin", http.RedirectHandler("/admin/", http.StatusMovedPermanently))
+	mux.Handle("/admin/", http.StripPrefix("/admin", adminSPA))
 
 	return RequestID(Logging(logger, mux))
 }
