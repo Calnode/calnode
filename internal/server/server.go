@@ -7,11 +7,25 @@ import (
 
 	"github.com/calnode/calnode/internal/config"
 	"github.com/calnode/calnode/internal/handler"
+	"github.com/calnode/calnode/internal/mailer"
 )
 
 func New(cfg *config.Config, db *sql.DB, logger *slog.Logger) http.Handler {
 	mux := http.NewServeMux()
 	h := handler.New(db, logger)
+
+	if cfg.SMTPHost != "" {
+		m := mailer.NewSMTP(
+			cfg.SMTPHost, cfg.SMTPPort,
+			cfg.SMTPUser, cfg.SMTPPass,
+			cfg.SMTPTLS, cfg.SMTPStartTLS,
+			cfg.EmailFrom, cfg.EmailFromName,
+		)
+		h.SetMailer(m, cfg.BaseURL)
+		logger.Info("mailer configured", "host", cfg.SMTPHost, "port", cfg.SMTPPort)
+	} else {
+		logger.Info("mailer not configured — emails disabled (set EMAIL_SMTP_HOST to enable)")
+	}
 
 	// Ops (§16)
 	mux.HandleFunc("GET /healthz", h.Healthz)

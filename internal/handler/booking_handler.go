@@ -1,12 +1,15 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/calnode/calnode/internal/booking"
+	"github.com/calnode/calnode/internal/mailer"
 )
 
 type bookingJSON struct {
@@ -75,14 +78,15 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 	var et struct {
 		ID              string
 		UserID          string
+		Name            string
 		DurationMinutes int
 		LocationValue   *string
 		IsActive        int
 	}
 	err = h.db.QueryRowContext(r.Context(), `
-		SELECT id, user_id, duration_minutes, location_value, is_active
+		SELECT id, user_id, name, duration_minutes, location_value, is_active
 		FROM event_types WHERE slug = ?`, req.EventTypeSlug).
-		Scan(&et.ID, &et.UserID, &et.DurationMinutes, &et.LocationValue, &et.IsActive)
+		Scan(&et.ID, &et.UserID, &et.Name, &et.DurationMinutes, &et.LocationValue, &et.IsActive)
 	if err != nil {
 		h.writeError(w, http.StatusNotFound, "event type not found")
 		return
@@ -122,6 +126,32 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.writeJSON(w, http.StatusCreated, toBookingJSON(b))
+
+	// Send confirmation emails in the background — the booking is committed; a
+	// mail failure must not roll it back or change the HTTP response.
+	bData := mailer.BookingData{
+		BookingID:         b.ID,
+		EventTypeName:     et.Name,
+		EventTypeSlug:     req.EventTypeSlug,
+		OrganizerName:     req.Name,
+		OrganizerEmail:    req.Email,
+		OrganizerTimezone: req.Timezone,
+		StartAt:           b.StartAt,
+		EndAt:             b.EndAt,
+		LocationValue:     b.LocationValue,
+		BaseURL:           h.baseURL,
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := h.loadHostIntoData(ctx, et.UserID, &bData); err != nil {
+			h.logger.Error("booking confirmation: load host", "error", err, "booking_id", b.ID)
+			return
+		}
+		if err := mailer.SendConfirmation(ctx, h.mailer, bData); err != nil {
+			h.logger.Error("booking confirmation email", "error", err, "booking_id", b.ID)
+		}
+	}()
 }
 
 // GetBooking handles GET /v1/bookings/{id} (public — accessible with just the booking ID).
@@ -189,4 +219,55 @@ func (h *Handler) CancelBooking(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.writeJSON(w, http.StatusOK, toBookingJSON(b))
+
+	// Send cancellation emails in the background.
+	bCopy := b
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		d, err := h.loadCancellationData(ctx, bCopy)
+		if err != nil {
+			h.logger.Error("booking cancellation: load data", "error", err, "booking_id", bCopy.ID)
+			return
+		}
+		d.BaseURL = h.baseURL
+		if err := mailer.SendCancellation(ctx, h.mailer, d); err != nil {
+			h.logger.Error("booking cancellation email", "error", err, "booking_id", bCopy.ID)
+		}
+	}()
+}
+
+// loadHostIntoData fills HostName and HostEmail in d from the users table.
+func (h *Handler) loadHostIntoData(ctx context.Context, hostID string, d *mailer.BookingData) error {
+	return h.db.QueryRowContext(ctx,
+		`SELECT name, email FROM users WHERE id = ?`, hostID).
+		Scan(&d.HostName, &d.HostEmail)
+}
+
+// loadCancellationData assembles all fields needed for cancellation emails.
+func (h *Handler) loadCancellationData(ctx context.Context, b *booking.Booking) (mailer.BookingData, error) {
+	var d mailer.BookingData
+	d.BookingID = b.ID
+	d.StartAt = b.StartAt
+	d.EndAt = b.EndAt
+	d.LocationValue = b.LocationValue
+	d.CancellationReason = b.CancellationReason
+
+	// Event type name + slug and host name + email in one join.
+	err := h.db.QueryRowContext(ctx, `
+		SELECT et.name, et.slug, u.name, u.email
+		FROM event_types et JOIN users u ON u.id = et.user_id
+		WHERE et.id = ?`, b.EventTypeID).
+		Scan(&d.EventTypeName, &d.EventTypeSlug, &d.HostName, &d.HostEmail)
+	if err != nil {
+		return d, fmt.Errorf("load event/host: %w", err)
+	}
+
+	// Organizer attendee.
+	_ = h.db.QueryRowContext(ctx, `
+		SELECT name, email, iana_timezone
+		FROM booking_attendees WHERE booking_id = ? AND is_organizer = 1`, b.ID).
+		Scan(&d.OrganizerName, &d.OrganizerEmail, &d.OrganizerTimezone)
+
+	return d, nil
 }
