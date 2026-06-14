@@ -1,6 +1,6 @@
-# Binaries
-calnode
-calnode.exe
+# Binaries (anchored to repo root so cmd/calnode/ source is not ignored)
+/calnode
+/calnode.exe
 *.exe
 
 # Build output
