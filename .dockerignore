@@ -1,0 +1,43 @@
+# flyctl launch added from .gitignore
+# Binaries (anchored to repo root so cmd/calnode/ source is not ignored)
+calnode
+calnode.exe
+**/*.exe
+
+# Build output
+**/dist
+
+# Data (local dev DB)
+**/data
+**/*.db
+**/*.db-shm
+**/*.db-wal
+
+# Environment
+**/.env
+**/.env.local
+**/.env.*.local
+
+# Go
+**/vendor
+
+# Editor
+**/.vscode
+**/.idea
+**/*.swp
+**/*.swo
+
+# OS
+**/.DS_Store
+**/Thumbs.db
+
+# sqlc generated — committed, but excluded from accidental manual edits
+# (remove this line if you want to exclude generated files from git)
+# internal/db/sqlc/
+
+# Node (admin UI, Phase 1+)
+**/node_modules
+**/.svelte-kit
+**/build
+!frontend/build
+fly.toml
