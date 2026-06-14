@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"mime"
 	"net"
 	"net/mail"
 	"net/smtp"
@@ -79,7 +80,9 @@ func (s *SMTP) Send(ctx context.Context, msg Message) error {
 	if s.username != "" {
 		auth := smtp.PlainAuth("", s.username, s.password, s.host)
 		if err := c.Auth(auth); err != nil {
-			return fmt.Errorf("mailer: auth: %w", err)
+			// Don't wrap err — SMTP auth responses can contain server-side
+			// detail that may expose credential information in logs.
+			return fmt.Errorf("mailer: SMTP authentication failed")
 		}
 	}
 
@@ -101,18 +104,44 @@ func (s *SMTP) Send(ctx context.Context, msg Message) error {
 		return fmt.Errorf("mailer: write body: %w", err)
 	}
 	if err := wc.Close(); err != nil {
+		// wc.Close() sends the DATA terminator (CRLF.CRLF) and reads the
+		// server's 250 OK. If this succeeds the message has been accepted.
 		return fmt.Errorf("mailer: close DATA writer: %w", err)
 	}
 
-	return c.Quit()
+	// Quit is best-effort: once wc.Close() succeeded the server accepted the
+	// message. A broken connection at this point does not mean the email was
+	// lost, so we ignore the Quit error.
+	_ = c.Quit()
+	return nil
 }
 
 func (s *SMTP) buildRaw(msg Message) []byte {
 	from := mail.Address{Name: s.fromName, Address: s.from}
+
+	// mime.QEncoding.Encode returns the string unchanged when it is pure ASCII
+	// (no control characters, no bytes > 0x7E). When it contains non-ASCII or
+	// control characters — including \r and \n that would allow SMTP header
+	// injection — it Q-encodes them as =0D / =0A, neutralising the injection
+	// and satisfying RFC 2047 at the same time.
+	subject := mime.QEncoding.Encode("utf-8", msg.Subject)
+
+	// Validate and normalise To addresses so the To: header line is properly
+	// quoted. Delivery uses c.Rcpt() (separate SMTP command) so a To: header
+	// formatting error cannot redirect mail.
+	toFormatted := make([]string, 0, len(msg.To))
+	for _, addr := range msg.To {
+		if a, err := mail.ParseAddress(addr); err == nil {
+			toFormatted = append(toFormatted, a.String())
+		} else {
+			toFormatted = append(toFormatted, addr)
+		}
+	}
+
 	var buf bytes.Buffer
 	fmt.Fprintf(&buf, "From: %s\r\n", from.String())
-	fmt.Fprintf(&buf, "To: %s\r\n", strings.Join(msg.To, ", "))
-	fmt.Fprintf(&buf, "Subject: %s\r\n", msg.Subject)
+	fmt.Fprintf(&buf, "To: %s\r\n", strings.Join(toFormatted, ", "))
+	fmt.Fprintf(&buf, "Subject: %s\r\n", subject)
 	fmt.Fprintf(&buf, "MIME-Version: 1.0\r\n")
 	fmt.Fprintf(&buf, "Content-Type: text/plain; charset=utf-8\r\n")
 	buf.WriteString("\r\n")
