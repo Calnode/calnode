@@ -10,6 +10,12 @@ import (
 	"time"
 )
 
+// nextWeekday returns the first occurrence of wd on or after t.
+func nextWeekday(t time.Time, wd time.Weekday) time.Time {
+	days := (int(wd) - int(t.Weekday()) + 7) % 7
+	return t.AddDate(0, 0, days)
+}
+
 // ---------------------------------------------------------------------------
 // Verify reminder job is enqueued at booking creation
 // ---------------------------------------------------------------------------
@@ -28,10 +34,15 @@ func TestCreateBooking_enqueuedReminderJob(t *testing.T) {
 		t.Fatalf("create rule: %d", ruleRec.Code)
 	}
 
-	// Create booking for a Monday (2026-06-15) at 09:00.
+	// Find the next Monday that's at least 48h away so the 24h reminder window is
+	// comfortably in the future when the test runs.
+	bookingStart := nextWeekday(time.Now().UTC().Add(48*time.Hour), time.Monday).
+		Truncate(24 * time.Hour).Add(9 * time.Hour) // 09:00 UTC on that Monday
+	wantRunAt := bookingStart.Add(-24 * time.Hour)
+
 	bookBody := fmt.Sprintf(
-		`{"event_type_slug":%q,"start_at":"2026-06-15T09:00:00Z","name":"Alice","email":"alice@example.com"}`,
-		slug)
+		`{"event_type_slug":%q,"start_at":%q,"name":"Alice","email":"alice@example.com"}`,
+		slug, bookingStart.Format(time.RFC3339))
 	req := httptest.NewRequest(http.MethodPost, "/v1/bookings", strings.NewReader(bookBody))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -69,14 +80,13 @@ func TestCreateBooking_enqueuedReminderJob(t *testing.T) {
 		t.Errorf("payload = %q; want booking_id field", payload)
 	}
 
-	// run_at should be 24h before booking start (2026-06-15T09:00:00Z → 2026-06-14T09:00:00Z).
-	wantRunAt, _ := time.Parse(time.RFC3339, "2026-06-14T09:00:00Z")
+	// run_at should be 24h before the booking start.
 	gotRunAt, err := time.Parse(time.RFC3339, runAt)
 	if err != nil {
 		t.Fatalf("parse run_at %q: %v", runAt, err)
 	}
 	diff := gotRunAt.Sub(wantRunAt)
 	if diff < -time.Minute || diff > time.Minute {
-		t.Errorf("run_at = %s; want ~2026-06-14T09:00:00Z (±1m)", runAt)
+		t.Errorf("run_at = %s; want ~%s (±1m)", runAt, wantRunAt.Format(time.RFC3339))
 	}
 }
