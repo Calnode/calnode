@@ -4,6 +4,20 @@
 
 	const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
+	// 30-minute time slots for the selects
+	const TIME_SLOTS: string[] = [];
+	for (let h = 0; h < 24; h++) {
+		for (const m of [0, 30]) {
+			TIME_SLOTS.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
+		}
+	}
+	function fmtTime(t: string) {
+		const [hh, mm] = t.split(':').map(Number);
+		const ampm = hh < 12 ? 'am' : 'pm';
+		const h12 = hh % 12 || 12;
+		return mm === 0 ? `${h12}${ampm}` : `${h12}:${String(mm).padStart(2,'0')}${ampm}`;
+	}
+
 	// ── Weekly rules ────────────────────────────────────────────────────────────
 	let rules: AvailabilityRule[] = [];
 	let rulesLoading = true;
@@ -246,9 +260,13 @@
 							</td>
 							<td>
 								<div class="inline-time-fields">
-									<input class="inline-input" type="time" bind:value={editRuleForm.start_time} />
+									<select class="inline-input" bind:value={editRuleForm.start_time}>
+										{#each TIME_SLOTS as t}<option value={t}>{fmtTime(t)}</option>{/each}
+									</select>
 									<span style="color:var(--text-muted);">–</span>
-									<input class="inline-input" type="time" bind:value={editRuleForm.end_time} />
+									<select class="inline-input" bind:value={editRuleForm.end_time}>
+										{#each TIME_SLOTS as t}<option value={t}>{fmtTime(t)}</option>{/each}
+									</select>
 								</div>
 								{#if ruleSaveError}<div class="error-msg" style="margin-top:4px;">{ruleSaveError}</div>{/if}
 							</td>
@@ -287,11 +305,15 @@
 			</div>
 			<div class="field">
 				<label for="rule-start">From</label>
-				<input id="rule-start" type="time" bind:value={ruleForm.start_time} />
+				<select id="rule-start" bind:value={ruleForm.start_time}>
+					{#each TIME_SLOTS as t}<option value={t}>{fmtTime(t)}</option>{/each}
+				</select>
 			</div>
 			<div class="field">
 				<label for="rule-end">To</label>
-				<input id="rule-end" type="time" bind:value={ruleForm.end_time} />
+				<select id="rule-end" bind:value={ruleForm.end_time}>
+					{#each TIME_SLOTS as t}<option value={t}>{fmtTime(t)}</option>{/each}
+				</select>
 			</div>
 			<div class="field-btn">
 				<button class="btn-primary" on:click={addRule} disabled={addingRule}>
@@ -337,9 +359,13 @@
 							<td>
 								{#if editOvForm.is_available}
 									<div class="inline-time-fields">
-										<input class="inline-input" type="time" bind:value={editOvForm.start_time} />
+										<select class="inline-input" bind:value={editOvForm.start_time}>
+											{#each TIME_SLOTS as t}<option value={t}>{fmtTime(t)}</option>{/each}
+										</select>
 										<span style="color:var(--text-muted);">–</span>
-										<input class="inline-input" type="time" bind:value={editOvForm.end_time} />
+										<select class="inline-input" bind:value={editOvForm.end_time}>
+											{#each TIME_SLOTS as t}<option value={t}>{fmtTime(t)}</option>{/each}
+										</select>
 									</div>
 								{:else}
 									<span style="color:var(--text-muted);">—</span>
@@ -396,11 +422,15 @@
 			{#if ovForm.is_available}
 				<div class="field">
 					<label for="ov-start">From</label>
-					<input id="ov-start" type="time" bind:value={ovForm.start_time} />
+					<select id="ov-start" bind:value={ovForm.start_time}>
+						{#each TIME_SLOTS as t}<option value={t}>{fmtTime(t)}</option>{/each}
+					</select>
 				</div>
 				<div class="field">
 					<label for="ov-end">To</label>
-					<input id="ov-end" type="time" bind:value={ovForm.end_time} />
+					<select id="ov-end" bind:value={ovForm.end_time}>
+						{#each TIME_SLOTS as t}<option value={t}>{fmtTime(t)}</option>{/each}
+					</select>
 				</div>
 			{/if}
 			<div class="field-btn">
