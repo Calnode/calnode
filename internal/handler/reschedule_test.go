@@ -11,6 +11,13 @@ import (
 	"time"
 )
 
+// futureAt returns a UTC time that is daysFromNow days ahead at hour:min.
+// Using a date well in the future ensures tests don't break as time passes.
+func futureAt(daysFromNow, hour, min int) time.Time {
+	base := time.Now().UTC().Truncate(24 * time.Hour).AddDate(0, 0, daysFromNow)
+	return base.Add(time.Duration(hour)*time.Hour + time.Duration(min)*time.Minute)
+}
+
 // patchReschedule sends PATCH /v1/bookings/{id}/reschedule with the given start_at.
 func patchReschedule(t *testing.T, h interface {
 	RequireAuth(http.HandlerFunc) http.HandlerFunc
@@ -34,9 +41,13 @@ func TestRescheduleBooking_success(t *testing.T) {
 	ctx := context.Background()
 
 	slug, _ := seedEventTypeHTTP(t, h, key)
-	bookingID := createBookingViaHTTP(t, h, slug, "2026-06-20T10:00:00Z")
+	bookStart := futureAt(10, 10, 0)
+	newStart := futureAt(11, 14, 0)
+	newEnd := newStart.Add(30 * time.Minute)
 
-	rec := patchReschedule(t, h, bookingID, "2026-06-21T14:00:00Z", key)
+	bookingID := createBookingViaHTTP(t, h, slug, bookStart.Format(time.RFC3339))
+
+	rec := patchReschedule(t, h, bookingID, newStart.Format(time.RFC3339), key)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("reschedule: got %d — %s", rec.Code, rec.Body.String())
 	}
@@ -45,19 +56,21 @@ func TestRescheduleBooking_success(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if got := resp["start_at"]; got != "2026-06-21T14:00:00Z" {
-		t.Errorf("start_at = %v; want 2026-06-21T14:00:00Z", got)
+	wantStart := newStart.Format(time.RFC3339)
+	wantEnd := newEnd.Format(time.RFC3339)
+	if got := resp["start_at"]; got != wantStart {
+		t.Errorf("start_at = %v; want %s", got, wantStart)
 	}
-	if got := resp["end_at"]; got != "2026-06-21T14:30:00Z" {
-		t.Errorf("end_at = %v; want 2026-06-21T14:30:00Z (30-min event)", got)
+	if got := resp["end_at"]; got != wantEnd {
+		t.Errorf("end_at = %v; want %s (30-min event)", got, wantEnd)
 	}
 
 	// Verify the DB was updated.
 	var dbStart string
 	database.QueryRowContext(ctx, `SELECT start_at FROM bookings WHERE id = ?`, bookingID).
 		Scan(&dbStart)
-	if !strings.Contains(dbStart, "2026-06-21T14:00:00") {
-		t.Errorf("DB start_at = %q; want to contain 2026-06-21T14:00:00", dbStart)
+	if !strings.Contains(dbStart, newStart.Format("2006-01-02T15:04:05")) {
+		t.Errorf("DB start_at = %q; want to contain %s", dbStart, newStart.Format("2006-01-02T15:04:05"))
 	}
 }
 
@@ -70,44 +83,47 @@ func TestRescheduleBooking_updatesReminderJob(t *testing.T) {
 	ctx := context.Background()
 
 	slug, _ := seedEventTypeHTTP(t, h, key)
-	// Booking starts 2026-06-25T10:00:00Z; reminder fires 2026-06-24T10:00:00Z.
-	bookingID := createBookingViaHTTP(t, h, slug, "2026-06-25T10:00:00Z")
+
+	bookStart := futureAt(10, 10, 0)
+	oldReminderAt := bookStart.Add(-24 * time.Hour)
+	newStart := futureAt(13, 9, 0)
+	wantNewReminder := newStart.Add(-24 * time.Hour)
+
+	bookingID := createBookingViaHTTP(t, h, slug, bookStart.Format(time.RFC3339))
 
 	// Seed an existing reminder job as if it was enqueued at booking creation.
 	payload := fmt.Sprintf(`{"booking_id":%q}`, bookingID)
 	database.ExecContext(ctx, `
 		INSERT INTO jobs (id, type, payload, run_at, status, attempts, max_attempts)
-		VALUES ('rem-test-job', 'reminder.send', ?, '2026-06-24T10:00:00Z', 'pending', 0, 3)`,
-		payload)
+		VALUES ('rem-test-job', 'reminder.send', ?, ?, 'pending', 0, 3)`,
+		payload, oldReminderAt.Format(time.RFC3339))
 
-	// Reschedule to 2026-06-28T09:00:00Z → new reminder run_at should be ~2026-06-27T09:00:00Z.
-	rec := patchReschedule(t, h, bookingID, "2026-06-28T09:00:00Z", key)
+	rec := patchReschedule(t, h, bookingID, newStart.Format(time.RFC3339), key)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("reschedule: got %d — %s", rec.Code, rec.Body.String())
 	}
 
 	// The goroutine runs asynchronously; poll briefly.
-	var runAt string
-	var status string
+	var runAt, status string
 	deadline := time.Now().Add(2 * time.Second)
+	oldRunAtStr := oldReminderAt.Format(time.RFC3339)
 	for time.Now().Before(deadline) {
 		database.QueryRowContext(ctx,
 			`SELECT run_at, status FROM jobs WHERE id = 'rem-test-job'`).
 			Scan(&runAt, &status)
-		if status == "pending" && runAt != "2026-06-24T10:00:00Z" {
+		if status == "pending" && runAt != oldRunAtStr {
 			break
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
 
-	wantRunAt, _ := time.Parse(time.RFC3339, "2026-06-27T09:00:00Z")
 	gotRunAt, err := time.Parse(time.RFC3339, runAt)
 	if err != nil {
 		t.Fatalf("parse job run_at %q: %v", runAt, err)
 	}
-	diff := gotRunAt.Sub(wantRunAt)
+	diff := gotRunAt.Sub(wantNewReminder)
 	if diff < -time.Minute || diff > time.Minute {
-		t.Errorf("reminder run_at = %s; want ~2026-06-27T09:00:00Z (±1m)", runAt)
+		t.Errorf("reminder run_at = %s; want ~%s (±1m)", runAt, wantNewReminder.Format(time.RFC3339))
 	}
 	if status != "pending" {
 		t.Errorf("job status = %q; want pending", status)
@@ -121,32 +137,18 @@ func TestRescheduleBooking_updatesReminderJob(t *testing.T) {
 func TestRescheduleBooking_wrongUser(t *testing.T) {
 	h, _, key1, _ := setupWorkspaceWithDB(t)
 
-	// Create a second user (second setup call creates a new workspace).
-	body2 := `{"name":"Other Host","email":"other@example.com","timezone":"UTC"}`
-	req2 := httptest.NewRequest(http.MethodPost, "/v1/setup", strings.NewReader(body2))
-	req2.Header.Set("Content-Type", "application/json")
-	rec2 := httptest.NewRecorder()
-	h.Setup(rec2, req2)
-	if rec2.Code != http.StatusConflict && rec2.Code != http.StatusCreated {
-		// setup is idempotent-or-conflict; just check we got a valid response.
-		t.Logf("second setup: %d — %s", rec2.Code, rec2.Body.String())
-	}
-
-	// Create a booking owned by user1.
 	slug, _ := seedEventTypeHTTP(t, h, key1)
-	bookingID := createBookingViaHTTP(t, h, slug, "2026-06-20T10:00:00Z")
+	_ = createBookingViaHTTP(t, h, slug, futureAt(10, 10, 0).Format(time.RFC3339))
 
-	// Attempt to reschedule using key1 against a fake non-owned booking ID.
 	fakeID := "does-not-belong-to-me"
 	req := authReq(http.MethodPatch, "/v1/bookings/"+fakeID+"/reschedule",
-		`{"start_at":"2026-06-21T10:00:00Z"}`, key1)
+		fmt.Sprintf(`{"start_at":%q}`, futureAt(11, 10, 0).Format(time.RFC3339)), key1)
 	req.SetPathValue("id", fakeID)
 	rec := httptest.NewRecorder()
 	h.RequireAuth(h.RescheduleBooking)(rec, req)
 	if rec.Code != http.StatusNotFound {
-		t.Errorf("wrong user: got %d; want 404 (booking not found or not owned)", rec.Code)
+		t.Errorf("wrong user: got %d; want 404", rec.Code)
 	}
-	_ = bookingID // referenced only to confirm our key1 owns a booking
 }
 
 // ---------------------------------------------------------------------------
@@ -156,11 +158,12 @@ func TestRescheduleBooking_wrongUser(t *testing.T) {
 func TestRescheduleBooking_requiresAuth(t *testing.T) {
 	h, _, key, _ := setupWorkspaceWithDB(t)
 	slug, _ := seedEventTypeHTTP(t, h, key)
-	bookingID := createBookingViaHTTP(t, h, slug, "2026-06-20T10:00:00Z")
+	bookingID := createBookingViaHTTP(t, h, slug, futureAt(10, 10, 0).Format(time.RFC3339))
 
+	body := fmt.Sprintf(`{"start_at":%q}`, futureAt(11, 10, 0).Format(time.RFC3339))
 	req := httptest.NewRequest(http.MethodPatch,
 		"/v1/bookings/"+bookingID+"/reschedule",
-		strings.NewReader(`{"start_at":"2026-06-21T10:00:00Z"}`))
+		strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.SetPathValue("id", bookingID)
 	rec := httptest.NewRecorder()
@@ -178,12 +181,10 @@ func TestRescheduleBooking_doubleBooked(t *testing.T) {
 	h, _, key, _ := setupWorkspaceWithDB(t)
 	slug, _ := seedEventTypeHTTP(t, h, key)
 
-	// Create two bookings at different times.
-	id1 := createBookingViaHTTP(t, h, slug, "2026-06-20T10:00:00Z")
-	_ = createBookingViaHTTP(t, h, slug, "2026-06-20T11:00:00Z")
+	id1 := createBookingViaHTTP(t, h, slug, futureAt(10, 10, 0).Format(time.RFC3339))
+	_ = createBookingViaHTTP(t, h, slug, futureAt(10, 11, 0).Format(time.RFC3339))
 
-	// Try to move booking 1 to clash with booking 2.
-	rec := patchReschedule(t, h, id1, "2026-06-20T11:00:00Z", key)
+	rec := patchReschedule(t, h, id1, futureAt(10, 11, 0).Format(time.RFC3339), key)
 	if rec.Code != http.StatusConflict {
 		t.Errorf("double-booked: got %d; want 409", rec.Code)
 	}
@@ -196,9 +197,8 @@ func TestRescheduleBooking_doubleBooked(t *testing.T) {
 func TestRescheduleBooking_alreadyCancelled(t *testing.T) {
 	h, _, key, _ := setupWorkspaceWithDB(t)
 	slug, _ := seedEventTypeHTTP(t, h, key)
-	bookingID := createBookingViaHTTP(t, h, slug, "2026-06-20T10:00:00Z")
+	bookingID := createBookingViaHTTP(t, h, slug, futureAt(10, 10, 0).Format(time.RFC3339))
 
-	// Cancel it first.
 	cancelReq := authReq(http.MethodPost, "/v1/bookings/"+bookingID+"/cancel", `{}`, key)
 	cancelReq.SetPathValue("id", bookingID)
 	cancelRec := httptest.NewRecorder()
@@ -207,8 +207,7 @@ func TestRescheduleBooking_alreadyCancelled(t *testing.T) {
 		t.Fatalf("cancel: %d — %s", cancelRec.Code, cancelRec.Body.String())
 	}
 
-	// Now try to reschedule.
-	rec := patchReschedule(t, h, bookingID, "2026-06-21T10:00:00Z", key)
+	rec := patchReschedule(t, h, bookingID, futureAt(11, 10, 0).Format(time.RFC3339), key)
 	if rec.Code != http.StatusConflict {
 		t.Errorf("cancelled booking: got %d; want 409", rec.Code)
 	}
@@ -221,7 +220,7 @@ func TestRescheduleBooking_alreadyCancelled(t *testing.T) {
 func TestRescheduleBooking_notFound(t *testing.T) {
 	h, _, key, _ := setupWorkspaceWithDB(t)
 
-	rec := patchReschedule(t, h, "nonexistent-booking-id", "2026-06-21T10:00:00Z", key)
+	rec := patchReschedule(t, h, "nonexistent-booking-id", futureAt(11, 10, 0).Format(time.RFC3339), key)
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("not found: got %d; want 404", rec.Code)
 	}
@@ -234,7 +233,7 @@ func TestRescheduleBooking_notFound(t *testing.T) {
 func TestRescheduleBooking_badStartAt(t *testing.T) {
 	h, _, key, _ := setupWorkspaceWithDB(t)
 	slug, _ := seedEventTypeHTTP(t, h, key)
-	bookingID := createBookingViaHTTP(t, h, slug, "2026-06-20T10:00:00Z")
+	bookingID := createBookingViaHTTP(t, h, slug, futureAt(10, 10, 0).Format(time.RFC3339))
 
 	req := authReq(http.MethodPatch, "/v1/bookings/"+bookingID+"/reschedule",
 		`{"start_at":"not-a-date"}`, key)
@@ -253,14 +252,45 @@ func TestRescheduleBooking_badStartAt(t *testing.T) {
 func TestRescheduleBooking_missingStartAt(t *testing.T) {
 	h, _, key, _ := setupWorkspaceWithDB(t)
 	slug, _ := seedEventTypeHTTP(t, h, key)
-	bookingID := createBookingViaHTTP(t, h, slug, "2026-06-20T10:00:00Z")
+	bookingID := createBookingViaHTTP(t, h, slug, futureAt(10, 10, 0).Format(time.RFC3339))
 
-	req := authReq(http.MethodPatch, "/v1/bookings/"+bookingID+"/reschedule",
-		`{}`, key)
+	req := authReq(http.MethodPatch, "/v1/bookings/"+bookingID+"/reschedule", `{}`, key)
 	req.SetPathValue("id", bookingID)
 	rec := httptest.NewRecorder()
 	h.RequireAuth(h.RescheduleBooking)(rec, req)
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("missing start_at: got %d; want 400", rec.Code)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Past date → 400
+// ---------------------------------------------------------------------------
+
+func TestRescheduleBooking_pastDate(t *testing.T) {
+	h, _, key, _ := setupWorkspaceWithDB(t)
+	slug, _ := seedEventTypeHTTP(t, h, key)
+	bookingID := createBookingViaHTTP(t, h, slug, futureAt(10, 10, 0).Format(time.RFC3339))
+
+	yesterday := time.Now().UTC().Add(-24 * time.Hour).Format(time.RFC3339)
+	rec := patchReschedule(t, h, bookingID, yesterday, key)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("past date: got %d; want 400", rec.Code)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Reschedule to same time → 200 (self-overlap is allowed)
+// ---------------------------------------------------------------------------
+
+func TestRescheduleBooking_sameTime(t *testing.T) {
+	h, _, key, _ := setupWorkspaceWithDB(t)
+	slug, _ := seedEventTypeHTTP(t, h, key)
+	start := futureAt(10, 10, 0).Format(time.RFC3339)
+	bookingID := createBookingViaHTTP(t, h, slug, start)
+
+	rec := patchReschedule(t, h, bookingID, start, key)
+	if rec.Code != http.StatusOK {
+		t.Errorf("same time reschedule: got %d; want 200", rec.Code)
 	}
 }

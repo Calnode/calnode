@@ -35,6 +35,10 @@ func (h *Handler) RescheduleBooking(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusBadRequest, "start_at must be RFC3339 (e.g. 2026-06-15T09:00:00Z)")
 		return
 	}
+	if newStart.Before(time.Now()) {
+		h.writeError(w, http.StatusBadRequest, "start_at cannot be in the past")
+		return
+	}
 
 	// Load booking + event type in one query to check ownership and get duration.
 	var hostID, startStr, endStr, status, etSlug string
