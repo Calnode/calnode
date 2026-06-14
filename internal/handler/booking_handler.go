@@ -159,6 +159,7 @@ func (h *Handler) ListBookings(w http.ResponseWriter, r *http.Request) {
 
 // CancelBooking handles POST /v1/bookings/{id}/cancel (admin).
 func (h *Handler) CancelBooking(w http.ResponseWriter, r *http.Request) {
+	user, _ := userFromContext(r.Context())
 	id := r.PathValue("id")
 	r.Body = http.MaxBytesReader(w, r.Body, 32<<10)
 
@@ -168,7 +169,7 @@ func (h *Handler) CancelBooking(w http.ResponseWriter, r *http.Request) {
 	// Ignore decode errors — reason is optional.
 	_ = json.NewDecoder(r.Body).Decode(&req)
 
-	if err := h.bookingSvc.Cancel(r.Context(), id, req.Reason); err != nil {
+	if err := h.bookingSvc.Cancel(r.Context(), user.ID, id, req.Reason); err != nil {
 		switch {
 		case errors.Is(err, booking.ErrNotFound):
 			h.writeError(w, http.StatusNotFound, "booking not found")

@@ -184,7 +184,7 @@ func TestCreate_cancelledDoesNotBlock(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	if err := svc.Cancel(context.Background(), b.ID, "cancelled by test"); err != nil {
+	if err := svc.Cancel(context.Background(), hostID, b.ID, "cancelled by test"); err != nil {
 		t.Fatalf("Cancel: %v", err)
 	}
 	if _, err := svc.Create(context.Background(), p); err != nil {
@@ -255,7 +255,7 @@ func TestCancel_success(t *testing.T) {
 		t.Fatalf("Create: %v", err)
 	}
 
-	if err := svc.Cancel(context.Background(), b.ID, "changed plans"); err != nil {
+	if err := svc.Cancel(context.Background(), hostID, b.ID, "changed plans"); err != nil {
 		t.Fatalf("Cancel: %v", err)
 	}
 
@@ -273,9 +273,34 @@ func TestCancel_success(t *testing.T) {
 
 func TestCancel_notFound(t *testing.T) {
 	svc := booking.New(newTestDB(t))
-	err := svc.Cancel(context.Background(), "nonexistent", "")
+	err := svc.Cancel(context.Background(), "any-host", "nonexistent", "")
 	if err != booking.ErrNotFound {
 		t.Errorf("Cancel nonexistent: got %v; want ErrNotFound", err)
+	}
+}
+
+func TestCancel_wrongHost(t *testing.T) {
+	database := newTestDB(t)
+	svc := booking.New(database)
+	h1 := seedHost(t, database)
+	h2 := seedHost(t, database)
+	etID := seedEventType(t, database, h1)
+
+	b, err := svc.Create(context.Background(), booking.CreateParams{
+		EventTypeID: etID,
+		HostIDs:     []string{h1},
+		StartAt:     slot(9, 0),
+		EndAt:       slot(9, 30),
+		Organizer:   booking.Attendee{Name: "Alice", Email: "alice@example.com"},
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	// h2 must not be able to cancel h1's booking.
+	err = svc.Cancel(context.Background(), h2, b.ID, "hacked")
+	if err != booking.ErrNotFound {
+		t.Errorf("Cancel with wrong host: got %v; want ErrNotFound", err)
 	}
 }
 
@@ -295,11 +320,11 @@ func TestCancel_alreadyCancelled(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	if err := svc.Cancel(context.Background(), b.ID, "first"); err != nil {
+	if err := svc.Cancel(context.Background(), hostID, b.ID, "first"); err != nil {
 		t.Fatalf("Cancel: %v", err)
 	}
 
-	err = svc.Cancel(context.Background(), b.ID, "second")
+	err = svc.Cancel(context.Background(), hostID, b.ID, "second")
 	if err != booking.ErrAlreadyCancelled {
 		t.Errorf("second Cancel: got %v; want ErrAlreadyCancelled", err)
 	}
@@ -371,7 +396,7 @@ func TestListByHost(t *testing.T) {
 	b2 := create(h1, slot(10, 0), slot(10, 30))
 	create(h2, slot(9, 0), slot(9, 30)) // different host — must not appear
 	cancelled := create(h1, slot(11, 0), slot(11, 30))
-	svc.Cancel(context.Background(), cancelled.ID, "test") //nolint:errcheck
+	svc.Cancel(context.Background(), h1, cancelled.ID, "test") //nolint:errcheck
 
 	bookings, err := svc.ListByHost(context.Background(), h1)
 	if err != nil {

@@ -13,17 +13,6 @@ import (
 // Setup handles POST /v1/setup — creates the first user and API key.
 // Returns 409 if the workspace is already configured.
 func (h *Handler) Setup(w http.ResponseWriter, r *http.Request) {
-	var count int
-	if err := h.db.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM users`).Scan(&count); err != nil {
-		h.logger.ErrorContext(r.Context(), "setup: count users", "error", err)
-		h.writeError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-	if count > 0 {
-		h.writeError(w, http.StatusConflict, "workspace already configured")
-		return
-	}
-
 	r.Body = http.MaxBytesReader(w, r.Body, 32<<10)
 	var req struct {
 		Name     string `json:"name"`
@@ -59,6 +48,9 @@ func (h *Handler) Setup(w http.ResponseWriter, r *http.Request) {
 	keyID := uid.New()
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 
+	// Begin the transaction before the existence check so that the check and
+	// the inserts are atomic. With the single-connection pool, BeginTx
+	// serialises all Setup callers at the DB level.
 	tx, err := h.db.BeginTx(r.Context(), nil)
 	if err != nil {
 		h.logger.ErrorContext(r.Context(), "setup: begin tx", "error", err)
@@ -66,6 +58,17 @@ func (h *Handler) Setup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback() //nolint:errcheck
+
+	var count int
+	if err := tx.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM users`).Scan(&count); err != nil {
+		h.logger.ErrorContext(r.Context(), "setup: count users", "error", err)
+		h.writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	if count > 0 {
+		h.writeError(w, http.StatusConflict, "workspace already configured")
+		return
+	}
 
 	if _, err := tx.ExecContext(r.Context(), `
 		INSERT INTO users (id, email, name, iana_timezone, is_admin)

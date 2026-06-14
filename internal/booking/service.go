@@ -110,15 +110,17 @@ func (s *Service) Create(ctx context.Context, p CreateParams) (*Booking, error) 
 	}, nil
 }
 
-// Cancel marks a booking as cancelled. Returns ErrNotFound if the booking does
-// not exist and ErrAlreadyCancelled if it is already in that state.
-func (s *Service) Cancel(ctx context.Context, id, reason string) error {
+// Cancel marks a booking as cancelled. hostID must match the booking's host_id
+// so that one user cannot cancel another user's bookings. Returns ErrNotFound
+// if the booking does not exist or belongs to a different host, and
+// ErrAlreadyCancelled if it is already in that state.
+func (s *Service) Cancel(ctx context.Context, hostID, id, reason string) error {
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	res, err := s.db.ExecContext(ctx, `
 		UPDATE bookings
 		SET status = 'cancelled', cancellation_reason = ?, updated_at = ?
-		WHERE id = ? AND status != 'cancelled'`,
-		reason, now, id)
+		WHERE id = ? AND host_id = ? AND status != 'cancelled'`,
+		reason, now, id, hostID)
 	if err != nil {
 		return fmt.Errorf("booking: cancel: %w", err)
 	}
@@ -129,7 +131,7 @@ func (s *Service) Cancel(ctx context.Context, id, reason string) error {
 	if n == 0 {
 		var exists int
 		if err := s.db.QueryRowContext(ctx,
-			`SELECT COUNT(*) FROM bookings WHERE id = ?`, id).Scan(&exists); err != nil {
+			`SELECT COUNT(*) FROM bookings WHERE id = ? AND host_id = ?`, id, hostID).Scan(&exists); err != nil {
 			return fmt.Errorf("booking: cancel existence check: %w", err)
 		}
 		if exists == 0 {

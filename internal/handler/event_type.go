@@ -250,12 +250,20 @@ func (h *Handler) PatchEventType(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.Name != nil {
+		if *req.Name == "" {
+			h.writeError(w, http.StatusBadRequest, "name cannot be empty")
+			return
+		}
 		set("name", *req.Name)
 	}
 	if req.Description != nil {
 		set("description", *req.Description)
 	}
 	if req.DurationMinutes != nil {
+		if *req.DurationMinutes <= 0 {
+			h.writeError(w, http.StatusBadRequest, "duration_minutes must be positive")
+			return
+		}
 		set("duration_minutes", *req.DurationMinutes)
 	}
 	if req.SlotIntervalMinutes != nil {
