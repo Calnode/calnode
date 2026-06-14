@@ -51,7 +51,9 @@ func setup(t *testing.T) (*sql.DB, *webhook.Service) {
 
 func newWorker(t *testing.T, database *sql.DB, svc *webhook.Service) *worker.Worker {
 	t.Helper()
-	return worker.New(database, svc, slog.Default())
+	// Tests use a local httptest.Server, so bypass the production SSRF guard.
+	return worker.New(database, svc, slog.Default(),
+		worker.WithHTTPClient(&http.Client{Timeout: 10 * time.Second}))
 }
 
 // ---------------------------------------------------------------------------

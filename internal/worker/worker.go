@@ -11,9 +11,11 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"time"
 
+	"github.com/calnode/calnode/internal/netutil"
 	"github.com/calnode/calnode/internal/webhook"
 )
 
@@ -25,13 +27,50 @@ type Worker struct {
 	httpClient *http.Client
 }
 
-func New(db *sql.DB, svc *webhook.Service, logger *slog.Logger) *Worker {
-	return &Worker{
-		db:         db,
-		svc:        svc,
-		logger:     logger,
-		httpClient: &http.Client{Timeout: 10 * time.Second},
+// WithHTTPClient overrides the default SSRF-safe HTTP client. Intended for testing only.
+func WithHTTPClient(c *http.Client) func(*Worker) {
+	return func(w *Worker) { w.httpClient = c }
+}
+
+func New(db *sql.DB, svc *webhook.Service, logger *slog.Logger, opts ...func(*Worker)) *Worker {
+	baseDialer := &net.Dialer{}
+	transport := &http.Transport{
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			host, port, err := net.SplitHostPort(addr)
+			if err != nil {
+				return nil, fmt.Errorf("worker: split addr: %w", err)
+			}
+			addrs, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+			if err != nil {
+				return nil, fmt.Errorf("worker: resolve %q: %w", host, err)
+			}
+			if len(addrs) == 0 {
+				return nil, fmt.Errorf("worker: no addresses for %q", host)
+			}
+			for _, a := range addrs {
+				if netutil.IsPrivateIP(a.IP) {
+					// Log the specific IP internally; return a generic message so
+					// the blocked address is not disclosed to webhook owners.
+					logger.Warn("worker: webhook SSRF block", "host", host, "resolved_ip", a.IP)
+					return nil, fmt.Errorf("worker: webhook target resolved to a blocked address")
+				}
+			}
+			return baseDialer.DialContext(ctx, network, net.JoinHostPort(addrs[0].IP.String(), port))
+		},
 	}
+	w := &Worker{
+		db:     db,
+		svc:    svc,
+		logger: logger,
+		httpClient: &http.Client{
+			Timeout:   10 * time.Second,
+			Transport: transport,
+		},
+	}
+	for _, o := range opts {
+		o(w)
+	}
+	return w
 }
 
 // Run polls for pending jobs every 5 seconds until ctx is cancelled.

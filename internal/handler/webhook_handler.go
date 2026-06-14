@@ -1,13 +1,17 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"slices"
 	"time"
 
+	"github.com/calnode/calnode/internal/netutil"
 	"github.com/calnode/calnode/internal/webhook"
 )
 
@@ -32,6 +36,10 @@ func (h *Handler) CreateWebhook(w http.ResponseWriter, r *http.Request) {
 	u, err := url.ParseRequestURI(req.URL)
 	if err != nil || (u.Scheme != "https" && u.Scheme != "http") {
 		h.writeError(w, http.StatusBadRequest, "url must be a valid http or https URL")
+		return
+	}
+	if err := validateWebhookURL(r.Context(), u); err != nil {
+		h.writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	if len(req.Events) == 0 {
@@ -137,4 +145,23 @@ func (h *Handler) ListWebhookDeliveries(w http.ResponseWriter, r *http.Request) 
 		items[i] = item
 	}
 	h.writeJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+// validateWebhookURL resolves the URL host and rejects any address in a
+// loopback, link-local, or private range to prevent SSRF.
+func validateWebhookURL(ctx context.Context, u *url.URL) error {
+	host := u.Hostname()
+	addrs, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	if err != nil {
+		return fmt.Errorf("cannot resolve webhook host: %w", err)
+	}
+	if len(addrs) == 0 {
+		return fmt.Errorf("webhook host %q resolved to no addresses", host)
+	}
+	for _, a := range addrs {
+		if netutil.IsPrivateIP(a.IP) {
+			return fmt.Errorf("webhook URL must not resolve to a private or loopback address")
+		}
+	}
+	return nil
 }

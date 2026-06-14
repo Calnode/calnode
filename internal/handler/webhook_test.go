@@ -146,15 +146,15 @@ func TestListWebhooks_emptyInitially(t *testing.T) {
 func TestListWebhooks_returnsCreated(t *testing.T) {
 	h, apiKey, _ := setupWorkspace(t)
 
-	// Create two webhooks.
-	for i := range 2 {
+	// Create two webhooks. Use IANA-reserved domains that resolve to public IPs.
+	for _, domain := range []string{"example.com", "example.net"} {
 		r := authReq(http.MethodPost, "/v1/webhooks",
-			fmt.Sprintf(`{"url":"https://example%d.com/hook","events":["booking.created"]}`, i),
+			fmt.Sprintf(`{"url":"https://%s/hook","events":["booking.created"]}`, domain),
 			apiKey)
 		rc := httptest.NewRecorder()
 		h.RequireAuth(h.CreateWebhook)(rc, r)
 		if rc.Code != http.StatusCreated {
-			t.Fatalf("create webhook %d: %d", i, rc.Code)
+			t.Fatalf("create webhook %s: %d — %s", domain, rc.Code, rc.Body.String())
 		}
 	}
 
@@ -294,5 +294,48 @@ func TestListWebhookDeliveries_unknownWebhook_returns404(t *testing.T) {
 
 	if rec.Code != http.StatusNotFound {
 		t.Errorf("status = %d; want 404", rec.Code)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// SSRF prevention — CreateWebhook must reject private/loopback addresses
+// ---------------------------------------------------------------------------
+
+func TestCreateWebhook_ssrf_loopback_returns400(t *testing.T) {
+	h, apiKey, _ := setupWorkspace(t)
+
+	req := authReq(http.MethodPost, "/v1/webhooks",
+		`{"url":"http://127.0.0.1/hook","events":["booking.created"]}`, apiKey)
+	rec := httptest.NewRecorder()
+	h.RequireAuth(h.CreateWebhook)(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d; want 400 for loopback URL", rec.Code)
+	}
+}
+
+func TestCreateWebhook_ssrf_privateRFC1918_returns400(t *testing.T) {
+	h, apiKey, _ := setupWorkspace(t)
+
+	req := authReq(http.MethodPost, "/v1/webhooks",
+		`{"url":"http://192.168.1.1/hook","events":["booking.created"]}`, apiKey)
+	rec := httptest.NewRecorder()
+	h.RequireAuth(h.CreateWebhook)(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d; want 400 for RFC-1918 URL", rec.Code)
+	}
+}
+
+func TestCreateWebhook_ssrf_cgnat_returns400(t *testing.T) {
+	h, apiKey, _ := setupWorkspace(t)
+
+	req := authReq(http.MethodPost, "/v1/webhooks",
+		`{"url":"http://100.64.0.1/hook","events":["booking.created"]}`, apiKey)
+	rec := httptest.NewRecorder()
+	h.RequireAuth(h.CreateWebhook)(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d; want 400 for CGNAT URL", rec.Code)
 	}
 }
