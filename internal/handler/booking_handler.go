@@ -12,6 +12,7 @@ import (
 	"github.com/calnode/calnode/internal/booking"
 	"github.com/calnode/calnode/internal/gcal"
 	"github.com/calnode/calnode/internal/mailer"
+	"github.com/calnode/calnode/internal/uid"
 	"github.com/calnode/calnode/internal/webhook"
 )
 
@@ -191,6 +192,9 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 		}); err != nil {
 			h.logger.Error("enqueue booking.created webhook", "error", err, "booking_id", b.ID)
 		}
+		if err := h.enqueueReminder(ctx, b.ID, b.StartAt); err != nil {
+			h.logger.Error("enqueue reminder", "error", err, "booking_id", b.ID)
+		}
 	}()
 }
 
@@ -336,4 +340,25 @@ func (h *Handler) loadCancellationData(ctx context.Context, b *booking.Booking) 
 		Scan(&d.OrganizerName, &d.OrganizerEmail, &d.OrganizerTimezone)
 
 	return d, nil
+}
+
+// enqueueReminder inserts a reminder.send job scheduled for 24 hours before startAt.
+// If that time has already passed, the job runs immediately (within the next poll cycle).
+func (h *Handler) enqueueReminder(ctx context.Context, bookingID string, startAt time.Time) error {
+	runAt := startAt.UTC().Add(-24 * time.Hour)
+	now := time.Now().UTC()
+	if runAt.Before(now) {
+		runAt = now // fire on next poll if booking is < 24h away
+	}
+
+	payload, err := json.Marshal(map[string]string{"booking_id": bookingID})
+	if err != nil {
+		return fmt.Errorf("enqueue reminder: marshal payload: %w", err)
+	}
+
+	_, err = h.db.ExecContext(ctx, `
+		INSERT OR IGNORE INTO jobs (id, type, payload, run_at, status, attempts, max_attempts)
+		VALUES (?, 'reminder.send', ?, ?, 'pending', 0, 3)`,
+		uid.New(), string(payload), runAt.Format(time.RFC3339))
+	return err
 }

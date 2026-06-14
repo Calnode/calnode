@@ -21,27 +21,29 @@ func New(cfg *config.Config, db *sql.DB, logger *slog.Logger) http.Handler {
 	h := handler.New(db, logger)
 	h.SetBaseURL(cfg.BaseURL)
 
-	whs, err := webhook.New(db, cfg.EncryptionKey)
-	if err != nil {
-		logger.Error("webhook: init failed", "error", err)
-	} else {
-		h.SetWebhookSvc(whs)
-		wrk := worker.New(db, whs, logger)
-		go wrk.Run(context.Background())
-		logger.Info("webhook worker started")
-	}
-
+	// Mailer is initialised first so the worker can use it for reminders.
+	var mailSvc mailer.Mailer = &mailer.Noop{}
 	if cfg.SMTPHost != "" {
-		m := mailer.NewSMTP(
+		mailSvc = mailer.NewSMTP(
 			cfg.SMTPHost, cfg.SMTPPort,
 			cfg.SMTPUser, cfg.SMTPPass,
 			cfg.SMTPTLS, cfg.SMTPStartTLS,
 			cfg.EmailFrom, cfg.EmailFromName,
 		)
-		h.SetMailer(m, cfg.BaseURL)
 		logger.Info("mailer configured", "host", cfg.SMTPHost, "port", cfg.SMTPPort)
 	} else {
 		logger.Info("mailer not configured — emails disabled (set EMAIL_SMTP_HOST to enable)")
+	}
+	h.SetMailer(mailSvc, cfg.BaseURL)
+
+	whs, err := webhook.New(db, cfg.EncryptionKey)
+	if err != nil {
+		logger.Error("webhook: init failed", "error", err)
+	} else {
+		h.SetWebhookSvc(whs)
+		wrk := worker.New(db, whs, logger, worker.WithMailer(mailSvc))
+		go wrk.Run(context.Background())
+		logger.Info("webhook worker started")
 	}
 
 	if cfg.GoogleClientID != "" {

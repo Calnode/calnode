@@ -15,14 +15,16 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/calnode/calnode/internal/mailer"
 	"github.com/calnode/calnode/internal/netutil"
 	"github.com/calnode/calnode/internal/webhook"
 )
 
-// Worker polls the jobs table and processes pending webhook deliveries.
+// Worker polls the jobs table and processes pending jobs (webhooks, reminders).
 type Worker struct {
 	db         *sql.DB
 	svc        *webhook.Service
+	mailer     mailer.Mailer
 	logger     *slog.Logger
 	httpClient *http.Client
 }
@@ -30,6 +32,11 @@ type Worker struct {
 // WithHTTPClient overrides the default SSRF-safe HTTP client. Intended for testing only.
 func WithHTTPClient(c *http.Client) func(*Worker) {
 	return func(w *Worker) { w.httpClient = c }
+}
+
+// WithMailer configures the mailer used to send reminder emails.
+func WithMailer(m mailer.Mailer) func(*Worker) {
+	return func(w *Worker) { w.mailer = m }
 }
 
 func New(db *sql.DB, svc *webhook.Service, logger *slog.Logger, opts ...func(*Worker)) *Worker {
@@ -61,6 +68,7 @@ func New(db *sql.DB, svc *webhook.Service, logger *slog.Logger, opts ...func(*Wo
 	w := &Worker{
 		db:     db,
 		svc:    svc,
+		mailer: &mailer.Noop{},
 		logger: logger,
 		httpClient: &http.Client{
 			Timeout:   10 * time.Second,
@@ -187,9 +195,73 @@ func (w *Worker) processJob(ctx context.Context, typ, payload string) error {
 	switch typ {
 	case "webhook.deliver":
 		return w.deliverWebhook(ctx, payload)
+	case "reminder.send":
+		return w.sendReminder(ctx, payload)
 	default:
 		return fmt.Errorf("worker: unknown job type %q", typ)
 	}
+}
+
+func (w *Worker) sendReminder(ctx context.Context, payload string) error {
+	var p struct {
+		BookingID string `json:"booking_id"`
+	}
+	if err := json.Unmarshal([]byte(payload), &p); err != nil {
+		return fmt.Errorf("worker: reminder: parse payload: %w", err)
+	}
+
+	// One query: join bookings → event_types → users (host).
+	// Skip if booking is deleted or no longer confirmed.
+	var d mailer.BookingData
+	d.BookingID = p.BookingID
+	var startAt, endAt, status string
+	var locVal sql.NullString
+	err := w.db.QueryRowContext(ctx, `
+		SELECT b.status, b.start_at, b.end_at, b.location_value,
+		       et.name, et.slug, u.name, u.email
+		FROM bookings b
+		JOIN event_types et ON et.id = b.event_type_id
+		JOIN users u ON u.id = et.user_id
+		WHERE b.id = ?`, p.BookingID).
+		Scan(&status, &startAt, &endAt, &locVal,
+			&d.EventTypeName, &d.EventTypeSlug, &d.HostName, &d.HostEmail)
+	if err == sql.ErrNoRows {
+		return nil // booking deleted; skip silently
+	}
+	if err != nil {
+		return fmt.Errorf("worker: reminder: load booking: %w", err)
+	}
+	if status != "confirmed" {
+		return nil // cancelled or otherwise; skip silently
+	}
+
+	var parseErr error
+	if d.StartAt, parseErr = time.Parse(time.RFC3339, startAt); parseErr != nil {
+		return fmt.Errorf("worker: reminder: parse start_at %q: %w", startAt, parseErr)
+	}
+	if d.EndAt, parseErr = time.Parse(time.RFC3339, endAt); parseErr != nil {
+		return fmt.Errorf("worker: reminder: parse end_at %q: %w", endAt, parseErr)
+	}
+	if locVal.Valid {
+		d.LocationValue = locVal.String
+	}
+
+	// Load organizer attendee.
+	orgErr := w.db.QueryRowContext(ctx, `
+		SELECT name, email, iana_timezone
+		FROM booking_attendees WHERE booking_id = ? AND is_organizer = 1`, p.BookingID).
+		Scan(&d.OrganizerName, &d.OrganizerEmail, &d.OrganizerTimezone)
+	if orgErr == sql.ErrNoRows {
+		return nil // no organizer attendee (data integrity gap); skip silently
+	}
+	if orgErr != nil {
+		return fmt.Errorf("worker: reminder: load organizer: %w", orgErr)
+	}
+
+	if err := mailer.SendReminder(ctx, w.mailer, d); err != nil {
+		return fmt.Errorf("worker: reminder: send: %w", err)
+	}
+	return nil
 }
 
 func (w *Worker) deliverWebhook(ctx context.Context, jobPayload string) error {

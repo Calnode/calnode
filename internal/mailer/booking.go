@@ -138,6 +138,18 @@ func SendReschedule(ctx context.Context, m Mailer, d BookingData) error {
 	return nil
 }
 
+// SendReminder sends a 24-hour reminder email to the organizer.
+func SendReminder(ctx context.Context, m Mailer, d BookingData) error {
+	if err := m.Send(ctx, Message{
+		To:      []string{d.OrganizerEmail},
+		Subject: "Reminder: " + d.EventTypeName + " is tomorrow",
+		Text:    render(reminderOrgTmpl, d),
+	}); err != nil {
+		return fmt.Errorf("mailer: reminder: %w", err)
+	}
+	return nil
+}
+
 func render(t *template.Template, d BookingData) string {
 	var buf bytes.Buffer
 	if err := t.Execute(&buf, d); err != nil {
@@ -251,5 +263,24 @@ Location: {{.LocationValue}}{{end}}
 
 Booking reference: {{.BookingID}}
 
+— Calnode
+`))
+
+var reminderOrgTmpl = template.Must(template.New("reminder-org").Parse(
+	`Hi {{.OrganizerName}},
+
+This is a reminder that your booking is coming up.
+
+Event:    {{.EventTypeName}}
+With:     {{.HostName}}
+Start:    {{.StartFmt}}
+End:      {{.EndFmt}}{{if .LocationValue}}
+Location: {{.LocationValue}}{{end}}
+
+Booking reference: {{.BookingID}}
+{{if .ManageURL}}
+To reschedule or cancel, visit:
+{{.ManageURL}}
+{{end}}
 — Calnode
 `))
