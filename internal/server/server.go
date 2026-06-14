@@ -44,16 +44,22 @@ func New(cfg *config.Config, db *sql.DB, logger *slog.Logger) http.Handler {
 	}
 
 	if cfg.GoogleClientID != "" {
-		redirectURL := cfg.BaseURL + "/v1/calendar/callback"
-		gc, err := gcal.New(db, cfg.GoogleClientID, cfg.GoogleClientSecret, redirectURL, cfg.EncryptionKey)
+		// Google sign-in (user sessions for admin UI).
+		authRedirect := cfg.BaseURL + "/v1/auth/callback"
+		h.SetGoogleAuth(cfg.GoogleClientID, cfg.GoogleClientSecret, authRedirect, cfg.CookieSecure)
+		logger.Info("Google OAuth login configured", "redirect_url", authRedirect)
+
+		// Google Calendar (free/busy + event write).
+		calRedirect := cfg.BaseURL + "/v1/calendar/callback"
+		gc, err := gcal.New(db, cfg.GoogleClientID, cfg.GoogleClientSecret, calRedirect, cfg.EncryptionKey)
 		if err != nil {
 			logger.Error("gcal: init failed", "error", err)
 		} else {
 			h.SetCalendar(gc)
-			logger.Info("Google Calendar configured", "redirect_url", redirectURL)
+			logger.Info("Google Calendar configured", "redirect_url", calRedirect)
 		}
 	} else {
-		logger.Info("Google Calendar not configured (set GOOGLE_CLIENT_ID to enable)")
+		logger.Info("Google OAuth not configured (set GOOGLE_CLIENT_ID to enable sign-in and calendar)")
 	}
 
 	// Ops (§16)
@@ -62,6 +68,13 @@ func New(cfg *config.Config, db *sql.DB, logger *slog.Logger) http.Handler {
 
 	// Bootstrap — public, once-only
 	mux.HandleFunc("POST /v1/setup", h.Setup)
+
+	// Google OAuth login (browser sessions for admin UI).
+	// Rate-limited to prevent state-cookie flooding and token-exchange quota abuse.
+	authRL := RateLimit(10, time.Minute)
+	mux.HandleFunc("GET /v1/auth/login", authRL(h.LoginGoogle))
+	mux.HandleFunc("GET /v1/auth/callback", authRL(h.CallbackGoogle))
+	mux.HandleFunc("POST /v1/auth/logout", h.Logout)
 
 	// Users
 	mux.HandleFunc("GET /v1/users/me", h.RequireAuth(h.GetMe))

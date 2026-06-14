@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"strconv"
+	"strings"
 )
 
 type Config struct {
@@ -28,6 +29,12 @@ type Config struct {
 	// Google OAuth (calendar + sign-in)
 	GoogleClientID     string
 	GoogleClientSecret string
+
+	// CookieSecure sets the Secure flag on session cookies. Defaults to true
+	// when BASE_URL starts with https://, but can be overridden explicitly via
+	// COOKIE_SECURE=false for HTTPS-terminated-at-proxy setups where the binary
+	// itself listens on plain HTTP and BASE_URL is set correctly.
+	CookieSecure bool
 }
 
 func Load() *Config {
@@ -51,6 +58,7 @@ func Load() *Config {
 
 	cfg.EncryptionKey = loadEncryptionKey()
 	cfg.LogLevel = parseLogLevel(getEnv("LOG_LEVEL", "info"))
+	cfg.CookieSecure = getBool("COOKIE_SECURE", strings.HasPrefix(cfg.BaseURL, "https://"))
 
 	return cfg
 }

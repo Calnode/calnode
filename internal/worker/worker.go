@@ -91,10 +91,14 @@ func (w *Worker) Run(ctx context.Context) {
 func (w *Worker) Poll(ctx context.Context) {
 	now := time.Now().UTC().Format(time.RFC3339)
 
-	// Purge expired manage tokens to keep the table small.
+	// Purge expired manage tokens and sessions to keep tables small.
 	if _, err := w.db.ExecContext(ctx,
 		`DELETE FROM booking_manage_tokens WHERE expires_at < ?`, now); err != nil {
 		w.logger.Error("worker: purge expired tokens", "error", err)
+	}
+	if _, err := w.db.ExecContext(ctx,
+		`DELETE FROM sessions WHERE expires_at < ?`, now); err != nil {
+		w.logger.Error("worker: purge expired sessions", "error", err)
 	}
 
 	// Reaper: handle running jobs whose lock has expired (process crashed mid-job).

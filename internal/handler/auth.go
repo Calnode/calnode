@@ -27,37 +27,52 @@ func userFromContext(ctx context.Context) (AuthUser, bool) {
 	return u, ok
 }
 
-// requireAuth wraps a handler with API-key authentication.
-// Accepts the key via X-API-Key header or Authorization: Bearer <key>.
-// RequireAuth wraps a handler with API-key authentication.
+// RequireAuth wraps a handler with authentication. It accepts either:
+//   - An API key via X-API-Key header or Authorization: Bearer (for programmatic/MCP callers)
+//   - A session cookie set by Google OAuth login (for the admin UI browser sessions)
+//
+// If a key header is present but invalid, the request is rejected immediately
+// (no session fallback) to prevent confused-deputy attacks.
 func (h *Handler) RequireAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		key := extractAPIKey(r)
-		if key == "" {
-			h.writeError(w, http.StatusUnauthorized, "missing API key")
+		// --- API key path ---
+		if key := extractAPIKey(r); key != "" {
+			hash := hashAPIKey(key)
+			var user AuthUser
+			var keyID string
+			err := h.db.QueryRowContext(r.Context(), `
+				SELECT ak.id, u.id, u.email, u.name, u.iana_timezone, u.is_admin
+				FROM api_keys ak JOIN users u ON u.id = ak.user_id
+				WHERE ak.key_hash = ?`, hash).
+				Scan(&keyID, &user.ID, &user.Email, &user.Name, &user.IANATZ, &user.IsAdmin)
+			if err != nil {
+				h.writeError(w, http.StatusUnauthorized, "invalid API key")
+				return
+			}
+			now := time.Now().UTC().Format(time.RFC3339Nano)
+			_, _ = h.db.ExecContext(r.Context(),
+				`UPDATE api_keys SET last_used_at = ? WHERE id = ?`, now, keyID)
+			next(w, r.WithContext(context.WithValue(r.Context(), ctxKeyUser, user)))
 			return
 		}
 
-		hash := hashAPIKey(key)
-
-		var user AuthUser
-		var keyID string
-		err := h.db.QueryRowContext(r.Context(), `
-			SELECT ak.id, u.id, u.email, u.name, u.iana_timezone, u.is_admin
-			FROM api_keys ak JOIN users u ON u.id = ak.user_id
-			WHERE ak.key_hash = ?`, hash).
-			Scan(&keyID, &user.ID, &user.Email, &user.Name, &user.IANATZ, &user.IsAdmin)
-		if err != nil {
-			h.writeError(w, http.StatusUnauthorized, "invalid API key")
-			return
+		// --- Session cookie path (admin browser UI) ---
+		if cookie, err := r.Cookie(sessionCookieName); err == nil && cookie.Value != "" {
+			now := time.Now().UTC().Format(time.RFC3339)
+			var user AuthUser
+			if err := h.db.QueryRowContext(r.Context(), `
+				SELECT u.id, u.email, u.name, u.iana_timezone, u.is_admin
+				FROM sessions s
+				JOIN users u ON u.id = s.user_id
+				WHERE s.id = ? AND s.expires_at > ?`,
+				cookie.Value, now).
+				Scan(&user.ID, &user.Email, &user.Name, &user.IANATZ, &user.IsAdmin); err == nil {
+				next(w, r.WithContext(context.WithValue(r.Context(), ctxKeyUser, user)))
+				return
+			}
 		}
 
-		// Best-effort last_used_at stamp — don't fail the request if it errors.
-		now := time.Now().UTC().Format(time.RFC3339Nano)
-		_, _ = h.db.ExecContext(r.Context(),
-			`UPDATE api_keys SET last_used_at = ? WHERE id = ?`, now, keyID)
-
-		next(w, r.WithContext(context.WithValue(r.Context(), ctxKeyUser, user)))
+		h.writeError(w, http.StatusUnauthorized, "authentication required")
 	}
 }
 

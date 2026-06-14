@@ -5,6 +5,8 @@ import (
 	"log/slog"
 	"net/http"
 
+	"golang.org/x/oauth2"
+
 	"github.com/calnode/calnode/internal/booking"
 	"github.com/calnode/calnode/internal/gcal"
 	"github.com/calnode/calnode/internal/mailer"
@@ -19,6 +21,8 @@ type Handler struct {
 	gcal       *gcal.Client
 	webhookSvc *webhook.Service
 	baseURL    string
+	googleAuth   *oauth2.Config
+	secureCookie bool
 }
 
 func New(db *sql.DB, logger *slog.Logger) *Handler {
