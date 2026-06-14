@@ -388,6 +388,53 @@ func TestListByHost(t *testing.T) {
 	}
 }
 
+func TestCreate_collective_success(t *testing.T) {
+	// Both hosts free — collective booking should succeed and record the primary host.
+	database := newTestDB(t)
+	svc := booking.New(database)
+	h1 := seedHost(t, database)
+	h2 := seedHost(t, database)
+	etID := seedEventType(t, database, h1)
+
+	b, err := svc.Create(context.Background(), booking.CreateParams{
+		EventTypeID: etID,
+		HostIDs:     []string{h1, h2},
+		StartAt:     slot(9, 0),
+		EndAt:       slot(9, 30),
+		Organizer:   booking.Attendee{Name: "Alice", Email: "alice@example.com"},
+	})
+	if err != nil {
+		t.Fatalf("collective Create: %v", err)
+	}
+	if b.Status != "confirmed" {
+		t.Errorf("Status = %q; want confirmed", b.Status)
+	}
+	if b.HostID != h1 {
+		t.Errorf("HostID = %q; want primary host %q", b.HostID, h1)
+	}
+
+	// Verify persisted via Get.
+	got, err := svc.Get(context.Background(), b.ID)
+	if err != nil {
+		t.Fatalf("Get after collective Create: %v", err)
+	}
+	if got.HostID != h1 {
+		t.Errorf("persisted HostID = %q; want %q", got.HostID, h1)
+	}
+
+	// h1 is now busy — a solo booking for h1 at the same time must fail.
+	_, err = svc.Create(context.Background(), booking.CreateParams{
+		EventTypeID: etID,
+		HostIDs:     []string{h1},
+		StartAt:     slot(9, 0),
+		EndAt:       slot(9, 30),
+		Organizer:   booking.Attendee{Name: "Bob", Email: "bob@example.com"},
+	})
+	if err != booking.ErrDoubleBooked {
+		t.Errorf("solo booking after collective: got %v; want ErrDoubleBooked", err)
+	}
+}
+
 func TestListByHost_empty(t *testing.T) {
 	svc := booking.New(newTestDB(t))
 	bookings, err := svc.ListByHost(context.Background(), "nonexistent-host")

@@ -196,10 +196,19 @@ func scanBooking(s scanner) (*Booking, error) {
 		return nil, fmt.Errorf("booking: scan: %w", err)
 	}
 
-	b.StartAt, _ = time.Parse(time.RFC3339Nano, startStr)
-	b.EndAt, _ = time.Parse(time.RFC3339Nano, endStr)
-	b.CreatedAt, _ = time.Parse(time.RFC3339Nano, createdStr)
-	b.UpdatedAt, _ = time.Parse(time.RFC3339Nano, updatedStr)
+	var parseErr error
+	if b.StartAt, parseErr = time.Parse(time.RFC3339Nano, startStr); parseErr != nil {
+		return nil, fmt.Errorf("booking: parse start_at %q: %w", startStr, parseErr)
+	}
+	if b.EndAt, parseErr = time.Parse(time.RFC3339Nano, endStr); parseErr != nil {
+		return nil, fmt.Errorf("booking: parse end_at %q: %w", endStr, parseErr)
+	}
+	if b.CreatedAt, parseErr = time.Parse(time.RFC3339Nano, createdStr); parseErr != nil {
+		return nil, fmt.Errorf("booking: parse created_at %q: %w", createdStr, parseErr)
+	}
+	if b.UpdatedAt, parseErr = time.Parse(time.RFC3339Nano, updatedStr); parseErr != nil {
+		return nil, fmt.Errorf("booking: parse updated_at %q: %w", updatedStr, parseErr)
+	}
 	return &b, nil
 }
 
