@@ -16,7 +16,10 @@ import (
 	"github.com/calnode/calnode/internal/worker"
 )
 
-func New(cfg *config.Config, db *sql.DB, logger *slog.Logger) http.Handler {
+// New builds the HTTP mux and starts background services. It returns the
+// handler and a drain function that blocks until the background worker has
+// finished its current poll cycle — call drain before httpServer.Shutdown.
+func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logger) (http.Handler, func()) {
 	mux := http.NewServeMux()
 	h := handler.New(db, logger)
 	h.SetBaseURL(cfg.BaseURL)
@@ -36,13 +39,15 @@ func New(cfg *config.Config, db *sql.DB, logger *slog.Logger) http.Handler {
 	}
 	h.SetMailer(mailSvc, cfg.BaseURL)
 
+	drain := func() {}
 	whs, err := webhook.New(db, cfg.EncryptionKey)
 	if err != nil {
 		logger.Error("webhook: init failed", "error", err)
 	} else {
 		h.SetWebhookSvc(whs)
 		wrk := worker.New(db, whs, logger, worker.WithMailer(mailSvc))
-		go wrk.Run(context.Background())
+		go wrk.Run(ctx)
+		drain = wrk.Wait
 		logger.Info("webhook worker started")
 	}
 
@@ -149,5 +154,5 @@ func New(cfg *config.Config, db *sql.DB, logger *slog.Logger) http.Handler {
 	mux.Handle("GET /admin", http.RedirectHandler("/admin/", http.StatusMovedPermanently))
 	mux.Handle("/admin/", http.StripPrefix("/admin", adminSPA))
 
-	return RequestID(Logging(logger, mux))
+	return RequestID(Logging(logger, mux)), drain
 }

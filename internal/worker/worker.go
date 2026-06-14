@@ -27,6 +27,7 @@ type Worker struct {
 	mailer     mailer.Mailer
 	logger     *slog.Logger
 	httpClient *http.Client
+	done       chan struct{}
 }
 
 // WithHTTPClient overrides the default SSRF-safe HTTP client. Intended for testing only.
@@ -74,6 +75,7 @@ func New(db *sql.DB, svc *webhook.Service, logger *slog.Logger, opts ...func(*Wo
 			Timeout:   10 * time.Second,
 			Transport: transport,
 		},
+		done: make(chan struct{}),
 	}
 	for _, o := range opts {
 		o(w)
@@ -82,7 +84,11 @@ func New(db *sql.DB, svc *webhook.Service, logger *slog.Logger, opts ...func(*Wo
 }
 
 // Run polls for pending jobs every 5 seconds until ctx is cancelled.
+// When ctx is cancelled the current Poll cycle (if any) runs to completion
+// before Run returns, so in-progress jobs are not abandoned mid-delivery.
+// Call Wait to block until Run has exited.
 func (w *Worker) Run(ctx context.Context) {
+	defer close(w.done)
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 	for {
@@ -90,9 +96,17 @@ func (w *Worker) Run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			w.Poll(ctx)
+			// Poll uses a background context so that a shutdown signal does not
+			// cancel an in-progress webhook delivery or reminder email mid-flight.
+			w.Poll(context.Background())
 		}
 	}
+}
+
+// Wait blocks until Run has returned. It returns immediately if Run was never
+// started or has already exited.
+func (w *Worker) Wait() {
+	<-w.done
 }
 
 // Poll processes one batch of pending jobs. Exported for testing.

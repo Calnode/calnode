@@ -368,6 +368,76 @@ func TestWorker_reaperIgnoresActiveLocks(t *testing.T) {
 // Deleted webhook — job is silently completed
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Graceful shutdown
+// ---------------------------------------------------------------------------
+
+func TestWorker_gracefulShutdown_exitsOnCancel(t *testing.T) {
+	database, svc := setup(t)
+	w := newWorker(t, database, svc)
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	runDone := make(chan struct{})
+	go func() {
+		w.Run(ctx)
+		close(runDone)
+	}()
+
+	cancel()
+
+	select {
+	case <-runDone:
+		// Run exited after ctx cancellation — correct.
+	case <-time.After(2 * time.Second):
+		t.Fatal("Run did not return within 2s after context cancellation")
+	}
+}
+
+func TestWorker_gracefulShutdown_waitUnblocksAfterRun(t *testing.T) {
+	database, svc := setup(t)
+	w := newWorker(t, database, svc)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go w.Run(ctx)
+	cancel()
+
+	waitDone := make(chan struct{})
+	go func() {
+		w.Wait()
+		close(waitDone)
+	}()
+
+	select {
+	case <-waitDone:
+		// Wait returned after Run exited — correct.
+	case <-time.After(2 * time.Second):
+		t.Fatal("Wait() did not return within 2s after context cancellation")
+	}
+}
+
+func TestWorker_gracefulShutdown_waitIsIdempotent(t *testing.T) {
+	database, svc := setup(t)
+	w := newWorker(t, database, svc)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go w.Run(ctx)
+	cancel()
+	w.Wait() // first call
+
+	// Second call must not block or panic (closed channel returns immediately).
+	done := make(chan struct{})
+	go func() {
+		w.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("second Wait() call blocked")
+	}
+}
+
 func TestWorker_skipsJobForDeletedWebhook(t *testing.T) {
 	database, svc := setup(t)
 	ctx := context.Background()
