@@ -6,6 +6,7 @@
 	import '../app.css';
 	import { api, type User } from '$lib/api';
 	import { currentUser } from '$lib/stores';
+	import { prefs, prefsFromUser } from '$lib/prefs';
 
 	let checking = true;
 
@@ -17,7 +18,8 @@
 		{ href: `${base}/bookings`, label: 'Bookings', icon: '📋' },
 		{ href: `${base}/api-keys`, label: 'API Keys', icon: '🔑' },
 		{ href: `${base}/webhooks`, label: 'Webhooks', icon: '🔔' },
-		{ href: `${base}/calendar`, label: 'Calendar', icon: '📆' }
+		{ href: `${base}/calendar`, label: 'Calendar', icon: '📆' },
+		{ href: `${base}/settings`, label: 'Settings', icon: '⚙️' }
 	];
 
 	onMount(async () => {
@@ -28,6 +30,7 @@
 		try {
 			const me = await api.get<User>('/v1/users/me');
 			currentUser.set(me);
+			prefs.set(prefsFromUser(me));
 		} catch {
 			window.location.href = '/admin/login';
 			return;

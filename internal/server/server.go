@@ -86,6 +86,7 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 
 	// Users
 	mux.HandleFunc("GET /v1/users/me", h.RequireAuth(h.GetMe))
+	mux.HandleFunc("PATCH /v1/users/me", h.RequireAuth(h.PatchMe))
 
 	// Event types
 	mux.HandleFunc("POST /v1/event-types", h.RequireAuth(h.CreateEventType))

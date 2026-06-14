@@ -103,10 +103,74 @@ func (h *Handler) Setup(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) GetMe(w http.ResponseWriter, r *http.Request) {
 	user, _ := userFromContext(r.Context())
 	h.writeJSON(w, http.StatusOK, map[string]any{
-		"id":       user.ID,
-		"email":    user.Email,
-		"name":     user.Name,
-		"timezone": user.IANATZ,
-		"is_admin": user.IsAdmin,
+		"id":          user.ID,
+		"email":       user.Email,
+		"name":        user.Name,
+		"timezone":    user.IANATZ,
+		"time_format": user.TimeFormat,
+		"week_start":  user.WeekStart,
+		"is_admin":    user.IsAdmin,
+	})
+}
+
+// PatchMe handles PATCH /v1/users/me — updates timezone, time_format, week_start.
+func (h *Handler) PatchMe(w http.ResponseWriter, r *http.Request) {
+	user, _ := userFromContext(r.Context())
+	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
+
+	var req struct {
+		Timezone   *string `json:"timezone"`
+		TimeFormat *string `json:"time_format"`
+		WeekStart  *int    `json:"week_start"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+
+	current := struct {
+		Timezone   string
+		TimeFormat string
+		WeekStart  int
+	}{user.IANATZ, user.TimeFormat, user.WeekStart}
+
+	if req.Timezone != nil {
+		if _, err := time.LoadLocation(*req.Timezone); err != nil {
+			h.writeError(w, http.StatusBadRequest, "invalid timezone: "+*req.Timezone)
+			return
+		}
+		current.Timezone = *req.Timezone
+	}
+	if req.TimeFormat != nil {
+		if *req.TimeFormat != "12h" && *req.TimeFormat != "24h" {
+			h.writeError(w, http.StatusBadRequest, "time_format must be '12h' or '24h'")
+			return
+		}
+		current.TimeFormat = *req.TimeFormat
+	}
+	if req.WeekStart != nil {
+		if *req.WeekStart < 0 || *req.WeekStart > 6 {
+			h.writeError(w, http.StatusBadRequest, "week_start must be 0 (Sunday) through 6 (Saturday)")
+			return
+		}
+		current.WeekStart = *req.WeekStart
+	}
+
+	if _, err := h.db.ExecContext(r.Context(), `
+		UPDATE users SET iana_timezone = ?, time_format = ?, week_start = ? WHERE id = ?`,
+		current.Timezone, current.TimeFormat, current.WeekStart, user.ID); err != nil {
+		h.logger.ErrorContext(r.Context(), "patch me", "error", err)
+		h.writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	h.writeJSON(w, http.StatusOK, map[string]any{
+		"id":          user.ID,
+		"email":       user.Email,
+		"name":        user.Name,
+		"timezone":    current.Timezone,
+		"time_format": current.TimeFormat,
+		"week_start":  current.WeekStart,
+		"is_admin":    user.IsAdmin,
 	})
 }

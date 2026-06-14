@@ -3,6 +3,8 @@ export type User = {
 	email: string;
 	name: string;
 	timezone: string;
+	time_format: '12h' | '24h';
+	week_start: number; // 0=Sunday, 1=Monday
 	is_admin: boolean;
 };
 

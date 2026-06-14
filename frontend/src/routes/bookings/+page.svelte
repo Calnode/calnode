@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { api, type Booking } from '$lib/api';
+	import { prefs, fmtDateTime, fmtTime } from '$lib/prefs';
 
 	let items: Booking[] = [];
 	let loading = true;
@@ -88,16 +89,8 @@
 		}
 	}
 
-	function fmt(iso: string) {
-		return new Date(iso).toLocaleString(undefined, {
-			dateStyle: 'medium',
-			timeStyle: 'short'
-		});
-	}
-
-	function fmtSlotTime(iso: string) {
-		return new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-	}
+	function fmt(iso: string) { return fmtDateTime(iso, $prefs); }
+	function fmtSlotTime(iso: string) { return fmtTime(iso, $prefs); }
 
 	// Minimum selectable date: today (can't reschedule to the past)
 	function todayISO() {

@@ -15,11 +15,13 @@ const ctxKeyUser contextKey = "user"
 
 // AuthUser is the authenticated caller stored in request context.
 type AuthUser struct {
-	ID      string
-	Email   string
-	Name    string
-	IANATZ  string
-	IsAdmin bool
+	ID         string
+	Email      string
+	Name       string
+	IANATZ     string
+	TimeFormat string // "12h" or "24h"
+	WeekStart  int    // 0=Sunday, 1=Monday
+	IsAdmin    bool
 }
 
 func userFromContext(ctx context.Context) (AuthUser, bool) {
@@ -41,10 +43,10 @@ func (h *Handler) RequireAuth(next http.HandlerFunc) http.HandlerFunc {
 			var user AuthUser
 			var keyID string
 			err := h.db.QueryRowContext(r.Context(), `
-				SELECT ak.id, u.id, u.email, u.name, u.iana_timezone, u.is_admin
+				SELECT ak.id, u.id, u.email, u.name, u.iana_timezone, u.time_format, u.week_start, u.is_admin
 				FROM api_keys ak JOIN users u ON u.id = ak.user_id
 				WHERE ak.key_hash = ?`, hash).
-				Scan(&keyID, &user.ID, &user.Email, &user.Name, &user.IANATZ, &user.IsAdmin)
+				Scan(&keyID, &user.ID, &user.Email, &user.Name, &user.IANATZ, &user.TimeFormat, &user.WeekStart, &user.IsAdmin)
 			if err != nil {
 				h.writeError(w, http.StatusUnauthorized, "invalid API key")
 				return
@@ -61,12 +63,12 @@ func (h *Handler) RequireAuth(next http.HandlerFunc) http.HandlerFunc {
 			now := time.Now().UTC().Format(time.RFC3339)
 			var user AuthUser
 			if err := h.db.QueryRowContext(r.Context(), `
-				SELECT u.id, u.email, u.name, u.iana_timezone, u.is_admin
+				SELECT u.id, u.email, u.name, u.iana_timezone, u.time_format, u.week_start, u.is_admin
 				FROM sessions s
 				JOIN users u ON u.id = s.user_id
 				WHERE s.id = ? AND s.expires_at > ?`,
 				cookie.Value, now).
-				Scan(&user.ID, &user.Email, &user.Name, &user.IANATZ, &user.IsAdmin); err == nil {
+				Scan(&user.ID, &user.Email, &user.Name, &user.IANATZ, &user.TimeFormat, &user.WeekStart, &user.IsAdmin); err == nil {
 				next(w, r.WithContext(context.WithValue(r.Context(), ctxKeyUser, user)))
 				return
 			}
