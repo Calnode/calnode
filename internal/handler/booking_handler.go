@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/calnode/calnode/internal/booking"
@@ -59,6 +60,10 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 		Name          string `json:"name"`
 		Email         string `json:"email"`
 		Timezone      string `json:"timezone"`
+		Answers       []struct {
+			QuestionID string `json:"question_id"`
+			Value      string `json:"value"`
+		} `json:"answers"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.writeError(w, http.StatusBadRequest, "invalid JSON")
@@ -100,6 +105,12 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Validate intake question answers.
+	answers, err := h.validateAnswers(w, r, et.ID, req.Answers)
+	if err != nil {
+		return // validateAnswers already wrote the error response
+	}
+
 	endAt := startAt.UTC().Add(time.Duration(et.DurationMinutes) * time.Minute)
 
 	locValue := ""
@@ -118,10 +129,17 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 			Email:        req.Email,
 			IANATimezone: req.Timezone,
 		},
+		Answers: answers,
 	})
 	if err != nil {
 		if errors.Is(err, booking.ErrDoubleBooked) {
 			h.writeError(w, http.StatusConflict, "this slot is no longer available")
+			return
+		}
+		// A question was deleted between validateAnswers and the INSERT — return a
+		// clean 422 rather than leaking a generic 500 for an FK constraint failure.
+		if isForeignKeyViolation(err) {
+			h.writeError(w, http.StatusUnprocessableEntity, "one or more questions are no longer available")
 			return
 		}
 		h.logger.ErrorContext(r.Context(), "create booking", "error", err)
@@ -340,6 +358,11 @@ func (h *Handler) loadCancellationData(ctx context.Context, b *booking.Booking) 
 		Scan(&d.OrganizerName, &d.OrganizerEmail, &d.OrganizerTimezone)
 
 	return d, nil
+}
+
+// isForeignKeyViolation reports whether err is a SQLite FOREIGN KEY constraint failure.
+func isForeignKeyViolation(err error) bool {
+	return strings.Contains(err.Error(), "FOREIGN KEY constraint failed")
 }
 
 // enqueueReminder inserts a reminder.send job scheduled for 24 hours before startAt.

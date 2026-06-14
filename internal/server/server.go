@@ -102,6 +102,12 @@ func New(cfg *config.Config, db *sql.DB, logger *slog.Logger) http.Handler {
 	// Slots — public (no auth; event type must be is_public)
 	mux.HandleFunc("GET /v1/event-types/{slug}/slots", h.GetSlots)
 
+	// Intake questions — list is public (for the booking form); CRUD requires auth
+	mux.HandleFunc("GET /v1/event-types/{slug}/questions", h.ListQuestions)
+	mux.HandleFunc("POST /v1/event-types/{slug}/questions", h.RequireAuth(h.CreateQuestion))
+	mux.HandleFunc("PATCH /v1/event-types/{slug}/questions/{id}", h.RequireAuth(h.UpdateQuestion))
+	mux.HandleFunc("DELETE /v1/event-types/{slug}/questions/{id}", h.RequireAuth(h.DeleteQuestion))
+
 	bookingRL := RateLimit(20, time.Minute)
 	manageRL := RateLimit(30, time.Minute)
 
@@ -111,6 +117,7 @@ func New(cfg *config.Config, db *sql.DB, logger *slog.Logger) http.Handler {
 	mux.HandleFunc("GET /v1/bookings", h.RequireAuth(h.ListBookings))
 	mux.HandleFunc("POST /v1/bookings/{id}/cancel", h.RequireAuth(h.CancelBooking))
 	mux.HandleFunc("PATCH /v1/bookings/{id}/reschedule", h.RequireAuth(h.RescheduleBooking))
+	mux.HandleFunc("GET /v1/bookings/{id}/answers", h.RequireAuth(h.GetBookingAnswers))
 
 	// Public booking page
 	mux.HandleFunc("GET /book/{slug}", h.BookPage)
