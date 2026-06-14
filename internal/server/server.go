@@ -110,6 +110,7 @@ func New(cfg *config.Config, db *sql.DB, logger *slog.Logger) http.Handler {
 	mux.HandleFunc("GET /v1/bookings/{id}", h.GetBooking)
 	mux.HandleFunc("GET /v1/bookings", h.RequireAuth(h.ListBookings))
 	mux.HandleFunc("POST /v1/bookings/{id}/cancel", h.RequireAuth(h.CancelBooking))
+	mux.HandleFunc("PATCH /v1/bookings/{id}/reschedule", h.RequireAuth(h.RescheduleBooking))
 
 	// Public booking page
 	mux.HandleFunc("GET /book/{slug}", h.BookPage)
