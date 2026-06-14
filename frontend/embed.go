@@ -8,7 +8,7 @@ import (
 	"net/http"
 )
 
-//go:embed build
+//go:embed all:build
 var buildFS embed.FS
 
 // Handler returns an HTTP handler that serves the built admin SPA.
