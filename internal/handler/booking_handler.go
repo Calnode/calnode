@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,7 +10,9 @@ import (
 	"time"
 
 	"github.com/calnode/calnode/internal/booking"
+	"github.com/calnode/calnode/internal/gcal"
 	"github.com/calnode/calnode/internal/mailer"
+	"github.com/calnode/calnode/internal/webhook"
 )
 
 type bookingJSON struct {
@@ -148,8 +151,45 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 			h.logger.Error("booking confirmation: load host", "error", err, "booking_id", b.ID)
 			return
 		}
+		if tok, err := h.bookingSvc.IssueManageToken(ctx, b.ID); err != nil {
+			h.logger.Error("issue manage token", "error", err, "booking_id", b.ID)
+		} else {
+			bData.ManageURL = h.baseURL + "/manage/" + tok
+		}
+		// Create Google Calendar event and persist the event ID for later cancellation.
+		if h.gcal != nil {
+			eventID, err := h.gcal.CreateEvent(ctx, et.UserID, gcal.CreateEventParams{
+				Summary:        et.Name + " with " + req.Name,
+				Description:    "Booking ID: " + b.ID,
+				Start:          b.StartAt,
+				End:            b.EndAt,
+				OrganizerName:  req.Name,
+				OrganizerEmail: req.Email,
+			})
+			if err != nil {
+				h.logger.Error("create gcal event", "error", err, "booking_id", b.ID)
+			} else if eventID != "" {
+				if _, err := h.db.ExecContext(ctx,
+					`UPDATE bookings SET external_event_id = ? WHERE id = ?`,
+					eventID, b.ID); err != nil {
+					h.logger.Error("save gcal event id", "error", err, "booking_id", b.ID)
+				}
+			}
+		}
 		if err := mailer.SendConfirmation(ctx, h.mailer, bData); err != nil {
 			h.logger.Error("booking confirmation email", "error", err, "booking_id", b.ID)
+		}
+		if err := h.webhookSvc.Enqueue(ctx, "booking.created", webhook.BookingPayload{
+			ID:            b.ID,
+			EventTypeSlug: req.EventTypeSlug,
+			HostID:        et.UserID,
+			StartAt:       b.StartAt.UTC().Format(time.RFC3339),
+			EndAt:         b.EndAt.UTC().Format(time.RFC3339),
+			Status:        b.Status,
+			LocationValue: b.LocationValue,
+			CreatedAt:     b.CreatedAt.UTC().Format(time.RFC3339),
+		}); err != nil {
+			h.logger.Error("enqueue booking.created webhook", "error", err, "booking_id", b.ID)
 		}
 	}()
 }
@@ -220,11 +260,24 @@ func (h *Handler) CancelBooking(w http.ResponseWriter, r *http.Request) {
 	}
 	h.writeJSON(w, http.StatusOK, toBookingJSON(b))
 
-	// Send cancellation emails in the background.
+	// Cancel the Google Calendar event and send cancellation emails in the background.
 	bCopy := b
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
+		// Cancel the GCal event if one was created at booking time.
+		if h.gcal != nil {
+			var extEventID sql.NullString
+			if err := h.db.QueryRowContext(ctx,
+				`SELECT external_event_id FROM bookings WHERE id = ?`, bCopy.ID).
+				Scan(&extEventID); err != nil && !errors.Is(err, sql.ErrNoRows) {
+				h.logger.Error("fetch external_event_id", "error", err, "booking_id", bCopy.ID)
+			} else if extEventID.Valid && extEventID.String != "" {
+				if err := h.gcal.CancelEvent(ctx, bCopy.HostID, extEventID.String); err != nil {
+					h.logger.Error("cancel gcal event", "error", err, "booking_id", bCopy.ID)
+				}
+			}
+		}
 		d, err := h.loadCancellationData(ctx, bCopy)
 		if err != nil {
 			h.logger.Error("booking cancellation: load data", "error", err, "booking_id", bCopy.ID)
@@ -233,6 +286,19 @@ func (h *Handler) CancelBooking(w http.ResponseWriter, r *http.Request) {
 		d.BaseURL = h.baseURL
 		if err := mailer.SendCancellation(ctx, h.mailer, d); err != nil {
 			h.logger.Error("booking cancellation email", "error", err, "booking_id", bCopy.ID)
+		}
+		if err := h.webhookSvc.Enqueue(ctx, "booking.cancelled", webhook.BookingPayload{
+			ID:                 bCopy.ID,
+			EventTypeSlug:      d.EventTypeSlug,
+			HostID:             bCopy.HostID,
+			StartAt:            bCopy.StartAt.UTC().Format(time.RFC3339),
+			EndAt:              bCopy.EndAt.UTC().Format(time.RFC3339),
+			Status:             bCopy.Status,
+			CancellationReason: bCopy.CancellationReason,
+			LocationValue:      bCopy.LocationValue,
+			CreatedAt:          bCopy.CreatedAt.UTC().Format(time.RFC3339),
+		}); err != nil {
+			h.logger.Error("enqueue booking.cancelled webhook", "error", err, "booking_id", bCopy.ID)
 		}
 	}()
 }

@@ -18,10 +18,13 @@ type BookingData struct {
 	OrganizerName      string
 	OrganizerEmail     string
 	OrganizerTimezone  string
-	StartAt            time.Time // UTC
-	EndAt              time.Time // UTC
+	StartAt            time.Time // UTC (new time for reschedule emails)
+	EndAt              time.Time
+	PreviousStartAt    time.Time // non-zero only for reschedule emails
+	PreviousEndAt      time.Time
 	LocationValue      string
 	CancellationReason string
+	ManageURL          string // manage link (reschedule/cancel), set at booking creation
 	BaseURL            string
 }
 
@@ -30,6 +33,12 @@ func (d BookingData) StartFmt() string { return inTZ(d.StartAt, d.OrganizerTimez
 
 // EndFmt returns EndAt formatted in the organizer's timezone.
 func (d BookingData) EndFmt() string { return inTZ(d.EndAt, d.OrganizerTimezone) }
+
+// PreviousStartFmt returns PreviousStartAt formatted in the organizer's timezone.
+func (d BookingData) PreviousStartFmt() string { return inTZ(d.PreviousStartAt, d.OrganizerTimezone) }
+
+// PreviousEndFmt returns PreviousEndAt formatted in the organizer's timezone.
+func (d BookingData) PreviousEndFmt() string { return inTZ(d.PreviousEndAt, d.OrganizerTimezone) }
 
 func inTZ(t time.Time, tz string) string {
 	loc, err := time.LoadLocation(tz)
@@ -100,6 +109,35 @@ func SendCancellation(ctx context.Context, m Mailer, d BookingData) error {
 	return nil
 }
 
+// SendReschedule sends reschedule notification emails to the organizer and host.
+// d.PreviousStartAt / PreviousEndAt must be set to the old times.
+func SendReschedule(ctx context.Context, m Mailer, d BookingData) error {
+	var errs []string
+
+	if err := m.Send(ctx, Message{
+		To:      []string{d.OrganizerEmail},
+		Subject: "Booking rescheduled: " + d.EventTypeName,
+		Text:    render(rescheduleOrgTmpl, d),
+	}); err != nil {
+		errs = append(errs, "organizer: "+err.Error())
+	}
+
+	if d.HostEmail != "" {
+		if err := m.Send(ctx, Message{
+			To:      []string{d.HostEmail},
+			Subject: "Booking rescheduled: " + d.EventTypeName + " with " + d.OrganizerName,
+			Text:    render(rescheduleHostTmpl, d),
+		}); err != nil {
+			errs = append(errs, "host: "+err.Error())
+		}
+	}
+
+	if len(errs) > 0 {
+		return fmt.Errorf("mailer: reschedule: %v", errs)
+	}
+	return nil
+}
+
 func render(t *template.Template, d BookingData) string {
 	var buf bytes.Buffer
 	if err := t.Execute(&buf, d); err != nil {
@@ -120,10 +158,13 @@ End:      {{.EndFmt}}{{if .LocationValue}}
 Location: {{.LocationValue}}{{end}}
 
 Booking reference: {{.BookingID}}
-
+{{if .ManageURL}}
+To reschedule or cancel, visit:
+{{.ManageURL}}
+{{else}}
 To cancel, visit:
-{{.BaseURL}}/bookings/{{.BookingID}}
-
+{{.BaseURL}}/book/{{.EventTypeSlug}}
+{{end}}
 — Calnode
 `))
 
@@ -170,6 +211,43 @@ With:     {{.OrganizerName}} <{{.OrganizerEmail}}>
 Start:    {{.StartFmt}}
 End:      {{.EndFmt}}{{if .CancellationReason}}
 Reason:   {{.CancellationReason}}{{end}}
+
+Booking reference: {{.BookingID}}
+
+— Calnode
+`))
+
+var rescheduleOrgTmpl = template.Must(template.New("reschedule-org").Parse(
+	`Hi {{.OrganizerName}},
+
+Your booking has been rescheduled.
+
+Event:    {{.EventTypeName}}
+With:     {{.HostName}}
+Was:      {{.PreviousStartFmt}}
+Now:      {{.StartFmt}}
+End:      {{.EndFmt}}{{if .LocationValue}}
+Location: {{.LocationValue}}{{end}}
+
+Booking reference: {{.BookingID}}
+{{if .ManageURL}}
+To reschedule or cancel again, visit:
+{{.ManageURL}}
+{{end}}
+— Calnode
+`))
+
+var rescheduleHostTmpl = template.Must(template.New("reschedule-host").Parse(
+	`Hi {{.HostName}},
+
+A booking has been rescheduled.
+
+Event:    {{.EventTypeName}}
+With:     {{.OrganizerName}} <{{.OrganizerEmail}}>
+Was:      {{.PreviousStartFmt}}
+Now:      {{.StartFmt}}
+End:      {{.EndFmt}}{{if .LocationValue}}
+Location: {{.LocationValue}}{{end}}
 
 Booking reference: {{.BookingID}}
 

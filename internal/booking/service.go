@@ -2,8 +2,13 @@ package booking
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
+	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"time"
 
@@ -175,6 +180,169 @@ func (s *Service) ListByHost(ctx context.Context, hostID string) ([]Booking, err
 		out = append(out, *b)
 	}
 	return out, rows.Err()
+}
+
+// IssueManageToken generates a cryptographically random manage token for a
+// booking, stores its SHA-256 hash in booking_manage_tokens, and returns the
+// raw hex token (shown once, embedded in emails). Tokens expire in 60 days.
+func (s *Service) IssueManageToken(ctx context.Context, bookingID string) (string, error) {
+	raw := make([]byte, 32)
+	if _, err := io.ReadFull(rand.Reader, raw); err != nil {
+		return "", fmt.Errorf("booking: generate token: %w", err)
+	}
+	rawHex := hex.EncodeToString(raw)
+	sum := sha256.Sum256([]byte(rawHex))
+	hash := hex.EncodeToString(sum[:])
+	expiresAt := time.Now().UTC().Add(60 * 24 * time.Hour).Format(time.RFC3339)
+
+	if _, err := s.db.ExecContext(ctx, `
+		INSERT INTO booking_manage_tokens (token_hash, booking_id, expires_at)
+		VALUES (?, ?, ?)`, hash, bookingID, expiresAt); err != nil {
+		return "", fmt.Errorf("booking: insert manage token: %w", err)
+	}
+	return rawHex, nil
+}
+
+// ValidateManageToken looks up a manage token by its hash and returns the
+// associated booking. Returns ErrTokenNotFound if the token is missing or
+// expired.
+func (s *Service) ValidateManageToken(ctx context.Context, rawToken string) (*Booking, error) {
+	sum := sha256.Sum256([]byte(rawToken))
+	hash := hex.EncodeToString(sum[:])
+	now := time.Now().UTC().Format(time.RFC3339)
+
+	var bookingID string
+	err := s.db.QueryRowContext(ctx, `
+		SELECT booking_id FROM booking_manage_tokens
+		WHERE token_hash = ? AND expires_at > ?`, hash, now).Scan(&bookingID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrTokenNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("booking: validate token: %w", err)
+	}
+	return s.Get(ctx, bookingID)
+}
+
+// Reschedule moves a booking to a new start/end time inside a transaction.
+// Returns ErrNotFound if the booking doesn't exist, ErrAlreadyCancelled if
+// it is cancelled, and ErrDoubleBooked if the new slot overlaps another
+// confirmed booking for the same host.
+func (s *Service) Reschedule(ctx context.Context, bookingID string, newStart, newEnd time.Time) (*Booking, error) {
+	startStr := newStart.UTC().Format(time.RFC3339Nano)
+	endStr := newEnd.UTC().Format(time.RFC3339Nano)
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("booking: begin tx: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	b, err := scanBooking(tx.QueryRowContext(ctx, `
+		SELECT id, event_type_id, host_id, start_at, end_at, status,
+		       COALESCE(cancellation_reason,''), COALESCE(location_value,''),
+		       created_at, updated_at
+		FROM bookings WHERE id = ?`, bookingID))
+	if err != nil {
+		return nil, err
+	}
+	if b.Status == "cancelled" {
+		return nil, ErrAlreadyCancelled
+	}
+
+	var n int
+	if err := tx.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM bookings
+		WHERE host_id = ? AND status != 'cancelled' AND id != ?
+		  AND start_at < ? AND end_at > ?`,
+		b.HostID, bookingID, endStr, startStr).Scan(&n); err != nil {
+		return nil, fmt.Errorf("booking: reschedule overlap: %w", err)
+	}
+	if n > 0 {
+		return nil, ErrDoubleBooked
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE bookings SET start_at = ?, end_at = ?, updated_at = ? WHERE id = ?`,
+		startStr, endStr, now, bookingID); err != nil {
+		if isUniqueViolation(err) {
+			return nil, ErrDoubleBooked
+		}
+		return nil, fmt.Errorf("booking: reschedule update: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("booking: reschedule commit: %w", err)
+	}
+
+	b.StartAt = newStart.UTC()
+	b.EndAt = newEnd.UTC()
+	if t, err := time.Parse(time.RFC3339Nano, now); err == nil {
+		b.UpdatedAt = t
+	}
+	return b, nil
+}
+
+// CancelByToken cancels a booking authenticated by a manage token.
+// Unlike Cancel, it does not require host authentication.
+func (s *Service) CancelByToken(ctx context.Context, rawToken, reason string) (*Booking, error) {
+	b, err := s.ValidateManageToken(ctx, rawToken)
+	if err != nil {
+		return nil, err
+	}
+	if b.Status == "cancelled" {
+		return nil, ErrAlreadyCancelled
+	}
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	res, err := s.db.ExecContext(ctx, `
+		UPDATE bookings SET status = 'cancelled', cancellation_reason = ?, updated_at = ?
+		WHERE id = ? AND status != 'cancelled'`,
+		reason, now, b.ID)
+	if err != nil {
+		return nil, fmt.Errorf("booking: cancel by token: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		// A concurrent cancel won the race between our status check and this UPDATE.
+		return nil, ErrAlreadyCancelled
+	}
+	b.Status = "cancelled"
+	b.CancellationReason = reason
+	if t, err := time.Parse(time.RFC3339Nano, now); err == nil {
+		b.UpdatedAt = t
+	}
+	return b, nil
+}
+
+// RotateManageToken invalidates all existing manage tokens for a booking and
+// issues a fresh one atomically. Called after a reschedule so that the original
+// confirmation-email link cannot be reused or undo the new time.
+func (s *Service) RotateManageToken(ctx context.Context, bookingID string) (string, error) {
+	raw := make([]byte, 32)
+	if _, err := io.ReadFull(rand.Reader, raw); err != nil {
+		return "", fmt.Errorf("booking: generate token: %w", err)
+	}
+	rawHex := hex.EncodeToString(raw)
+	sum := sha256.Sum256([]byte(rawHex))
+	hash := hex.EncodeToString(sum[:])
+	expiresAt := time.Now().UTC().Add(60 * 24 * time.Hour).Format(time.RFC3339)
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return "", fmt.Errorf("booking: rotate token begin tx: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	if _, err := tx.ExecContext(ctx,
+		`DELETE FROM booking_manage_tokens WHERE booking_id = ?`, bookingID); err != nil {
+		return "", fmt.Errorf("booking: delete old tokens: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO booking_manage_tokens (token_hash, booking_id, expires_at)
+		VALUES (?, ?, ?)`, hash, bookingID, expiresAt); err != nil {
+		return "", fmt.Errorf("booking: insert rotated token: %w", err)
+	}
+	return rawHex, tx.Commit()
 }
 
 type scanner interface {

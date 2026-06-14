@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Manage booking — {{.EventTypeName}}</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+  background: #f1f5f9;
+  color: #1e293b;
+  min-height: 100vh;
+}
+
+.page {
+  display: flex;
+  min-height: 100vh;
+  max-width: 860px;
+  margin: 2rem auto;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.08), 0 8px 32px rgba(0,0,0,.08);
+  overflow: hidden;
+}
+
+.info {
+  width: 260px;
+  flex-shrink: 0;
+  padding: 2rem 1.5rem;
+  border-right: 1px solid #e2e8f0;
+  background: #fafafa;
+}
+.host-name   { font-size: .8125rem; color: #64748b; margin-bottom: .5rem; }
+.event-name  { font-size: 1.25rem; font-weight: 700; line-height: 1.3; margin-bottom: .875rem; }
+.meta        { list-style: none; display: flex; flex-direction: column; gap: .375rem; margin-bottom: 1.125rem; }
+.meta li     { display: flex; align-items: center; gap: .4rem; font-size: .8125rem; color: #475569; }
+.meta svg    { flex-shrink: 0; }
+
+.main { flex: 1; padding: 2rem; min-width: 0; }
+
+/* ── Inline state pages ─────────────────────────── */
+.state-page {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 3rem 2rem;
+  min-height: 280px;
+}
+.state-icon {
+  width: 56px; height: 56px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.5rem;
+  margin-bottom: 1.25rem;
+}
+.state-icon.warn  { background: #fef3c7; color: #d97706; }
+.state-icon.check { background: #dcfce7; color: #16a34a; }
+.state-icon.info  { background: #eff6ff; color: #2563eb; }
+.state-page h2 { font-size: 1.125rem; font-weight: 700; margin-bottom: .5rem; }
+.state-page p  { font-size: .875rem; color: #64748b; line-height: 1.6; max-width: 340px; }
+.state-page a  { color: #2563eb; text-decoration: underline; }
+
+/* ── Main manage view ─────────────────────────────── */
+.current-booking {
+  margin-bottom: 1.5rem;
+}
+.current-booking .label {
+  font-size: .75rem; font-weight: 600; color: #64748b;
+  letter-spacing: .03em; text-transform: uppercase;
+  margin-bottom: .25rem;
+}
+.current-booking .time {
+  font-size: 1rem; font-weight: 600; color: #1e293b;
+}
+
+.action-btns {
+  display: flex;
+  flex-direction: column;
+  gap: .625rem;
+  max-width: 280px;
+}
+.btn-primary {
+  width: 100%; padding: .675rem 1rem;
+  background: #2563eb; color: #fff;
+  border: none; border-radius: 8px;
+  font-size: .9375rem; font-weight: 600; cursor: pointer;
+  transition: background .15s;
+}
+.btn-primary:hover:not(:disabled) { background: #1d4ed8; }
+.btn-primary:disabled { opacity: .6; cursor: default; }
+
+.btn-danger {
+  width: 100%; padding: .675rem 1rem;
+  background: #fff; color: #dc2626;
+  border: 1.5px solid #fca5a5; border-radius: 8px;
+  font-size: .9375rem; font-weight: 600; cursor: pointer;
+  transition: background .15s, border-color .15s;
+}
+.btn-danger:hover { background: #fef2f2; border-color: #dc2626; }
+
+/* ── Calendar / slots (reschedule flow) ─────────── */
+.picker-wrap {
+  display: flex;
+  gap: 2rem;
+  align-items: flex-start;
+}
+.cal-section { flex: 0 0 auto; }
+
+.step-title {
+  font-size: .9375rem; font-weight: 600; margin-bottom: .875rem; color: #1e293b;
+}
+.cal-nav {
+  display: flex; align-items: center; margin-bottom: .625rem;
+}
+.cal-nav button {
+  width: 30px; height: 30px;
+  border: 1px solid #e2e8f0; background: #fff;
+  border-radius: 6px; cursor: pointer;
+  font-size: .9rem; color: #475569;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.cal-nav button:hover:not(:disabled) { background: #f8fafc; color: #1e293b; }
+.cal-nav button:disabled { opacity: .35; cursor: default; }
+#month-label { flex: 1; text-align: center; font-size: .875rem; font-weight: 600; }
+
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 36px);
+  gap: 2px;
+}
+.ch {
+  text-align: center; font-size: .6875rem; font-weight: 600;
+  color: #94a3b8; padding: 4px 0;
+}
+.cd {
+  width: 36px; height: 36px;
+  border: none; background: none; cursor: pointer;
+  border-radius: 50%; font-size: .8125rem; color: #1e293b;
+}
+.cd:hover:not(:disabled) { background: #eff6ff; color: #2563eb; }
+.cd.sel    { background: #2563eb; color: #fff; font-weight: 600; }
+.cd.today  { font-weight: 700; }
+.cd:disabled { color: #cbd5e1; cursor: default; }
+
+.tz-hint {
+  font-size: .6875rem; color: #94a3b8;
+  margin-top: .625rem; line-height: 1.4;
+}
+
+.right-section { flex: 1; min-width: 160px; }
+.hidden { display: none !important; }
+
+.slots-date  { font-size: .9375rem; font-weight: 600; margin-bottom: .75rem; }
+.slots-list  { display: flex; flex-direction: column; gap: .375rem; }
+.slot-btn {
+  width: 100%; padding: .575rem 1rem;
+  border: 1.5px solid #e2e8f0; background: #fff;
+  border-radius: 8px; font-size: .875rem; font-weight: 500; color: #2563eb;
+  cursor: pointer; text-align: center;
+}
+.slot-btn:hover { border-color: #2563eb; background: #eff6ff; }
+.slot-btn.sel   { background: #2563eb; color: #fff; border-color: #2563eb; }
+
+.hint      { font-size: .8125rem; color: #94a3b8; padding: .25rem 0; }
+.error-msg { font-size: .8125rem; color: #dc2626; margin-top: .375rem; min-height: 1.2em; }
+
+.back-link {
+  display: inline-flex; align-items: center; gap: .25rem;
+  background: none; border: none; color: #2563eb;
+  cursor: pointer; font-size: .8125rem; margin-bottom: .875rem; padding: 0;
+}
+.back-link:hover { text-decoration: underline; }
+
+/* Confirm reschedule */
+.confirm-times {
+  display: flex; flex-direction: column; gap: .5rem; margin: 1rem 0 1.5rem;
+}
+.confirm-times .row {
+  display: flex; gap: .5rem; align-items: baseline;
+}
+.confirm-times .row-label {
+  font-size: .75rem; font-weight: 600; color: #64748b;
+  text-transform: uppercase; letter-spacing: .03em; width: 3rem; flex-shrink: 0;
+}
+.confirm-times .row-val {
+  font-size: .9rem; font-weight: 600; color: #1e293b;
+}
+.confirm-times .row-val.new { color: #16a34a; }
+
+/* Cancel confirm */
+.field { display: flex; flex-direction: column; gap: .3rem; margin-bottom: .75rem; }
+.field label { font-size: .75rem; font-weight: 600; color: #475569; letter-spacing: .01em; }
+.field input {
+  padding: .55rem .75rem;
+  border: 1.5px solid #e2e8f0; border-radius: 8px;
+  font-size: .875rem; color: #1e293b; outline: none;
+  transition: border-color .15s, box-shadow .15s;
+}
+.field input:focus { border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,.1); }
+
+@media (max-width: 640px) {
+  body { background: #fff; }
+  .page { flex-direction: column; margin: 0; border-radius: 0; box-shadow: none; min-height: 100vh; }
+  .info { width: 100%; border-right: none; border-bottom: 1px solid #e2e8f0; padding: 1.25rem 1rem; }
+  .main { padding: 1.25rem 1rem; }
+  .picker-wrap { flex-direction: column; gap: 1.25rem; }
+  .cal-grid { grid-template-columns: repeat(7, 1fr); width: 100%; }
+  .cd { width: 100%; }
+  .right-section { width: 100%; }
+}
+</style>
+</head>
+<body>
+
+<div class="page">
+
+  <aside class="info">
+    <p class="host-name">{{.HostName}}</p>
+    <h1 class="event-name">{{.EventTypeName}}</h1>
+    <ul class="meta">
+      <li>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+        </svg>
+        {{.DurationLabel}}
+      </li>
+      {{if .LocationLabel}}<li>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
+        </svg>
+        {{.LocationLabel}}
+      </li>{{end}}
+    </ul>
+  </aside>
+
+  <main class="main">
+
+    {{if .TokenInvalid}}
+    <!-- ── Invalid / expired token ─────────────────── -->
+    <div class="state-page">
+      <div class="state-icon warn" aria-hidden="true">&#9888;</div>
+      <h2>Link expired or invalid</h2>
+      <p>This manage link has expired or is no longer valid. Please check your confirmation email for a valid link, or contact the host to get a new one.</p>
+    </div>
+
+    {{else if eq .Status "cancelled"}}
+    <!-- ── Already cancelled ─────────────────────── -->
+    <div class="state-page">
+      <div class="state-icon info" aria-hidden="true">&#10005;</div>
+      <h2>Booking already cancelled</h2>
+      <p>This booking has been cancelled. To book a new time, visit the event page.</p>
+    </div>
+
+    {{else}}
+    <!-- ── Manage views (JS-driven) ──────────────── -->
+
+    <!-- Main view: show current booking + actions -->
+    <div id="main-view">
+      <p class="step-title">Manage your booking</p>
+      <div class="current-booking">
+        <p class="label">Scheduled for</p>
+        <p class="time" id="current-time"></p>
+      </div>
+      <div class="action-btns">
+        <button class="btn-primary" id="reschedule-btn">Reschedule</button>
+        <button class="btn-danger"  id="cancel-btn">Cancel booking</button>
+      </div>
+    </div>
+
+    <!-- Reschedule picker: calendar + slots -->
+    <div id="reschedule-view" class="hidden">
+      <button class="back-link" id="back-to-main-btn">&#8592; Back</button>
+      <div class="picker-wrap">
+        <section class="cal-section" aria-label="Date picker">
+          <p class="step-title">Select a new date &amp; time</p>
+          <div class="cal-nav">
+            <button id="prev-btn" aria-label="Previous month">&#8592;</button>
+            <span id="month-label" aria-live="polite"></span>
+            <button id="next-btn" aria-label="Next month">&#8594;</button>
+          </div>
+          <div id="cal" class="cal-grid" role="grid"></div>
+          <p class="tz-hint" id="tz-hint"></p>
+        </section>
+        <section class="right-section" aria-live="polite">
+          <div id="slots-view" class="hidden">
+            <p class="slots-date" id="slots-date"></p>
+            <div id="slots-list" class="slots-list"></div>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <!-- Confirm reschedule -->
+    <div id="confirm-reschedule-view" class="hidden">
+      <button class="back-link" id="back-to-picker-btn">&#8592; Back</button>
+      <p class="step-title">Confirm reschedule?</p>
+      <div class="confirm-times">
+        <div class="row">
+          <span class="row-label">Was</span>
+          <span class="row-val" id="prev-time"></span>
+        </div>
+        <div class="row">
+          <span class="row-label">Now</span>
+          <span class="row-val new" id="new-time"></span>
+        </div>
+      </div>
+      <p id="reschedule-error" class="error-msg" role="alert" aria-live="assertive"></p>
+      <div class="action-btns">
+        <button class="btn-primary" id="confirm-reschedule-btn">Confirm reschedule</button>
+      </div>
+    </div>
+
+    <!-- Cancel confirmation -->
+    <div id="cancel-confirm-view" class="hidden">
+      <button class="back-link" id="back-to-main-from-cancel-btn">&#8592; Back</button>
+      <p class="step-title">Cancel this booking?</p>
+      <p class="hint" style="margin-bottom:1rem">This action cannot be undone. A cancellation email will be sent to you and the host.</p>
+      <div class="field">
+        <label for="cancel-reason">Reason (optional)</label>
+        <input id="cancel-reason" type="text" placeholder="e.g. schedule conflict" maxlength="200">
+      </div>
+      <p id="cancel-error" class="error-msg" role="alert" aria-live="assertive"></p>
+      <div class="action-btns">
+        <button class="btn-danger" id="confirm-cancel-btn">Yes, cancel booking</button>
+      </div>
+    </div>
+
+    <!-- Success: rescheduled -->
+    <div id="success-reschedule-view" class="hidden state-page">
+      <div class="state-icon check" aria-hidden="true">&#10003;</div>
+      <h2>Booking rescheduled!</h2>
+      <p>Your booking has been moved to <strong id="success-new-time"></strong>. A confirmation email has been sent.</p>
+    </div>
+
+    <!-- Success: cancelled -->
+    <div id="success-cancel-view" class="hidden state-page">
+      <div class="state-icon check" aria-hidden="true">&#10003;</div>
+      <h2>Booking cancelled</h2>
+      <p>Your booking has been cancelled. A confirmation email has been sent.</p>
+    </div>
+
+    {{end}}
+
+  </main>
+</div>
+
+{{if not .TokenInvalid}}{{if ne .Status "cancelled"}}
+<script>
+(function () {
+  'use strict';
+
+  const TOKEN       = {{printf "%q" .Token}};
+  const SLUG        = {{printf "%q" .EventTypeSlug}};
+  const MAX_DAYS    = {{.MaxFutureDays}};
+  const DURATION    = {{.DurationMinutes}};
+  const CURRENT_ISO = {{printf "%q" .CurrentStartISO}};
+  const ORG_TZ      = {{printf "%q" .OrganizerTZ}};
+
+  const TZ = Intl.DateTimeFormat().resolvedOptions().timeZone || ORG_TZ || 'UTC';
+
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const maxDate = new Date(today); maxDate.setDate(maxDate.getDate() + MAX_DAYS);
+  let navYear = today.getFullYear(), navMonth = today.getMonth();
+  let pickedDate = null;
+  let slotsCache = [];
+  let pickedSlot = null;
+
+  const $ = id => document.getElementById(id);
+  const pad = n => String(n).padStart(2, '0');
+
+  function fmtTime(iso) {
+    return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  }
+  function fmtDate(d) {
+    return d.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
+  }
+  function fmtDatetime(iso) {
+    const d = new Date(iso);
+    return d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' }) +
+           ' at ' + d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  }
+  function toDateStr(y, m, d) {
+    return `${y}-${pad(m + 1)}-${pad(d)}`;
+  }
+
+  const ALL_VIEWS = [
+    'main-view', 'reschedule-view', 'confirm-reschedule-view',
+    'cancel-confirm-view', 'success-reschedule-view', 'success-cancel-view'
+  ];
+  function showView(id) {
+    ALL_VIEWS.forEach(v => $(v).classList.toggle('hidden', v !== id));
+  }
+
+  // ── Init: show current time ─────────────────────────────────────────────────
+  $('current-time').textContent = fmtDatetime(CURRENT_ISO);
+
+  // ── Main view buttons ───────────────────────────────────────────────────────
+  $('reschedule-btn').addEventListener('click', () => {
+    showView('reschedule-view');
+    renderCal();
+    $('tz-hint').textContent = TZ.replace(/_/g, ' ').replace(/\//g, ' / ');
+  });
+
+  $('cancel-btn').addEventListener('click', () => showView('cancel-confirm-view'));
+  $('back-to-main-btn').addEventListener('click', () => showView('main-view'));
+  $('back-to-main-from-cancel-btn').addEventListener('click', () => showView('main-view'));
+  $('back-to-picker-btn').addEventListener('click', () => {
+    showView('reschedule-view');
+    // re-render slots for the already-picked date
+    if (pickedDate) {
+      const ds = toDateStr(pickedDate.getFullYear(), pickedDate.getMonth(), pickedDate.getDate());
+      $('slots-view').classList.remove('hidden');
+      $('slots-date').textContent = fmtDate(pickedDate);
+    }
+  });
+
+  // ── Calendar ────────────────────────────────────────────────────────────────
+  function renderCal() {
+    const first       = new Date(navYear, navMonth, 1);
+    const daysInMonth = new Date(navYear, navMonth + 1, 0).getDate();
+    const startDow    = first.getDay();
+
+    $('month-label').textContent = first.toLocaleDateString([], { month: 'long', year: 'numeric' });
+
+    const navFirst    = new Date(navYear, navMonth, 1);
+    const thisFirst   = new Date(today.getFullYear(), today.getMonth(), 1);
+    const maxMonFirst = new Date(maxDate.getFullYear(), maxDate.getMonth(), 1);
+    $('prev-btn').disabled = navFirst <= thisFirst;
+    $('next-btn').disabled = navFirst >= maxMonFirst;
+
+    const DOW = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+    let h = DOW.map(d => `<div class="ch" role="columnheader">${d}</div>`).join('');
+    for (let i = 0; i < startDow; i++) h += '<div></div>';
+
+    for (let d = 1; d <= daysInMonth; d++) {
+      const date     = new Date(navYear, navMonth, d);
+      const disabled = date < today || date > maxDate;
+      const sel      = pickedDate && date.toDateString() === pickedDate.toDateString();
+      const isToday  = date.toDateString() === today.toDateString();
+      let cls = 'cd';
+      if (sel)     cls += ' sel';
+      if (isToday) cls += ' today';
+
+      if (disabled) {
+        h += `<button class="${cls}" disabled aria-disabled="true">${d}</button>`;
+      } else {
+        const ds = toDateStr(navYear, navMonth, d);
+        h += `<button class="${cls}" data-ds="${ds}" data-y="${navYear}" data-m="${navMonth}" data-d="${d}"${sel ? ' aria-pressed="true"' : ''}>${d}</button>`;
+      }
+    }
+    $('cal').innerHTML = h;
+  }
+
+  $('prev-btn').addEventListener('click', () => {
+    if (navMonth-- === 0) { navMonth = 11; navYear--; }
+    renderCal();
+  });
+  $('next-btn').addEventListener('click', () => {
+    if (navMonth++ === 11) { navMonth = 0; navYear++; }
+    renderCal();
+  });
+
+  $('cal').addEventListener('click', e => {
+    const btn = e.target.closest('.cd');
+    if (!btn || btn.disabled) return;
+    pickDate(btn.dataset.ds, +btn.dataset.y, +btn.dataset.m, +btn.dataset.d);
+  });
+
+  // ── Date selection ──────────────────────────────────────────────────────────
+  async function pickDate(ds, y, m, d) {
+    pickedDate = new Date(y, m, d);
+    pickedSlot = null;
+    renderCal();
+    $('slots-view').classList.remove('hidden');
+    $('slots-date').textContent = fmtDate(pickedDate);
+    const list = $('slots-list');
+    list.innerHTML = '<p class="hint">Loading&hellip;</p>';
+
+    try {
+      const r = await fetch(
+        `/v1/event-types/${SLUG}/slots?from=${ds}&to=${ds}&tz=${encodeURIComponent(TZ)}`
+      );
+      if (!r.ok) throw new Error(r.status);
+      const data = await r.json();
+      slotsCache = (data.slots || []).filter(s => s.start !== CURRENT_ISO);
+
+      if (!slotsCache.length) {
+        list.innerHTML = '<p class="hint">No available times for this date.</p>';
+        return;
+      }
+      list.innerHTML = slotsCache.map((s, i) =>
+        `<button class="slot-btn" data-i="${i}">${fmtTime(s.start)}</button>`
+      ).join('');
+    } catch {
+      list.innerHTML = '<p class="error-msg">Could not load available times. Please try again.</p>';
+    }
+  }
+
+  $('slots-list').addEventListener('click', e => {
+    const btn = e.target.closest('.slot-btn');
+    if (!btn) return;
+    const i = +btn.dataset.i;
+    if (i < 0 || i >= slotsCache.length) return;
+    pickedSlot = slotsCache[i];
+
+    $('prev-time').textContent = fmtDatetime(CURRENT_ISO);
+    $('new-time').textContent  = fmtDate(pickedDate) + ' at ' + fmtTime(pickedSlot.start);
+    $('reschedule-error').textContent = '';
+    showView('confirm-reschedule-view');
+  });
+
+  // ── Confirm reschedule ──────────────────────────────────────────────────────
+  $('confirm-reschedule-btn').addEventListener('click', async () => {
+    if (!pickedSlot) return;
+    const btn    = $('confirm-reschedule-btn');
+    const errEl  = $('reschedule-error');
+    btn.disabled      = true;
+    btn.textContent   = 'Rescheduling…';
+    errEl.textContent = '';
+
+    try {
+      const r = await fetch(`/manage/${TOKEN}/reschedule`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ start_at: pickedSlot.start }),
+      });
+
+      if (r.status === 409) {
+        errEl.textContent = 'That slot is no longer available. Please choose another time.';
+        btn.disabled    = false;
+        btn.textContent = 'Confirm reschedule';
+        return;
+      }
+      if (!r.ok) {
+        const data = await r.json().catch(() => ({}));
+        errEl.textContent = data.error || 'Reschedule failed. Please try again.';
+        btn.disabled    = false;
+        btn.textContent = 'Confirm reschedule';
+        return;
+      }
+
+      $('success-new-time').textContent = fmtDate(pickedDate) + ' at ' + fmtTime(pickedSlot.start);
+      showView('success-reschedule-view');
+    } catch {
+      errEl.textContent = 'Network error. Please check your connection and try again.';
+      btn.disabled    = false;
+      btn.textContent = 'Confirm reschedule';
+    }
+  });
+
+  // ── Confirm cancel ──────────────────────────────────────────────────────────
+  $('confirm-cancel-btn').addEventListener('click', async () => {
+    const btn   = $('confirm-cancel-btn');
+    const errEl = $('cancel-error');
+    btn.disabled      = true;
+    btn.textContent   = 'Cancelling…';
+    errEl.textContent = '';
+
+    try {
+      const reason = $('cancel-reason').value.trim();
+      const r = await fetch(`/manage/${TOKEN}/cancel`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason }),
+      });
+
+      if (r.status === 409) {
+        errEl.textContent = 'This booking is already cancelled.';
+        btn.disabled    = false;
+        btn.textContent = 'Yes, cancel booking';
+        return;
+      }
+      if (!r.ok) {
+        const data = await r.json().catch(() => ({}));
+        errEl.textContent = data.error || 'Cancellation failed. Please try again.';
+        btn.disabled    = false;
+        btn.textContent = 'Yes, cancel booking';
+        return;
+      }
+
+      showView('success-cancel-view');
+    } catch {
+      errEl.textContent = 'Network error. Please check your connection and try again.';
+      btn.disabled    = false;
+      btn.textContent = 'Yes, cancel booking';
+    }
+  });
+
+}());
+</script>
+{{end}}{{end}}
+
+</body>
+</html>

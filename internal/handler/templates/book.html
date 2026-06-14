@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{.Name}}</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+  background: #f1f5f9;
+  color: #1e293b;
+  min-height: 100vh;
+}
+
+/* ── Page layout ─────────────────────────────────── */
+.page {
+  display: flex;
+  min-height: 100vh;
+  max-width: 860px;
+  margin: 2rem auto;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.08), 0 8px 32px rgba(0,0,0,.08);
+  overflow: hidden;
+}
+
+/* ── Info panel ──────────────────────────────────── */
+.info {
+  width: 260px;
+  flex-shrink: 0;
+  padding: 2rem 1.5rem;
+  border-right: 1px solid #e2e8f0;
+  background: #fafafa;
+}
+.host-name   { font-size: .8125rem; color: #64748b; margin-bottom: .5rem; }
+.event-name  { font-size: 1.25rem; font-weight: 700; line-height: 1.3; margin-bottom: .875rem; }
+.meta        { list-style: none; display: flex; flex-direction: column; gap: .375rem; margin-bottom: 1.125rem; }
+.meta li     { display: flex; align-items: center; gap: .4rem; font-size: .8125rem; color: #475569; }
+.meta svg    { flex-shrink: 0; }
+.description { font-size: .8125rem; color: #64748b; line-height: 1.65; }
+
+/* ── Main content ────────────────────────────────── */
+.main { flex: 1; padding: 2rem; min-width: 0; }
+
+.picker-wrap {
+  display: flex;
+  gap: 2rem;
+  align-items: flex-start;
+}
+
+/* ── Calendar ────────────────────────────────────── */
+.cal-section { flex: 0 0 auto; }
+
+.step-title {
+  font-size: .9375rem;
+  font-weight: 600;
+  margin-bottom: .875rem;
+  color: #1e293b;
+}
+
+.cal-nav {
+  display: flex;
+  align-items: center;
+  margin-bottom: .625rem;
+}
+.cal-nav button {
+  width: 30px; height: 30px;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: .9rem;
+  color: #475569;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.cal-nav button:hover:not(:disabled) { background: #f8fafc; color: #1e293b; }
+.cal-nav button:disabled { opacity: .35; cursor: default; }
+#month-label {
+  flex: 1;
+  text-align: center;
+  font-size: .875rem;
+  font-weight: 600;
+}
+
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 36px);
+  gap: 2px;
+}
+.ch {
+  text-align: center;
+  font-size: .6875rem;
+  font-weight: 600;
+  color: #94a3b8;
+  padding: 4px 0;
+}
+.cd {
+  width: 36px; height: 36px;
+  border: none; background: none;
+  cursor: pointer;
+  border-radius: 50%;
+  font-size: .8125rem;
+  color: #1e293b;
+}
+.cd:hover:not(:disabled) { background: #eff6ff; color: #2563eb; }
+.cd.sel   { background: #2563eb; color: #fff; font-weight: 600; }
+.cd.today { font-weight: 700; }
+.cd:disabled { color: #cbd5e1; cursor: default; }
+
+.tz-hint {
+  font-size: .6875rem;
+  color: #94a3b8;
+  margin-top: .625rem;
+  line-height: 1.4;
+}
+
+/* ── Right panel ─────────────────────────────────── */
+.right-section { flex: 1; min-width: 160px; }
+.hidden { display: none !important; }
+
+/* Slots */
+.slots-date  { font-size: .9375rem; font-weight: 600; margin-bottom: .75rem; }
+.slots-list  { display: flex; flex-direction: column; gap: .375rem; }
+.slot-btn {
+  width: 100%; padding: .575rem 1rem;
+  border: 1.5px solid #e2e8f0; background: #fff;
+  border-radius: 8px;
+  font-size: .875rem; font-weight: 500; color: #2563eb;
+  cursor: pointer; text-align: center;
+}
+.slot-btn:hover { border-color: #2563eb; background: #eff6ff; }
+.slot-btn.sel   { background: #2563eb; color: #fff; border-color: #2563eb; }
+
+.hint      { font-size: .8125rem; color: #94a3b8; padding: .25rem 0; }
+.error-msg { font-size: .8125rem; color: #dc2626; margin-top: .375rem; min-height: 1.2em; }
+
+/* Form */
+.back-link {
+  display: inline-flex; align-items: center; gap: .25rem;
+  background: none; border: none; color: #2563eb;
+  cursor: pointer; font-size: .8125rem; margin-bottom: .875rem; padding: 0;
+}
+.back-link:hover { text-decoration: underline; }
+.form-slot-label { font-size: .9375rem; font-weight: 600; margin-bottom: 1.125rem; color: #1e293b; }
+.field { display: flex; flex-direction: column; gap: .3rem; margin-bottom: .75rem; }
+.field label { font-size: .75rem; font-weight: 600; color: #475569; letter-spacing: .01em; }
+.field input {
+  padding: .55rem .75rem;
+  border: 1.5px solid #e2e8f0; border-radius: 8px;
+  font-size: .875rem; color: #1e293b; outline: none;
+  transition: border-color .15s, box-shadow .15s;
+}
+.field input:focus {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37,99,235,.1);
+}
+.btn-primary {
+  width: 100%; padding: .675rem 1rem; margin-top: .5rem;
+  background: #2563eb; color: #fff;
+  border: none; border-radius: 8px;
+  font-size: .9375rem; font-weight: 600; cursor: pointer;
+  transition: background .15s;
+}
+.btn-primary:hover:not(:disabled) { background: #1d4ed8; }
+.btn-primary:disabled { opacity: .6; cursor: default; }
+
+/* Confirmation */
+.confirm-icon {
+  width: 52px; height: 52px;
+  background: #dcfce7; color: #16a34a;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.5rem; margin-bottom: 1rem;
+}
+.confirm-view h3    { font-size: 1.0625rem; font-weight: 700; margin-bottom: .5rem; }
+.confirm-view .when { font-size: .9rem; font-weight: 600; color: #1e293b; margin-bottom: .375rem; }
+.confirm-view .hint { font-size: .8125rem; color: #64748b; }
+
+/* ── Mobile ──────────────────────────────────────── */
+@media (max-width: 640px) {
+  body { background: #fff; }
+  .page {
+    flex-direction: column;
+    margin: 0;
+    border-radius: 0;
+    box-shadow: none;
+    min-height: 100vh;
+  }
+  .info {
+    width: 100%;
+    border-right: none;
+    border-bottom: 1px solid #e2e8f0;
+    padding: 1.25rem 1rem;
+  }
+  .main { padding: 1.25rem 1rem; }
+  .picker-wrap { flex-direction: column; gap: 1.25rem; }
+  .cal-grid {
+    grid-template-columns: repeat(7, 1fr);
+    width: 100%;
+  }
+  .cd { width: 100%; }
+  .right-section { width: 100%; }
+}
+</style>
+</head>
+<body>
+
+<div class="page">
+
+  <!-- ── Info panel ─────────────────────────────── -->
+  <aside class="info">
+    <p class="host-name">{{.HostName}}</p>
+    <h1 class="event-name">{{.Name}}</h1>
+    <ul class="meta">
+      <li>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+        </svg>
+        {{.DurationLabel}}
+      </li>
+      <li>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
+        </svg>
+        {{.LocationLabel}}
+      </li>
+    </ul>
+    {{if .Description}}<p class="description">{{.Description}}</p>{{end}}
+  </aside>
+
+  <!-- ── Main: calendar + right panel ──────────── -->
+  <main class="main">
+    <div class="picker-wrap">
+
+      <!-- Calendar column -->
+      <section class="cal-section" aria-label="Date picker">
+        <p class="step-title">Select a date &amp; time</p>
+        <div class="cal-nav">
+          <button id="prev-btn" aria-label="Previous month">&#8592;</button>
+          <span id="month-label" aria-live="polite"></span>
+          <button id="next-btn" aria-label="Next month">&#8594;</button>
+        </div>
+        <div id="cal" class="cal-grid" role="grid"></div>
+        <p class="tz-hint" id="tz-hint"></p>
+      </section>
+
+      <!-- Right column: slots / form / confirmation -->
+      <section class="right-section" aria-live="polite">
+
+        <!-- Slots view -->
+        <div id="slots-view" class="hidden">
+          <p class="slots-date" id="slots-date"></p>
+          <div id="slots-list" class="slots-list"></div>
+        </div>
+
+        <!-- Booking form -->
+        <div id="form-view" class="hidden">
+          <button class="back-link" id="back-btn">&#8592; Back</button>
+          <p class="form-slot-label" id="form-slot-label"></p>
+          <form id="booking-form" novalidate>
+            <div class="field">
+              <label for="f-name">Name</label>
+              <input id="f-name" name="name" type="text" required autocomplete="name" placeholder="Your full name">
+            </div>
+            <div class="field">
+              <label for="f-email">Email</label>
+              <input id="f-email" name="email" type="email" required autocomplete="email" placeholder="you@example.com">
+            </div>
+            <p id="form-error" class="error-msg" role="alert" aria-live="assertive"></p>
+            <button type="submit" id="submit-btn" class="btn-primary">Confirm booking</button>
+          </form>
+        </div>
+
+        <!-- Confirmation -->
+        <div id="confirm-view" class="hidden">
+          <div class="confirm-icon" aria-hidden="true">&#10003;</div>
+          <h3>Booking confirmed!</h3>
+          <p class="when" id="confirm-time"></p>
+          <p class="hint">A confirmation email has been sent to you.</p>
+        </div>
+
+      </section>
+    </div>
+  </main>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  // Config injected server-side
+  const SLUG     = "{{.Slug}}";
+  const MAX_DAYS = {{.MaxFutureDays}};
+  const TZ       = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+  // State
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const maxDate = new Date(today); maxDate.setDate(maxDate.getDate() + MAX_DAYS);
+  let navYear = today.getFullYear(), navMonth = today.getMonth();
+  let pickedDate  = null;
+  let slotsCache  = [];
+  let pickedSlot  = null;
+
+  // Helpers
+  const $   = id => document.getElementById(id);
+  const pad = n  => String(n).padStart(2, '0');
+
+  function fmtTime(iso) {
+    return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  }
+  function fmtDate(d) {
+    return d.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
+  }
+  function toDateStr(y, m, d) {
+    return `${y}-${pad(m + 1)}-${pad(d)}`;
+  }
+
+  function showView(id) {
+    ['slots-view', 'form-view', 'confirm-view'].forEach(v =>
+      $(v).classList.toggle('hidden', v !== id)
+    );
+  }
+
+  // ── Calendar ───────────────────────────────────────────────────────────────
+
+  function renderCal() {
+    const first       = new Date(navYear, navMonth, 1);
+    const daysInMonth = new Date(navYear, navMonth + 1, 0).getDate();
+    const startDow    = first.getDay();
+
+    $('month-label').textContent = first.toLocaleDateString([], { month: 'long', year: 'numeric' });
+
+    const navFirst     = new Date(navYear, navMonth, 1);
+    const thisFirst    = new Date(today.getFullYear(), today.getMonth(), 1);
+    const maxMonFirst  = new Date(maxDate.getFullYear(), maxDate.getMonth(), 1);
+    $('prev-btn').disabled = navFirst <= thisFirst;
+    $('next-btn').disabled = navFirst >= maxMonFirst;
+
+    const DOW = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+    let h = DOW.map(d => `<div class="ch" role="columnheader">${d}</div>`).join('');
+    for (let i = 0; i < startDow; i++) h += '<div></div>';
+
+    for (let d = 1; d <= daysInMonth; d++) {
+      const date     = new Date(navYear, navMonth, d);
+      const disabled = date < today || date > maxDate;
+      const sel      = pickedDate && date.toDateString() === pickedDate.toDateString();
+      const isToday  = date.toDateString() === today.toDateString();
+      let cls = 'cd';
+      if (sel)     cls += ' sel';
+      if (isToday) cls += ' today';
+
+      if (disabled) {
+        h += `<button class="${cls}" disabled aria-disabled="true">${d}</button>`;
+      } else {
+        const ds = toDateStr(navYear, navMonth, d);
+        h += `<button class="${cls}" data-ds="${ds}" data-y="${navYear}" data-m="${navMonth}" data-d="${d}"${sel ? ' aria-pressed="true"' : ''}>${d}</button>`;
+      }
+    }
+
+    $('cal').innerHTML = h;
+  }
+
+  $('prev-btn').addEventListener('click', () => {
+    if (navMonth-- === 0) { navMonth = 11; navYear--; }
+    renderCal();
+  });
+  $('next-btn').addEventListener('click', () => {
+    if (navMonth++ === 11) { navMonth = 0; navYear++; }
+    renderCal();
+  });
+
+  $('cal').addEventListener('click', e => {
+    const btn = e.target.closest('.cd');
+    if (!btn || btn.disabled) return;
+    pickDate(btn.dataset.ds, +btn.dataset.y, +btn.dataset.m, +btn.dataset.d);
+  });
+
+  // ── Date selection ─────────────────────────────────────────────────────────
+
+  async function pickDate(ds, y, m, d) {
+    pickedDate = new Date(y, m, d);
+    pickedSlot = null;
+    renderCal();
+    showView('slots-view');
+    $('slots-date').textContent = fmtDate(pickedDate);
+    const list = $('slots-list');
+    list.innerHTML = '<p class="hint">Loading&hellip;</p>';
+
+    try {
+      const r = await fetch(
+        `/v1/event-types/${SLUG}/slots?from=${ds}&to=${ds}&tz=${encodeURIComponent(TZ)}`
+      );
+      if (!r.ok) throw new Error(r.status);
+      const data = await r.json();
+      slotsCache = data.slots || [];
+
+      if (!slotsCache.length) {
+        list.innerHTML = '<p class="hint">No available times for this date.</p>';
+        return;
+      }
+      list.innerHTML = slotsCache.map((s, i) =>
+        `<button class="slot-btn" data-i="${i}">${fmtTime(s.start)}</button>`
+      ).join('');
+    } catch {
+      list.innerHTML = '<p class="error-msg">Could not load available times. Please try again.</p>';
+    }
+  }
+
+  $('slots-list').addEventListener('click', e => {
+    const btn = e.target.closest('.slot-btn');
+    if (!btn) return;
+    pickSlot(+btn.dataset.i);
+  });
+
+  // ── Slot selection ─────────────────────────────────────────────────────────
+
+  function pickSlot(i) {
+    if (i < 0 || i >= slotsCache.length) return;
+    pickedSlot = slotsCache[i];
+    document.querySelectorAll('.slot-btn').forEach((b, j) =>
+      b.classList.toggle('sel', j === i)
+    );
+    $('form-slot-label').textContent =
+      `${fmtDate(pickedDate)} at ${fmtTime(pickedSlot.start)}`;
+    showView('form-view');
+  }
+
+  $('back-btn').addEventListener('click', () => showView('slots-view'));
+
+  // ── Booking form ───────────────────────────────────────────────────────────
+
+  $('booking-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    if (!pickedSlot) return;
+    const form  = e.target;
+    const btn   = $('submit-btn');
+    const errEl = $('form-error');
+
+    if (!form.name.value.trim() || !form.email.value.trim()) {
+      errEl.textContent = 'Please fill in all required fields.';
+      return;
+    }
+
+    btn.disabled       = true;
+    btn.textContent    = 'Confirming…';
+    errEl.textContent  = '';
+
+    try {
+      const r = await fetch('/v1/bookings', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          event_type_slug: SLUG,
+          start_at:        pickedSlot.start,
+          name:            form.name.value.trim(),
+          email:           form.email.value.trim(),
+          timezone:        TZ,
+        }),
+      });
+
+      if (r.status === 409) {
+        errEl.textContent = 'That slot was just booked. Please choose another time.';
+        // Re-fetch so they see the updated availability
+        const ds = toDateStr(pickedDate.getFullYear(), pickedDate.getMonth(), pickedDate.getDate());
+        await pickDate(ds, pickedDate.getFullYear(), pickedDate.getMonth(), pickedDate.getDate());
+        btn.disabled    = false;
+        btn.textContent = 'Confirm booking';
+        return;
+      }
+
+      if (!r.ok) {
+        const data = await r.json().catch(() => ({}));
+        errEl.textContent = data.error || 'Booking failed. Please try again.';
+        btn.disabled    = false;
+        btn.textContent = 'Confirm booking';
+        return;
+      }
+
+      $('confirm-time').textContent =
+        `${fmtDate(pickedDate)} at ${fmtTime(pickedSlot.start)}`;
+      showView('confirm-view');
+
+    } catch {
+      errEl.textContent = 'Network error. Please check your connection and try again.';
+      btn.disabled    = false;
+      btn.textContent = 'Confirm booking';
+    }
+  });
+
+  // ── Init ───────────────────────────────────────────────────────────────────
+  $('tz-hint').textContent = TZ.replace(/_/g, ' ').replace(/\//g, ' / ');
+  renderCal();
+
+}());
+</script>
+</body>
+</html>

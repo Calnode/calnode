@@ -9,6 +9,7 @@ var (
 	ErrDoubleBooked     = errors.New("booking: time slot is no longer available")
 	ErrNotFound         = errors.New("booking: not found")
 	ErrAlreadyCancelled = errors.New("booking: already cancelled")
+	ErrTokenNotFound    = errors.New("booking: manage token not found or expired")
 )
 
 // Booking is a confirmed or cancelled appointment.
