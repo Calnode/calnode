@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { api, type AvailabilityRule, type AvailabilityOverride } from '$lib/api';
+	import { prefs } from '$lib/prefs';
 
 	const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -13,6 +14,9 @@
 	}
 	function fmtTime(t: string) {
 		const [hh, mm] = t.split(':').map(Number);
+		if ($prefs.time_format === '24h') {
+			return mm === 0 ? `${String(hh).padStart(2,'0')}:00` : `${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}`;
+		}
 		const ampm = hh < 12 ? 'am' : 'pm';
 		const h12 = hh % 12 || 12;
 		return mm === 0 ? `${h12}${ampm}` : `${h12}:${String(mm).padStart(2,'0')}${ampm}`;

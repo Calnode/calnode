@@ -39,6 +39,12 @@
 			setTimeout(() => (saved = false), 3000);
 		} catch (e: any) {
 			error = e.message;
+			// Revert form to last known server state so UI stays consistent with DB.
+			if (user) {
+				timezone = user.timezone;
+				time_format = user.time_format ?? '12h';
+				week_start = user.week_start ?? 1;
+			}
 		} finally {
 			saving = false;
 		}

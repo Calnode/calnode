@@ -62,7 +62,7 @@
 		slots = [];
 		selectedSlot = '';
 		try {
-			const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+			const tz = $prefs.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
 			const res = await api.get<{ slots: { start: string; end: string }[] }>(
 				`/v1/event-types/${reschedulingSlug}/slots?from=${rescheduleDate}&to=${rescheduleDate}&tz=${encodeURIComponent(tz)}`
 			);
