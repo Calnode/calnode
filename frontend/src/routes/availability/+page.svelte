@@ -13,6 +13,12 @@
 	let addingRule = false;
 	let ruleAddError = '';
 
+	// Inline edit state for rules
+	let editingRuleId: string | null = null;
+	let editRuleForm = { day_of_week: 0, start_time: '', end_time: '' };
+	let savingRule = false;
+	let ruleSaveError = '';
+
 	async function loadRules() {
 		rulesError = '';
 		try {
@@ -22,6 +28,39 @@
 			rulesError = e.message;
 		} finally {
 			rulesLoading = false;
+		}
+	}
+
+	function startEditRule(r: AvailabilityRule) {
+		editingRuleId = r.id;
+		editRuleForm = { day_of_week: r.day_of_week, start_time: r.start_time, end_time: r.end_time };
+		ruleSaveError = '';
+	}
+
+	function cancelEditRule() {
+		editingRuleId = null;
+		ruleSaveError = '';
+	}
+
+	async function saveRule(id: string) {
+		ruleSaveError = '';
+		if (editRuleForm.start_time >= editRuleForm.end_time) {
+			ruleSaveError = 'End time must be after start time.';
+			return;
+		}
+		savingRule = true;
+		try {
+			await api.patch(`/v1/availability-rules/${id}`, {
+				day_of_week: Number(editRuleForm.day_of_week),
+				start_time: editRuleForm.start_time,
+				end_time: editRuleForm.end_time
+			});
+			editingRuleId = null;
+			await loadRules();
+		} catch (e: any) {
+			ruleSaveError = e.message;
+		} finally {
+			savingRule = false;
 		}
 	}
 
@@ -69,6 +108,12 @@
 	let addingOv = false;
 	let ovAddError = '';
 
+	// Inline edit state for overrides
+	let editingOvId: string | null = null;
+	let editOvForm = { is_available: false, start_time: '09:00', end_time: '17:00' };
+	let savingOv = false;
+	let ovSaveError = '';
+
 	async function loadOverrides() {
 		overridesError = '';
 		try {
@@ -78,6 +123,44 @@
 			overridesError = e.message;
 		} finally {
 			overridesLoading = false;
+		}
+	}
+
+	function startEditOv(ov: AvailabilityOverride) {
+		editingOvId = ov.id;
+		editOvForm = {
+			is_available: ov.is_available,
+			start_time: ov.start_time ?? '09:00',
+			end_time: ov.end_time ?? '17:00'
+		};
+		ovSaveError = '';
+	}
+
+	function cancelEditOv() {
+		editingOvId = null;
+		ovSaveError = '';
+	}
+
+	async function saveOv(id: string) {
+		ovSaveError = '';
+		if (editOvForm.is_available && editOvForm.start_time >= editOvForm.end_time) {
+			ovSaveError = 'End time must be after start time.';
+			return;
+		}
+		savingOv = true;
+		try {
+			await api.patch(`/v1/availability-overrides/${id}`, {
+				is_available: editOvForm.is_available,
+				...(editOvForm.is_available
+					? { start_time: editOvForm.start_time, end_time: editOvForm.end_time }
+					: {})
+			});
+			editingOvId = null;
+			await loadOverrides();
+		} catch (e: any) {
+			ovSaveError = e.message;
+		} finally {
+			savingOv = false;
 		}
 	}
 
@@ -152,13 +235,40 @@
 			</thead>
 			<tbody>
 				{#each rules as r}
-					<tr>
-						<td style="font-weight:500;">{DAY_NAMES[r.day_of_week]}</td>
-						<td class="mono">{r.start_time} – {r.end_time}</td>
-						<td style="text-align:right;">
-							<button class="btn-danger btn-sm" on:click={() => deleteRule(r.id)}>Remove</button>
-						</td>
-					</tr>
+					{#if editingRuleId === r.id}
+						<tr class="editing-row">
+							<td>
+								<select bind:value={editRuleForm.day_of_week} class="inline-input">
+									{#each DAY_NAMES as name, i}
+										<option value={i}>{name}</option>
+									{/each}
+								</select>
+							</td>
+							<td>
+								<div class="inline-time-fields">
+									<input class="inline-input" type="time" bind:value={editRuleForm.start_time} />
+									<span style="color:var(--text-muted);">–</span>
+									<input class="inline-input" type="time" bind:value={editRuleForm.end_time} />
+								</div>
+								{#if ruleSaveError}<div class="error-msg" style="margin-top:4px;">{ruleSaveError}</div>{/if}
+							</td>
+							<td style="text-align:right;white-space:nowrap;">
+								<button class="btn-primary btn-sm" on:click={() => saveRule(r.id)} disabled={savingRule}>
+									{savingRule ? 'Saving…' : 'Save'}
+								</button>
+								<button class="btn-secondary btn-sm" on:click={cancelEditRule} style="margin-left:4px;">Cancel</button>
+							</td>
+						</tr>
+					{:else}
+						<tr>
+							<td style="font-weight:500;">{DAY_NAMES[r.day_of_week]}</td>
+							<td class="mono">{r.start_time} – {r.end_time}</td>
+							<td style="text-align:right;white-space:nowrap;">
+								<button class="btn-secondary btn-sm" on:click={() => startEditRule(r)}>Edit</button>
+								<button class="btn-danger btn-sm" on:click={() => deleteRule(r.id)} style="margin-left:4px;">Remove</button>
+							</td>
+						</tr>
+					{/if}
 				{/each}
 			</tbody>
 		</table>
@@ -215,24 +325,55 @@
 			</thead>
 			<tbody>
 				{#each overrides as ov}
-					<tr>
-						<td style="font-weight:500;">{ov.date}</td>
-						<td>
-							{#if ov.is_available}
-								<span class="badge badge-green">Custom hours</span>
-							{:else}
-								<span class="badge badge-gray">Day off</span>
-							{/if}
-						</td>
-						<td class="mono">
-							{ov.is_available && ov.start_time && ov.end_time
-								? `${ov.start_time} – ${ov.end_time}`
-								: '—'}
-						</td>
-						<td style="text-align:right;">
-							<button class="btn-danger btn-sm" on:click={() => deleteOverride(ov.id)}>Remove</button>
-						</td>
-					</tr>
+					{#if editingOvId === ov.id}
+						<tr class="editing-row">
+							<td style="font-weight:500;">{ov.date}</td>
+							<td>
+								<select bind:value={editOvForm.is_available} class="inline-input">
+									<option value={false}>Day off</option>
+									<option value={true}>Custom hours</option>
+								</select>
+							</td>
+							<td>
+								{#if editOvForm.is_available}
+									<div class="inline-time-fields">
+										<input class="inline-input" type="time" bind:value={editOvForm.start_time} />
+										<span style="color:var(--text-muted);">–</span>
+										<input class="inline-input" type="time" bind:value={editOvForm.end_time} />
+									</div>
+								{:else}
+									<span style="color:var(--text-muted);">—</span>
+								{/if}
+								{#if ovSaveError}<div class="error-msg" style="margin-top:4px;">{ovSaveError}</div>{/if}
+							</td>
+							<td style="text-align:right;white-space:nowrap;">
+								<button class="btn-primary btn-sm" on:click={() => saveOv(ov.id)} disabled={savingOv}>
+									{savingOv ? 'Saving…' : 'Save'}
+								</button>
+								<button class="btn-secondary btn-sm" on:click={cancelEditOv} style="margin-left:4px;">Cancel</button>
+							</td>
+						</tr>
+					{:else}
+						<tr>
+							<td style="font-weight:500;">{ov.date}</td>
+							<td>
+								{#if ov.is_available}
+									<span class="badge badge-green">Custom hours</span>
+								{:else}
+									<span class="badge badge-gray">Day off</span>
+								{/if}
+							</td>
+							<td class="mono">
+								{ov.is_available && ov.start_time && ov.end_time
+									? `${ov.start_time} – ${ov.end_time}`
+									: '—'}
+							</td>
+							<td style="text-align:right;white-space:nowrap;">
+								<button class="btn-secondary btn-sm" on:click={() => startEditOv(ov)}>Edit</button>
+								<button class="btn-danger btn-sm" on:click={() => deleteOverride(ov.id)} style="margin-left:4px;">Remove</button>
+							</td>
+						</tr>
+					{/if}
 				{/each}
 			</tbody>
 		</table>
@@ -312,5 +453,30 @@
 
 	.field-btn button {
 		white-space: nowrap;
+	}
+
+	.editing-row {
+		background: var(--surface);
+	}
+
+	.inline-input {
+		padding: 4px 8px;
+		font-size: 13px;
+		border: 1px solid var(--border);
+		border-radius: var(--radius);
+		background: var(--bg);
+		color: inherit;
+		width: 100%;
+	}
+
+	.inline-time-fields {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+	}
+
+	.inline-time-fields .inline-input {
+		width: auto;
+		flex: 1;
 	}
 </style>

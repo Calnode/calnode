@@ -97,11 +97,13 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	// Availability rules
 	mux.HandleFunc("POST /v1/availability-rules", h.RequireAuth(h.CreateAvailabilityRule))
 	mux.HandleFunc("GET /v1/availability-rules", h.RequireAuth(h.ListAvailabilityRules))
+	mux.HandleFunc("PATCH /v1/availability-rules/{id}", h.RequireAuth(h.UpdateAvailabilityRule))
 	mux.HandleFunc("DELETE /v1/availability-rules/{id}", h.RequireAuth(h.DeleteAvailabilityRule))
 
 	// Availability overrides (date-specific blocks or custom hours)
 	mux.HandleFunc("POST /v1/availability-overrides", h.RequireAuth(h.CreateAvailabilityOverride))
 	mux.HandleFunc("GET /v1/availability-overrides", h.RequireAuth(h.ListAvailabilityOverrides))
+	mux.HandleFunc("PATCH /v1/availability-overrides/{id}", h.RequireAuth(h.UpdateAvailabilityOverride))
 	mux.HandleFunc("DELETE /v1/availability-overrides/{id}", h.RequireAuth(h.DeleteAvailabilityOverride))
 
 	// Slots — public (no auth; event type must be is_public)

@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -139,6 +140,82 @@ func (h *Handler) ListAvailabilityOverrides(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	h.writeJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+// UpdateAvailabilityOverride handles PATCH /v1/availability-overrides/{id}.
+func (h *Handler) UpdateAvailabilityOverride(w http.ResponseWriter, r *http.Request) {
+	user, _ := userFromContext(r.Context())
+	id := r.PathValue("id")
+	r.Body = http.MaxBytesReader(w, r.Body, 32<<10)
+
+	var req struct {
+		IsAvailable *bool   `json:"is_available"`
+		StartTime   *string `json:"start_time"`
+		EndTime     *string `json:"end_time"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+
+	var current availOverrideJSON
+	var isAvail int
+	var startT, endT string
+	err := h.db.QueryRowContext(r.Context(),
+		`SELECT id, date, is_available, COALESCE(start_time,''), COALESCE(end_time,'')
+		 FROM availability_overrides WHERE id = ? AND user_id = ?`, id, user.ID).
+		Scan(&current.ID, &current.Date, &isAvail, &startT, &endT)
+	if err == sql.ErrNoRows {
+		h.writeError(w, http.StatusNotFound, "override not found")
+		return
+	}
+	if err != nil {
+		h.logger.ErrorContext(r.Context(), "update availability override: fetch", "error", err)
+		h.writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	current.IsAvailable = isAvail != 0
+	if current.IsAvailable && startT != "" {
+		current.StartTime = &startT
+		current.EndTime = &endT
+	}
+
+	if req.IsAvailable != nil {
+		current.IsAvailable = *req.IsAvailable
+	}
+	if req.StartTime != nil {
+		current.StartTime = req.StartTime
+	}
+	if req.EndTime != nil {
+		current.EndTime = req.EndTime
+	}
+
+	if current.IsAvailable {
+		if current.StartTime == nil || current.EndTime == nil || *current.StartTime == "" || *current.EndTime == "" {
+			h.writeError(w, http.StatusBadRequest, "start_time and end_time are required when is_available is true")
+			return
+		}
+		if *current.StartTime >= *current.EndTime {
+			h.writeError(w, http.StatusBadRequest, "start_time must be before end_time")
+			return
+		}
+	} else {
+		current.StartTime = nil
+		current.EndTime = nil
+	}
+
+	isAvailInt := 0
+	if current.IsAvailable {
+		isAvailInt = 1
+	}
+	if _, err := h.db.ExecContext(r.Context(),
+		`UPDATE availability_overrides SET is_available=?, start_time=?, end_time=? WHERE id=? AND user_id=?`,
+		isAvailInt, current.StartTime, current.EndTime, id, user.ID); err != nil {
+		h.logger.ErrorContext(r.Context(), "update availability override", "error", err)
+		h.writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	h.writeJSON(w, http.StatusOK, current)
 }
 
 // DeleteAvailabilityOverride handles DELETE /v1/availability-overrides/{id}.
