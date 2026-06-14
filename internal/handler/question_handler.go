@@ -38,7 +38,7 @@ func (h *Handler) ListQuestions(w http.ResponseWriter, r *http.Request) {
 
 	var etID string
 	err := h.db.QueryRowContext(r.Context(),
-		`SELECT id FROM event_types WHERE slug = ? AND is_active = 1`, slug).Scan(&etID)
+		`SELECT id FROM event_types WHERE slug = ?`, slug).Scan(&etID)
 	if errors.Is(err, sql.ErrNoRows) {
 		h.writeError(w, http.StatusNotFound, "event type not found")
 		return

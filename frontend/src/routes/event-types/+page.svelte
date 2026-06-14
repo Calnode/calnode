@@ -149,6 +149,7 @@
 							</span>
 						</td>
 						<td style="white-space:nowrap;text-align:right;">
+							<a href="/admin/event-types/{et.slug}" class="btn-secondary btn-sm" style="margin-right:6px;">Settings</a>
 							<button class="btn-secondary btn-sm" on:click={() => toggleActive(et)} style="margin-right:6px;">
 								{et.is_active ? 'Deactivate' : 'Activate'}
 							</button>

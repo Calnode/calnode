@@ -16,7 +16,21 @@ export type EventType = {
 	is_public: boolean;
 	location_type: string;
 	location_value?: string;
+	buffer_before_minutes: number;
+	buffer_after_minutes: number;
+	min_notice_minutes: number;
+	max_future_days: number;
 	created_at: string;
+};
+
+export type Question = {
+	id: string;
+	event_type_id: string;
+	label: string;
+	type: 'text' | 'select' | 'checkbox';
+	options?: string[];
+	required: boolean;
+	position: number;
 };
 
 export type Booking = {
