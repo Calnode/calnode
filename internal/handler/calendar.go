@@ -53,8 +53,7 @@ func (h *Handler) CalendarCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Redirect to the app root; the UI can detect ?calendar=connected.
-	http.Redirect(w, r, h.baseURL+"?calendar=connected", http.StatusFound)
+	http.Redirect(w, r, h.baseURL+"/admin/calendar?connected=true", http.StatusFound)
 }
 
 // CalendarStatus handles GET /v1/calendar/status (auth required).

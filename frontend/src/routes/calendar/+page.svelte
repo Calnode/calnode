@@ -1,11 +1,13 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { page } from '$app/stores';
 	import { api, type CalendarStatus } from '$lib/api';
 
 	let status: CalendarStatus | null = null;
 	let loading = true;
 	let error = '';
 	let disconnecting = false;
+	let justConnected = false;
 
 	async function load() {
 		try {
@@ -21,7 +23,10 @@
 		}
 	}
 
-	onMount(load);
+	onMount(() => {
+		justConnected = $page.url.searchParams.get('connected') === 'true';
+		load();
+	});
 
 	async function disconnect() {
 		if (!confirm('Disconnect Google Calendar? Calnode will stop checking for conflicts.')) return;
@@ -44,6 +49,7 @@
 </div>
 
 {#if error}<div class="error-msg">{error}</div>{/if}
+{#if justConnected}<div class="success-msg">Google Calendar connected successfully.</div>{/if}
 
 {#if loading}
 	<div style="color:var(--text-muted);padding:24px 0;">Loading…</div>
@@ -77,12 +83,9 @@
 				<span style="color:var(--text-muted);font-size:18px;">○</span>
 				<div style="font-weight:500;color:var(--text-muted);">Not connected</div>
 			</div>
-			<a href="/v1/calendar/connect" class="btn-primary" style="display:inline-block;text-decoration:none;">
+			<button class="btn-primary" on:click={() => window.location.href = '/v1/calendar/connect'}>
 				Connect Google Calendar
-			</a>
-			<p style="margin:12px 0 0;font-size:12px;color:var(--text-muted);">
-				Requires GOOGLE_CLIENT_ID to be configured on the server.
-			</p>
+			</button>
 		{/if}
 	</div>
 {/if}

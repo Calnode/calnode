@@ -10,13 +10,24 @@ import (
 	"time"
 	_ "time/tzdata" // embed IANA timezone database so scratch/distroless images work
 
+	"github.com/joho/godotenv"
+
 	"github.com/calnode/calnode/internal/config"
 	"github.com/calnode/calnode/internal/db"
 	"github.com/calnode/calnode/internal/server"
 )
 
 func main() {
+	// Load .env if present (dev convenience). Real env vars always win.
+	_ = godotenv.Load()
+
 	cfg := config.Load()
+
+	if cfg.GoogleClientID != "" {
+		slog.Info("Google OAuth configured", "client_id_prefix", cfg.GoogleClientID[:20])
+	} else {
+		slog.Warn("Google OAuth NOT configured — GOOGLE_CLIENT_ID is empty")
+	}
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: cfg.LogLevel,
