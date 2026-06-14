@@ -107,25 +107,26 @@ func TestRateLimit_retryAfterHeader(t *testing.T) {
 	}
 }
 
-func TestRemoteIP_xRealIP(t *testing.T) {
+func TestRemoteIP_ignoresXRealIP(t *testing.T) {
+	// Forged headers must not bypass rate limiting.
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.Header.Set("X-Real-IP", "203.0.113.1")
 	req.RemoteAddr = "127.0.0.1:1234"
-	if got := remoteIP(req); got != "203.0.113.1" {
-		t.Errorf("remoteIP = %q; want 203.0.113.1", got)
+	if got := remoteIP(req); got != "127.0.0.1" {
+		t.Errorf("remoteIP = %q; want 127.0.0.1 (X-Real-IP must not be trusted)", got)
 	}
 }
 
-func TestRemoteIP_xForwardedFor(t *testing.T) {
+func TestRemoteIP_ignoresXForwardedFor(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.Header.Set("X-Forwarded-For", "203.0.113.2, 10.0.0.1")
 	req.RemoteAddr = "127.0.0.1:1234"
-	if got := remoteIP(req); got != "203.0.113.2" {
-		t.Errorf("remoteIP = %q; want 203.0.113.2", got)
+	if got := remoteIP(req); got != "127.0.0.1" {
+		t.Errorf("remoteIP = %q; want 127.0.0.1 (X-Forwarded-For must not be trusted)", got)
 	}
 }
 
-func TestRemoteIP_fallback(t *testing.T) {
+func TestRemoteIP_usesRemoteAddr(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.RemoteAddr = "203.0.113.3:9999"
 	if got := remoteIP(req); got != "203.0.113.3" {

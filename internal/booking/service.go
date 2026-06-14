@@ -193,7 +193,7 @@ func (s *Service) IssueManageToken(ctx context.Context, bookingID string) (strin
 	rawHex := hex.EncodeToString(raw)
 	sum := sha256.Sum256([]byte(rawHex))
 	hash := hex.EncodeToString(sum[:])
-	expiresAt := time.Now().UTC().Add(60 * 24 * time.Hour).Format(time.RFC3339)
+	expiresAt := time.Now().UTC().Add(60 * 24 * time.Hour).Format(time.RFC3339) // 60-day TTL
 
 	if _, err := s.db.ExecContext(ctx, `
 		INSERT INTO booking_manage_tokens (token_hash, booking_id, expires_at)
@@ -325,7 +325,7 @@ func (s *Service) RotateManageToken(ctx context.Context, bookingID string) (stri
 	rawHex := hex.EncodeToString(raw)
 	sum := sha256.Sum256([]byte(rawHex))
 	hash := hex.EncodeToString(sum[:])
-	expiresAt := time.Now().UTC().Add(60 * 24 * time.Hour).Format(time.RFC3339)
+	expiresAt := time.Now().UTC().Add(60 * 24 * time.Hour).Format(time.RFC3339) // 60-day TTL
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {

@@ -286,17 +286,58 @@ func TestWorker_reaperRecoversCrashedJob(t *testing.T) {
 		t.Fatalf("precondition: job should be running, got %q", stuckStatus)
 	}
 
-	// Poll should reap the expired lock, reset to pending, then process it.
 	w := newWorker(t, database, svc)
+
+	// First Poll: reaper resets the expired job to 'pending' with a future run_at
+	// (to avoid an immediate same-cycle retry). The job is NOT processed yet.
+	w.Poll(ctx)
+
+	var midStatus string
+	database.QueryRowContext(ctx, `SELECT status FROM jobs`).Scan(&midStatus)
+	if midStatus != "pending" {
+		t.Fatalf("after first poll: job status = %q; want pending (reaped but delayed)", midStatus)
+	}
+	if callCount != 0 {
+		t.Errorf("after first poll: call count = %d; want 0 (not yet processed)", callCount)
+	}
+
+	// Advance run_at to the past so the next Poll picks it up.
+	past2 := time.Now().UTC().Add(-time.Second).Format(time.RFC3339)
+	database.ExecContext(ctx, `UPDATE jobs SET run_at = ? WHERE status = 'pending'`, past2)
+
+	// Second Poll: picks up and delivers the job.
 	w.Poll(ctx)
 
 	var finalStatus string
 	database.QueryRowContext(ctx, `SELECT status FROM jobs`).Scan(&finalStatus)
 	if finalStatus != "done" {
-		t.Errorf("job status = %q; want done (reaper recovered and processed it)", finalStatus)
+		t.Errorf("after second poll: job status = %q; want done", finalStatus)
 	}
 	if callCount != 1 {
 		t.Errorf("call count = %d; want 1 (webhook delivered after recovery)", callCount)
+	}
+}
+
+func TestWorker_reaperMarksFailedWhenAttemptsExhausted(t *testing.T) {
+	database, svc := setup(t)
+	ctx := context.Background()
+
+	svc.Create(ctx, "host-02", "https://example.com/hook", []string{"booking.created"})
+	svc.Enqueue(ctx, "booking.created", webhook.BookingPayload{HostID: "host-02", Status: "confirmed"})
+
+	// Simulate a job that crashed after exhausting all 3 attempts.
+	past := time.Now().UTC().Add(-time.Minute).Format(time.RFC3339)
+	database.ExecContext(ctx,
+		`UPDATE jobs SET status = 'running', locked_until = ?, attempts = 3, max_attempts = 3
+		 WHERE status = 'pending'`, past)
+
+	w := newWorker(t, database, svc)
+	w.Poll(ctx)
+
+	var status string
+	database.QueryRowContext(ctx, `SELECT status FROM jobs`).Scan(&status)
+	if status != "failed" {
+		t.Errorf("job status = %q; want failed (exhausted attempts should not be reaped to pending)", status)
 	}
 }
 

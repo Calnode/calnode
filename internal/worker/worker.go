@@ -97,11 +97,21 @@ func (w *Worker) Poll(ctx context.Context) {
 		w.logger.Error("worker: purge expired tokens", "error", err)
 	}
 
-	// Reaper: reset running jobs whose lock has expired (process crashed mid-job).
+	// Reaper: handle running jobs whose lock has expired (process crashed mid-job).
+	// Jobs with retries remaining are reset to pending with a 1-minute delay so
+	// they do not immediately re-enter this Poll cycle. Jobs that have already
+	// exhausted max_attempts are marked failed directly.
+	reaperRunAt := time.Now().UTC().Add(time.Minute).Format(time.RFC3339)
 	if _, err := w.db.ExecContext(ctx, `
 		UPDATE jobs SET status = 'pending', run_at = ?, last_error = 'recovered after crash'
-		WHERE status = 'running' AND locked_until < ?`, now, now); err != nil {
-		w.logger.Error("worker: reaper", "error", err)
+		WHERE status = 'running' AND locked_until < ? AND attempts < max_attempts`,
+		reaperRunAt, now); err != nil {
+		w.logger.Error("worker: reaper: reset", "error", err)
+	}
+	if _, err := w.db.ExecContext(ctx, `
+		UPDATE jobs SET status = 'failed', last_error = 'max attempts exceeded after crash'
+		WHERE status = 'running' AND locked_until < ? AND attempts >= max_attempts`, now); err != nil {
+		w.logger.Error("worker: reaper: fail exhausted", "error", err)
 	}
 
 	rows, err := w.db.QueryContext(ctx, `

@@ -127,22 +127,13 @@ func (rl *rateLimiter) cleanup() {
 	}
 }
 
-// remoteIP returns the best-available client IP. It trusts X-Real-IP and
-// X-Forwarded-For only when set — operators behind a load balancer should
-// configure it to strip these headers from untrusted clients.
+// remoteIP returns the TCP-level remote address, stripped of its port.
+// X-Real-IP and X-Forwarded-For are intentionally ignored: without a
+// configured trusted-proxy allowlist, those headers can be forged by any
+// client and would bypass the rate limit entirely. Operators behind a reverse
+// proxy should strip proxy headers at the proxy level and rely on the TCP
+// address the proxy connects with.
 func remoteIP(r *http.Request) string {
-	if ip := r.Header.Get("X-Real-IP"); ip != "" {
-		return ip
-	}
-	if ip := r.Header.Get("X-Forwarded-For"); ip != "" {
-		// Take only the first (leftmost) address.
-		for i := range len(ip) {
-			if ip[i] == ',' {
-				return ip[:i]
-			}
-		}
-		return ip
-	}
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		return r.RemoteAddr
