@@ -64,6 +64,11 @@ func parseDSN(url string) string {
 	// Strip scheme prefix: sqlite:// → remainder
 	dsn := strings.TrimPrefix(url, "sqlite://")
 	// sqlite:///absolute/path → /absolute/path (triple slash, first two stripped above)
-	// sqlite://./relative → ./relative
+	// sqlite://./relative     → ./relative
+	// On Windows, sqlite:///C:/path/db → /C:/path/db — strip the leading slash so
+	// the result is a valid Windows absolute path (C:/path/db).
+	if len(dsn) >= 3 && dsn[0] == '/' && dsn[2] == ':' {
+		dsn = dsn[1:]
+	}
 	return dsn
 }

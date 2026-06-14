@@ -75,7 +75,8 @@ CREATE TABLE IF NOT EXISTS availability_rules (
     event_type_id TEXT REFERENCES event_types(id) ON DELETE CASCADE,  -- NULL = global default
     day_of_week   INTEGER NOT NULL CHECK (day_of_week BETWEEN 0 AND 6),  -- 0=Sun … 6=Sat
     start_time    TEXT NOT NULL,  -- HH:MM host-local wall-clock (§6.3)
-    end_time      TEXT NOT NULL
+    end_time      TEXT NOT NULL,
+    UNIQUE (user_id, event_type_id, day_of_week, start_time, end_time)
 );
 
 CREATE TABLE IF NOT EXISTS availability_overrides (
@@ -117,7 +118,14 @@ CREATE TABLE IF NOT EXISTS bookings (
     updated_at          TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
--- Double-booking guard (§6.4): no two active bookings for the same host at the same start time.
+-- Double-booking guard §6.4 — FIRST-LINE ONLY.
+-- This index blocks exact-start-time collisions, but does NOT prevent overlapping bookings
+-- with different start times (e.g. a 09:45 booking and a 10:00 booking on the same host).
+-- The booking handler MUST also run an overlap check inside BEGIN IMMEDIATE:
+--   SELECT 1 FROM bookings
+--   WHERE host_id = :host_id AND status != 'cancelled'
+--     AND start_at < :new_end_at AND end_at > :new_start_at
+-- Fail with 409 if any row is returned before inserting.
 CREATE UNIQUE INDEX IF NOT EXISTS idx_bookings_no_double
     ON bookings (host_id, start_at) WHERE status != 'cancelled';
 

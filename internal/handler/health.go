@@ -6,23 +6,25 @@ import (
 )
 
 func (h *Handler) Healthz(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	h.writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 func (h *Handler) Readyz(w http.ResponseWriter, r *http.Request) {
 	if err := h.db.PingContext(r.Context()); err != nil {
 		h.logger.ErrorContext(r.Context(), "readyz: database ping failed", "error", err)
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{
+		h.writeJSON(w, http.StatusServiceUnavailable, map[string]string{
 			"status": "error",
 			"detail": "database unavailable",
 		})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	h.writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-func writeJSON(w http.ResponseWriter, status int, v any) {
+func (h *Handler) writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		h.logger.Error("writeJSON: failed to encode response", "error", err)
+	}
 }
