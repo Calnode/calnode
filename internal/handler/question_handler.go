@@ -33,12 +33,13 @@ type answerJSON struct {
 
 // ListQuestions handles GET /v1/event-types/{slug}/questions (public).
 // Returns questions ordered by position for the booking form.
+// Only returns questions for active, public event types.
 func (h *Handler) ListQuestions(w http.ResponseWriter, r *http.Request) {
 	slug := r.PathValue("slug")
 
 	var etID string
 	err := h.db.QueryRowContext(r.Context(),
-		`SELECT id FROM event_types WHERE slug = ?`, slug).Scan(&etID)
+		`SELECT id FROM event_types WHERE slug = ? AND is_active = 1 AND is_public = 1`, slug).Scan(&etID)
 	if errors.Is(err, sql.ErrNoRows) {
 		h.writeError(w, http.StatusNotFound, "event type not found")
 		return
@@ -73,6 +74,56 @@ func (h *Handler) ListQuestions(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := rows.Err(); err != nil {
 		h.logger.ErrorContext(r.Context(), "list questions: rows", "error", err)
+		h.writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	h.writeJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+// ListQuestionsAdmin handles GET /v1/event-types/{slug}/questions/admin (auth required).
+// Like ListQuestions but skips is_active/is_public checks so admins can manage
+// questions on inactive or private event types.
+func (h *Handler) ListQuestionsAdmin(w http.ResponseWriter, r *http.Request) {
+	user, _ := userFromContext(r.Context())
+	slug := r.PathValue("slug")
+
+	var etID string
+	err := h.db.QueryRowContext(r.Context(),
+		`SELECT id FROM event_types WHERE slug = ? AND user_id = ?`, slug, user.ID).Scan(&etID)
+	if errors.Is(err, sql.ErrNoRows) {
+		h.writeError(w, http.StatusNotFound, "event type not found")
+		return
+	}
+	if err != nil {
+		h.logger.ErrorContext(r.Context(), "list questions admin: lookup", "error", err)
+		h.writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	rows, err := h.db.QueryContext(r.Context(), `
+		SELECT id, event_type_id, label, type, options, required, position
+		FROM event_type_questions
+		WHERE event_type_id = ?
+		ORDER BY position, id`, etID)
+	if err != nil {
+		h.logger.ErrorContext(r.Context(), "list questions admin: query", "error", err)
+		h.writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	defer rows.Close()
+
+	items := []questionJSON{}
+	for rows.Next() {
+		q, err := scanQuestion(rows)
+		if err != nil {
+			h.logger.ErrorContext(r.Context(), "list questions admin: scan", "error", err)
+			h.writeError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		items = append(items, *q)
+	}
+	if err := rows.Err(); err != nil {
+		h.logger.ErrorContext(r.Context(), "list questions admin: rows", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}

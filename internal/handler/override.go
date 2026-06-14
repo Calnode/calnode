@@ -184,9 +184,17 @@ func (h *Handler) UpdateAvailabilityOverride(w http.ResponseWriter, r *http.Requ
 		current.IsAvailable = *req.IsAvailable
 	}
 	if req.StartTime != nil {
+		if !validHHMM(*req.StartTime) {
+			h.writeError(w, http.StatusBadRequest, "start_time must be HH:MM (e.g. 09:00)")
+			return
+		}
 		current.StartTime = req.StartTime
 	}
 	if req.EndTime != nil {
+		if !validHHMM(*req.EndTime) {
+			h.writeError(w, http.StatusBadRequest, "end_time must be HH:MM (e.g. 09:00)")
+			return
+		}
 		current.EndTime = req.EndTime
 	}
 

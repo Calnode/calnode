@@ -478,3 +478,71 @@ func TestGetBookingAnswers_notFound(t *testing.T) {
 		t.Errorf("not found: got %d; want 404", rec.Code)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Regression: ListQuestions must work even when the event type is inactive
+// ---------------------------------------------------------------------------
+
+func TestListQuestions_returns404ForInactiveEventType(t *testing.T) {
+	h, _, key, _ := setupWorkspaceWithDB(t)
+	slug, _ := seedEventTypeHTTP(t, h, key)
+
+	createQuestion(t, h, slug, key, `{"label":"Name","type":"text"}`)
+
+	// Deactivate the event type.
+	patchReq := authReq(http.MethodPatch, "/v1/event-types/"+slug, `{"is_active":false}`, key)
+	patchReq.SetPathValue("slug", slug)
+	patchRec := httptest.NewRecorder()
+	h.RequireAuth(h.PatchEventType)(patchRec, patchReq)
+	if patchRec.Code != http.StatusOK {
+		t.Fatalf("deactivate event type: got %d — %s", patchRec.Code, patchRec.Body.String())
+	}
+
+	// Public ListQuestions must return 404 for inactive types.
+	req := httptest.NewRequest(http.MethodGet, "/v1/event-types/"+slug+"/questions", nil)
+	req.SetPathValue("slug", slug)
+	rec := httptest.NewRecorder()
+	h.ListQuestions(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("public list questions on inactive type: got %d; want 404", rec.Code)
+	}
+}
+
+func TestListQuestionsAdmin_worksOnInactiveEventType(t *testing.T) {
+	h, _, key, _ := setupWorkspaceWithDB(t)
+	slug, _ := seedEventTypeHTTP(t, h, key)
+
+	createQuestion(t, h, slug, key, `{"label":"Name","type":"text"}`)
+
+	// Deactivate the event type.
+	patchReq := authReq(http.MethodPatch, "/v1/event-types/"+slug, `{"is_active":false}`, key)
+	patchReq.SetPathValue("slug", slug)
+	patchRec := httptest.NewRecorder()
+	h.RequireAuth(h.PatchEventType)(patchRec, patchReq)
+	if patchRec.Code != http.StatusOK {
+		t.Fatalf("deactivate event type: got %d — %s", patchRec.Code, patchRec.Body.String())
+	}
+
+	// Admin endpoint must return the question regardless of is_active.
+	req := authReq(http.MethodGet, "/v1/event-types/"+slug+"/questions/admin", "", key)
+	req.SetPathValue("slug", slug)
+	rec := httptest.NewRecorder()
+	h.RequireAuth(h.ListQuestionsAdmin)(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("admin list questions on inactive type: got %d — %s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		Items []struct {
+			Label string `json:"label"`
+		} `json:"items"`
+	}
+	json.Unmarshal(rec.Body.Bytes(), &resp)
+	if len(resp.Items) != 1 {
+		t.Fatalf("got %d items; want 1", len(resp.Items))
+	}
+	if resp.Items[0].Label != "Name" {
+		t.Errorf("label = %q; want 'Name'", resp.Items[0].Label)
+	}
+}

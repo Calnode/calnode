@@ -109,8 +109,9 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	// Slots — public (no auth; event type must be is_public)
 	mux.HandleFunc("GET /v1/event-types/{slug}/slots", h.GetSlots)
 
-	// Intake questions — list is public (for the booking form); CRUD requires auth
+	// Intake questions — public list (booking form); admin list + CRUD require auth
 	mux.HandleFunc("GET /v1/event-types/{slug}/questions", h.ListQuestions)
+	mux.HandleFunc("GET /v1/event-types/{slug}/questions/admin", h.RequireAuth(h.ListQuestionsAdmin))
 	mux.HandleFunc("POST /v1/event-types/{slug}/questions", h.RequireAuth(h.CreateQuestion))
 	mux.HandleFunc("PATCH /v1/event-types/{slug}/questions/{id}", h.RequireAuth(h.UpdateQuestion))
 	mux.HandleFunc("DELETE /v1/event-types/{slug}/questions/{id}", h.RequireAuth(h.DeleteQuestion))

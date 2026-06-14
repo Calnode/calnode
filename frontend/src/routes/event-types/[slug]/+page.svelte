@@ -113,7 +113,7 @@
 	async function loadQuestions() {
 		qError = '';
 		try {
-			const res = await api.get<{ items: Question[] }>(`/v1/event-types/${slug}/questions`);
+			const res = await api.get<{ items: Question[] }>(`/v1/event-types/${slug}/questions/admin`);
 			questions = (res.items ?? []).sort((a, b) => a.position - b.position);
 		} catch (e: any) {
 			qError = e.message;

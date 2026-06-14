@@ -376,3 +376,184 @@ func TestGetSlots_customHoursOverride_limitsSlots(t *testing.T) {
 		}
 	}
 }
+
+// ---------------------------------------------------------------------------
+// UpdateAvailabilityOverride
+// ---------------------------------------------------------------------------
+
+func TestUpdateAvailabilityOverride_updateTimes(t *testing.T) {
+	h, key, _ := setupWorkspace(t)
+
+	_, created := createOverride(t, h, key,
+		`{"date":"2026-08-01","is_available":true,"start_time":"10:00","end_time":"14:00"}`)
+	id, _ := created["id"].(string)
+	if id == "" {
+		t.Fatal("created id is empty")
+	}
+
+	req := authReq(http.MethodPatch, "/v1/availability-overrides/"+id,
+		`{"start_time":"11:00","end_time":"15:00"}`, key)
+	req.SetPathValue("id", id)
+	rec := httptest.NewRecorder()
+	h.RequireAuth(h.UpdateAvailabilityOverride)(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d; want 200 — %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	json.Unmarshal(rec.Body.Bytes(), &resp)
+	if resp["start_time"] != "11:00" {
+		t.Errorf("start_time = %v; want 11:00", resp["start_time"])
+	}
+	if resp["end_time"] != "15:00" {
+		t.Errorf("end_time = %v; want 15:00", resp["end_time"])
+	}
+	if resp["is_available"] != true {
+		t.Errorf("is_available = %v; want true", resp["is_available"])
+	}
+}
+
+func TestUpdateAvailabilityOverride_flipToBlocked(t *testing.T) {
+	h, key, _ := setupWorkspace(t)
+
+	_, created := createOverride(t, h, key,
+		`{"date":"2026-08-02","is_available":true,"start_time":"09:00","end_time":"17:00"}`)
+	id, _ := created["id"].(string)
+	if id == "" {
+		t.Fatal("created id is empty")
+	}
+
+	req := authReq(http.MethodPatch, "/v1/availability-overrides/"+id,
+		`{"is_available":false}`, key)
+	req.SetPathValue("id", id)
+	rec := httptest.NewRecorder()
+	h.RequireAuth(h.UpdateAvailabilityOverride)(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d; want 200 — %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	json.Unmarshal(rec.Body.Bytes(), &resp)
+	if resp["is_available"] != false {
+		t.Errorf("is_available = %v; want false", resp["is_available"])
+	}
+	if resp["start_time"] != nil {
+		t.Errorf("start_time = %v; want null for blocked override", resp["start_time"])
+	}
+	if resp["end_time"] != nil {
+		t.Errorf("end_time = %v; want null for blocked override", resp["end_time"])
+	}
+}
+
+func TestUpdateAvailabilityOverride_flipToAvailable(t *testing.T) {
+	h, key, _ := setupWorkspace(t)
+
+	_, created := createOverride(t, h, key,
+		`{"date":"2026-08-03","is_available":false}`)
+	id, _ := created["id"].(string)
+	if id == "" {
+		t.Fatal("created id is empty")
+	}
+
+	req := authReq(http.MethodPatch, "/v1/availability-overrides/"+id,
+		`{"is_available":true,"start_time":"08:00","end_time":"12:00"}`, key)
+	req.SetPathValue("id", id)
+	rec := httptest.NewRecorder()
+	h.RequireAuth(h.UpdateAvailabilityOverride)(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d; want 200 — %s", rec.Code, rec.Body.String())
+	}
+	var resp map[string]any
+	json.Unmarshal(rec.Body.Bytes(), &resp)
+	if resp["is_available"] != true {
+		t.Errorf("is_available = %v; want true", resp["is_available"])
+	}
+	if resp["start_time"] != "08:00" {
+		t.Errorf("start_time = %v; want 08:00", resp["start_time"])
+	}
+	if resp["end_time"] != "12:00" {
+		t.Errorf("end_time = %v; want 12:00", resp["end_time"])
+	}
+}
+
+func TestUpdateAvailabilityOverride_notFound(t *testing.T) {
+	h, key, _ := setupWorkspace(t)
+
+	req := authReq(http.MethodPatch, "/v1/availability-overrides/does-not-exist",
+		`{"is_available":false}`, key)
+	req.SetPathValue("id", "does-not-exist")
+	rec := httptest.NewRecorder()
+	h.RequireAuth(h.UpdateAvailabilityOverride)(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("status = %d; want 404", rec.Code)
+	}
+}
+
+func TestUpdateAvailabilityOverride_missingTimesWhenAvailable(t *testing.T) {
+	h, key, _ := setupWorkspace(t)
+
+	_, created := createOverride(t, h, key,
+		`{"date":"2026-08-04","is_available":false}`)
+	id, _ := created["id"].(string)
+	if id == "" {
+		t.Fatal("created id is empty")
+	}
+
+	req := authReq(http.MethodPatch, "/v1/availability-overrides/"+id,
+		`{"is_available":true}`, key)
+	req.SetPathValue("id", id)
+	rec := httptest.NewRecorder()
+	h.RequireAuth(h.UpdateAvailabilityOverride)(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d; want 400", rec.Code)
+	}
+}
+
+func TestUpdateAvailabilityOverride_startNotBeforeEnd(t *testing.T) {
+	h, key, _ := setupWorkspace(t)
+
+	_, created := createOverride(t, h, key,
+		`{"date":"2026-08-05","is_available":true,"start_time":"09:00","end_time":"17:00"}`)
+	id, _ := created["id"].(string)
+	if id == "" {
+		t.Fatal("created id is empty")
+	}
+
+	req := authReq(http.MethodPatch, "/v1/availability-overrides/"+id,
+		`{"start_time":"17:00","end_time":"09:00"}`, key)
+	req.SetPathValue("id", id)
+	rec := httptest.NewRecorder()
+	h.RequireAuth(h.UpdateAvailabilityOverride)(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d; want 400", rec.Code)
+	}
+}
+
+func TestUpdateAvailabilityOverride_invalidHHMM(t *testing.T) {
+	h, key, _ := setupWorkspace(t)
+
+	_, created := createOverride(t, h, key,
+		`{"date":"2026-08-06","is_available":true,"start_time":"09:00","end_time":"17:00"}`)
+	id, _ := created["id"].(string)
+	if id == "" {
+		t.Fatal("created id is empty")
+	}
+
+	for _, body := range []string{
+		`{"start_time":"9:00"}`,
+		`{"end_time":"25:00"}`,
+		`{"start_time":"09:0a"}`,
+	} {
+		req := authReq(http.MethodPatch, "/v1/availability-overrides/"+id, body, key)
+		req.SetPathValue("id", id)
+		rec := httptest.NewRecorder()
+		h.RequireAuth(h.UpdateAvailabilityOverride)(rec, req)
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("body %s: status = %d; want 400", body, rec.Code)
+		}
+	}
+}
