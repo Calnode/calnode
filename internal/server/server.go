@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/calnode/calnode/internal/config"
 	"github.com/calnode/calnode/internal/gcal"
@@ -80,8 +81,11 @@ func New(cfg *config.Config, db *sql.DB, logger *slog.Logger) http.Handler {
 	// Slots — public (no auth; event type must be is_public)
 	mux.HandleFunc("GET /v1/event-types/{slug}/slots", h.GetSlots)
 
+	bookingRL := RateLimit(20, time.Minute)
+	manageRL := RateLimit(30, time.Minute)
+
 	// Bookings — create and get are public; list and cancel require auth
-	mux.HandleFunc("POST /v1/bookings", h.CreateBooking)
+	mux.HandleFunc("POST /v1/bookings", bookingRL(h.CreateBooking))
 	mux.HandleFunc("GET /v1/bookings/{id}", h.GetBooking)
 	mux.HandleFunc("GET /v1/bookings", h.RequireAuth(h.ListBookings))
 	mux.HandleFunc("POST /v1/bookings/{id}/cancel", h.RequireAuth(h.CancelBooking))
@@ -90,7 +94,7 @@ func New(cfg *config.Config, db *sql.DB, logger *slog.Logger) http.Handler {
 	mux.HandleFunc("GET /book/{slug}", h.BookPage)
 
 	// Manage booking (reschedule / cancel via token link)
-	mux.HandleFunc("GET /manage/{token}", h.ManagePage)
+	mux.HandleFunc("GET /manage/{token}", manageRL(h.ManagePage))
 	mux.HandleFunc("POST /manage/{token}/reschedule", h.RescheduleByToken)
 	mux.HandleFunc("POST /manage/{token}/cancel", h.CancelByToken)
 
