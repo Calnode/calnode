@@ -126,6 +126,44 @@ func TestSetup_missingFields(t *testing.T) {
 // Auth middleware
 // ---------------------------------------------------------------------------
 
+func TestGetMe_returnsSetupUser(t *testing.T) {
+	h := newTestHandler(t)
+	body := `{"name":"Alice Tester","email":"alice@example.com","timezone":"Pacific/Auckland"}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/setup", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	h.Setup(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("setup: %d — %s", rec.Code, rec.Body.String())
+	}
+	var setup struct {
+		APIKey string `json:"api_key"`
+	}
+	json.Unmarshal(rec.Body.Bytes(), &setup)
+
+	req2 := authReq(http.MethodGet, "/v1/users/me", "", setup.APIKey)
+	rec2 := httptest.NewRecorder()
+	h.RequireAuth(h.GetMe)(rec2, req2)
+
+	if rec2.Code != http.StatusOK {
+		t.Fatalf("get me: %d — %s", rec2.Code, rec2.Body.String())
+	}
+	var me map[string]any
+	json.Unmarshal(rec2.Body.Bytes(), &me)
+	if me["email"] != "alice@example.com" {
+		t.Errorf("email = %v; want alice@example.com", me["email"])
+	}
+	if me["name"] != "Alice Tester" {
+		t.Errorf("name = %v; want Alice Tester", me["name"])
+	}
+	if me["timezone"] != "Pacific/Auckland" {
+		t.Errorf("timezone = %v; want Pacific/Auckland", me["timezone"])
+	}
+	if me["is_admin"] != true {
+		t.Errorf("is_admin = %v; want true", me["is_admin"])
+	}
+}
+
 func TestRequireAuth_noKey(t *testing.T) {
 	h, _, _ := setupWorkspace(t)
 	req := httptest.NewRequest(http.MethodGet, "/v1/users/me", nil)
@@ -276,6 +314,20 @@ func TestPatchEventType(t *testing.T) {
 	}
 }
 
+func TestPatchEventType_emptyNameRejected(t *testing.T) {
+	h, key, _ := setupWorkspace(t)
+	slug, _ := seedEventTypeHTTP(t, h, key)
+
+	req := authReq(http.MethodPatch, "/v1/event-types/"+slug, `{"name":""}`, key)
+	req.SetPathValue("slug", slug)
+	rec := httptest.NewRecorder()
+	h.RequireAuth(h.PatchEventType)(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d; want 400 for empty name", rec.Code)
+	}
+}
+
 func TestDeleteEventType(t *testing.T) {
 	h, key, _ := setupWorkspace(t)
 	slug, _ := seedEventTypeHTTP(t, h, key)
@@ -420,6 +472,20 @@ func TestGetSlots_withRules_returnsSlots(t *testing.T) {
 		if len(resp.Slots[0].HostIDs) != 1 || resp.Slots[0].HostIDs[0] != userID {
 			t.Errorf("host_ids = %v; want [%s]", resp.Slots[0].HostIDs, userID)
 		}
+	}
+}
+
+func TestGetSlots_notFound(t *testing.T) {
+	h, _, _ := setupWorkspace(t)
+
+	req := httptest.NewRequest(http.MethodGet,
+		"/v1/event-types/does-not-exist/slots?from=2026-06-15&to=2026-06-15", nil)
+	req.SetPathValue("slug", "does-not-exist")
+	rec := httptest.NewRecorder()
+	h.GetSlots(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("status = %d; want 404", rec.Code)
 	}
 }
 
