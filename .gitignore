@@ -12,13 +12,18 @@ data/
 *.db-shm
 *.db-wal
 
-# Environment
+# Environment — allow .env.example as a committed template
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
 
 # Go
 vendor/
+*.test
+coverage.out
+*.coverprofile
+*.prof
+__debug_bin
 
 # Editor
 .vscode/
@@ -29,12 +34,14 @@ vendor/
 # OS
 .DS_Store
 Thumbs.db
+desktop.ini
 
 # sqlc generated — committed, but excluded from accidental manual edits
 # (remove this line if you want to exclude generated files from git)
 # internal/db/sqlc/
 
-# Node (admin UI, Phase 1+)
+# Node (admin UI)
 node_modules/
 .svelte-kit/
 build/
+pnpm-debug.log*
