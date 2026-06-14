@@ -63,7 +63,7 @@ async function apiFetch<T>(path: string, opts: RequestInit = {}): Promise<T> {
 	});
 
 	if (res.status === 401) {
-		window.location.href = '/v1/auth/login';
+		window.location.href = '/admin/login';
 		throw new Error('unauthenticated');
 	}
 

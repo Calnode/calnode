@@ -28,13 +28,20 @@ type spaHandler struct {
 
 func (h *spaHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	f, err := h.fs.Open(r.URL.Path)
+	if err == nil {
+		st, statErr := f.Stat()
+		f.Close()
+		// Treat directories as not-found so the SPA shell handles the route
+		// instead of http.FileServer rendering a directory listing.
+		if statErr == nil && st.IsDir() {
+			err = fs.ErrNotExist
+		}
+	}
 	if err != nil {
-		// Serve the SPA shell for all unknown paths.
 		r2 := *r
 		r2.URL.Path = "/200.html"
 		http.FileServer(h.fs).ServeHTTP(w, &r2)
 		return
 	}
-	f.Close()
 	http.FileServer(h.fs).ServeHTTP(w, r)
 }

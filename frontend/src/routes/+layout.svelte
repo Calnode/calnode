@@ -28,7 +28,7 @@
 			const me = await api.get<User>('/v1/users/me');
 			currentUser.set(me);
 		} catch {
-			window.location.href = '/v1/auth/login';
+			window.location.href = '/admin/login';
 			return;
 		}
 		checking = false;

@@ -39,6 +39,11 @@ func (h *Handler) ListAPIKeys(w http.ResponseWriter, r *http.Request) {
 		}
 		items = append(items, item)
 	}
+	if err := rows.Err(); err != nil {
+		h.logger.ErrorContext(r.Context(), "list api keys: rows", "error", err)
+		h.writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
 	h.writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
@@ -57,6 +62,10 @@ func (h *Handler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Name == "" {
 		h.writeError(w, http.StatusBadRequest, "name is required")
+		return
+	}
+	if len(req.Name) > 255 {
+		h.writeError(w, http.StatusBadRequest, "name must be 255 characters or fewer")
 		return
 	}
 
