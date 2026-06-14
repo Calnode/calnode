@@ -89,11 +89,19 @@ func (w *Worker) Run(ctx context.Context) {
 
 // Poll processes one batch of pending jobs. Exported for testing.
 func (w *Worker) Poll(ctx context.Context) {
+	// Reaper: reset running jobs whose lock has expired (process crashed mid-job).
+	now := time.Now().UTC().Format(time.RFC3339)
+	if _, err := w.db.ExecContext(ctx, `
+		UPDATE jobs SET status = 'pending', run_at = ?, last_error = 'recovered after crash'
+		WHERE status = 'running' AND locked_until < ?`, now, now); err != nil {
+		w.logger.Error("worker: reaper", "error", err)
+	}
+
 	rows, err := w.db.QueryContext(ctx, `
 		SELECT id, type, payload, attempts, max_attempts
 		FROM jobs
 		WHERE status = 'pending' AND run_at <= ?
-		LIMIT 10`, time.Now().UTC().Format(time.RFC3339))
+		LIMIT 10`, now)
 	if err != nil {
 		w.logger.Error("worker: poll", "error", err)
 		return
@@ -115,9 +123,11 @@ func (w *Worker) Poll(ctx context.Context) {
 	rows.Close()
 
 	for _, j := range jobs {
+		lockedUntil := time.Now().UTC().Add(30 * time.Second).Format(time.RFC3339)
 		res, err := w.db.ExecContext(ctx,
-			`UPDATE jobs SET status = 'running', attempts = attempts + 1 WHERE id = ? AND status = 'pending'`,
-			j.id)
+			`UPDATE jobs SET status = 'running', attempts = attempts + 1, locked_until = ?
+			 WHERE id = ? AND status = 'pending'`,
+			lockedUntil, j.id)
 		if err != nil {
 			w.logger.Error("worker: claim job", "error", err, "job_id", j.id)
 			continue

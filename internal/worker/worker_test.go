@@ -220,6 +220,72 @@ func TestWorker_respectsBackoff(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Stuck-job reaper
+// ---------------------------------------------------------------------------
+
+func TestWorker_reaperRecoversCrashedJob(t *testing.T) {
+	database, svc := setup(t)
+	ctx := context.Background()
+
+	callCount := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	svc.Create(ctx, "host-01", srv.URL, []string{"booking.created"})
+	svc.Enqueue(ctx, "booking.created", webhook.BookingPayload{HostID: "host-01", Status: "confirmed"})
+
+	// Simulate a crash: manually force the job into 'running' with an expired lock.
+	past := time.Now().UTC().Add(-time.Minute).Format(time.RFC3339)
+	database.ExecContext(ctx,
+		`UPDATE jobs SET status = 'running', locked_until = ? WHERE status = 'pending'`, past)
+
+	var stuckStatus string
+	database.QueryRowContext(ctx, `SELECT status FROM jobs`).Scan(&stuckStatus)
+	if stuckStatus != "running" {
+		t.Fatalf("precondition: job should be running, got %q", stuckStatus)
+	}
+
+	// Poll should reap the expired lock, reset to pending, then process it.
+	w := newWorker(t, database, svc)
+	w.Poll(ctx)
+
+	var finalStatus string
+	database.QueryRowContext(ctx, `SELECT status FROM jobs`).Scan(&finalStatus)
+	if finalStatus != "done" {
+		t.Errorf("job status = %q; want done (reaper recovered and processed it)", finalStatus)
+	}
+	if callCount != 1 {
+		t.Errorf("call count = %d; want 1 (webhook delivered after recovery)", callCount)
+	}
+}
+
+func TestWorker_reaperIgnoresActiveLocks(t *testing.T) {
+	database, svc := setup(t)
+	ctx := context.Background()
+
+	svc.Create(ctx, "host-02", "https://example.com/hook", []string{"booking.created"})
+	svc.Enqueue(ctx, "booking.created", webhook.BookingPayload{HostID: "host-02", Status: "confirmed"})
+
+	// Simulate an in-flight job: locked_until is in the future.
+	future := time.Now().UTC().Add(time.Minute).Format(time.RFC3339)
+	database.ExecContext(ctx,
+		`UPDATE jobs SET status = 'running', locked_until = ? WHERE status = 'pending'`, future)
+
+	w := newWorker(t, database, svc)
+	w.Poll(ctx)
+
+	// Job must still be running — reaper must not have touched it.
+	var status string
+	database.QueryRowContext(ctx, `SELECT status FROM jobs`).Scan(&status)
+	if status != "running" {
+		t.Errorf("job status = %q; want running (active lock must not be reaped)", status)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Deleted webhook — job is silently completed
 // ---------------------------------------------------------------------------
 
