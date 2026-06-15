@@ -11,6 +11,7 @@
 	import { Switch } from '$lib/components/ui/switch';
 	import * as Tooltip from '$lib/components/ui/tooltip';
 	import { toast } from 'svelte-sonner';
+	import { saveOnCmdS } from '$lib/save-shortcut';
 
 	const LOCATION_TYPES = [
 		{ value: 'link',         label: 'Video link (custom)' },
@@ -269,6 +270,7 @@
 </script>
 
 <svelte:head><title>{et?.name ?? slug} — Event Type — Calnode</title></svelte:head>
+<svelte:window onkeydown={saveOnCmdS(saveET, () => !etSaving)} />
 
 <div class="mb-8">
 	<a href="{base}/event-types" class="mb-2 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">

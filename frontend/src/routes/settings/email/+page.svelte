@@ -7,6 +7,7 @@
 	import { Label } from '$lib/components/ui/label';
 	import { Switch } from '$lib/components/ui/switch';
 	import { toast } from 'svelte-sonner';
+	import { saveOnCmdS } from '$lib/save-shortcut';
 
 	let loading = $state(true);
 	let saving = $state(false);
@@ -79,6 +80,8 @@
 		}
 	}
 </script>
+
+<svelte:window onkeydown={saveOnCmdS(save, () => !saving)} />
 
 {#if !$currentUser?.is_admin}
 	<p class="text-sm text-muted-foreground">Admin access required.</p>

@@ -7,6 +7,7 @@
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
 	import { toast } from 'svelte-sonner';
+	import { saveOnCmdS } from '$lib/save-shortcut';
 
 	let user: User | null = $state(null);
 	let loading = $state(true);
@@ -87,6 +88,8 @@
 
 	const selectCls = 'flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring';
 </script>
+
+<svelte:window onkeydown={saveOnCmdS(save, () => !saving)} />
 
 {#if loading}
 	<p class="py-8 text-sm text-muted-foreground">Loading…</p>

@@ -6,6 +6,7 @@
 	import { Label } from '$lib/components/ui/label';
 	import { Switch } from '$lib/components/ui/switch';
 	import { toast } from 'svelte-sonner';
+	import { saveOnCmdS } from '$lib/save-shortcut';
 
 	let loading = $state(true);
 	let saving = $state(false);
@@ -51,6 +52,8 @@
 		}
 	}
 </script>
+
+<svelte:window onkeydown={saveOnCmdS(save, () => !saving)} />
 
 {#if loading}
 	<p class="py-8 text-sm text-muted-foreground">Loading…</p>
