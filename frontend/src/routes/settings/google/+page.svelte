@@ -5,11 +5,10 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
+	import { toast } from 'svelte-sonner';
 
 	let loading = $state(true);
 	let saving = $state(false);
-	let saved = $state(false);
-	let error = $state('');
 
 	let googleSettings: GoogleSettings | null = $state(null);
 	let clientID = $state('');
@@ -20,7 +19,7 @@
 			googleSettings = await api.get<GoogleSettings>('/v1/settings/google');
 			clientID = googleSettings.client_id;
 		} catch (e: any) {
-			error = e.message;
+			toast.error(e.message || 'Could not load Google settings');
 		} finally {
 			loading = false;
 		}
@@ -28,17 +27,14 @@
 
 	async function save() {
 		saving = true;
-		saved = false;
-		error = '';
 		try {
 			const body: Record<string, unknown> = { client_id: clientID };
 			if (clientSecret) body.client_secret = clientSecret;
 			googleSettings = await api.patch<GoogleSettings>('/v1/settings/google', body);
 			clientSecret = '';
-			saved = true;
-			setTimeout(() => (saved = false), 5000);
+			toast.success('Saved — go to Calendar to connect your account');
 		} catch (e: any) {
-			error = e.message;
+			toast.error(e.message || 'Could not save Google settings');
 		} finally {
 			saving = false;
 		}
@@ -48,9 +44,6 @@
 {#if !$currentUser?.is_admin}
 	<p class="text-sm text-muted-foreground">Admin access required.</p>
 {:else}
-
-{#if error}<p class="mb-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>{/if}
-{#if saved}<p class="mb-4 rounded-md bg-green-50 px-3 py-2 text-sm text-green-700">Saved. Google OAuth is now active — go to <a href="/admin/calendar" class="underline font-medium">Calendar</a> to connect your account.</p>{/if}
 
 {#if loading}
 	<p class="py-8 text-sm text-muted-foreground">Loading…</p>

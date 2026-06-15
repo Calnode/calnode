@@ -7,22 +7,21 @@
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
 	import * as Tooltip from '$lib/components/ui/tooltip';
+	import { toast } from 'svelte-sonner';
 
 	let items: EventType[] = $state([]);
 	let loading = $state(true);
-	let error = $state('');
 	let showCreate = $state(false);
 
 	let form = $state({ slug: '', name: '', description: '', duration_minutes: 30 });
 	let creating = $state(false);
-	let createError = $state('');
 
 	async function load() {
 		try {
 			const res = await api.get<{ items: EventType[] }>('/v1/event-types');
 			items = res.items;
 		} catch (e: any) {
-			error = e.message;
+			toast.error(e.message || 'Could not load event types');
 		} finally {
 			loading = false;
 		}
@@ -31,9 +30,8 @@
 	onMount(load);
 
 	async function create() {
-		createError = '';
 		if (!form.slug || !form.name || !form.duration_minutes) {
-			createError = 'Slug, name, and duration are required.';
+			toast.error('Slug, name, and duration are required.');
 			return;
 		}
 		creating = true;
@@ -48,7 +46,7 @@
 			showCreate = false;
 			await load();
 		} catch (e: any) {
-			createError = e.message;
+			toast.error(e.message || 'Could not create event type');
 		} finally {
 			creating = false;
 		}
@@ -59,7 +57,7 @@
 			await api.patch(`/v1/event-types/${et.slug}`, { is_active: newActive });
 		} catch (e: any) {
 			et.is_active = !newActive; // revert optimistic update
-			error = e.message;
+			toast.error(e.message || 'Could not update status');
 		}
 	}
 
@@ -69,7 +67,7 @@
 			await api.del(`/v1/event-types/${slug}`);
 			await load();
 		} catch (e: any) {
-			error = e.message;
+			toast.error(e.message || 'Could not delete event type');
 		}
 	}
 
@@ -85,7 +83,7 @@
 		<h1 class="text-2xl font-semibold tracking-tight">Event Types</h1>
 		<p class="mt-1 text-sm text-muted-foreground">Manage the types of meetings people can book with you.</p>
 	</div>
-	<Button onclick={() => { showCreate = !showCreate; createError = ''; }}>
+	<Button onclick={() => { showCreate = !showCreate; }}>
 		{showCreate ? 'Cancel' : 'New event type'}
 	</Button>
 </div>
@@ -93,7 +91,6 @@
 {#if showCreate}
 	<div class="mb-6 rounded-lg border bg-card p-6">
 		<h2 class="mb-4 text-sm font-semibold">New event type</h2>
-		{#if createError}<p class="mb-3 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{createError}</p>{/if}
 		<div class="mb-4 grid grid-cols-2 gap-4">
 			<div class="space-y-1.5">
 				<Label for="et-name">Name</Label>
@@ -117,8 +114,6 @@
 		</Button>
 	</div>
 {/if}
-
-{#if error}<p class="mb-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>{/if}
 
 {#if loading}
 	<p class="py-8 text-sm text-muted-foreground">Loading…</p>

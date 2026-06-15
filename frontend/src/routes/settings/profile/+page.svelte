@@ -6,12 +6,11 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
+	import { toast } from 'svelte-sonner';
 
 	let user: User | null = $state(null);
 	let loading = $state(true);
 	let saving = $state(false);
-	let saved = $state(false);
-	let error = $state('');
 	let uploading = $state(false);
 	let avatarUrl = $state('');
 	let fileInput: HTMLInputElement | undefined = $state(undefined);
@@ -30,7 +29,7 @@
 			date_format = user.date_format ?? 'dmy';
 			avatarUrl = user.avatar_url ?? '';
 		} catch (e: any) {
-			error = e.message;
+			toast.error(e.message || 'Could not load profile');
 		} finally {
 			loading = false;
 		}
@@ -41,14 +40,13 @@
 		const data = new FormData();
 		data.append('avatar', fileInput.files[0]);
 		uploading = true;
-		error = '';
 		try {
 			const res = await api.postForm<{ avatar_url: string }>('/v1/users/me/avatar', data);
 			avatarUrl = res.avatar_url;
 			const updated = await api.get<User>('/v1/users/me');
 			currentUser.set(updated);
 		} catch (e: any) {
-			error = e.message;
+			toast.error(e.message || 'Could not upload avatar');
 		} finally {
 			uploading = false;
 			if (fileInput) fileInput.value = '';
@@ -56,21 +54,18 @@
 	}
 
 	async function removeAvatar() {
-		error = '';
 		try {
 			await api.del('/v1/users/me/avatar');
 			avatarUrl = '';
 			const updated = await api.get<User>('/v1/users/me');
 			currentUser.set(updated);
 		} catch (e: any) {
-			error = e.message;
+			toast.error(e.message || 'Could not remove avatar');
 		}
 	}
 
 	async function save() {
 		saving = true;
-		saved = false;
-		error = '';
 		try {
 			const updated = await api.patch<User>('/v1/users/me', {
 				timezone, time_format, week_start, date_format,
@@ -78,10 +73,9 @@
 			currentUser.set(updated);
 			prefs.set(prefsFromUser(updated));
 			user = updated;
-			saved = true;
-			setTimeout(() => (saved = false), 3000);
+			toast.success('Settings saved');
 		} catch (e: any) {
-			error = e.message;
+			toast.error(e.message || 'Could not save settings');
 		} finally {
 			saving = false;
 		}
@@ -93,9 +87,6 @@
 
 	const selectCls = 'flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring';
 </script>
-
-{#if error}<p class="mb-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>{/if}
-{#if saved}<p class="mb-4 rounded-md bg-green-50 px-3 py-2 text-sm text-green-700">Settings saved.</p>{/if}
 
 {#if loading}
 	<p class="py-8 text-sm text-muted-foreground">Loading…</p>

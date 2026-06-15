@@ -176,24 +176,20 @@
 	// ── Intake questions ──────────────────────────────────────────────────────────
 	let questions: Question[] = $state([]);
 	let qLoading = $state(true);
-	let qError = $state('');
 
 	let qForm = $state({ label: '', type: 'text' as 'text'|'select'|'checkbox', options: '', required: false });
 	let qAdding = $state(false);
-	let qAddError = $state('');
 
 	let editingQId: string | null = $state(null);
 	let editQForm = $state({ label: '', type: 'text' as 'text'|'select'|'checkbox', options: '', required: false });
 	let qSaving = $state(false);
-	let qSaveError = $state('');
 
 	async function loadQuestions() {
-		qError = '';
 		try {
 			const res = await api.get<{ items: Question[] }>(`/v1/event-types/${slug}/questions/admin`);
 			questions = (res.items ?? []).sort((a, b) => a.position - b.position);
 		} catch (e: any) {
-			qError = e.message;
+			toast.error(e.message || 'Could not load questions');
 		} finally {
 			qLoading = false;
 		}
@@ -204,10 +200,9 @@
 	}
 
 	async function addQuestion() {
-		qAddError = '';
-		if (!qForm.label.trim()) { qAddError = 'Label is required.'; return; }
+		if (!qForm.label.trim()) { toast.error('Label is required.'); return; }
 		if (qForm.type === 'select' && optionsArray(qForm.options).length === 0) {
-			qAddError = 'At least one option is required for dropdown questions.'; return;
+			toast.error('At least one option is required for dropdown questions.'); return;
 		}
 		qAdding = true;
 		try {
@@ -220,7 +215,7 @@
 			qForm = { label: '', type: 'text', options: '', required: false };
 			await loadQuestions();
 		} catch (e: any) {
-			qAddError = e.message;
+			toast.error(e.message || 'Could not add question');
 		} finally {
 			qAdding = false;
 		}
@@ -229,16 +224,14 @@
 	function startEditQ(q: Question) {
 		editingQId = q.id;
 		editQForm = { label: q.label, type: q.type, options: (q.options ?? []).join('\n'), required: q.required };
-		qSaveError = '';
 	}
 
-	function cancelEditQ() { editingQId = null; qSaveError = ''; }
+	function cancelEditQ() { editingQId = null; }
 
 	async function saveQuestion(q: Question) {
-		qSaveError = '';
-		if (!editQForm.label.trim()) { qSaveError = 'Label is required.'; return; }
+		if (!editQForm.label.trim()) { toast.error('Label is required.'); return; }
 		if (editQForm.type === 'select' && optionsArray(editQForm.options).length === 0) {
-			qSaveError = 'At least one option is required.'; return;
+			toast.error('At least one option is required.'); return;
 		}
 		qSaving = true;
 		try {
@@ -251,7 +244,7 @@
 			editingQId = null;
 			await loadQuestions();
 		} catch (e: any) {
-			qSaveError = e.message;
+			toast.error(e.message || 'Could not save question');
 		} finally {
 			qSaving = false;
 		}
@@ -263,7 +256,7 @@
 			await api.del(`/v1/event-types/${slug}/questions/${q.id}`);
 			await loadQuestions();
 		} catch (e: any) {
-			qError = e.message;
+			toast.error(e.message || 'Could not delete question');
 		}
 	}
 
@@ -521,8 +514,6 @@
 	<p class="mb-3 text-sm text-muted-foreground">Collect information from attendees when they book.</p>
 
 	<div class="rounded-lg border bg-card">
-		{#if qError}<p class="px-4 pt-4 text-sm text-destructive">{qError}</p>{/if}
-
 		{#if qLoading}
 			<p class="px-4 py-4 text-sm text-muted-foreground">Loading…</p>
 		{:else if questions.length > 0}
@@ -566,7 +557,6 @@
 											<Label for="eq-required-{q.id}" class="cursor-pointer font-normal">Required</Label>
 										</div>
 									</div>
-									{#if qSaveError}<p class="mt-2 text-xs text-destructive">{qSaveError}</p>{/if}
 								</td>
 								<td class="px-4 py-3 align-top">
 									<div class="flex items-center justify-end gap-2 pt-5">
@@ -629,7 +619,6 @@
 
 		<!-- Add question form -->
 		<div class="border-t px-4 py-4">
-			{#if qAddError}<p class="mb-3 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{qAddError}</p>{/if}
 			<div class="grid grid-cols-2 gap-3">
 				<div class="space-y-1.5">
 					<Label for="q-label">Label</Label>

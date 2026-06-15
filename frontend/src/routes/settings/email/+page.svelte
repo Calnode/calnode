@@ -6,14 +6,11 @@
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
 	import { Switch } from '$lib/components/ui/switch';
+	import { toast } from 'svelte-sonner';
 
 	let loading = $state(true);
 	let saving = $state(false);
-	let saved = $state(false);
-	let error = $state('');
 	let testing = $state(false);
-	let testSent = $state(false);
-	let testError = $state('');
 
 	let emailSettings: EmailSettings | null = $state(null);
 	let smtpHost = $state('');
@@ -43,7 +40,7 @@
 			emailFrom = email.email_from;
 			emailFromName = email.email_from_name || 'Calnode';
 		} catch (e: any) {
-			error = e.message;
+			toast.error(e.message || 'Could not load email settings');
 		} finally {
 			loading = false;
 		}
@@ -51,8 +48,6 @@
 
 	async function save() {
 		saving = true;
-		saved = false;
-		error = '';
 		try {
 			const body: Record<string, unknown> = {
 				smtp_host: smtpHost, smtp_port: smtpPort, smtp_user: smtpUser,
@@ -62,10 +57,9 @@
 			if (smtpPass) body.smtp_pass = smtpPass;
 			emailSettings = await api.patch<EmailSettings>('/v1/settings/email', body);
 			smtpPass = '';
-			saved = true;
-			setTimeout(() => (saved = false), 4000);
+			toast.success('Email settings saved');
 		} catch (e: any) {
-			error = e.message;
+			toast.error(e.message || 'Could not save email settings');
 		} finally {
 			saving = false;
 		}
@@ -73,16 +67,13 @@
 
 	async function test() {
 		testing = true;
-		testSent = false;
-		testError = '';
 		try {
 			await api.post('/v1/settings/email/test');
-			testSent = true;
-			setTimeout(() => (testSent = false), 6000);
+			toast.success(`Test email sent to ${userEmail}`);
 		} catch (e: any) {
-			testError = e.message === 'Email is not configured — save SMTP settings first'
+			toast.error(e.message === 'Email is not configured — save SMTP settings first'
 				? 'Save your settings first, then try again.'
-				: e.message;
+				: (e.message || 'Could not send test email'));
 		} finally {
 			testing = false;
 		}
@@ -92,9 +83,6 @@
 {#if !$currentUser?.is_admin}
 	<p class="text-sm text-muted-foreground">Admin access required.</p>
 {:else}
-
-{#if error}<p class="mb-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>{/if}
-{#if saved}<p class="mb-4 rounded-md bg-green-50 px-3 py-2 text-sm text-green-700">Email settings saved.</p>{/if}
 
 {#if loading}
 	<p class="py-8 text-sm text-muted-foreground">Loading…</p>
@@ -179,12 +167,6 @@
 				<Button variant="outline" onclick={test} disabled={testing || !emailSettings?.enabled}>
 					{testing ? 'Sending…' : 'Send test email'}
 				</Button>
-				{#if testSent}
-					<span class="text-sm text-green-700">Test email sent to {userEmail}</span>
-				{/if}
-				{#if testError}
-					<span class="text-sm text-destructive">{testError}</span>
-				{/if}
 			</div>
 		</div>
 	</div>

@@ -5,11 +5,10 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Label } from '$lib/components/ui/label';
 	import { Switch } from '$lib/components/ui/switch';
+	import { toast } from 'svelte-sonner';
 
 	let loading = $state(true);
 	let saving = $state(false);
-	let saved = $state(false);
-	let error = $state('');
 
 	let notify_confirmation = $state(true);
 	let notify_cancellation = $state(true);
@@ -30,7 +29,7 @@
 			notify_host_cancel = user.notify_host_cancel ?? true;
 			notify_host_reschedule = user.notify_host_reschedule ?? true;
 		} catch (e: any) {
-			error = e.message;
+			toast.error(e.message || 'Could not load preferences');
 		} finally {
 			loading = false;
 		}
@@ -38,26 +37,20 @@
 
 	async function save() {
 		saving = true;
-		saved = false;
-		error = '';
 		try {
 			const updated = await api.patch<User>('/v1/users/me', {
 				notify_confirmation, notify_cancellation, notify_reschedule, notify_reminder,
 				notify_host_booking, notify_host_cancel, notify_host_reschedule,
 			});
 			currentUser.set(updated);
-			saved = true;
-			setTimeout(() => (saved = false), 3000);
+			toast.success('Preferences saved');
 		} catch (e: any) {
-			error = e.message;
+			toast.error(e.message || 'Could not save preferences');
 		} finally {
 			saving = false;
 		}
 	}
 </script>
-
-{#if error}<p class="mb-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>{/if}
-{#if saved}<p class="mb-4 rounded-md bg-green-50 px-3 py-2 text-sm text-green-700">Notification preferences saved.</p>{/if}
 
 {#if loading}
 	<p class="py-8 text-sm text-muted-foreground">Loading…</p>
