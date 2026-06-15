@@ -2,10 +2,12 @@ package handler
 
 import (
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
 
+	"github.com/calnode/calnode/internal/gcal"
 	"github.com/calnode/calnode/internal/secret"
 )
 
@@ -65,7 +67,8 @@ func (h *Handler) GetGoogleSettings(w http.ResponseWriter, r *http.Request) {
 }
 
 // PatchGoogleSettings handles PATCH /v1/settings/google (admin only).
-// Saves credentials to the DB. A server restart is required for them to take effect.
+// Saves credentials to the DB and hot-reloads the gcal and Google auth clients
+// so changes take effect immediately without a server restart.
 // If client_secret is omitted or empty the existing stored secret is kept.
 func (h *Handler) PatchGoogleSettings(w http.ResponseWriter, r *http.Request) {
 	user, ok := userFromContext(r.Context())
@@ -110,5 +113,32 @@ func (h *Handler) PatchGoogleSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+
+	// Hot-reload: resolve the active secret and reinitialise gcal + Google auth
+	// so changes take effect without a server restart.
+	resolvedSecret := req.ClientSecret
+	if resolvedSecret == "" && req.ClientID != "" {
+		var secretEnc string
+		if err := h.db.QueryRowContext(r.Context(),
+			`SELECT google_client_secret_enc FROM server_settings WHERE id = 1`).
+			Scan(&secretEnc); err == nil && secretEnc != "" {
+			resolvedSecret, _ = secret.Decrypt(h.encKey, secretEnc)
+		}
+	}
+
+	if req.ClientID != "" && resolvedSecret != "" {
+		encKeyHex := hex.EncodeToString(h.encKey[:])
+		if gc, err := gcal.New(h.db, req.ClientID, resolvedSecret, h.baseURL+"/v1/calendar/callback", encKeyHex); err != nil {
+			h.logger.ErrorContext(r.Context(), "google settings: hot-reload gcal failed", "error", err)
+		} else {
+			h.SetCalendar(gc)
+		}
+		h.SetGoogleAuth(req.ClientID, resolvedSecret, h.baseURL+"/v1/auth/callback", h.secureCookie)
+		h.logger.Info("google settings: credentials updated and gcal hot-reloaded")
+	} else if req.ClientID == "" {
+		h.SetCalendar(nil)
+		h.googleAuth = nil
+	}
+
 	h.GetGoogleSettings(w, r)
 }
