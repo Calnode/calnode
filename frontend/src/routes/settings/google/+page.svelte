@@ -1,0 +1,103 @@
+<script lang="ts">
+	import { onMount } from 'svelte';
+	import { api, type GoogleSettings } from '$lib/api';
+	import { currentUser } from '$lib/stores';
+	import { Button } from '$lib/components/ui/button';
+	import { Input } from '$lib/components/ui/input';
+	import { Label } from '$lib/components/ui/label';
+
+	let loading = $state(true);
+	let saving = $state(false);
+	let saved = $state(false);
+	let error = $state('');
+
+	let googleSettings: GoogleSettings | null = $state(null);
+	let clientID = $state('');
+	let clientSecret = $state('');
+
+	onMount(async () => {
+		try {
+			googleSettings = await api.get<GoogleSettings>('/v1/settings/google');
+			clientID = googleSettings.client_id;
+		} catch (e: any) {
+			error = e.message;
+		} finally {
+			loading = false;
+		}
+	});
+
+	async function save() {
+		saving = true;
+		saved = false;
+		error = '';
+		try {
+			const body: Record<string, unknown> = { client_id: clientID };
+			if (clientSecret) body.client_secret = clientSecret;
+			googleSettings = await api.patch<GoogleSettings>('/v1/settings/google', body);
+			clientSecret = '';
+			saved = true;
+			setTimeout(() => (saved = false), 6000);
+		} catch (e: any) {
+			error = e.message;
+		} finally {
+			saving = false;
+		}
+	}
+</script>
+
+{#if !$currentUser?.is_admin}
+	<p class="text-sm text-muted-foreground">Admin access required.</p>
+{:else}
+
+{#if error}<p class="mb-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>{/if}
+{#if saved}<p class="mb-4 rounded-md bg-green-50 px-3 py-2 text-sm text-green-700">Saved. Restart the server for changes to take effect.</p>{/if}
+
+{#if loading}
+	<p class="py-8 text-sm text-muted-foreground">Loading…</p>
+{:else}
+	<div class="max-w-lg">
+		<div class="rounded-lg border bg-card p-6">
+			<div class="mb-4 flex items-start justify-between gap-2">
+				<div>
+					<h2 class="text-sm font-semibold">Google OAuth</h2>
+					<p class="mt-0.5 text-xs text-muted-foreground">Enables Google sign-in and Google Calendar integration.</p>
+				</div>
+				{#if googleSettings !== null}
+					<span class="flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium {googleSettings.configured ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'}">
+						<span class="h-1.5 w-1.5 rounded-full {googleSettings.configured ? 'bg-green-500' : 'bg-amber-400'}"></span>
+						{googleSettings.configured ? 'Configured' : 'Not configured'}
+					</span>
+				{/if}
+			</div>
+
+			<div class="space-y-3">
+				<div class="space-y-1.5">
+					<Label for="g-client-id">Client ID</Label>
+					<Input id="g-client-id" type="text" placeholder="123456789-abc.apps.googleusercontent.com" bind:value={clientID} />
+				</div>
+				<div class="space-y-1.5">
+					<Label for="g-client-secret">Client Secret</Label>
+					<Input id="g-client-secret" type="password"
+						placeholder={googleSettings?.client_secret_set ? '•••••••• (stored)' : 'Enter client secret'}
+						bind:value={clientSecret} />
+					{#if googleSettings?.client_secret_set && !clientSecret}
+						<p class="text-xs text-muted-foreground">Stored — leave blank to keep it.</p>
+					{/if}
+				</div>
+			</div>
+
+			<p class="mt-3 text-xs text-muted-foreground">
+				Create credentials at <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" class="underline">console.cloud.google.com</a>.
+				Add <code class="font-mono">http://localhost:3000/v1/calendar/callback</code> as an authorised redirect URI.
+			</p>
+
+			<div class="mt-5">
+				<Button onclick={save} disabled={saving}>
+					{saving ? 'Saving…' : 'Save'}
+				</Button>
+			</div>
+		</div>
+	</div>
+{/if}
+
+{/if}
