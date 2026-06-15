@@ -96,7 +96,7 @@
 	<div class="rounded-lg border bg-card divide-y">
 		<!-- Calendar -->
 		<a
-			href="{base}/calendar"
+			href="{base}/{calendarConfigured ? 'calendar' : 'settings/google'}"
 			class="flex items-start gap-4 px-5 py-4 transition-colors hover:bg-muted/40 group"
 		>
 			<div class="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2
