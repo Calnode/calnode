@@ -1,6 +1,19 @@
 # syntax=docker/dockerfile:1
 
-# ── Build stage ───────────────────────────────────────────────────────────────
+# ── Frontend build stage ───────────────────────────────────────────────────────
+FROM node:22-alpine AS frontend-builder
+
+RUN corepack enable && corepack prepare pnpm@latest --activate
+
+WORKDIR /app
+
+COPY frontend/package.json frontend/pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
+
+COPY frontend/ .
+RUN pnpm build
+
+# ── Go build stage ─────────────────────────────────────────────────────────────
 FROM golang:1.26-alpine AS builder
 
 RUN apk add --no-cache ca-certificates wget
@@ -11,6 +24,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
+COPY --from=frontend-builder /app/build ./frontend/build
 
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
     -ldflags="-s -w" \

@@ -39,5 +39,4 @@ calnode.exe
 **/node_modules
 **/.svelte-kit
 **/build
-!frontend/build
 fly.toml
