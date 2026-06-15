@@ -184,6 +184,33 @@ func TestBookPage_locationLabels(t *testing.T) {
 	}
 }
 
+func TestBookPage_rendersIntakeQuestions(t *testing.T) {
+	h, _, key, _ := setupWorkspaceWithDB(t)
+	slug, _ := seedEventTypeHTTP(t, h, key)
+
+	createQuestion(t, h, slug, key, `{"label":"What are your goals?","type":"text","required":true}`)
+	createQuestion(t, h, slug, key, `{"label":"Agree to terms","type":"checkbox"}`)
+
+	req := httptest.NewRequest(http.MethodGet, "/book/"+slug, nil)
+	req.SetPathValue("slug", slug)
+	rec := httptest.NewRecorder()
+	h.BookPage(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("BookPage: %d — %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "What are your goals?") {
+		t.Error("page body missing text question label")
+	}
+	if !strings.Contains(body, "Agree to terms") {
+		t.Error("page body missing checkbox question label")
+	}
+	if !strings.Contains(body, "required-star") {
+		t.Error("page body missing required-star for required field")
+	}
+}
+
 func TestBookPage_maxFutureDays0(t *testing.T) {
 	h, apiKey, _ := setupWorkspace(t)
 	slug := "zero-days"

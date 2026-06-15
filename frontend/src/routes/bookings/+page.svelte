@@ -21,6 +21,26 @@
 	let rescheduling = $state(false);
 	let rescheduleError = $state('');
 
+	type AnswerItem = { label: string; type: string; value: string };
+	let expandedId: string | null = $state(null);
+	let answersCache: Record<string, AnswerItem[]> = $state({});
+	let answersLoading: Record<string, boolean> = $state({});
+
+	async function toggleExpand(id: string) {
+		if (expandedId === id) { expandedId = null; return; }
+		expandedId = id;
+		if (answersCache[id] === undefined) {
+			answersLoading[id] = true;
+			try {
+				const res = await api.get<{ items: AnswerItem[] }>(`/v1/bookings/${id}/answers`);
+				answersCache[id] = res.items ?? [];
+			} catch {
+				answersCache[id] = [];
+			}
+			answersLoading[id] = false;
+		}
+	}
+
 	async function load() {
 		try {
 			const res = await api.get<{ items: Booking[] }>('/v1/bookings');
@@ -155,9 +175,25 @@
 							{/if}
 						</td>
 						<td class="px-4 py-3">
-							{#if b.status === 'confirmed'}
-								<Tooltip.Provider>
-									<div class="flex items-center justify-end gap-1">
+							<Tooltip.Provider>
+								<div class="flex items-center justify-end gap-1">
+									<Tooltip.Root>
+										<Tooltip.Trigger
+											class={buttonVariants({ variant: 'ghost', size: 'icon' })}
+											onclick={() => toggleExpand(b.id)}
+											aria-expanded={expandedId === b.id}
+										>
+											<svg
+												xmlns="http://www.w3.org/2000/svg" width="16" height="16"
+												viewBox="0 0 24 24" fill="none" stroke="currentColor"
+												stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+												style="transition:transform .15s;transform:rotate({expandedId === b.id ? 180 : 0}deg)"
+											><polyline points="6 9 12 15 18 9"/></svg>
+										</Tooltip.Trigger>
+										<Tooltip.Content>{expandedId === b.id ? 'Hide responses' : 'Show responses'}</Tooltip.Content>
+									</Tooltip.Root>
+
+									{#if b.status === 'confirmed'}
 										{#if reschedulingId === b.id}
 											<Button variant="outline" size="sm" onclick={cancelReschedule}>
 												Cancel reschedule
@@ -168,7 +204,6 @@
 													class={buttonVariants({ variant: 'ghost', size: 'icon' })}
 													onclick={() => startReschedule(b)}
 												>
-													<!-- Calendar icon -->
 													<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
 												</Tooltip.Trigger>
 												<Tooltip.Content>Reschedule</Tooltip.Content>
@@ -179,17 +214,46 @@
 													class={buttonVariants({ variant: 'ghost', size: 'icon' })}
 													onclick={() => cancel(b.id)}
 												>
-													<!-- X/cancel icon -->
 													<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
 												</Tooltip.Trigger>
 												<Tooltip.Content>Cancel booking</Tooltip.Content>
 											</Tooltip.Root>
 										{/if}
-									</div>
-								</Tooltip.Provider>
-							{/if}
+									{/if}
+								</div>
+							</Tooltip.Provider>
 						</td>
 					</tr>
+
+					{#if expandedId === b.id}
+						<tr>
+							<td colspan="5" class="p-0">
+								<div class="border-t bg-muted/20 px-4 py-3">
+									<p class="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Intake responses</p>
+									{#if answersLoading[b.id]}
+										<p class="text-sm text-muted-foreground">Loading…</p>
+									{:else if !answersCache[b.id] || answersCache[b.id].length === 0}
+										<p class="text-sm text-muted-foreground">No intake responses for this booking.</p>
+									{:else}
+										<dl class="space-y-2">
+											{#each answersCache[b.id] as a}
+												<div class="flex gap-4 text-sm">
+													<dt class="w-48 shrink-0 font-medium text-foreground">{a.label}</dt>
+													<dd class="text-muted-foreground">
+														{#if a.type === 'checkbox'}
+															{a.value === 'yes' ? 'Yes' : 'No'}
+														{:else}
+															{a.value || '—'}
+														{/if}
+													</dd>
+												</div>
+											{/each}
+										</dl>
+									{/if}
+								</div>
+							</td>
+						</tr>
+					{/if}
 
 					{#if reschedulingId === b.id}
 						<tr>

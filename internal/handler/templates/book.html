@@ -185,6 +185,24 @@ body {
 .btn-primary:disabled { opacity: .5; cursor: default; }
 .form-error { font-size: .8125rem; color: #dc2626; margin-top: .375rem; min-height: 1.2em; }
 
+.field select {
+  padding: .55rem .75rem;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: .875rem;
+  color: #111827;
+  outline: none;
+  background: #fff;
+  width: 100%;
+  cursor: pointer;
+  transition: border-color .12s;
+}
+.field select:focus { border-color: #111827; }
+.field-checkbox { display: flex; align-items: center; gap: .5rem; margin-top: .25rem; }
+.field-checkbox input[type="checkbox"] { width: 15px; height: 15px; flex-shrink: 0; margin: 0; cursor: pointer; }
+.field-checkbox label { font-size: .875rem; color: #374151; margin: 0; cursor: pointer; }
+.required-star { color: #dc2626; }
+
 /* Confirmation */
 .confirm-icon {
   width: 48px; height: 48px;
@@ -292,6 +310,25 @@ body {
           <label for="f-email">Email</label>
           <input id="f-email" name="email" type="email" required autocomplete="email" placeholder="you@example.com">
         </div>
+        {{range .Questions}}
+        <div class="field" data-qid="{{.ID}}" data-required="{{if .Required}}true{{else}}false{{end}}">
+          {{if eq .QType "checkbox"}}
+          <div class="field-checkbox">
+            <input id="ans-{{.ID}}" name="ans-{{.ID}}" type="checkbox">
+            <label for="ans-{{.ID}}">{{.Label}}{{if .Required}} <span class="required-star">*</span>{{end}}</label>
+          </div>
+          {{else if eq .QType "select"}}
+          <label for="ans-{{.ID}}">{{.Label}}{{if .Required}} <span class="required-star">*</span>{{end}}</label>
+          <select id="ans-{{.ID}}" name="ans-{{.ID}}"{{if .Required}} required{{end}}>
+            <option value="">Choose an option</option>
+            {{range .Options}}<option value="{{.}}">{{.}}</option>{{end}}
+          </select>
+          {{else}}
+          <label for="ans-{{.ID}}">{{.Label}}{{if .Required}} <span class="required-star">*</span>{{end}}</label>
+          <input id="ans-{{.ID}}" name="ans-{{.ID}}" type="text"{{if .Required}} required{{end}}>
+          {{end}}
+        </div>
+        {{end}}
         <p id="form-error" class="form-error" role="alert"></p>
         <button type="submit" id="submit-btn" class="btn-primary">Confirm booking</button>
       </form>
@@ -469,6 +506,26 @@ body {
       return;
     }
 
+    // Collect intake question answers and validate required fields.
+    const answers = [];
+    const qEls = document.querySelectorAll('[data-qid]');
+    for (let i = 0; i < qEls.length; i++) {
+      const el = qEls[i];
+      const input = el.querySelector('input, select');
+      if (!input) continue;
+      let value;
+      if (input.type === 'checkbox') {
+        value = input.checked ? 'yes' : 'no';
+      } else {
+        value = input.value.trim();
+      }
+      if (el.dataset.required === 'true' && input.type !== 'checkbox' && !value) {
+        errEl.textContent = 'Please fill in all required fields.';
+        return;
+      }
+      answers.push({ question_id: el.dataset.qid, value });
+    }
+
     btn.disabled = true; btn.textContent = 'Confirming…'; errEl.textContent = '';
 
     try {
@@ -481,6 +538,7 @@ body {
           name: form.name.value.trim(),
           email: form.email.value.trim(),
           timezone: TZ,
+          answers,
         }),
       });
 

@@ -17,17 +17,24 @@ import (
 	"github.com/calnode/calnode/internal/webhook"
 )
 
+type attendeeJSON struct {
+	Name  string `json:"name"`
+	Email string `json:"email"`
+}
+
 type bookingJSON struct {
-	ID                 string `json:"id"`
-	EventTypeID        string `json:"event_type_id"`
-	HostID             string `json:"host_id"`
-	StartAt            string `json:"start_at"`
-	EndAt              string `json:"end_at"`
-	Status             string `json:"status"`
-	CancellationReason string `json:"cancellation_reason,omitempty"`
-	LocationValue      string `json:"location_value,omitempty"`
-	CreatedAt          string `json:"created_at"`
-	UpdatedAt          string `json:"updated_at"`
+	ID                 string         `json:"id"`
+	EventTypeID        string         `json:"event_type_id"`
+	EventTypeSlug      string         `json:"event_type_slug,omitempty"`
+	HostID             string         `json:"host_id"`
+	StartAt            string         `json:"start_at"`
+	EndAt              string         `json:"end_at"`
+	Status             string         `json:"status"`
+	CancellationReason string         `json:"cancellation_reason,omitempty"`
+	LocationValue      string         `json:"location_value,omitempty"`
+	CreatedAt          string         `json:"created_at"`
+	UpdatedAt          string         `json:"updated_at"`
+	Attendees          []attendeeJSON `json:"attendees,omitempty"`
 }
 
 func toBookingJSON(b *booking.Booking) bookingJSON {
@@ -252,6 +259,7 @@ func (h *Handler) GetBooking(w http.ResponseWriter, r *http.Request) {
 }
 
 // ListBookings handles GET /v1/bookings (admin — lists bookings for the current user).
+// Returns bookings enriched with event_type_slug and the organizer attendee.
 func (h *Handler) ListBookings(w http.ResponseWriter, r *http.Request) {
 	user, _ := userFromContext(r.Context())
 	bookings, err := h.bookingSvc.ListByHost(r.Context(), user.ID)
@@ -262,9 +270,77 @@ func (h *Handler) ListBookings(w http.ResponseWriter, r *http.Request) {
 	}
 
 	items := make([]bookingJSON, len(bookings))
+	idxByID := make(map[string]int, len(bookings))
 	for i := range bookings {
 		items[i] = toBookingJSON(&bookings[i])
+		items[i].Attendees = []attendeeJSON{} // ensure non-null in JSON
+		idxByID[bookings[i].ID] = i
 	}
+
+	if len(items) == 0 {
+		h.writeJSON(w, http.StatusOK, map[string]any{"items": items})
+		return
+	}
+
+	// Build IN-clause args (booking IDs).
+	ids := make([]any, len(bookings))
+	for i, b := range bookings {
+		ids[i] = b.ID
+	}
+	ph := strings.Repeat("?,", len(ids))
+	ph = ph[:len(ph)-1]
+
+	// Fetch event type slugs via a single JOIN.
+	etRows, err := h.db.QueryContext(r.Context(),
+		`SELECT b.id, COALESCE(et.slug, '') FROM bookings b
+		 LEFT JOIN event_types et ON et.id = b.event_type_id
+		 WHERE b.id IN (`+ph+`)`, ids...)
+	if err != nil {
+		h.logger.ErrorContext(r.Context(), "list bookings: slugs", "error", err)
+		h.writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	defer etRows.Close()
+	for etRows.Next() {
+		var bid, slug string
+		if err := etRows.Scan(&bid, &slug); err != nil {
+			continue
+		}
+		if i, ok := idxByID[bid]; ok {
+			items[i].EventTypeSlug = slug
+		}
+	}
+	if err := etRows.Err(); err != nil {
+		h.logger.ErrorContext(r.Context(), "list bookings: slugs scan", "error", err)
+		h.writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	// Fetch organizer attendee for each booking.
+	aRows, err := h.db.QueryContext(r.Context(),
+		`SELECT booking_id, name, email FROM booking_attendees
+		 WHERE booking_id IN (`+ph+`) AND is_organizer = 1`, ids...)
+	if err != nil {
+		h.logger.ErrorContext(r.Context(), "list bookings: attendees", "error", err)
+		h.writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	defer aRows.Close()
+	for aRows.Next() {
+		var bid, name, email string
+		if err := aRows.Scan(&bid, &name, &email); err != nil {
+			continue
+		}
+		if i, ok := idxByID[bid]; ok {
+			items[i].Attendees = append(items[i].Attendees, attendeeJSON{Name: name, Email: email})
+		}
+	}
+	if err := aRows.Err(); err != nil {
+		h.logger.ErrorContext(r.Context(), "list bookings: attendees scan", "error", err)
+		h.writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
 	h.writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }
 

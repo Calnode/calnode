@@ -501,9 +501,11 @@
 									{/if}
 									{#if testError[item.key]}
 										<span class="text-xs text-destructive">
-											{testError[item.key] === 'Email is not configured on this server — add SMTP settings to enable sending'
-												? 'SMTP is not configured — emails are disabled on this server.'
-												: testError[item.key]}
+											{#if testError[item.key] === 'Email is not configured on this server — add SMTP settings to enable sending'}
+												SMTP is not configured — <a href="{base}/settings/email" class="underline">configure it in Settings</a>.
+											{:else}
+												{testError[item.key]}
+											{/if}
 										</span>
 									{/if}
 								</div>

@@ -666,3 +666,53 @@ func TestListBookings(t *testing.T) {
 	}
 }
 
+func TestListBookings_includesAttendeeAndSlug(t *testing.T) {
+	h, key, _ := setupWorkspace(t)
+	slug, _ := seedEventTypeHTTP(t, h, key)
+
+	body := fmt.Sprintf(`{"event_type_slug":%q,"start_at":"2026-06-20T09:00:00Z","name":"Alice Smith","email":"alice@example.com"}`, slug)
+	req := httptest.NewRequest(http.MethodPost, "/v1/bookings", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	h.CreateBooking(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create booking: %d — %s", rec.Code, rec.Body.String())
+	}
+
+	listReq := authReq(http.MethodGet, "/v1/bookings", "", key)
+	listRec := httptest.NewRecorder()
+	h.RequireAuth(h.ListBookings)(listRec, listReq)
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("list bookings: %d — %s", listRec.Code, listRec.Body.String())
+	}
+
+	var listResp struct {
+		Items []struct {
+			EventTypeSlug string `json:"event_type_slug"`
+			Attendees     []struct {
+				Name  string `json:"name"`
+				Email string `json:"email"`
+			} `json:"attendees"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(listRec.Body.Bytes(), &listResp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if len(listResp.Items) != 1 {
+		t.Fatalf("want 1 item; got %d", len(listResp.Items))
+	}
+	b := listResp.Items[0]
+	if b.EventTypeSlug != slug {
+		t.Errorf("event_type_slug = %q; want %q", b.EventTypeSlug, slug)
+	}
+	if len(b.Attendees) != 1 {
+		t.Fatalf("want 1 attendee; got %d", len(b.Attendees))
+	}
+	if b.Attendees[0].Name != "Alice Smith" {
+		t.Errorf("attendee name = %q; want Alice Smith", b.Attendees[0].Name)
+	}
+	if b.Attendees[0].Email != "alice@example.com" {
+		t.Errorf("attendee email = %q; want alice@example.com", b.Attendees[0].Email)
+	}
+}
+
