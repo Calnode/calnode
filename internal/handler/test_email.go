@@ -34,7 +34,7 @@ func (h *Handler) SendTestEmail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Load the event type and its custom messages.
+	// Load the event type and its custom messages (verifies ownership first).
 	var etName string
 	var durationMinutes int
 	var locVal, msgConf, msgCancel, msgResched, msgRemind sql.NullString
@@ -52,6 +52,12 @@ func (h *Handler) SendTestEmail(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		h.logger.ErrorContext(r.Context(), "test email: load event type", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	// Check email is configured after verifying ownership so 404 takes precedence.
+	if !h.emailEnabled {
+		h.writeError(w, http.StatusServiceUnavailable, "Email is not configured on this server — add SMTP settings to enable sending")
 		return
 	}
 

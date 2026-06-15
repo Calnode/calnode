@@ -18,6 +18,7 @@ type Handler struct {
 	logger       *slog.Logger
 	bookingSvc   *booking.Service
 	mailer       mailer.Mailer
+	emailEnabled bool // true only when a real SMTP sender is configured
 	gcal         *gcal.Client
 	webhookSvc   *webhook.Service
 	baseURL      string
@@ -38,10 +39,12 @@ func New(db *sql.DB, logger *slog.Logger) *Handler {
 }
 
 // SetMailer configures the email sender and the base URL used in email links.
-// Called from server.New when SMTP is configured; the default is a no-op sender.
+// Called from server.New; sets emailEnabled=true only when m is not a Noop.
 func (h *Handler) SetMailer(m mailer.Mailer, baseURL string) {
 	h.mailer = m
 	h.baseURL = baseURL
+	_, isNoop := m.(*mailer.Noop)
+	h.emailEnabled = !isNoop
 }
 
 // SetBaseURL sets the base URL used in redirects and email links.

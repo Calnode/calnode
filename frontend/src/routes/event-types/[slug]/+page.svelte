@@ -500,7 +500,11 @@
 										<span class="text-xs text-green-600">Test email sent to your inbox.</span>
 									{/if}
 									{#if testError[item.key]}
-										<span class="text-xs text-destructive">{testError[item.key]}</span>
+										<span class="text-xs text-destructive">
+											{testError[item.key] === 'Email is not configured on this server — add SMTP settings to enable sending'
+												? 'SMTP is not configured — emails are disabled on this server.'
+												: testError[item.key]}
+										</span>
 									{/if}
 								</div>
 							</div>
