@@ -320,6 +320,47 @@ func TestDeleteQuestion_notFound(t *testing.T) {
 	}
 }
 
+// Regression: deleting a question that already has booking answers must not hit
+// a foreign-key 500 — the answers cascade away with it (migration 00014).
+func TestDeleteQuestion_withAnswersCascades(t *testing.T) {
+	h, database, key, _ := setupWorkspaceWithDB(t)
+	ctx := context.Background()
+	slug, _ := seedEventTypeHTTP(t, h, key)
+	qID := createQuestion(t, h, slug, key, `{"label":"Your goal","type":"text"}`)
+
+	// Book against the question so a booking_answers row references it.
+	body := fmt.Sprintf(`{"event_type_slug":%q,"start_at":"2026-06-20T10:00:00Z","name":"Bob","email":"bob@example.com","answers":[{"question_id":%q,"value":"ship it"}]}`, slug, qID)
+	req := httptest.NewRequest(http.MethodPost, "/v1/bookings", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	h.CreateBooking(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create booking with answer: got %d — %s", rec.Code, rec.Body.String())
+	}
+	var before int
+	database.QueryRowContext(ctx, `SELECT COUNT(*) FROM booking_answers WHERE question_id = ?`, qID).Scan(&before)
+	if before != 1 {
+		t.Fatalf("precondition: booking_answers for question = %d; want 1", before)
+	}
+
+	// Delete the answered question — must be 204, not a FK 500.
+	dreq := authReq(http.MethodDelete, "/v1/event-types/"+slug+"/questions/"+qID, "", key)
+	dreq.SetPathValue("slug", slug)
+	dreq.SetPathValue("id", qID)
+	drec := httptest.NewRecorder()
+	h.RequireAuth(h.DeleteQuestion)(drec, dreq)
+	if drec.Code != http.StatusNoContent {
+		t.Fatalf("delete answered question: got %d — %s; want 204", drec.Code, drec.Body.String())
+	}
+
+	// Its answers must be cascaded, not orphaned.
+	var after int
+	database.QueryRowContext(ctx, `SELECT COUNT(*) FROM booking_answers WHERE question_id = ?`, qID).Scan(&after)
+	if after != 0 {
+		t.Errorf("after delete: booking_answers for question = %d; want 0 (cascade)", after)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // CreateBooking with answers
 // ---------------------------------------------------------------------------
