@@ -61,6 +61,13 @@
 	let msg_reminder = $state('');
 	// Track which message accordions are open
 	let msgOpen = $state({ confirmation: false, cancellation: false, reschedule: false, reminder: false });
+	// Track preview toggle per accordion
+	let previewOpen = $state({ confirmation: false, cancellation: false, reschedule: false, reminder: false });
+	// Test email send state per type
+	type MsgKey = 'confirmation' | 'cancellation' | 'reschedule' | 'reminder';
+	let testSending = $state<Partial<Record<MsgKey, boolean>>>({});
+	let testSent    = $state<Partial<Record<MsgKey, boolean>>>({});
+	let testError   = $state<Partial<Record<MsgKey, string>>>({});
 
 	const slug = $page.params.slug;
 
@@ -125,6 +132,48 @@
 			etSaveError = e.message;
 		} finally {
 			etSaving = false;
+		}
+	}
+
+	async function sendTestEmail(type: MsgKey) {
+		testSending = { ...testSending, [type]: true };
+		testSent    = { ...testSent,    [type]: false };
+		testError   = { ...testError,   [type]: '' };
+		try {
+			await api.post(`/v1/event-types/${slug}/test-email`, { type });
+			testSent = { ...testSent, [type]: true };
+			setTimeout(() => { testSent = { ...testSent, [type]: false }; }, 4000);
+		} catch (e: any) {
+			testError = { ...testError, [type]: e.message };
+		} finally {
+			testSending = { ...testSending, [type]: false };
+		}
+	}
+
+	function buildPreview(type: MsgKey, note: string): string {
+		const name     = et?.name ?? 'My Event';
+		const loc      = et?.location_value ? `\nLocation: ${et.location_value}` : '';
+		const dur      = et?.duration_minutes ?? 30;
+		const noteBlk  = note.trim() ? `\n---\n${note.trim()}\n` : '';
+		const start    = 'Tomorrow, 2:00 PM UTC';
+		const prev     = 'Today, 2:00 PM UTC';
+		// Compute end time correctly by adding duration to 14:00.
+		const endTotalMin = 14 * 60 + dur;
+		const endH24      = Math.floor(endTotalMin / 60) % 24;
+		const endMin      = endTotalMin % 60;
+		const endPeriod   = endH24 < 12 ? 'AM' : 'PM';
+		const endH12      = endH24 % 12 || 12;
+		const end         = `Tomorrow, ${endH12}:${String(endMin).padStart(2, '0')} ${endPeriod} UTC`;
+
+		switch (type) {
+			case 'confirmation':
+				return `Hi Alex Johnson,\n\nYour booking has been confirmed.\n\nEvent:    ${name}\nWith:     ${et?.name ?? 'Host'}\nStart:    ${start}\nEnd:      ${end}${loc}\n\nBooking reference: preview-test\n\nTo cancel, visit:\n[booking page]${noteBlk}\n— Calnode`;
+			case 'cancellation':
+				return `Hi Alex Johnson,\n\nYour booking has been cancelled.\n\nEvent:    ${name}\nWith:     ${et?.name ?? 'Host'}\nStart:    ${start}\nEnd:      ${end}\n\nTo rebook, visit:\n[booking page]${noteBlk}\n— Calnode`;
+			case 'reschedule':
+				return `Hi Alex Johnson,\n\nYour booking has been rescheduled.\n\nEvent:    ${name}\nWith:     ${et?.name ?? 'Host'}\nWas:      ${prev}\nNow:      ${start}\nEnd:      ${end}${loc}\n\nBooking reference: preview-test${noteBlk}\n— Calnode`;
+			case 'reminder':
+				return `Hi Alex Johnson,\n\nThis is a reminder that your booking is coming up.\n\nEvent:    ${name}\nWith:     ${et?.name ?? 'Host'}\nStart:    ${start}\nEnd:      ${end}${loc}\n\nBooking reference: preview-test${noteBlk}\n— Calnode`;
 		}
 	}
 
@@ -410,7 +459,11 @@
 							><polyline points="6 9 12 15 18 9"/></svg>
 						</button>
 						{#if msgOpen[item.key]}
-							<div class="border-t px-4 pb-4 pt-3">
+							{@const note = item.key === 'confirmation' ? msg_confirmation
+								: item.key === 'cancellation' ? msg_cancellation
+								: item.key === 'reschedule'   ? msg_reschedule
+								: msg_reminder}
+							<div class="border-t px-4 pb-4 pt-3 space-y-3">
 								{#if item.key === 'confirmation'}
 									<Textarea bind:value={msg_confirmation} rows={3} placeholder="Add a custom note for attendees…" />
 								{:else if item.key === 'cancellation'}
@@ -420,6 +473,36 @@
 								{:else if item.key === 'reminder'}
 									<Textarea bind:value={msg_reminder} rows={3} placeholder="Add a custom note for attendees…" />
 								{/if}
+
+								<!-- Preview toggle -->
+								<button
+									type="button"
+									class="text-xs text-muted-foreground hover:text-foreground underline-offset-2 hover:underline"
+									onclick={() => { previewOpen[item.key] = !previewOpen[item.key]; }}
+								>{previewOpen[item.key] ? 'Hide preview' : 'Show email preview'}</button>
+
+								{#if previewOpen[item.key]}
+									<pre class="rounded-md border bg-muted/30 px-4 py-3 text-xs leading-relaxed whitespace-pre-wrap font-mono text-muted-foreground overflow-auto max-h-64">{buildPreview(item.key, note)}</pre>
+								{/if}
+
+								<!-- Send test button -->
+								<div class="flex items-center gap-3">
+									<Button
+										type="button"
+										variant="outline"
+										size="sm"
+										disabled={testSending[item.key]}
+										onclick={() => sendTestEmail(item.key)}
+									>
+										{testSending[item.key] ? 'Sending…' : 'Send test email'}
+									</Button>
+									{#if testSent[item.key]}
+										<span class="text-xs text-green-600">Test email sent to your inbox.</span>
+									{/if}
+									{#if testError[item.key]}
+										<span class="text-xs text-destructive">{testError[item.key]}</span>
+									{/if}
+								</div>
 							</div>
 						{/if}
 					</div>

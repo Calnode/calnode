@@ -197,6 +197,23 @@ func SendReminder(ctx context.Context, m Mailer, d BookingData) error {
 	return nil
 }
 
+// RenderBody renders the attendee-facing email for emailType and returns the
+// subject and plain-text body. Returns ok=false for unrecognised emailType values.
+// Valid types: "confirmation", "cancellation", "reschedule", "reminder".
+func RenderBody(emailType string, d BookingData) (subject, body string, ok bool) {
+	switch emailType {
+	case "confirmation":
+		return "Booking confirmed: " + d.EventTypeName, render(confirmOrgTmpl, d), true
+	case "cancellation":
+		return "Booking cancelled: " + d.EventTypeName, render(cancelOrgTmpl, d), true
+	case "reschedule":
+		return "Booking rescheduled: " + d.EventTypeName, render(rescheduleOrgTmpl, d), true
+	case "reminder":
+		return "Reminder: " + d.EventTypeName + " is coming up", render(reminderOrgTmpl, d), true
+	}
+	return "", "", false
+}
+
 func render(t *template.Template, d BookingData) string {
 	var buf bytes.Buffer
 	if err := t.Execute(&buf, d); err != nil {
