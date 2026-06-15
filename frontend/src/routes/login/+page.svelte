@@ -1,18 +1,70 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { page } from '$app/stores';
 	import { Button } from '$lib/components/ui/button';
+	import { Input } from '$lib/components/ui/input';
+	import { Label } from '$lib/components/ui/label';
 
-	const errorMessages: Record<string, string> = {
+	type AuthStatus = {
+		claimed: boolean;
+		email_login: boolean;
+		providers: string[];
+		smtp_configured: boolean;
+	};
+
+	let status = $state<AuthStatus | null>(null);
+	let email = $state('');
+	let password = $state('');
+	let submitting = $state(false);
+	let loginError = $state('');
+
+	const oauthErrorMessages: Record<string, string> = {
 		state: 'Login failed: invalid session state. Please try again.',
-		denied: 'You denied Google access. Sign in is required to use the admin.',
-		oauth: 'Google OAuth error. Please try again.',
-		userinfo: 'Could not fetch your Google profile. Please try again.',
-		no_account: 'No Calnode account found for your Google email. Contact your admin.',
+		denied: 'You denied access. Sign in is required to use the admin.',
+		oauth: 'OAuth error. Please try again.',
+		userinfo: 'Could not fetch your profile. Please try again.',
+		no_account: 'No Calnode account found for your email. Contact your admin.',
 		session: 'Could not create a session. Please try again.'
 	};
 
 	const errorKey = $derived($page.url.searchParams.get('error') ?? '');
-	const errorMsg = $derived(errorKey ? (errorMessages[errorKey] ?? 'An error occurred. Please try again.') : '');
+	const oauthError = $derived(errorKey ? (oauthErrorMessages[errorKey] ?? 'An error occurred. Please try again.') : '');
+
+	onMount(async () => {
+		const res = await fetch('/v1/auth/status');
+		if (res.ok) {
+			status = await res.json();
+			if (!status?.claimed) {
+				window.location.href = '/admin/claim';
+			}
+		}
+	});
+
+	async function loginEmail(e: SubmitEvent) {
+		e.preventDefault();
+		submitting = true;
+		loginError = '';
+		try {
+			const res = await fetch('/v1/auth/login/email', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ email: email.trim().toLowerCase(), password })
+			});
+			if (res.ok) {
+				window.location.href = '/admin';
+			} else {
+				const data = await res.json().catch(() => ({}));
+				loginError = data.error || 'Login failed. Please try again.';
+			}
+		} finally {
+			submitting = false;
+		}
+	}
+
+	const showGoogle = $derived(status?.providers?.includes('google') ?? false);
+	const showEmail = $derived(status?.email_login ?? false);
+	const showForgot = $derived(status?.smtp_configured ?? false);
+	const showDivider = $derived(showGoogle && showEmail);
 </script>
 
 <svelte:head><title>Sign in — Calnode</title></svelte:head>
@@ -27,21 +79,62 @@
 				</svg>
 			</div>
 			<h1 class="text-xl font-semibold tracking-tight">Sign in to Calnode</h1>
-			<p class="mt-1 text-sm text-muted-foreground">Use your Google account to continue.</p>
 		</div>
 
-		{#if errorMsg}
-			<div class="mb-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{errorMsg}</div>
+		{#if oauthError}
+			<div class="mb-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{oauthError}</div>
+		{/if}
+		{#if loginError}
+			<div class="mb-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{loginError}</div>
 		{/if}
 
-		<Button variant="outline" class="w-full" onclick={() => window.location.href = '/v1/auth/login'}>
-			<svg width="16" height="16" viewBox="0 0 48 48" aria-hidden="true" class="mr-2">
-				<path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
-				<path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
-				<path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
-				<path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.29-8.16 2.29-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
-			</svg>
-			Sign in with Google
-		</Button>
+		{#if status === null}
+			<div class="text-center text-sm text-muted-foreground">Loading…</div>
+		{:else}
+			{#if showGoogle}
+				<Button variant="outline" class="w-full" onclick={() => window.location.href = '/v1/auth/login'}>
+					<svg width="16" height="16" viewBox="0 0 48 48" aria-hidden="true" class="mr-2">
+						<path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+						<path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+						<path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+						<path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.29-8.16 2.29-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+					</svg>
+					Sign in with Google
+				</Button>
+			{/if}
+
+			{#if showDivider}
+				<div class="my-4 flex items-center gap-3 text-xs text-muted-foreground">
+					<div class="h-px flex-1 bg-border"></div>
+					or
+					<div class="h-px flex-1 bg-border"></div>
+				</div>
+			{/if}
+
+			{#if showEmail}
+				<form onsubmit={loginEmail} class="space-y-4">
+					<div class="space-y-1.5">
+						<Label for="email">Email</Label>
+						<Input id="email" type="email" autocomplete="email" bind:value={email} required />
+					</div>
+					<div class="space-y-1.5">
+						<div class="flex items-center justify-between">
+							<Label for="password">Password</Label>
+							{#if showForgot}
+								<a href="/admin/forgot-password" class="text-xs text-muted-foreground hover:underline">Forgot password?</a>
+							{/if}
+						</div>
+						<Input id="password" type="password" autocomplete="current-password" bind:value={password} required />
+					</div>
+					<Button type="submit" class="w-full" disabled={submitting}>
+						{submitting ? 'Signing in…' : 'Sign in'}
+					</Button>
+				</form>
+			{/if}
+
+			{#if !showGoogle && !showEmail}
+				<p class="text-center text-sm text-muted-foreground">No login methods are configured. Contact your administrator.</p>
+			{/if}
+		{/if}
 	</div>
 </div>

@@ -114,32 +114,11 @@ func (h *Handler) CallbackGoogle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	raw := make([]byte, 32)
-	if _, err := rand.Read(raw); err != nil {
-		h.logger.ErrorContext(r.Context(), "auth: generate session id", "error", err)
+	if err := h.createSession(r.Context(), w, userID); err != nil {
+		h.logger.ErrorContext(r.Context(), "auth: create session", "error", err)
 		http.Redirect(w, r, "/admin/login?error=session", http.StatusFound)
 		return
 	}
-	sessID := hex.EncodeToString(raw)
-	expiresAt := time.Now().UTC().Add(sessionDuration).Format(time.RFC3339)
-
-	if _, err := h.db.ExecContext(r.Context(),
-		`INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)`,
-		sessID, userID, expiresAt); err != nil {
-		h.logger.ErrorContext(r.Context(), "auth: insert session", "error", err)
-		http.Redirect(w, r, "/admin/login?error=session", http.StatusFound)
-		return
-	}
-
-	http.SetCookie(w, &http.Cookie{
-		Name:     sessionCookieName,
-		Value:    sessID,
-		Path:     "/",
-		MaxAge:   int(sessionDuration.Seconds()),
-		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
-		Secure:   h.secureCookie,
-	})
 	http.Redirect(w, r, "/admin", http.StatusFound)
 }
 

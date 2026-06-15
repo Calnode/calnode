@@ -13,6 +13,11 @@
 	let checking = $state(true);
 
 	const isLogin = $derived($page.route.id === '/login');
+	const isPublicRoute = $derived(
+		$page.route.id === '/login' ||
+		$page.route.id === '/claim' ||
+		$page.route.id === '/invite/[token]'
+	);
 
 	const navItems = [
 		{
@@ -53,7 +58,7 @@
 	];
 
 	onMount(async () => {
-		if (isLogin) {
+		if (isPublicRoute) {
 			checking = false;
 			return;
 		}
@@ -83,7 +88,7 @@
 	}
 </script>
 
-{#if isLogin}
+{#if isPublicRoute}
 	{@render children()}
 {:else if checking}
 	<div class="flex h-full items-center justify-center text-sm text-muted-foreground">

@@ -22,6 +22,13 @@ import (
 )
 
 func main() {
+	// Subcommand dispatch: `calnode reset-admin <email> <password>`
+	if len(os.Args) > 1 && os.Args[1] == "reset-admin" {
+		_ = godotenv.Load()
+		runResetAdmin(os.Args[2:])
+		return
+	}
+
 	// Load .env if present (dev convenience). Real env vars always win.
 	_ = godotenv.Load()
 

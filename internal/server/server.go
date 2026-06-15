@@ -99,11 +99,34 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	// Bootstrap — public, once-only
 	mux.HandleFunc("POST /v1/setup", h.Setup)
 
+	// Auth status (public — drives login page rendering).
+	mux.HandleFunc("GET /v1/auth/status", h.AuthStatus)
+
+	// First-user claim (public — only succeeds when no users exist).
+	claimRL := RateLimit(5, time.Minute)
+	mux.HandleFunc("POST /v1/auth/claim", claimRL(h.Claim))
+
+	// Email + password login.
+	loginRL := RateLimit(10, time.Minute)
+	mux.HandleFunc("POST /v1/auth/login/email", loginRL(h.LoginEmail))
+
 	// Google OAuth login (browser sessions for admin UI).
 	authRL := RateLimit(10, time.Minute)
 	mux.HandleFunc("GET /v1/auth/login", authRL(h.LoginGoogle))
 	mux.HandleFunc("GET /v1/auth/callback", authRL(h.CallbackGoogle))
 	mux.HandleFunc("POST /v1/auth/logout", h.Logout)
+
+	// Password management.
+	mux.HandleFunc("POST /v1/users/me/password", h.RequireAuth(h.ChangePassword))
+	mux.HandleFunc("POST /v1/users/{id}/password", h.RequireAuth(h.AdminSetPassword))
+
+	// Invite management.
+	inviteRL := RateLimit(20, time.Minute)
+	mux.HandleFunc("POST /v1/invites", inviteRL(h.RequireAuth(h.CreateInvite)))
+	mux.HandleFunc("GET /v1/invites", h.RequireAuth(h.ListInvites))
+	mux.HandleFunc("DELETE /v1/invites/{id}", h.RequireAuth(h.RevokeInvite))
+	mux.HandleFunc("GET /v1/invites/{token}", h.GetInvite)
+	mux.HandleFunc("POST /v1/invites/{token}/claim", inviteRL(h.ClaimInvite))
 
 	// Users
 	mux.HandleFunc("GET /v1/users/me", h.RequireAuth(h.GetMe))
