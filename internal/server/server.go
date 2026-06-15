@@ -23,6 +23,7 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	mux := http.NewServeMux()
 	h := handler.New(db, logger)
 	h.SetBaseURL(cfg.BaseURL)
+	h.SetDataDir("data")
 
 	// Mailer is initialised first so the worker can use it for reminders.
 	var mailSvc mailer.Mailer = &mailer.Noop{}
@@ -87,6 +88,9 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	// Users
 	mux.HandleFunc("GET /v1/users/me", h.RequireAuth(h.GetMe))
 	mux.HandleFunc("PATCH /v1/users/me", h.RequireAuth(h.PatchMe))
+	mux.HandleFunc("POST /v1/users/me/avatar", h.RequireAuth(h.UploadAvatar))
+	mux.HandleFunc("DELETE /v1/users/me/avatar", h.RequireAuth(h.DeleteAvatar))
+	mux.HandleFunc("GET /avatars/{userID}", h.ServeAvatar)
 
 	// Event types
 	mux.HandleFunc("POST /v1/event-types", h.RequireAuth(h.CreateEventType))

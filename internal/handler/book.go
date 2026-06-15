@@ -15,13 +15,15 @@ var bookTmplSrc string
 var bookTmpl = template.Must(template.New("book").Parse(bookTmplSrc))
 
 type bookPageData struct {
-	Slug          string
-	Name          string
-	Description   string
-	DurationLabel string
-	HostName      string
-	LocationLabel string
-	MaxFutureDays int
+	Slug           string
+	Name           string
+	Description    string
+	DurationLabel  string
+	HostName       string
+	HostInitial    string
+	AvatarURL      string
+	LocationLabel  string
+	MaxFutureDays  int
 }
 
 func durationLabel(minutes int) string {
@@ -73,15 +75,16 @@ func (h *Handler) BookPage(w http.ResponseWriter, r *http.Request) {
 		locValue    string
 		maxDays     int
 		hostName    string
+		avatarURL   string
 	)
 	err := h.db.QueryRowContext(r.Context(), `
 		SELECT et.name, COALESCE(et.description, ''),
 		       et.duration_minutes, et.location_type, COALESCE(et.location_value, ''),
-		       et.max_future_days, u.name
+		       et.max_future_days, u.name, COALESCE(u.avatar_url, '')
 		FROM event_types et
 		JOIN users u ON u.id = et.user_id
 		WHERE et.slug = ? AND et.is_active = 1 AND et.is_public = 1`,
-		slug).Scan(&name, &description, &durMins, &locType, &locValue, &maxDays, &hostName)
+		slug).Scan(&name, &description, &durMins, &locType, &locValue, &maxDays, &hostName, &avatarURL)
 
 	if errors.Is(err, sql.ErrNoRows) {
 		http.Error(w, "Page not found", http.StatusNotFound)
@@ -93,12 +96,18 @@ func (h *Handler) BookPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	initial := ""
+	if len([]rune(hostName)) > 0 {
+		initial = string([]rune(hostName)[0])
+	}
 	data := bookPageData{
 		Slug:          slug,
 		Name:          name,
 		Description:   description,
 		DurationLabel: durationLabel(durMins),
 		HostName:      hostName,
+		HostInitial:   initial,
+		AvatarURL:     avatarURL,
 		LocationLabel: locationLabel(locType, locValue),
 		MaxFutureDays: maxDays,
 	}

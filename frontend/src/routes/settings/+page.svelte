@@ -12,6 +12,9 @@
 	let saving = $state(false);
 	let saved = $state(false);
 	let error = $state('');
+	let uploading = $state(false);
+	let avatarUrl = $state('');
+	let fileInput: HTMLInputElement | undefined = $state(undefined);
 
 	let timezone = $state('UTC');
 	let time_format = $state<'12h' | '24h'>('12h');
@@ -25,12 +28,48 @@
 			time_format = user.time_format ?? '12h';
 			week_start = user.week_start ?? 1;
 			date_format = user.date_format ?? 'dmy';
+			avatarUrl = user.avatar_url ?? '';
 		} catch (e: any) {
 			error = e.message;
 		} finally {
 			loading = false;
 		}
 	});
+
+	function initials(name: string) {
+		return name.split(' ').map((p) => p[0]).join('').toUpperCase().slice(0, 2);
+	}
+
+	async function uploadAvatar() {
+		if (!fileInput?.files?.[0]) return;
+		const data = new FormData();
+		data.append('avatar', fileInput.files[0]);
+		uploading = true;
+		error = '';
+		try {
+			const res = await api.postForm<{ avatar_url: string }>('/v1/users/me/avatar', data);
+			avatarUrl = res.avatar_url;
+			const updated = await api.get<User>('/v1/users/me');
+			currentUser.set(updated);
+		} catch (e: any) {
+			error = e.message;
+		} finally {
+			uploading = false;
+			if (fileInput) fileInput.value = '';
+		}
+	}
+
+	async function removeAvatar() {
+		error = '';
+		try {
+			await api.del('/v1/users/me/avatar');
+			avatarUrl = '';
+			const updated = await api.get<User>('/v1/users/me');
+			currentUser.set(updated);
+		} catch (e: any) {
+			error = e.message;
+		}
+	}
 
 	async function save() {
 		saving = true;
@@ -76,6 +115,38 @@
 		<div class="rounded-lg border bg-card p-6">
 			<h2 class="mb-4 text-sm font-semibold">Profile</h2>
 			<div class="space-y-4">
+				<!-- Avatar -->
+				<div class="flex items-center gap-4">
+					{#if avatarUrl}
+						<img src={avatarUrl} alt={user?.name} class="h-16 w-16 rounded-full object-cover ring-2 ring-border" />
+					{:else}
+						<div class="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-muted text-xl font-semibold text-muted-foreground">
+							{initials(user?.name ?? 'U')}
+						</div>
+					{/if}
+					<div class="flex flex-col gap-1.5">
+						<p class="text-sm font-medium">Profile photo</p>
+						<div class="flex gap-2">
+							<input
+								bind:this={fileInput}
+								type="file"
+								accept="image/jpeg,image/png,image/gif,image/webp"
+								class="hidden"
+								onchange={uploadAvatar}
+							/>
+							<Button type="button" variant="outline" size="sm" onclick={() => fileInput?.click()} disabled={uploading}>
+								{uploading ? 'Uploading…' : 'Upload photo'}
+							</Button>
+							{#if avatarUrl}
+								<Button type="button" variant="ghost" size="sm" onclick={removeAvatar} class="text-destructive hover:text-destructive">
+									Remove
+								</Button>
+							{/if}
+						</div>
+						<p class="text-xs text-muted-foreground">JPEG, PNG, GIF or WebP · max 5 MB</p>
+					</div>
+				</div>
+
 				<div class="space-y-1.5">
 					<Label for="profile-name" class="text-muted-foreground">Name</Label>
 					<Input id="profile-name" type="text" disabled value={user?.name ?? ''} class="opacity-60" />

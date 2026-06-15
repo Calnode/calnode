@@ -14,13 +14,14 @@ import (
 )
 
 type Handler struct {
-	db         *sql.DB
-	logger     *slog.Logger
-	bookingSvc *booking.Service
-	mailer     mailer.Mailer
-	gcal       *gcal.Client
-	webhookSvc *webhook.Service
-	baseURL    string
+	db           *sql.DB
+	logger       *slog.Logger
+	bookingSvc   *booking.Service
+	mailer       mailer.Mailer
+	gcal         *gcal.Client
+	webhookSvc   *webhook.Service
+	baseURL      string
+	dataDir      string
 	googleAuth   *oauth2.Config
 	secureCookie bool
 }
@@ -47,6 +48,11 @@ func (h *Handler) SetMailer(m mailer.Mailer, baseURL string) {
 // Called from server.New before any SMTP or GCal init.
 func (h *Handler) SetBaseURL(url string) {
 	h.baseURL = url
+}
+
+// SetDataDir sets the directory used for file uploads (avatars, etc.).
+func (h *Handler) SetDataDir(dir string) {
+	h.dataDir = dir
 }
 
 // SetCalendar configures the Google Calendar client.

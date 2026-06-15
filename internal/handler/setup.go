@@ -102,7 +102,7 @@ func (h *Handler) Setup(w http.ResponseWriter, r *http.Request) {
 // GetMe handles GET /v1/users/me.
 func (h *Handler) GetMe(w http.ResponseWriter, r *http.Request) {
 	user, _ := userFromContext(r.Context())
-	h.writeJSON(w, http.StatusOK, map[string]any{
+	out := map[string]any{
 		"id":          user.ID,
 		"email":       user.Email,
 		"name":        user.Name,
@@ -111,7 +111,11 @@ func (h *Handler) GetMe(w http.ResponseWriter, r *http.Request) {
 		"week_start":  user.WeekStart,
 		"date_format": user.DateFormat,
 		"is_admin":    user.IsAdmin,
-	})
+	}
+	if user.AvatarURL != "" {
+		out["avatar_url"] = user.AvatarURL
+	}
+	h.writeJSON(w, http.StatusOK, out)
 }
 
 // PatchMe handles PATCH /v1/users/me — updates timezone, time_format, week_start, date_format.
@@ -176,7 +180,7 @@ func (h *Handler) PatchMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.writeJSON(w, http.StatusOK, map[string]any{
+	out := map[string]any{
 		"id":          user.ID,
 		"email":       user.Email,
 		"name":        user.Name,
@@ -185,5 +189,9 @@ func (h *Handler) PatchMe(w http.ResponseWriter, r *http.Request) {
 		"week_start":  current.WeekStart,
 		"date_format": current.DateFormat,
 		"is_admin":    user.IsAdmin,
-	})
+	}
+	if user.AvatarURL != "" {
+		out["avatar_url"] = user.AvatarURL
+	}
+	h.writeJSON(w, http.StatusOK, out)
 }

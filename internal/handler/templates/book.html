@@ -197,6 +197,22 @@ body {
 .confirm-view .when { font-size: .875rem; font-weight: 600; color: #111827; margin-bottom: .25rem; }
 .confirm-view .sub { font-size: .8125rem; color: #6b7280; }
 
+/* Avatar */
+.avatar-img {
+  width: 56px; height: 56px;
+  border-radius: 50%; object-fit: cover;
+  margin-bottom: .75rem;
+}
+.avatar-initials {
+  width: 56px; height: 56px;
+  border-radius: 50%;
+  background: #e5e7eb;
+  color: #374151;
+  font-size: 1.25rem; font-weight: 600;
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: .75rem;
+}
+
 /* ── Mobile ──────────────────────────────────────── */
 @media (max-width: 700px) {
   body { padding: 0; align-items: stretch; }
@@ -215,6 +231,11 @@ body {
 
   <!-- Info panel -->
   <aside class="info">
+    {{if .AvatarURL}}
+    <img src="{{.AvatarURL}}" alt="{{.HostName}}" class="avatar-img">
+    {{else}}
+    <div class="avatar-initials">{{.HostInitial}}</div>
+    {{end}}
     <p class="host-name">{{.HostName}}</p>
     <h1 class="event-name">{{.Name}}</h1>
     <ul class="meta">

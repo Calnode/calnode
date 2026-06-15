@@ -6,6 +6,7 @@ export type User = {
 	time_format: '12h' | '24h';
 	week_start: number; // 0=Sunday, 1=Monday
 	date_format: 'dmy' | 'mdy' | 'ymd';
+	avatar_url?: string;
 	is_admin: boolean;
 };
 
@@ -113,6 +114,9 @@ export const api = {
 
 	post: <T>(path: string, body?: unknown) =>
 		apiFetch<T>(path, { method: 'POST', body: body ? JSON.stringify(body) : undefined }),
+
+	postForm: <T>(path: string, data: FormData) =>
+		apiFetch<T>(path, { method: 'POST', body: data }),
 
 	patch: <T>(path: string, body?: unknown) =>
 		apiFetch<T>(path, { method: 'PATCH', body: body ? JSON.stringify(body) : undefined }),
