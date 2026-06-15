@@ -10,6 +10,13 @@ import (
 	"github.com/calnode/calnode/internal/uid"
 )
 
+const (
+	defaultMsgConfirmation = "Looking forward to our meeting! Feel free to reply if you have any questions beforehand."
+	defaultMsgCancellation = "Apologies for the cancellation. You're welcome to rebook at any time."
+	defaultMsgReschedule   = "Apologies for the change — looking forward to connecting at the new time!"
+	defaultMsgReminder     = "Please reach out if you need to make any last-minute changes."
+)
+
 type eventTypeJSON struct {
 	ID                  string   `json:"id"`
 	Slug                string   `json:"slug"`
@@ -178,11 +185,13 @@ func (h *Handler) CreateEventType(w http.ResponseWriter, r *http.Request) {
 		  (id, user_id, slug, name, description, duration_minutes,
 		   slot_interval_minutes, location_type, location_value,
 		   routing_mode, buffer_before_minutes, buffer_after_minutes,
-		   min_notice_minutes, max_future_days)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		   min_notice_minutes, max_future_days,
+		   msg_confirmation, msg_cancellation, msg_reschedule, msg_reminder)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		id, user.ID, req.Slug, req.Name, req.Description,
 		req.DurationMinutes, slotInterval, locType, req.LocationValue,
-		routingMode, bufBefore, bufAfter, minNotice, maxFuture)
+		routingMode, bufBefore, bufAfter, minNotice, maxFuture,
+		defaultMsgConfirmation, defaultMsgCancellation, defaultMsgReschedule, defaultMsgReminder)
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE constraint failed") {
 			h.writeError(w, http.StatusConflict, "slug already in use")
