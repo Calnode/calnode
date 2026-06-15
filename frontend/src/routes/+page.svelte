@@ -18,13 +18,11 @@
 		origin = window.location.origin;
 		try {
 			const [cal, rules, events] = await Promise.all([
-				api.get<CalendarStatus>('/v1/calendar/status').catch((e: any) => {
-					if (e.message?.includes('not configured')) calendarConfigured = false;
-					return { connected: false };
-				}),
+				api.get<CalendarStatus>('/v1/calendar/status').catch(() => ({ connected: false, configured: false })),
 				api.get<{ items: AvailabilityRule[] }>('/v1/availability-rules').catch(() => ({ items: [] })),
 				api.get<{ items: EventType[] }>('/v1/event-types').catch(() => ({ items: [] }))
 			]);
+			calendarConfigured = cal.configured !== false;
 			calendarConnected = cal.connected;
 			hasAvailability = (rules.items?.length ?? 0) > 0;
 			hasEventType = (events.items?.length ?? 0) > 0;

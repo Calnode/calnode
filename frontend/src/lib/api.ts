@@ -76,6 +76,7 @@ export type Webhook = {
 
 export type CalendarStatus = {
 	connected: boolean;
+	configured?: boolean;
 	calendar_id?: string;
 	provider?: string;
 };

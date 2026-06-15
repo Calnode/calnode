@@ -59,7 +59,7 @@ func (h *Handler) CalendarCallback(w http.ResponseWriter, r *http.Request) {
 // CalendarStatus handles GET /v1/calendar/status (auth required).
 func (h *Handler) CalendarStatus(w http.ResponseWriter, r *http.Request) {
 	if h.gcal == nil {
-		h.writeJSON(w, http.StatusOK, map[string]any{"connected": false})
+		h.writeJSON(w, http.StatusOK, map[string]any{"connected": false, "configured": false})
 		return
 	}
 	user, _ := userFromContext(r.Context())
@@ -69,7 +69,7 @@ func (h *Handler) CalendarStatus(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	resp := map[string]any{"connected": connected}
+	resp := map[string]any{"connected": connected, "configured": true}
 	if connected {
 		resp["provider"] = "google"
 	}

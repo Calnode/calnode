@@ -10,18 +10,12 @@
 	let error = $state('');
 	let disconnecting = $state(false);
 	let justConnected = $state(false);
-	let notConfigured = $state(false);
 
 	async function load() {
 		try {
 			status = await api.get<CalendarStatus>('/v1/calendar/status');
 		} catch (e: any) {
-			if (e.message?.includes('not configured')) {
-				notConfigured = true;
-				status = { connected: false };
-			} else {
-				error = e.message;
-			}
+			error = e.message;
 		} finally {
 			loading = false;
 		}
@@ -74,7 +68,7 @@
 			</div>
 		</div>
 
-		{#if notConfigured}
+		{#if status?.configured === false}
 			<div class="rounded-md bg-amber-50 px-3 py-2.5 text-sm text-amber-800 ring-1 ring-inset ring-amber-200">
 				<p class="font-medium">Google Calendar not configured</p>
 				<p class="mt-1 text-amber-700">Set <code class="font-mono text-xs">GOOGLE_CLIENT_ID</code> and <code class="font-mono text-xs">GOOGLE_CLIENT_SECRET</code> in your <code class="font-mono text-xs">.env</code> file and restart the server.</p>
