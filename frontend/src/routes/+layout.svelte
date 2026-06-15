@@ -24,6 +24,7 @@
 			href: `${base}/`,
 			label: 'Home',
 			adminOnly: false,
+			exact: true,
 			icon: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>`
 		},
 		{
@@ -135,7 +136,7 @@
 			<nav class="flex-1 space-y-0.5 p-2">
 				{#each navItems as item}
 					{#if !item.adminOnly || $currentUser?.is_admin}
-						{@const active = item.href.endsWith('/') && item.href === `${base}/`
+						{@const active = item.exact
 							? $page.url.pathname === item.href || $page.url.pathname === base
 							: $page.url.pathname.startsWith(item.href)}
 						<a
