@@ -355,6 +355,7 @@ body {
 
   let navYear = today.getFullYear(), navMonth = today.getMonth();
   let pickedDate = null, slotsCache = [], pickedSlot = null;
+  let availableDates = new Set(); // "YYYY-MM-DD" strings with ≥1 slot this nav month
 
   const $ = id => document.getElementById(id);
   const pad = n => String(n).padStart(2, '0');
@@ -380,6 +381,23 @@ body {
   function dowIndex(date) {
     // Convert JS 0=Sun…6=Sat → 0=Mon…6=Sun
     return (date.getDay() + 6) % 7;
+  }
+
+  async function loadMonthAvailability(y, m) {
+    const from = toDateStr(y, m, 1);
+    const lastDay = new Date(y, m + 1, 0).getDate();
+    const to   = toDateStr(y, m, lastDay);
+    try {
+      const r = await fetch(`/v1/event-types/${SLUG}/slots?from=${from}&to=${to}&tz=${encodeURIComponent(TZ)}`);
+      if (!r.ok) throw new Error(r.status);
+      const data = await r.json();
+      availableDates = new Set(
+        (data.slots || []).map(s => new Date(s.start).toLocaleDateString('en-CA'))
+      );
+    } catch {
+      availableDates = new Set();
+    }
+    renderCal();
   }
 
   function renderCal() {
@@ -408,13 +426,15 @@ body {
       const isToday  = date.toDateString() === today.toDateString();
       const isSel    = pickedDate && date.toDateString() === pickedDate.toDateString();
 
-      let cls = 'cd';
-      if (!disabled) cls += ' available';
-      if (isSel)     cls += ' sel';
-      if (isToday)   cls += ' today';
-
       const ds = toDateStr(navYear, navMonth, d);
-      if (disabled) {
+      const hasSlots = availableDates.has(ds);
+
+      let cls = 'cd';
+      if (!disabled && hasSlots) cls += ' available';
+      if (isSel)                 cls += ' sel';
+      if (isToday)               cls += ' today';
+
+      if (disabled || !hasSlots) {
         h += `<button class="${cls}" disabled>${d}</button>`;
       } else {
         h += `<button class="${cls}" data-ds="${ds}" data-y="${navYear}" data-m="${navMonth}" data-d="${d}">${d}</button>`;
@@ -426,11 +446,11 @@ body {
 
   $('prev-btn').addEventListener('click', () => {
     if (navMonth-- === 0) { navMonth = 11; navYear--; }
-    renderCal();
+    loadMonthAvailability(navYear, navMonth);
   });
   $('next-btn').addEventListener('click', () => {
     if (navMonth++ === 11) { navMonth = 0; navYear++; }
-    renderCal();
+    loadMonthAvailability(navYear, navMonth);
   });
 
   $('cal').addEventListener('click', e => {
@@ -561,7 +581,7 @@ body {
 
   // ── Init ──────────────────────────────────────────────────────────────────
   $('tz-label').textContent = TZ.replace(/_/g, ' ').replace(/\//g, ' / ');
-  renderCal();
+  loadMonthAvailability(navYear, navMonth);
 
 }());
 </script>
