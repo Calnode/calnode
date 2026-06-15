@@ -24,20 +24,24 @@ const (
 // Called from server.New when GOOGLE_CLIENT_ID is set.
 // secure should be true when BASE_URL starts with https://.
 func (h *Handler) SetGoogleAuth(clientID, clientSecret, redirectURL string, secure bool) {
-	h.googleAuth = &oauth2.Config{
+	cfg := &oauth2.Config{
 		ClientID:     clientID,
 		ClientSecret: clientSecret,
 		Endpoint:     google.Endpoint,
 		RedirectURL:  redirectURL,
 		Scopes:       []string{"openid", "email", "profile"},
 	}
+	h.authMu.Lock()
+	h.googleAuth = cfg
 	h.secureCookie = secure
+	h.authMu.Unlock()
 }
 
 // LoginGoogle redirects the user to Google's OAuth consent screen.
 // GET /v1/auth/login
 func (h *Handler) LoginGoogle(w http.ResponseWriter, r *http.Request) {
-	if h.googleAuth == nil {
+	ga := h.getGoogleAuth()
+	if ga == nil {
 		http.Error(w, "Google OAuth not configured — set GOOGLE_CLIENT_ID", http.StatusServiceUnavailable)
 		return
 	}
@@ -57,13 +61,14 @@ func (h *Handler) LoginGoogle(w http.ResponseWriter, r *http.Request) {
 		SameSite: http.SameSiteLaxMode,
 		Secure:   h.secureCookie,
 	})
-	http.Redirect(w, r, h.googleAuth.AuthCodeURL(state, oauth2.AccessTypeOnline), http.StatusFound)
+	http.Redirect(w, r, ga.AuthCodeURL(state, oauth2.AccessTypeOnline), http.StatusFound)
 }
 
 // CallbackGoogle handles the OAuth redirect from Google.
 // GET /v1/auth/callback
 func (h *Handler) CallbackGoogle(w http.ResponseWriter, r *http.Request) {
-	if h.googleAuth == nil {
+	ga := h.getGoogleAuth()
+	if ga == nil {
 		http.Error(w, "Google OAuth not configured", http.StatusServiceUnavailable)
 		return
 	}
@@ -91,14 +96,14 @@ func (h *Handler) CallbackGoogle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tok, err := h.googleAuth.Exchange(r.Context(), r.URL.Query().Get("code"))
+	tok, err := ga.Exchange(r.Context(), r.URL.Query().Get("code"))
 	if err != nil {
 		h.logger.ErrorContext(r.Context(), "auth: token exchange", "error", err)
 		http.Redirect(w, r, "/admin/login?error=oauth", http.StatusFound)
 		return
 	}
 
-	info, err := fetchGoogleUserInfo(r.Context(), h.googleAuth, tok)
+	info, err := fetchGoogleUserInfo(r.Context(), ga, tok)
 	if err != nil {
 		h.logger.ErrorContext(r.Context(), "auth: user info", "error", err)
 		http.Redirect(w, r, "/admin/login?error=userinfo", http.StatusFound)

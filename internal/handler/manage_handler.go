@@ -261,14 +261,14 @@ func (h *Handler) CancelByToken(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 
-		if h.gcal != nil {
+		if gc := h.getGCal(); gc != nil {
 			var extEventID sql.NullString
 			if err := h.db.QueryRowContext(ctx,
 				`SELECT external_event_id FROM bookings WHERE id = ?`, bCopy.ID).
 				Scan(&extEventID); err != nil && !errors.Is(err, sql.ErrNoRows) {
 				h.logger.Error("cancel by token: fetch gcal event id", "error", err, "booking_id", bCopy.ID)
 			} else if extEventID.Valid && extEventID.String != "" {
-				if err := h.gcal.CancelEvent(ctx, bCopy.HostID, extEventID.String); err != nil {
+				if err := gc.CancelEvent(ctx, bCopy.HostID, extEventID.String); err != nil {
 					h.logger.Error("cancel by token: gcal cancel", "error", err, "booking_id", bCopy.ID)
 				}
 			}

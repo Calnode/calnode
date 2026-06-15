@@ -24,7 +24,7 @@ func (h *Handler) AuthStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	providers := []string{}
-	if h.googleAuth != nil {
+	if h.getGoogleAuth() != nil {
 		providers = append(providers, "google")
 	}
 

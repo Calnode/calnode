@@ -86,6 +86,26 @@ func (h *Handler) PatchGoogleSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if req.ClientID == "" {
+		// Clearing credentials — wipe both columns so the encrypted secret
+		// doesn't linger in the DB after the admin removes Google OAuth.
+		if _, err := h.db.ExecContext(r.Context(), `
+			UPDATE server_settings SET
+			  google_client_id = '', google_client_secret_enc = '',
+			  updated_at = datetime('now')
+			WHERE id = 1`); err != nil {
+			h.logger.ErrorContext(r.Context(), "google settings: clear", "error", err)
+			h.writeError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		h.SetCalendar(nil)
+		h.authMu.Lock()
+		h.googleAuth = nil
+		h.authMu.Unlock()
+		h.GetGoogleSettings(w, r)
+		return
+	}
+
 	if req.ClientSecret != "" {
 		enc, err := secret.Encrypt(h.encKey, req.ClientSecret)
 		if err != nil {
@@ -117,27 +137,37 @@ func (h *Handler) PatchGoogleSettings(w http.ResponseWriter, r *http.Request) {
 	// Hot-reload: resolve the active secret and reinitialise gcal + Google auth
 	// so changes take effect without a server restart.
 	resolvedSecret := req.ClientSecret
-	if resolvedSecret == "" && req.ClientID != "" {
+	if resolvedSecret == "" {
 		var secretEnc string
 		if err := h.db.QueryRowContext(r.Context(),
 			`SELECT google_client_secret_enc FROM server_settings WHERE id = 1`).
-			Scan(&secretEnc); err == nil && secretEnc != "" {
-			resolvedSecret, _ = secret.Decrypt(h.encKey, secretEnc)
+			Scan(&secretEnc); err != nil {
+			h.logger.ErrorContext(r.Context(), "google settings: re-read secret", "error", err)
+			h.writeError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		if secretEnc != "" {
+			var decErr error
+			resolvedSecret, decErr = secret.Decrypt(h.encKey, secretEnc)
+			if decErr != nil {
+				h.logger.ErrorContext(r.Context(), "google settings: decrypt existing secret", "error", decErr)
+				h.writeError(w, http.StatusInternalServerError, "internal error")
+				return
+			}
 		}
 	}
 
-	if req.ClientID != "" && resolvedSecret != "" {
+	if resolvedSecret != "" {
 		encKeyHex := hex.EncodeToString(h.encKey[:])
-		if gc, err := gcal.New(h.db, req.ClientID, resolvedSecret, h.baseURL+"/v1/calendar/callback", encKeyHex); err != nil {
+		gc, err := gcal.New(h.db, req.ClientID, resolvedSecret, h.baseURL+"/v1/calendar/callback", encKeyHex)
+		if err != nil {
 			h.logger.ErrorContext(r.Context(), "google settings: hot-reload gcal failed", "error", err)
-		} else {
-			h.SetCalendar(gc)
+			h.writeError(w, http.StatusInternalServerError, "failed to initialize calendar client")
+			return
 		}
+		h.SetCalendar(gc)
 		h.SetGoogleAuth(req.ClientID, resolvedSecret, h.baseURL+"/v1/auth/callback", h.secureCookie)
 		h.logger.Info("google settings: credentials updated and gcal hot-reloaded")
-	} else if req.ClientID == "" {
-		h.SetCalendar(nil)
-		h.googleAuth = nil
 	}
 
 	h.GetGoogleSettings(w, r)

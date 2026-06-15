@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"log/slog"
 	"net/http"
+	"sync"
 
 	"golang.org/x/oauth2"
 
@@ -21,10 +22,12 @@ type Handler struct {
 	mailer       mailer.Mailer
 	live         *mailer.Live // non-nil in production; nil in tests using a direct stub
 	encKey       [32]byte     // AES-256 key for encrypting secrets stored in the DB
+	calMu        sync.RWMutex
 	gcal         *gcal.Client
 	webhookSvc   *webhook.Service
 	baseURL      string
 	dataDir      string
+	authMu       sync.RWMutex
 	googleAuth   *oauth2.Config
 	secureCookie bool
 }
@@ -70,7 +73,23 @@ func (h *Handler) SetDataDir(dir string) {
 
 // SetCalendar configures the Google Calendar client.
 func (h *Handler) SetCalendar(c *gcal.Client) {
+	h.calMu.Lock()
 	h.gcal = c
+	h.calMu.Unlock()
+}
+
+// getGCal returns the current calendar client under a read lock.
+func (h *Handler) getGCal() *gcal.Client {
+	h.calMu.RLock()
+	defer h.calMu.RUnlock()
+	return h.gcal
+}
+
+// getGoogleAuth returns the current Google OAuth config under a read lock.
+func (h *Handler) getGoogleAuth() *oauth2.Config {
+	h.authMu.RLock()
+	defer h.authMu.RUnlock()
+	return h.googleAuth
 }
 
 // SetWebhookSvc replaces the default ephemeral-key webhook service with one

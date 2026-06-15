@@ -93,8 +93,9 @@
 				<li class="flex gap-3">
 					<span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">5</span>
 					<div>
-						Under <span class="font-medium">Authorised redirect URIs</span>, add:
+						Under <span class="font-medium">Authorised redirect URIs</span>, add both:
 						<code class="mt-1 block rounded bg-muted px-2 py-1 text-xs font-mono">http://localhost:3000/v1/calendar/callback</code>
+						<code class="mt-1 block rounded bg-muted px-2 py-1 text-xs font-mono">http://localhost:3000/v1/auth/callback</code>
 						Click <span class="font-medium">Create</span>. Copy the Client ID and Client Secret shown.
 					</div>
 				</li>

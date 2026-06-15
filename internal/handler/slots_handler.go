@@ -196,8 +196,8 @@ func (h *Handler) GetSlots(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Merge Google Calendar free/busy (check_conflicts connections only).
-	if h.gcal != nil {
-		gcalBusy, err := h.gcal.FreeBusy(r.Context(), et.UserID, dateFrom, dateTo.Add(24*time.Hour))
+	if gc := h.getGCal(); gc != nil {
+		gcalBusy, err := gc.FreeBusy(r.Context(), et.UserID, dateFrom, dateTo.Add(24*time.Hour))
 		if err != nil {
 			// Non-fatal: log and continue with DB-only busy intervals.
 			h.logger.ErrorContext(r.Context(), "slots: gcal freebusy", "error", err)
