@@ -36,8 +36,8 @@
 		if (copyTimer !== null) clearTimeout(copyTimer);
 	});
 
-	const calendarDone = $derived(!calendarConfigured || calendarConnected);
-	const allDone = $derived(calendarDone && hasAvailability && hasEventType);
+	const calendarDone = $derived(calendarConnected);
+	const allDone = $derived((!calendarConfigured || calendarDone) && hasAvailability && hasEventType);
 	const bookingUrl = $derived(firstSlug && origin ? `${origin}/book/${firstSlug}` : '');
 
 	async function copyLink() {
@@ -94,8 +94,7 @@
 
 	<!-- Checklist -->
 	<div class="rounded-lg border bg-card divide-y">
-		<!-- Calendar — only shown when Google Calendar is configured -->
-		{#if calendarConfigured}
+		<!-- Calendar -->
 		<a
 			href="{base}/calendar"
 			class="flex items-start gap-4 px-5 py-4 transition-colors hover:bg-muted/40 group"
@@ -113,14 +112,13 @@
 					Connect your calendar
 				</p>
 				<p class="mt-0.5 text-xs text-muted-foreground">
-					Calnode checks your calendar to prevent double-bookings.
+					{calendarConfigured ? 'Calnode checks your calendar to prevent double-bookings.' : 'Google Calendar setup required — see the Calendar page for details.'}
 				</p>
 			</div>
 			<svg class="mt-0.5 shrink-0 text-muted-foreground/40 group-hover:text-muted-foreground transition-colors" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 				<polyline points="9 18 15 12 9 6"/>
 			</svg>
 		</a>
-		{/if}
 
 		<!-- Availability -->
 		<a
