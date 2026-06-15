@@ -8,6 +8,13 @@ export type User = {
 	date_format: 'dmy' | 'mdy' | 'ymd';
 	avatar_url?: string;
 	is_admin: boolean;
+	notify_confirmation: boolean;
+	notify_cancellation: boolean;
+	notify_reschedule: boolean;
+	notify_reminder: boolean;
+	notify_host_booking: boolean;
+	notify_host_cancel: boolean;
+	notify_host_reschedule: boolean;
 };
 
 export type EventType = {
@@ -25,6 +32,11 @@ export type EventType = {
 	min_notice_minutes: number;
 	max_future_days: number;
 	created_at: string;
+	msg_confirmation?: string;
+	msg_cancellation?: string;
+	msg_reschedule?: string;
+	msg_reminder?: string;
+	reminders: number[]; // hours_before values
 };
 
 export type Question = {

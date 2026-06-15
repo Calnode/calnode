@@ -195,8 +195,27 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
-		if err := mailer.SendConfirmation(ctx, h.mailer, bData); err != nil {
-			h.logger.Error("booking confirmation email", "error", err, "booking_id", b.ID)
+		prefs := allOnPrefs
+		if p, err := h.loadHostPrefs(ctx, et.UserID); err != nil {
+			h.logger.Error("booking confirmation: load host prefs", "error", err, "booking_id", b.ID)
+		} else {
+			prefs = p
+		}
+		var msgNote sql.NullString
+		_ = h.db.QueryRowContext(ctx, `SELECT msg_confirmation FROM event_types WHERE id = ?`, b.EventTypeID).
+			Scan(&msgNote)
+		if msgNote.Valid {
+			bData.CustomNote = msgNote.String
+		}
+		if prefs.NotifyConfirmation {
+			if err := mailer.SendConfirmationToAttendee(ctx, h.mailer, bData); err != nil {
+				h.logger.Error("booking confirmation email (attendee)", "error", err, "booking_id", b.ID)
+			}
+		}
+		if prefs.NotifyHostBooking {
+			if err := mailer.SendConfirmationToHost(ctx, h.mailer, bData); err != nil {
+				h.logger.Error("booking confirmation email (host)", "error", err, "booking_id", b.ID)
+			}
 		}
 		if err := h.webhookSvc.Enqueue(ctx, "booking.created", webhook.BookingPayload{
 			ID:            b.ID,
@@ -210,8 +229,8 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 		}); err != nil {
 			h.logger.Error("enqueue booking.created webhook", "error", err, "booking_id", b.ID)
 		}
-		if err := h.enqueueReminder(ctx, b.ID, b.StartAt); err != nil {
-			h.logger.Error("enqueue reminder", "error", err, "booking_id", b.ID)
+		if err := h.enqueueBookingReminders(ctx, b.EventTypeID, b.ID, b.StartAt); err != nil {
+			h.logger.Error("enqueue reminders", "error", err, "booking_id", b.ID)
 		}
 	}()
 }
@@ -306,8 +325,27 @@ func (h *Handler) CancelBooking(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		d.BaseURL = h.baseURL
-		if err := mailer.SendCancellation(ctx, h.mailer, d); err != nil {
-			h.logger.Error("booking cancellation email", "error", err, "booking_id", bCopy.ID)
+		prefs := allOnPrefs
+		if p, err := h.loadHostPrefs(ctx, bCopy.HostID); err != nil {
+			h.logger.Error("booking cancellation: load host prefs", "error", err, "booking_id", bCopy.ID)
+		} else {
+			prefs = p
+		}
+		var msgNote sql.NullString
+		_ = h.db.QueryRowContext(ctx, `SELECT msg_cancellation FROM event_types WHERE id = ?`, bCopy.EventTypeID).
+			Scan(&msgNote)
+		if msgNote.Valid {
+			d.CustomNote = msgNote.String
+		}
+		if prefs.NotifyCancellation {
+			if err := mailer.SendCancellationToAttendee(ctx, h.mailer, d); err != nil {
+				h.logger.Error("booking cancellation email (attendee)", "error", err, "booking_id", bCopy.ID)
+			}
+		}
+		if prefs.NotifyHostCancel {
+			if err := mailer.SendCancellationToHost(ctx, h.mailer, d); err != nil {
+				h.logger.Error("booking cancellation email (host)", "error", err, "booking_id", bCopy.ID)
+			}
 		}
 		if err := h.webhookSvc.Enqueue(ctx, "booking.cancelled", webhook.BookingPayload{
 			ID:                 bCopy.ID,
@@ -360,21 +398,56 @@ func (h *Handler) loadCancellationData(ctx context.Context, b *booking.Booking) 
 	return d, nil
 }
 
+// hostPrefs holds the notification preference booleans for a host user.
+type hostPrefs struct {
+	NotifyConfirmation   bool
+	NotifyCancellation   bool
+	NotifyReschedule     bool
+	NotifyReminder       bool
+	NotifyHostBooking    bool
+	NotifyHostCancel     bool
+	NotifyHostReschedule bool
+}
+
+// allOnPrefs is a safe default used when loadHostPrefs fails.
+var allOnPrefs = hostPrefs{true, true, true, true, true, true, true}
+
+// loadHostPrefs fetches notification prefs for a user. On error, callers should
+// fall back to allOnPrefs so a DB hiccup does not silently suppress emails.
+func (h *Handler) loadHostPrefs(ctx context.Context, hostID string) (hostPrefs, error) {
+	var p hostPrefs
+	var nc, nca, nr, nrm, nhb, nhc, nhr int
+	err := h.db.QueryRowContext(ctx, `
+		SELECT COALESCE(notify_confirmation,1), COALESCE(notify_cancellation,1),
+		       COALESCE(notify_reschedule,1), COALESCE(notify_reminder,1),
+		       COALESCE(notify_host_booking,1), COALESCE(notify_host_cancel,1),
+		       COALESCE(notify_host_reschedule,1)
+		FROM users WHERE id = ?`, hostID).
+		Scan(&nc, &nca, &nr, &nrm, &nhb, &nhc, &nhr)
+	if err != nil {
+		return p, err
+	}
+	p.NotifyConfirmation, p.NotifyCancellation = nc != 0, nca != 0
+	p.NotifyReschedule, p.NotifyReminder = nr != 0, nrm != 0
+	p.NotifyHostBooking, p.NotifyHostCancel, p.NotifyHostReschedule = nhb != 0, nhc != 0, nhr != 0
+	return p, nil
+}
+
 // isForeignKeyViolation reports whether err is a SQLite FOREIGN KEY constraint failure.
 func isForeignKeyViolation(err error) bool {
 	return strings.Contains(err.Error(), "FOREIGN KEY constraint failed")
 }
 
-// enqueueReminder inserts a reminder.send job scheduled for 24 hours before startAt.
-// If that time has already passed, the job runs immediately (within the next poll cycle).
-func (h *Handler) enqueueReminder(ctx context.Context, bookingID string, startAt time.Time) error {
-	runAt := startAt.UTC().Add(-24 * time.Hour)
+// enqueueReminder inserts a reminder.send job scheduled hoursBefore hours before startAt.
+// If the computed run_at has already passed, the job fires on the next poll cycle.
+func (h *Handler) enqueueReminder(ctx context.Context, bookingID string, startAt time.Time, hoursBefore int) error {
+	runAt := startAt.UTC().Add(-time.Duration(hoursBefore) * time.Hour)
 	now := time.Now().UTC()
 	if runAt.Before(now) {
-		runAt = now // fire on next poll if booking is < 24h away
+		runAt = now
 	}
 
-	payload, err := json.Marshal(map[string]string{"booking_id": bookingID})
+	payload, err := json.Marshal(map[string]any{"booking_id": bookingID, "hours_before": hoursBefore})
 	if err != nil {
 		return fmt.Errorf("enqueue reminder: marshal payload: %w", err)
 	}
@@ -384,4 +457,97 @@ func (h *Handler) enqueueReminder(ctx context.Context, bookingID string, startAt
 		VALUES (?, 'reminder.send', ?, ?, 'pending', 0, 3)`,
 		uid.New(), string(payload), runAt.Format(time.RFC3339))
 	return err
+}
+
+// enqueueBookingReminders loads the event type's reminder list and enqueues one job per
+// entry. Falls back to a single 24-hour reminder when no explicit list is configured.
+func (h *Handler) enqueueBookingReminders(ctx context.Context, etID, bookingID string, startAt time.Time) error {
+	rows, err := h.db.QueryContext(ctx,
+		`SELECT hours_before FROM event_type_reminders WHERE event_type_id = ? ORDER BY hours_before DESC`, etID)
+	if err != nil {
+		return fmt.Errorf("enqueue booking reminders: %w", err)
+	}
+	defer rows.Close()
+
+	var hours []int
+	for rows.Next() {
+		var hb int
+		if err := rows.Scan(&hb); err != nil {
+			return fmt.Errorf("enqueue booking reminders: scan: %w", err)
+		}
+		hours = append(hours, hb)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	if len(hours) == 0 {
+		return h.enqueueReminder(ctx, bookingID, startAt, 24)
+	}
+	for _, hb := range hours {
+		if err := h.enqueueReminder(ctx, bookingID, startAt, hb); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// replaceReminderJobs atomically deletes all non-running reminder jobs for a
+// booking and inserts fresh ones based on the event type's configured reminder
+// list. Falls back to a single 24-hour reminder when no explicit list is set.
+func (h *Handler) replaceReminderJobs(ctx context.Context, bookingID, etID string, newStart time.Time) error {
+	// Load the hours list first (read-only, outside the write transaction).
+	rows, err := h.db.QueryContext(ctx,
+		`SELECT hours_before FROM event_type_reminders WHERE event_type_id = ? ORDER BY hours_before DESC`, etID)
+	if err != nil {
+		return fmt.Errorf("replace reminder jobs: load reminders: %w", err)
+	}
+	defer rows.Close()
+	var hours []int
+	for rows.Next() {
+		var hb int
+		if err := rows.Scan(&hb); err != nil {
+			return fmt.Errorf("replace reminder jobs: scan: %w", err)
+		}
+		hours = append(hours, hb)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if len(hours) == 0 {
+		hours = []int{24}
+	}
+
+	tx, err := h.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("replace reminder jobs: begin tx: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	if _, err := tx.ExecContext(ctx, `
+		DELETE FROM jobs
+		WHERE type = 'reminder.send'
+		  AND json_extract(payload, '$.booking_id') = ?
+		  AND status != 'running'`, bookingID); err != nil {
+		return fmt.Errorf("replace reminder jobs: delete: %w", err)
+	}
+
+	now := time.Now().UTC()
+	for _, hb := range hours {
+		runAt := newStart.UTC().Add(-time.Duration(hb) * time.Hour)
+		if runAt.Before(now) {
+			runAt = now
+		}
+		payload, err := json.Marshal(map[string]any{"booking_id": bookingID, "hours_before": hb})
+		if err != nil {
+			return fmt.Errorf("replace reminder jobs: marshal payload: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT OR IGNORE INTO jobs (id, type, payload, run_at, status, attempts, max_attempts)
+			VALUES (?, 'reminder.send', ?, ?, 'pending', 0, 3)`,
+			uid.New(), string(payload), runAt.Format(time.RFC3339)); err != nil {
+			return fmt.Errorf("replace reminder jobs: insert: %w", err)
+		}
+	}
+	return tx.Commit()
 }

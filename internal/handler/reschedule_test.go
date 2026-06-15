@@ -91,27 +91,31 @@ func TestRescheduleBooking_updatesReminderJob(t *testing.T) {
 
 	bookingID := createBookingViaHTTP(t, h, slug, bookStart.Format(time.RFC3339))
 
-	// Seed an existing reminder job as if it was enqueued at booking creation.
-	payload := fmt.Sprintf(`{"booking_id":%q}`, bookingID)
+	// Seed an old-format reminder job (no hours_before field) to verify that
+	// replaceReminderJobs correctly removes stale jobs of any payload format.
+	oldPayload := fmt.Sprintf(`{"booking_id":%q}`, bookingID)
 	database.ExecContext(ctx, `
 		INSERT INTO jobs (id, type, payload, run_at, status, attempts, max_attempts)
 		VALUES ('rem-test-job', 'reminder.send', ?, ?, 'pending', 0, 3)`,
-		payload, oldReminderAt.Format(time.RFC3339))
+		oldPayload, oldReminderAt.Format(time.RFC3339))
 
 	rec := patchReschedule(t, h, bookingID, newStart.Format(time.RFC3339), key)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("reschedule: got %d — %s", rec.Code, rec.Body.String())
 	}
 
-	// The goroutine runs asynchronously; poll briefly.
-	var runAt, status string
+	// replaceReminderJobs deletes old jobs and inserts fresh ones keyed by booking_id.
+	// Poll until a pending reminder job with the correct run_at appears.
+	var runAt string
 	deadline := time.Now().Add(2 * time.Second)
-	oldRunAtStr := oldReminderAt.Format(time.RFC3339)
 	for time.Now().Before(deadline) {
-		database.QueryRowContext(ctx,
-			`SELECT run_at, status FROM jobs WHERE id = 'rem-test-job'`).
-			Scan(&runAt, &status)
-		if status == "pending" && runAt != oldRunAtStr {
+		database.QueryRowContext(ctx, `
+			SELECT run_at FROM jobs
+			WHERE type = 'reminder.send'
+			  AND json_extract(payload, '$.booking_id') = ?
+			  AND status = 'pending'`, bookingID).
+			Scan(&runAt)
+		if runAt != "" && runAt != oldReminderAt.Format(time.RFC3339) {
 			break
 		}
 		time.Sleep(10 * time.Millisecond)
@@ -125,8 +129,12 @@ func TestRescheduleBooking_updatesReminderJob(t *testing.T) {
 	if diff < -time.Minute || diff > time.Minute {
 		t.Errorf("reminder run_at = %s; want ~%s (±1m)", runAt, wantNewReminder.Format(time.RFC3339))
 	}
-	if status != "pending" {
-		t.Errorf("job status = %q; want pending", status)
+
+	// Verify the old-format job was deleted.
+	var oldJobExists int
+	database.QueryRowContext(ctx, `SELECT COUNT(*) FROM jobs WHERE id = 'rem-test-job'`).Scan(&oldJobExists)
+	if oldJobExists != 0 {
+		t.Errorf("old reminder job 'rem-test-job' was not deleted by replaceReminderJobs")
 	}
 }
 

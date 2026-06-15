@@ -5,13 +5,11 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/calnode/calnode/internal/booking"
 	"github.com/calnode/calnode/internal/mailer"
-	"github.com/calnode/calnode/internal/uid"
 	"github.com/calnode/calnode/internal/webhook"
 )
 
@@ -41,13 +39,13 @@ func (h *Handler) RescheduleBooking(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Load booking + event type in one query to check ownership and get duration.
-	var hostID, startStr, endStr, status, etSlug string
+	var hostID, startStr, endStr, status, etSlug, etID string
 	var durMins int
 	err = h.db.QueryRowContext(r.Context(), `
-		SELECT b.host_id, b.start_at, b.end_at, b.status, et.duration_minutes, et.slug
+		SELECT b.host_id, b.start_at, b.end_at, b.status, et.duration_minutes, et.slug, et.id
 		FROM bookings b JOIN event_types et ON et.id = b.event_type_id
 		WHERE b.id = ?`, id).
-		Scan(&hostID, &startStr, &endStr, &status, &durMins, &etSlug)
+		Scan(&hostID, &startStr, &endStr, &status, &durMins, &etSlug, &etID)
 	if errors.Is(err, sql.ErrNoRows) {
 		h.writeError(w, http.StatusNotFound, "booking not found")
 		return
@@ -113,6 +111,7 @@ func (h *Handler) RescheduleBooking(w http.ResponseWriter, r *http.Request) {
 	bCopy := *updated
 	prevStart := previousStart
 	prevEnd := previousEnd
+	capturedEtID := etID
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
@@ -130,8 +129,27 @@ func (h *Handler) RescheduleBooking(w http.ResponseWriter, r *http.Request) {
 			d.ManageURL = h.baseURL + "/manage/" + tok
 		}
 
-		if err := mailer.SendReschedule(ctx, h.mailer, d); err != nil {
-			h.logger.Error("reschedule booking: send email", "error", err, "booking_id", bCopy.ID)
+		prefs := allOnPrefs
+		if p, err := h.loadHostPrefs(ctx, bCopy.HostID); err != nil {
+			h.logger.Error("reschedule booking: load host prefs", "error", err, "booking_id", bCopy.ID)
+		} else {
+			prefs = p
+		}
+		var msgNote sql.NullString
+		_ = h.db.QueryRowContext(ctx, `SELECT msg_reschedule FROM event_types WHERE id = ?`, capturedEtID).
+			Scan(&msgNote)
+		if msgNote.Valid {
+			d.CustomNote = msgNote.String
+		}
+		if prefs.NotifyReschedule {
+			if err := mailer.SendRescheduleToAttendee(ctx, h.mailer, d); err != nil {
+				h.logger.Error("reschedule booking: send email (attendee)", "error", err, "booking_id", bCopy.ID)
+			}
+		}
+		if prefs.NotifyHostReschedule {
+			if err := mailer.SendRescheduleToHost(ctx, h.mailer, d); err != nil {
+				h.logger.Error("reschedule booking: send email (host)", "error", err, "booking_id", bCopy.ID)
+			}
 		}
 
 		if h.webhookSvc != nil {
@@ -151,41 +169,9 @@ func (h *Handler) RescheduleBooking(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		if err := h.rescheduleReminderJob(ctx, bCopy.ID, bCopy.StartAt); err != nil {
-			h.logger.Error("reschedule booking: update reminder job", "error", err, "booking_id", bCopy.ID)
+		if err := h.replaceReminderJobs(ctx, bCopy.ID, capturedEtID, bCopy.StartAt); err != nil {
+			h.logger.Error("reschedule booking: replace reminder jobs", "error", err, "booking_id", bCopy.ID)
 		}
 	}()
 }
 
-// rescheduleReminderJob reschedules the reminder.send job for bookingID to fire
-// 24 hours before newStart. Uses an UPSERT so it handles all job states:
-//   - no job yet → INSERT
-//   - pending/done/failed → UPDATE run_at and reset to pending
-//   - running → WHERE clause excludes it; in-flight send uses current DB data
-//     (which already reflects the new booking time) so the email is correct
-func (h *Handler) rescheduleReminderJob(ctx context.Context, bookingID string, newStart time.Time) error {
-	runAt := newStart.UTC().Add(-24 * time.Hour)
-	now := time.Now().UTC()
-	if runAt.Before(now) {
-		runAt = now
-	}
-
-	payload, err := json.Marshal(map[string]string{"booking_id": bookingID})
-	if err != nil {
-		return fmt.Errorf("reschedule reminder job: marshal payload: %w", err)
-	}
-
-	_, err = h.db.ExecContext(ctx, `
-		INSERT INTO jobs (id, type, payload, run_at, status, attempts, max_attempts)
-		VALUES (?, 'reminder.send', ?, ?, 'pending', 0, 3)
-		ON CONFLICT(type, payload) DO UPDATE SET
-			run_at   = excluded.run_at,
-			status   = 'pending',
-			attempts = 0
-		WHERE jobs.status != 'running'`,
-		uid.New(), string(payload), runAt.Format(time.RFC3339))
-	if err != nil {
-		return fmt.Errorf("reschedule reminder job: upsert: %w", err)
-	}
-	return nil
-}

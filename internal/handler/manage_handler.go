@@ -165,6 +165,7 @@ func (h *Handler) RescheduleByToken(w http.ResponseWriter, r *http.Request) {
 	h.writeJSON(w, http.StatusOK, toBookingJSON(updated))
 
 	bCopy := *updated
+	capturedEtID := b.EventTypeID
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
@@ -183,8 +184,27 @@ func (h *Handler) RescheduleByToken(w http.ResponseWriter, r *http.Request) {
 			d.ManageURL = h.baseURL + "/manage/" + tok
 		}
 
-		if err := mailer.SendReschedule(ctx, h.mailer, d); err != nil {
-			h.logger.Error("reschedule email", "error", err, "booking_id", bCopy.ID)
+		prefs := allOnPrefs
+		if p, err := h.loadHostPrefs(ctx, bCopy.HostID); err != nil {
+			h.logger.Error("reschedule: load host prefs", "error", err, "booking_id", bCopy.ID)
+		} else {
+			prefs = p
+		}
+		var msgNote sql.NullString
+		_ = h.db.QueryRowContext(ctx, `SELECT msg_reschedule FROM event_types WHERE id = ?`, capturedEtID).
+			Scan(&msgNote)
+		if msgNote.Valid {
+			d.CustomNote = msgNote.String
+		}
+		if prefs.NotifyReschedule {
+			if err := mailer.SendRescheduleToAttendee(ctx, h.mailer, d); err != nil {
+				h.logger.Error("reschedule email (attendee)", "error", err, "booking_id", bCopy.ID)
+			}
+		}
+		if prefs.NotifyHostReschedule {
+			if err := mailer.SendRescheduleToHost(ctx, h.mailer, d); err != nil {
+				h.logger.Error("reschedule email (host)", "error", err, "booking_id", bCopy.ID)
+			}
 		}
 
 		if err := h.webhookSvc.Enqueue(ctx, "booking.rescheduled", webhook.BookingPayload{
@@ -200,6 +220,10 @@ func (h *Handler) RescheduleByToken(w http.ResponseWriter, r *http.Request) {
 			PreviousEndAt:   previousEnd.UTC().Format(time.RFC3339),
 		}); err != nil {
 			h.logger.Error("enqueue booking.rescheduled webhook", "error", err, "booking_id", bCopy.ID)
+		}
+
+		if err := h.replaceReminderJobs(ctx, bCopy.ID, capturedEtID, bCopy.StartAt); err != nil {
+			h.logger.Error("reschedule: replace reminder jobs", "error", err, "booking_id", bCopy.ID)
 		}
 	}()
 }
@@ -257,8 +281,27 @@ func (h *Handler) CancelByToken(w http.ResponseWriter, r *http.Request) {
 		}
 		d.BaseURL = h.baseURL
 
-		if err := mailer.SendCancellation(ctx, h.mailer, d); err != nil {
-			h.logger.Error("cancel by token: email", "error", err, "booking_id", bCopy.ID)
+		prefs := allOnPrefs
+		if p, err := h.loadHostPrefs(ctx, bCopy.HostID); err != nil {
+			h.logger.Error("cancel by token: load host prefs", "error", err, "booking_id", bCopy.ID)
+		} else {
+			prefs = p
+		}
+		var msgNote sql.NullString
+		_ = h.db.QueryRowContext(ctx, `SELECT msg_cancellation FROM event_types WHERE id = ?`, bCopy.EventTypeID).
+			Scan(&msgNote)
+		if msgNote.Valid {
+			d.CustomNote = msgNote.String
+		}
+		if prefs.NotifyCancellation {
+			if err := mailer.SendCancellationToAttendee(ctx, h.mailer, d); err != nil {
+				h.logger.Error("cancel by token: email (attendee)", "error", err, "booking_id", bCopy.ID)
+			}
+		}
+		if prefs.NotifyHostCancel {
+			if err := mailer.SendCancellationToHost(ctx, h.mailer, d); err != nil {
+				h.logger.Error("cancel by token: email (host)", "error", err, "booking_id", bCopy.ID)
+			}
 		}
 
 		if err := h.webhookSvc.Enqueue(ctx, "booking.cancelled", webhook.BookingPayload{

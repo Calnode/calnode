@@ -111,6 +111,14 @@ func (h *Handler) GetMe(w http.ResponseWriter, r *http.Request) {
 		"week_start":  user.WeekStart,
 		"date_format": user.DateFormat,
 		"is_admin":    user.IsAdmin,
+		// Notification preferences
+		"notify_confirmation":    user.NotifyConfirmation,
+		"notify_cancellation":    user.NotifyCancellation,
+		"notify_reschedule":      user.NotifyReschedule,
+		"notify_reminder":        user.NotifyReminder,
+		"notify_host_booking":    user.NotifyHostBooking,
+		"notify_host_cancel":     user.NotifyHostCancel,
+		"notify_host_reschedule": user.NotifyHostReschedule,
 	}
 	if user.AvatarURL != "" {
 		out["avatar_url"] = user.AvatarURL
@@ -118,16 +126,23 @@ func (h *Handler) GetMe(w http.ResponseWriter, r *http.Request) {
 	h.writeJSON(w, http.StatusOK, out)
 }
 
-// PatchMe handles PATCH /v1/users/me — updates timezone, time_format, week_start, date_format.
+// PatchMe handles PATCH /v1/users/me — updates timezone, time_format, week_start, date_format, and notification prefs.
 func (h *Handler) PatchMe(w http.ResponseWriter, r *http.Request) {
 	user, _ := userFromContext(r.Context())
 	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
 
 	var req struct {
-		Timezone   *string `json:"timezone"`
-		TimeFormat *string `json:"time_format"`
-		WeekStart  *int    `json:"week_start"`
-		DateFormat *string `json:"date_format"`
+		Timezone             *string `json:"timezone"`
+		TimeFormat           *string `json:"time_format"`
+		WeekStart            *int    `json:"week_start"`
+		DateFormat           *string `json:"date_format"`
+		NotifyConfirmation   *bool   `json:"notify_confirmation"`
+		NotifyCancellation   *bool   `json:"notify_cancellation"`
+		NotifyReschedule     *bool   `json:"notify_reschedule"`
+		NotifyReminder       *bool   `json:"notify_reminder"`
+		NotifyHostBooking    *bool   `json:"notify_host_booking"`
+		NotifyHostCancel     *bool   `json:"notify_host_cancel"`
+		NotifyHostReschedule *bool   `json:"notify_host_reschedule"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.writeError(w, http.StatusBadRequest, "invalid JSON")
@@ -135,11 +150,22 @@ func (h *Handler) PatchMe(w http.ResponseWriter, r *http.Request) {
 	}
 
 	current := struct {
-		Timezone   string
-		TimeFormat string
-		WeekStart  int
-		DateFormat string
-	}{user.IANATZ, user.TimeFormat, user.WeekStart, user.DateFormat}
+		Timezone             string
+		TimeFormat           string
+		WeekStart            int
+		DateFormat           string
+		NotifyConfirmation   bool
+		NotifyCancellation   bool
+		NotifyReschedule     bool
+		NotifyReminder       bool
+		NotifyHostBooking    bool
+		NotifyHostCancel     bool
+		NotifyHostReschedule bool
+	}{
+		user.IANATZ, user.TimeFormat, user.WeekStart, user.DateFormat,
+		user.NotifyConfirmation, user.NotifyCancellation, user.NotifyReschedule, user.NotifyReminder,
+		user.NotifyHostBooking, user.NotifyHostCancel, user.NotifyHostReschedule,
+	}
 
 	if req.Timezone != nil {
 		if _, err := time.LoadLocation(*req.Timezone); err != nil {
@@ -171,10 +197,47 @@ func (h *Handler) PatchMe(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if req.NotifyConfirmation != nil {
+		current.NotifyConfirmation = *req.NotifyConfirmation
+	}
+	if req.NotifyCancellation != nil {
+		current.NotifyCancellation = *req.NotifyCancellation
+	}
+	if req.NotifyReschedule != nil {
+		current.NotifyReschedule = *req.NotifyReschedule
+	}
+	if req.NotifyReminder != nil {
+		current.NotifyReminder = *req.NotifyReminder
+	}
+	if req.NotifyHostBooking != nil {
+		current.NotifyHostBooking = *req.NotifyHostBooking
+	}
+	if req.NotifyHostCancel != nil {
+		current.NotifyHostCancel = *req.NotifyHostCancel
+	}
+	if req.NotifyHostReschedule != nil {
+		current.NotifyHostReschedule = *req.NotifyHostReschedule
+	}
+
+	boolToInt := func(b bool) int {
+		if b {
+			return 1
+		}
+		return 0
+	}
 
 	if _, err := h.db.ExecContext(r.Context(), `
-		UPDATE users SET iana_timezone = ?, time_format = ?, week_start = ?, date_format = ? WHERE id = ?`,
-		current.Timezone, current.TimeFormat, current.WeekStart, current.DateFormat, user.ID); err != nil {
+		UPDATE users SET
+			iana_timezone = ?, time_format = ?, week_start = ?, date_format = ?,
+			notify_confirmation = ?, notify_cancellation = ?, notify_reschedule = ?, notify_reminder = ?,
+			notify_host_booking = ?, notify_host_cancel = ?, notify_host_reschedule = ?
+		WHERE id = ?`,
+		current.Timezone, current.TimeFormat, current.WeekStart, current.DateFormat,
+		boolToInt(current.NotifyConfirmation), boolToInt(current.NotifyCancellation),
+		boolToInt(current.NotifyReschedule), boolToInt(current.NotifyReminder),
+		boolToInt(current.NotifyHostBooking), boolToInt(current.NotifyHostCancel),
+		boolToInt(current.NotifyHostReschedule),
+		user.ID); err != nil {
 		h.logger.ErrorContext(r.Context(), "patch me", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -189,6 +252,14 @@ func (h *Handler) PatchMe(w http.ResponseWriter, r *http.Request) {
 		"week_start":  current.WeekStart,
 		"date_format": current.DateFormat,
 		"is_admin":    user.IsAdmin,
+		// Notification preferences
+		"notify_confirmation":    current.NotifyConfirmation,
+		"notify_cancellation":    current.NotifyCancellation,
+		"notify_reschedule":      current.NotifyReschedule,
+		"notify_reminder":        current.NotifyReminder,
+		"notify_host_booking":    current.NotifyHostBooking,
+		"notify_host_cancel":     current.NotifyHostCancel,
+		"notify_host_reschedule": current.NotifyHostReschedule,
 	}
 	if user.AvatarURL != "" {
 		out["avatar_url"] = user.AvatarURL

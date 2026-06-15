@@ -8,6 +8,7 @@
 	import { Label } from '$lib/components/ui/label';
 	import { Checkbox } from '$lib/components/ui/checkbox';
 	import { Textarea } from '$lib/components/ui/textarea';
+	import { Switch } from '$lib/components/ui/switch';
 	import * as Tooltip from '$lib/components/ui/tooltip';
 
 	const LOCATION_TYPES = [
@@ -41,6 +42,26 @@
 		min_notice_minutes: 0, max_future_days: 60,
 	});
 
+	// Notification / messaging state
+	const REMINDER_OPTIONS = [
+		{ value: 1, label: '1 hour before' },
+		{ value: 2, label: '2 hours before' },
+		{ value: 4, label: '4 hours before' },
+		{ value: 8, label: '8 hours before' },
+		{ value: 12, label: '12 hours before' },
+		{ value: 24, label: '24 hours before' },
+		{ value: 48, label: '2 days before' },
+		{ value: 72, label: '3 days before' },
+		{ value: 168, label: '1 week before' },
+	];
+	let reminders = $state<number[]>([]);
+	let msg_confirmation = $state('');
+	let msg_cancellation = $state('');
+	let msg_reschedule = $state('');
+	let msg_reminder = $state('');
+	// Track which message accordions are open
+	let msgOpen = $state({ confirmation: false, cancellation: false, reschedule: false, reminder: false });
+
 	const slug = $page.params.slug;
 
 	async function loadET() {
@@ -60,6 +81,11 @@
 				min_notice_minutes: et.min_notice_minutes,
 				max_future_days: et.max_future_days,
 			};
+			reminders = et.reminders ?? [];
+			msg_confirmation = et.msg_confirmation ?? '';
+			msg_cancellation = et.msg_cancellation ?? '';
+			msg_reschedule = et.msg_reschedule ?? '';
+			msg_reminder = et.msg_reminder ?? '';
 		} catch (e: any) {
 			etError = e.message;
 		} finally {
@@ -86,6 +112,11 @@
 				buffer_after_minutes: Number(form.buffer_after_minutes),
 				min_notice_minutes: Number(form.min_notice_minutes),
 				max_future_days: Number(form.max_future_days),
+				reminders,
+				msg_confirmation: msg_confirmation.trim() || null,
+				msg_cancellation: msg_cancellation.trim() || null,
+				msg_reschedule: msg_reschedule.trim() || null,
+				msg_reminder: msg_reminder.trim() || null,
 			});
 			etSaved = true;
 			setTimeout(() => (etSaved = false), 3000);
@@ -298,6 +329,105 @@
 		</div>
 
 		<Button onclick={saveET} disabled={etSaving} class="mt-6">
+			{etSaving ? 'Saving…' : 'Save changes'}
+		</Button>
+	</div>
+</div>
+
+<!-- Notifications -->
+<div class="mb-8">
+	<h2 class="mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">Notifications</h2>
+	<div class="rounded-lg border bg-card p-6 space-y-6">
+
+		<!-- Reminders -->
+		<div>
+			<p class="mb-1 text-sm font-medium">Reminders</p>
+			<p class="mb-3 text-xs text-muted-foreground">Send attendees a reminder email before the meeting. Defaults to 24 hours before if none are set.</p>
+			<div class="space-y-2">
+				{#each reminders as hb, i}
+					<div class="flex items-center gap-2">
+						<select
+							value={hb}
+							onchange={(e) => {
+								const v = Number((e.target as HTMLSelectElement).value);
+								reminders = reminders.map((r, idx) => idx === i ? v : r);
+							}}
+							class="flex h-9 rounded-md border border-input bg-background px-3 py-1 text-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+						>
+							{#each REMINDER_OPTIONS as opt}
+								<option value={opt.value}>{opt.label}</option>
+							{/each}
+						</select>
+						<Button
+							type="button"
+							variant="ghost"
+							size="icon"
+							onclick={() => { reminders = reminders.filter((_, idx) => idx !== i); }}
+						>
+							<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+						</Button>
+					</div>
+				{/each}
+				{#if reminders.length < 5}
+					<Button
+						type="button"
+						variant="outline"
+						size="sm"
+						onclick={() => {
+							const used = new Set(reminders);
+							const next = REMINDER_OPTIONS.find(o => !used.has(o.value));
+							if (next) reminders = [...reminders, next.value];
+						}}
+					>
+						+ Add reminder
+					</Button>
+				{/if}
+			</div>
+		</div>
+
+		<!-- Custom messages -->
+		<div class="border-t pt-5">
+			<p class="mb-1 text-sm font-medium">Custom messages</p>
+			<p class="mb-3 text-xs text-muted-foreground">Add an optional note appended to each email type.</p>
+			<div class="space-y-2">
+				{#each [
+					{ key: 'confirmation' as const, label: 'Booking confirmation' },
+					{ key: 'cancellation' as const, label: 'Cancellation notice' },
+					{ key: 'reschedule' as const, label: 'Reschedule notice' },
+					{ key: 'reminder' as const, label: 'Reminder email' },
+				] as item}
+					<div class="rounded-md border">
+						<button
+							type="button"
+							class="flex w-full items-center justify-between px-4 py-3 text-sm font-medium hover:bg-muted/30 transition-colors"
+							onclick={() => { msgOpen[item.key] = !msgOpen[item.key]; }}
+						>
+							<span>{item.label}</span>
+							<svg
+								xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24"
+								fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+								class="transition-transform {msgOpen[item.key] ? 'rotate-180' : ''}"
+							><polyline points="6 9 12 15 18 9"/></svg>
+						</button>
+						{#if msgOpen[item.key]}
+							<div class="border-t px-4 pb-4 pt-3">
+								{#if item.key === 'confirmation'}
+									<Textarea bind:value={msg_confirmation} rows={3} placeholder="Add a custom note for attendees…" />
+								{:else if item.key === 'cancellation'}
+									<Textarea bind:value={msg_cancellation} rows={3} placeholder="Add a custom note for attendees…" />
+								{:else if item.key === 'reschedule'}
+									<Textarea bind:value={msg_reschedule} rows={3} placeholder="Add a custom note for attendees…" />
+								{:else if item.key === 'reminder'}
+									<Textarea bind:value={msg_reminder} rows={3} placeholder="Add a custom note for attendees…" />
+								{/if}
+							</div>
+						{/if}
+					</div>
+				{/each}
+			</div>
+		</div>
+
+		<Button onclick={saveET} disabled={etSaving}>
 			{etSaving ? 'Saving…' : 'Save changes'}
 		</Button>
 	</div>

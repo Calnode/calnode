@@ -26,6 +26,7 @@ type BookingData struct {
 	CancellationReason string
 	ManageURL          string // manage link (reschedule/cancel), set at booking creation
 	BaseURL            string
+	CustomNote         string // optional host-configured note appended to the email body
 }
 
 // StartFmt returns StartAt formatted in the organizer's timezone.
@@ -48,101 +49,147 @@ func inTZ(t time.Time, tz string) string {
 	return t.In(loc).Format("Mon 2 Jan 2006, 3:04 PM MST")
 }
 
-// SendConfirmation sends booking confirmation emails to the organizer and the
-// host. If either send fails the error is returned but the other send is still
-// attempted. The caller should log the error and continue — a failed email must
-// not undo a successful booking.
-func SendConfirmation(ctx context.Context, m Mailer, d BookingData) error {
-	var errs []string
-
+// SendConfirmationToAttendee sends a booking confirmation email to the organizer/attendee.
+func SendConfirmationToAttendee(ctx context.Context, m Mailer, d BookingData) error {
 	if err := m.Send(ctx, Message{
 		To:      []string{d.OrganizerEmail},
 		Subject: "Booking confirmed: " + d.EventTypeName,
 		Text:    render(confirmOrgTmpl, d),
 	}); err != nil {
-		errs = append(errs, "organizer: "+err.Error())
+		return fmt.Errorf("mailer: confirmation (attendee): %w", err)
 	}
+	return nil
+}
 
-	if d.HostEmail != "" {
-		if err := m.Send(ctx, Message{
-			To:      []string{d.HostEmail},
-			Subject: "New booking: " + d.EventTypeName + " with " + d.OrganizerName,
-			Text:    render(confirmHostTmpl, d),
-		}); err != nil {
-			errs = append(errs, "host: "+err.Error())
-		}
+// SendConfirmationToHost sends a new-booking notification email to the host.
+func SendConfirmationToHost(ctx context.Context, m Mailer, d BookingData) error {
+	if d.HostEmail == "" {
+		return nil
 	}
+	if err := m.Send(ctx, Message{
+		To:      []string{d.HostEmail},
+		Subject: "New booking: " + d.EventTypeName + " with " + d.OrganizerName,
+		Text:    render(confirmHostTmpl, d),
+	}); err != nil {
+		return fmt.Errorf("mailer: confirmation (host): %w", err)
+	}
+	return nil
+}
 
+// SendConfirmation sends booking confirmation emails to the organizer and the
+// host. Kept as a convenience wrapper; callers that need fine-grained control
+// should use SendConfirmationToAttendee / SendConfirmationToHost directly.
+func SendConfirmation(ctx context.Context, m Mailer, d BookingData) error {
+	var errs []string
+	if err := SendConfirmationToAttendee(ctx, m, d); err != nil {
+		errs = append(errs, err.Error())
+	}
+	if err := SendConfirmationToHost(ctx, m, d); err != nil {
+		errs = append(errs, err.Error())
+	}
 	if len(errs) > 0 {
 		return fmt.Errorf("mailer: confirmation: %v", errs)
 	}
 	return nil
 }
 
+// SendCancellationToAttendee sends a cancellation notification to the organizer/attendee.
+func SendCancellationToAttendee(ctx context.Context, m Mailer, d BookingData) error {
+	if d.OrganizerEmail == "" {
+		return nil
+	}
+	if err := m.Send(ctx, Message{
+		To:      []string{d.OrganizerEmail},
+		Subject: "Booking cancelled: " + d.EventTypeName,
+		Text:    render(cancelOrgTmpl, d),
+	}); err != nil {
+		return fmt.Errorf("mailer: cancellation (attendee): %w", err)
+	}
+	return nil
+}
+
+// SendCancellationToHost sends a cancellation notification to the host.
+func SendCancellationToHost(ctx context.Context, m Mailer, d BookingData) error {
+	if d.HostEmail == "" {
+		return nil
+	}
+	if err := m.Send(ctx, Message{
+		To:      []string{d.HostEmail},
+		Subject: "Booking cancelled: " + d.EventTypeName + " with " + d.OrganizerName,
+		Text:    render(cancelHostTmpl, d),
+	}); err != nil {
+		return fmt.Errorf("mailer: cancellation (host): %w", err)
+	}
+	return nil
+}
+
 // SendCancellation sends cancellation emails to the organizer and the host.
+// Kept as a convenience wrapper; callers that need fine-grained control
+// should use SendCancellationToAttendee / SendCancellationToHost directly.
 func SendCancellation(ctx context.Context, m Mailer, d BookingData) error {
 	var errs []string
-
-	if d.OrganizerEmail != "" {
-		if err := m.Send(ctx, Message{
-			To:      []string{d.OrganizerEmail},
-			Subject: "Booking cancelled: " + d.EventTypeName,
-			Text:    render(cancelOrgTmpl, d),
-		}); err != nil {
-			errs = append(errs, "organizer: "+err.Error())
-		}
+	if err := SendCancellationToAttendee(ctx, m, d); err != nil {
+		errs = append(errs, err.Error())
 	}
-
-	if d.HostEmail != "" {
-		if err := m.Send(ctx, Message{
-			To:      []string{d.HostEmail},
-			Subject: "Booking cancelled: " + d.EventTypeName + " with " + d.OrganizerName,
-			Text:    render(cancelHostTmpl, d),
-		}); err != nil {
-			errs = append(errs, "host: "+err.Error())
-		}
+	if err := SendCancellationToHost(ctx, m, d); err != nil {
+		errs = append(errs, err.Error())
 	}
-
 	if len(errs) > 0 {
 		return fmt.Errorf("mailer: cancellation: %v", errs)
 	}
 	return nil
 }
 
-// SendReschedule sends reschedule notification emails to the organizer and host.
+// SendRescheduleToAttendee sends a reschedule notification to the organizer/attendee.
 // d.PreviousStartAt / PreviousEndAt must be set to the old times.
-func SendReschedule(ctx context.Context, m Mailer, d BookingData) error {
-	var errs []string
-
+func SendRescheduleToAttendee(ctx context.Context, m Mailer, d BookingData) error {
 	if err := m.Send(ctx, Message{
 		To:      []string{d.OrganizerEmail},
 		Subject: "Booking rescheduled: " + d.EventTypeName,
 		Text:    render(rescheduleOrgTmpl, d),
 	}); err != nil {
-		errs = append(errs, "organizer: "+err.Error())
+		return fmt.Errorf("mailer: reschedule (attendee): %w", err)
 	}
+	return nil
+}
 
-	if d.HostEmail != "" {
-		if err := m.Send(ctx, Message{
-			To:      []string{d.HostEmail},
-			Subject: "Booking rescheduled: " + d.EventTypeName + " with " + d.OrganizerName,
-			Text:    render(rescheduleHostTmpl, d),
-		}); err != nil {
-			errs = append(errs, "host: "+err.Error())
-		}
+// SendRescheduleToHost sends a reschedule notification to the host.
+func SendRescheduleToHost(ctx context.Context, m Mailer, d BookingData) error {
+	if d.HostEmail == "" {
+		return nil
 	}
+	if err := m.Send(ctx, Message{
+		To:      []string{d.HostEmail},
+		Subject: "Booking rescheduled: " + d.EventTypeName + " with " + d.OrganizerName,
+		Text:    render(rescheduleHostTmpl, d),
+	}); err != nil {
+		return fmt.Errorf("mailer: reschedule (host): %w", err)
+	}
+	return nil
+}
 
+// SendReschedule sends reschedule notification emails to the organizer and host.
+// Kept as a convenience wrapper; callers that need fine-grained control
+// should use SendRescheduleToAttendee / SendRescheduleToHost directly.
+func SendReschedule(ctx context.Context, m Mailer, d BookingData) error {
+	var errs []string
+	if err := SendRescheduleToAttendee(ctx, m, d); err != nil {
+		errs = append(errs, err.Error())
+	}
+	if err := SendRescheduleToHost(ctx, m, d); err != nil {
+		errs = append(errs, err.Error())
+	}
 	if len(errs) > 0 {
 		return fmt.Errorf("mailer: reschedule: %v", errs)
 	}
 	return nil
 }
 
-// SendReminder sends a 24-hour reminder email to the organizer.
+// SendReminder sends a reminder email to the organizer.
 func SendReminder(ctx context.Context, m Mailer, d BookingData) error {
 	if err := m.Send(ctx, Message{
 		To:      []string{d.OrganizerEmail},
-		Subject: "Reminder: " + d.EventTypeName + " is tomorrow",
+		Subject: "Reminder: " + d.EventTypeName + " is coming up",
 		Text:    render(reminderOrgTmpl, d),
 	}); err != nil {
 		return fmt.Errorf("mailer: reminder: %w", err)
@@ -176,6 +223,9 @@ To reschedule or cancel, visit:
 {{else}}
 To cancel, visit:
 {{.BaseURL}}/book/{{.EventTypeSlug}}
+{{end}}{{if .CustomNote}}
+---
+{{.CustomNote}}
 {{end}}
 — Calnode
 `))
@@ -209,7 +259,10 @@ Reason:   {{.CancellationReason}}{{end}}
 
 To rebook, visit:
 {{.BaseURL}}/book/{{.EventTypeSlug}}
-
+{{if .CustomNote}}
+---
+{{.CustomNote}}
+{{end}}
 — Calnode
 `))
 
@@ -245,6 +298,9 @@ Booking reference: {{.BookingID}}
 {{if .ManageURL}}
 To reschedule or cancel again, visit:
 {{.ManageURL}}
+{{end}}{{if .CustomNote}}
+---
+{{.CustomNote}}
 {{end}}
 — Calnode
 `))
@@ -281,6 +337,9 @@ Booking reference: {{.BookingID}}
 {{if .ManageURL}}
 To reschedule or cancel, visit:
 {{.ManageURL}}
+{{end}}{{if .CustomNote}}
+---
+{{.CustomNote}}
 {{end}}
 — Calnode
 `))

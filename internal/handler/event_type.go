@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"net/http"
@@ -10,22 +11,27 @@ import (
 )
 
 type eventTypeJSON struct {
-	ID                  string  `json:"id"`
-	Slug                string  `json:"slug"`
-	Name                string  `json:"name"`
-	Description         *string `json:"description"`
-	DurationMinutes     int     `json:"duration_minutes"`
-	SlotIntervalMinutes int     `json:"slot_interval_minutes"`
-	LocationType        string  `json:"location_type"`
-	LocationValue       *string `json:"location_value"`
-	RoutingMode         string  `json:"routing_mode"`
-	BufferBeforeMinutes int     `json:"buffer_before_minutes"`
-	BufferAfterMinutes  int     `json:"buffer_after_minutes"`
-	MinNoticeMinutes    int     `json:"min_notice_minutes"`
-	MaxFutureDays       int     `json:"max_future_days"`
-	IsActive            bool    `json:"is_active"`
-	IsPublic            bool    `json:"is_public"`
-	CreatedAt           string  `json:"created_at"`
+	ID                  string   `json:"id"`
+	Slug                string   `json:"slug"`
+	Name                string   `json:"name"`
+	Description         *string  `json:"description"`
+	DurationMinutes     int      `json:"duration_minutes"`
+	SlotIntervalMinutes int      `json:"slot_interval_minutes"`
+	LocationType        string   `json:"location_type"`
+	LocationValue       *string  `json:"location_value"`
+	RoutingMode         string   `json:"routing_mode"`
+	BufferBeforeMinutes int      `json:"buffer_before_minutes"`
+	BufferAfterMinutes  int      `json:"buffer_after_minutes"`
+	MinNoticeMinutes    int      `json:"min_notice_minutes"`
+	MaxFutureDays       int      `json:"max_future_days"`
+	IsActive            bool     `json:"is_active"`
+	IsPublic            bool     `json:"is_public"`
+	CreatedAt           string   `json:"created_at"`
+	MsgConfirmation     *string  `json:"msg_confirmation"`
+	MsgCancellation     *string  `json:"msg_cancellation"`
+	MsgReschedule       *string  `json:"msg_reschedule"`
+	MsgReminder         *string  `json:"msg_reminder"`
+	Reminders           []int    `json:"reminders"` // hours_before values
 }
 
 type rowScanner interface {
@@ -34,7 +40,7 @@ type rowScanner interface {
 
 func scanEventType(s rowScanner) (*eventTypeJSON, error) {
 	var et eventTypeJSON
-	var desc, locVal sql.NullString
+	var desc, locVal, msgConf, msgCancel, msgResched, msgRemind sql.NullString
 	var isActive, isPublic int
 
 	err := s.Scan(
@@ -45,6 +51,7 @@ func scanEventType(s rowScanner) (*eventTypeJSON, error) {
 		&et.BufferBeforeMinutes, &et.BufferAfterMinutes,
 		&et.MinNoticeMinutes, &et.MaxFutureDays,
 		&isActive, &isPublic, &et.CreatedAt,
+		&msgConf, &msgCancel, &msgResched, &msgRemind,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -60,6 +67,19 @@ func scanEventType(s rowScanner) (*eventTypeJSON, error) {
 	}
 	et.IsActive = isActive != 0
 	et.IsPublic = isPublic != 0
+	if msgConf.Valid {
+		et.MsgConfirmation = &msgConf.String
+	}
+	if msgCancel.Valid {
+		et.MsgCancellation = &msgCancel.String
+	}
+	if msgResched.Valid {
+		et.MsgReschedule = &msgResched.String
+	}
+	if msgRemind.Valid {
+		et.MsgReminder = &msgRemind.String
+	}
+	et.Reminders = []int{} // initialise to non-nil so JSON encodes as [] not null
 	return &et, nil
 }
 
@@ -69,8 +89,30 @@ const selectETCols = `SELECT id, slug, name, description,
 	routing_mode,
 	buffer_before_minutes, buffer_after_minutes,
 	min_notice_minutes, max_future_days,
-	is_active, is_public, created_at
+	is_active, is_public, created_at,
+	msg_confirmation, msg_cancellation, msg_reschedule, msg_reminder
 FROM event_types`
+
+// loadReminders fetches the hours_before list for an event type and sets et.Reminders.
+func (h *Handler) loadReminders(ctx context.Context, etID string, et *eventTypeJSON) error {
+	rows, err := h.db.QueryContext(ctx,
+		`SELECT hours_before FROM event_type_reminders WHERE event_type_id = ? ORDER BY hours_before DESC`, etID)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var hb int
+		if err := rows.Scan(&hb); err != nil {
+			return err
+		}
+		et.Reminders = append(et.Reminders, hb)
+	}
+	return rows.Err()
+}
+
+// validReminderHours is the allowed set of hours_before values.
+var validReminderHours = map[int]bool{1: true, 2: true, 4: true, 8: true, 12: true, 24: true, 48: true, 72: true, 168: true}
 
 // CreateEventType handles POST /v1/event-types.
 func (h *Handler) CreateEventType(w http.ResponseWriter, r *http.Request) {
@@ -213,6 +255,11 @@ func (h *Handler) GetEventType(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusNotFound, "event type not found")
 		return
 	}
+	if err := h.loadReminders(r.Context(), et.ID, et); err != nil {
+		h.logger.ErrorContext(r.Context(), "get event type: load reminders", "error", err)
+		h.writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
 	h.writeJSON(w, http.StatusOK, et)
 }
 
@@ -223,23 +270,42 @@ func (h *Handler) PatchEventType(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 32<<10)
 
 	var req struct {
-		Name                *string `json:"name"`
-		Description         *string `json:"description"`
-		DurationMinutes     *int    `json:"duration_minutes"`
-		SlotIntervalMinutes *int    `json:"slot_interval_minutes"`
-		LocationType        *string `json:"location_type"`
-		LocationValue       *string `json:"location_value"`
-		RoutingMode         *string `json:"routing_mode"`
-		BufferBeforeMinutes *int    `json:"buffer_before_minutes"`
-		BufferAfterMinutes  *int    `json:"buffer_after_minutes"`
-		MinNoticeMinutes    *int    `json:"min_notice_minutes"`
-		MaxFutureDays       *int    `json:"max_future_days"`
-		IsActive            *bool   `json:"is_active"`
-		IsPublic            *bool   `json:"is_public"`
+		Name                *string  `json:"name"`
+		Description         *string  `json:"description"`
+		DurationMinutes     *int     `json:"duration_minutes"`
+		SlotIntervalMinutes *int     `json:"slot_interval_minutes"`
+		LocationType        *string  `json:"location_type"`
+		LocationValue       *string  `json:"location_value"`
+		RoutingMode         *string  `json:"routing_mode"`
+		BufferBeforeMinutes *int     `json:"buffer_before_minutes"`
+		BufferAfterMinutes  *int     `json:"buffer_after_minutes"`
+		MinNoticeMinutes    *int     `json:"min_notice_minutes"`
+		MaxFutureDays       *int     `json:"max_future_days"`
+		IsActive            *bool    `json:"is_active"`
+		IsPublic            *bool    `json:"is_public"`
+		MsgConfirmation     *string  `json:"msg_confirmation"`
+		MsgCancellation     *string  `json:"msg_cancellation"`
+		MsgReschedule       *string  `json:"msg_reschedule"`
+		MsgReminder         *string  `json:"msg_reminder"`
+		Reminders           []int    `json:"reminders"` // nil = don't touch; [] = clear all
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.writeError(w, http.StatusBadRequest, "invalid JSON")
 		return
+	}
+
+	// Validate reminders list before touching the DB.
+	if req.Reminders != nil {
+		for _, hb := range req.Reminders {
+			if !validReminderHours[hb] {
+				h.writeError(w, http.StatusBadRequest, "reminder hours_before must be one of: 1, 2, 4, 8, 12, 24, 48, 72, 168")
+				return
+			}
+		}
+		if len(req.Reminders) > 5 {
+			h.writeError(w, http.StatusBadRequest, "at most 5 reminders per event type")
+			return
+		}
 	}
 
 	var setClauses []string
@@ -304,29 +370,79 @@ func (h *Handler) PatchEventType(w http.ResponseWriter, r *http.Request) {
 		}
 		set("is_public", v)
 	}
-
-	if len(setClauses) == 0 {
-		h.writeError(w, http.StatusBadRequest, "no fields to update")
-		return
-	}
-
-	args = append(args, slug, user.ID)
-	res, err := h.db.ExecContext(r.Context(),
-		"UPDATE event_types SET "+strings.Join(setClauses, ", ")+" WHERE slug = ? AND user_id = ?",
-		args...)
-	if err != nil {
-		if strings.Contains(err.Error(), "CHECK constraint failed") {
-			h.writeError(w, http.StatusBadRequest, "invalid location_type or routing_mode value")
+	const maxMsgLen = 2000
+	if req.MsgConfirmation != nil {
+		if len(*req.MsgConfirmation) > maxMsgLen {
+			h.writeError(w, http.StatusBadRequest, "msg_confirmation exceeds 2000 characters")
 			return
 		}
-		h.logger.ErrorContext(r.Context(), "patch event type", "error", err)
+		set("msg_confirmation", nullableString(*req.MsgConfirmation))
+	}
+	if req.MsgCancellation != nil {
+		if len(*req.MsgCancellation) > maxMsgLen {
+			h.writeError(w, http.StatusBadRequest, "msg_cancellation exceeds 2000 characters")
+			return
+		}
+		set("msg_cancellation", nullableString(*req.MsgCancellation))
+	}
+	if req.MsgReschedule != nil {
+		if len(*req.MsgReschedule) > maxMsgLen {
+			h.writeError(w, http.StatusBadRequest, "msg_reschedule exceeds 2000 characters")
+			return
+		}
+		set("msg_reschedule", nullableString(*req.MsgReschedule))
+	}
+	if req.MsgReminder != nil {
+		if len(*req.MsgReminder) > maxMsgLen {
+			h.writeError(w, http.StatusBadRequest, "msg_reminder exceeds 2000 characters")
+			return
+		}
+		set("msg_reminder", nullableString(*req.MsgReminder))
+	}
+
+	// Look up the event type ID (needed for reminder upsert and to verify ownership).
+	var etID string
+	if err := h.db.QueryRowContext(r.Context(),
+		`SELECT id FROM event_types WHERE slug = ? AND user_id = ?`, slug, user.ID).
+		Scan(&etID); err != nil {
+		if err == sql.ErrNoRows {
+			h.writeError(w, http.StatusNotFound, "event type not found")
+			return
+		}
+		h.logger.ErrorContext(r.Context(), "patch event type: lookup id", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	n, _ := res.RowsAffected()
-	if n == 0 {
-		h.writeError(w, http.StatusNotFound, "event type not found")
-		return
+
+	// Apply the event_types UPDATE if there are scalar fields to change.
+	if len(setClauses) > 0 {
+		args = append(args, slug, user.ID)
+		res, err := h.db.ExecContext(r.Context(),
+			"UPDATE event_types SET "+strings.Join(setClauses, ", ")+" WHERE slug = ? AND user_id = ?",
+			args...)
+		if err != nil {
+			if strings.Contains(err.Error(), "CHECK constraint failed") {
+				h.writeError(w, http.StatusBadRequest, "invalid location_type or routing_mode value")
+				return
+			}
+			h.logger.ErrorContext(r.Context(), "patch event type", "error", err)
+			h.writeError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		n, _ := res.RowsAffected()
+		if n == 0 {
+			h.writeError(w, http.StatusNotFound, "event type not found")
+			return
+		}
+	}
+
+	// Replace the reminders list atomically if the caller sent it.
+	if req.Reminders != nil {
+		if err := h.replaceReminders(r.Context(), etID, req.Reminders); err != nil {
+			h.logger.ErrorContext(r.Context(), "patch event type: replace reminders", "error", err)
+			h.writeError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
 	}
 
 	row := h.db.QueryRowContext(r.Context(),
@@ -337,7 +453,42 @@ func (h *Handler) PatchEventType(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+	if err := h.loadReminders(r.Context(), etID, et); err != nil {
+		h.logger.ErrorContext(r.Context(), "fetch patched event type: load reminders", "error", err)
+		h.writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
 	h.writeJSON(w, http.StatusOK, et)
+}
+
+// nullableString converts an empty string to nil (NULL in SQLite) so clearing a
+// custom note stores NULL rather than an empty string.
+func nullableString(s string) any {
+	if s == "" {
+		return nil
+	}
+	return s
+}
+
+// replaceReminders deletes all existing reminder rows for etID and inserts newHours.
+func (h *Handler) replaceReminders(ctx context.Context, etID string, newHours []int) error {
+	tx, err := h.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback() //nolint:errcheck
+	if _, err := tx.ExecContext(ctx,
+		`DELETE FROM event_type_reminders WHERE event_type_id = ?`, etID); err != nil {
+		return err
+	}
+	for _, hb := range newHours {
+		if _, err := tx.ExecContext(ctx,
+			`INSERT INTO event_type_reminders (id, event_type_id, hours_before) VALUES (?, ?, ?)`,
+			uid.New(), etID, hb); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 // DeleteEventType handles DELETE /v1/event-types/{slug}.

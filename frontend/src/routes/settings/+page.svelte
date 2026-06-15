@@ -6,6 +6,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
+	import { Switch } from '$lib/components/ui/switch';
 
 	let user: User | null = $state(null);
 	let loading = $state(true);
@@ -21,6 +22,15 @@
 	let week_start = $state(1);
 	let date_format = $state<'dmy' | 'mdy' | 'ymd'>('dmy');
 
+	// Notification prefs
+	let notify_confirmation = $state(true);
+	let notify_cancellation = $state(true);
+	let notify_reschedule = $state(true);
+	let notify_reminder = $state(true);
+	let notify_host_booking = $state(true);
+	let notify_host_cancel = $state(true);
+	let notify_host_reschedule = $state(true);
+
 	onMount(async () => {
 		try {
 			user = await api.get<User>('/v1/users/me');
@@ -29,6 +39,13 @@
 			week_start = user.week_start ?? 1;
 			date_format = user.date_format ?? 'dmy';
 			avatarUrl = user.avatar_url ?? '';
+			notify_confirmation = user.notify_confirmation ?? true;
+			notify_cancellation = user.notify_cancellation ?? true;
+			notify_reschedule = user.notify_reschedule ?? true;
+			notify_reminder = user.notify_reminder ?? true;
+			notify_host_booking = user.notify_host_booking ?? true;
+			notify_host_cancel = user.notify_host_cancel ?? true;
+			notify_host_reschedule = user.notify_host_reschedule ?? true;
 		} catch (e: any) {
 			error = e.message;
 		} finally {
@@ -76,7 +93,11 @@
 		saved = false;
 		error = '';
 		try {
-			const updated = await api.patch<User>('/v1/users/me', { timezone, time_format, week_start, date_format });
+			const updated = await api.patch<User>('/v1/users/me', {
+				timezone, time_format, week_start, date_format,
+				notify_confirmation, notify_cancellation, notify_reschedule, notify_reminder,
+				notify_host_booking, notify_host_cancel, notify_host_reschedule,
+			});
 			currentUser.set(updated);
 			prefs.set(prefsFromUser(updated));
 			saved = true;
@@ -88,6 +109,13 @@
 				time_format = user.time_format ?? '12h';
 				week_start = user.week_start ?? 1;
 				date_format = user.date_format ?? 'dmy';
+				notify_confirmation = user.notify_confirmation ?? true;
+				notify_cancellation = user.notify_cancellation ?? true;
+				notify_reschedule = user.notify_reschedule ?? true;
+				notify_reminder = user.notify_reminder ?? true;
+				notify_host_booking = user.notify_host_booking ?? true;
+				notify_host_cancel = user.notify_host_cancel ?? true;
+				notify_host_reschedule = user.notify_host_reschedule ?? true;
 			}
 		} finally {
 			saving = false;
@@ -201,6 +229,54 @@
 						<option value="mdy">MM/DD/YYYY</option>
 						<option value="ymd">YYYY-MM-DD</option>
 					</select>
+				</div>
+			</div>
+		</div>
+
+		<!-- Messaging -->
+		<div class="rounded-lg border bg-card p-6">
+			<h2 class="mb-1 text-sm font-semibold">Messaging</h2>
+			<p class="mb-5 text-xs text-muted-foreground">Control which emails you and your attendees receive.</p>
+
+			<div class="space-y-5">
+				<div>
+					<p class="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Emails sent to your attendees</p>
+					<div class="space-y-3">
+						<div class="flex items-center justify-between gap-4">
+							<Label for="nc" class="cursor-pointer font-normal">Booking confirmation</Label>
+							<Switch id="nc" bind:checked={notify_confirmation} />
+						</div>
+						<div class="flex items-center justify-between gap-4">
+							<Label for="nca" class="cursor-pointer font-normal">Cancellation notice</Label>
+							<Switch id="nca" bind:checked={notify_cancellation} />
+						</div>
+						<div class="flex items-center justify-between gap-4">
+							<Label for="nr" class="cursor-pointer font-normal">Reschedule notice</Label>
+							<Switch id="nr" bind:checked={notify_reschedule} />
+						</div>
+						<div class="flex items-center justify-between gap-4">
+							<Label for="nrm" class="cursor-pointer font-normal">Reminder emails</Label>
+							<Switch id="nrm" bind:checked={notify_reminder} />
+						</div>
+					</div>
+				</div>
+
+				<div class="border-t pt-5">
+					<p class="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Emails sent to you</p>
+					<div class="space-y-3">
+						<div class="flex items-center justify-between gap-4">
+							<Label for="nhb" class="cursor-pointer font-normal">New booking received</Label>
+							<Switch id="nhb" bind:checked={notify_host_booking} />
+						</div>
+						<div class="flex items-center justify-between gap-4">
+							<Label for="nhc" class="cursor-pointer font-normal">Booking cancelled</Label>
+							<Switch id="nhc" bind:checked={notify_host_cancel} />
+						</div>
+						<div class="flex items-center justify-between gap-4">
+							<Label for="nhr" class="cursor-pointer font-normal">Booking rescheduled</Label>
+							<Switch id="nhr" bind:checked={notify_host_reschedule} />
+						</div>
+					</div>
 				</div>
 			</div>
 		</div>
