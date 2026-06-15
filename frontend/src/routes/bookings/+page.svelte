@@ -6,6 +6,7 @@
 	import { Badge } from '$lib/components/ui/badge';
 	import * as Tooltip from '$lib/components/ui/tooltip';
 	import { DatePicker } from '$lib/components/ui/date-picker';
+	import { ConfirmDialog } from '$lib/components/ui/confirm-dialog';
 
 	let items: Booking[] = $state([]);
 	let loading = $state(true);
@@ -54,8 +55,17 @@
 
 	onMount(load);
 
-	async function cancel(id: string) {
-		if (!confirm('Cancel this booking?')) return;
+	let confirmOpen = $state(false);
+	let pendingCancelId: string | null = $state(null);
+
+	function requestCancel(id: string) {
+		pendingCancelId = id;
+		confirmOpen = true;
+	}
+
+	async function cancel() {
+		const id = pendingCancelId;
+		if (!id) return;
 		try {
 			await api.post(`/v1/bookings/${id}/cancel`, { reason: 'cancelled by admin' });
 			await load();
@@ -212,7 +222,7 @@
 											<Tooltip.Root>
 												<Tooltip.Trigger
 													class={buttonVariants({ variant: 'ghost', size: 'icon' })}
-													onclick={() => cancel(b.id)}
+													onclick={() => requestCancel(b.id)}
 												>
 													<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
 												</Tooltip.Trigger>
@@ -317,3 +327,13 @@
 		</table>
 	</div>
 {/if}
+
+<ConfirmDialog
+	bind:open={confirmOpen}
+	title="Cancel this booking?"
+	description="The attendee will be notified and the slot will free up. This can't be undone."
+	confirmText="Cancel booking"
+	cancelText="Keep booking"
+	destructive
+	onConfirm={cancel}
+/>
