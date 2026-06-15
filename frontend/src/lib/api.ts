@@ -92,6 +92,25 @@ export type EmailSettings = {
 	enabled: boolean;
 };
 
+export type TeamMember = {
+	id: string;
+	email: string;
+	name: string;
+	timezone: string;
+	is_admin: boolean;
+	email_login: boolean;
+	provider?: string;
+	avatar_url?: string;
+	created_at: string;
+};
+
+export type Invite = {
+	id: string;
+	email: string;
+	expires_at: string;
+	created_by: string;
+};
+
 export type AvailabilityRule = {
 	id: string;
 	event_type_id: string | null;

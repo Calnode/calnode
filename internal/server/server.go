@@ -129,6 +129,8 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	mux.HandleFunc("POST /v1/invites/{token}/claim", inviteRL(h.ClaimInvite))
 
 	// Users
+	mux.HandleFunc("GET /v1/users", h.RequireAuth(h.ListUsers))
+	mux.HandleFunc("DELETE /v1/users/{id}", h.RequireAuth(h.DeleteUser))
 	mux.HandleFunc("GET /v1/users/me", h.RequireAuth(h.GetMe))
 	mux.HandleFunc("PATCH /v1/users/me", h.RequireAuth(h.PatchMe))
 	avatarRL := RateLimit(20, time.Minute)
