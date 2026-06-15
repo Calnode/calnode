@@ -10,8 +10,7 @@
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { toast } from 'svelte-sonner';
 	import { saveOnCmdS } from '$lib/save-shortcut';
-	import Cropper from 'cropperjs';
-	import 'cropperjs/dist/cropper.min.css';
+	import type CropperType from 'cropperjs';
 
 	let user: User | null = $state(null);
 	let loading = $state(true);
@@ -25,16 +24,17 @@
 	let week_start = $state(1);
 	let date_format = $state<'dmy' | 'mdy' | 'ymd'>('dmy');
 
-	// Crop dialog state
+	// Crop dialog state — Cropper is lazy-loaded client-side only to avoid SSR failures
 	let cropOpen = $state(false);
 	let cropSrc = $state('');
 	let cropperEl: HTMLImageElement | undefined = $state(undefined);
 	let hasExistingAvatar = $state(false);
-	let cropperInstance: Cropper | null = null;
+	let cropperInstance: CropperType | null = null;
+	let CropperClass: (typeof CropperType) | null = null;
 
 	$effect(() => {
-		if (!cropperEl) return;
-		const c = new Cropper(cropperEl, {
+		if (!cropperEl || !CropperClass) return;
+		const c = new CropperClass(cropperEl, {
 			aspectRatio: 1,
 			viewMode: 1,
 			autoCropArea: 0.8,
@@ -47,9 +47,17 @@
 		return () => { c.destroy(); cropperInstance = null; };
 	});
 
-	function onFileChange() {
+	async function onFileChange() {
 		const file = fileInput?.files?.[0];
 		if (!file) return;
+		// Lazy-load Cropper only when the user actually picks a file
+		if (!CropperClass) {
+			const [mod] = await Promise.all([
+				import('cropperjs'),
+				import('cropperjs/dist/cropper.min.css'),
+			]);
+			CropperClass = mod.default;
+		}
 		hasExistingAvatar = !!avatarUrl;
 		const reader = new FileReader();
 		reader.onload = (e) => {
@@ -58,6 +66,21 @@
 		};
 		reader.readAsDataURL(file);
 	}
+
+	onMount(async () => {
+		try {
+			user = await api.get<User>('/v1/users/me');
+			timezone = user.timezone;
+			time_format = user.time_format ?? '12h';
+			week_start = user.week_start ?? 1;
+			date_format = user.date_format ?? 'dmy';
+			avatarUrl = user.avatar_url ?? '';
+		} catch (e: any) {
+			toast.error(e.message || 'Could not load profile');
+		} finally {
+			loading = false;
+		}
+	});
 
 	function cancelCrop() {
 		cropOpen = false;
