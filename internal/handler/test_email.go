@@ -56,7 +56,7 @@ func (h *Handler) SendTestEmail(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check email is configured after verifying ownership so 404 takes precedence.
-	if !h.emailEnabled {
+	if !h.isEmailEnabled() {
 		h.writeError(w, http.StatusServiceUnavailable, "Email is not configured on this server — add SMTP settings to enable sending")
 		return
 	}

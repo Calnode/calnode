@@ -80,6 +80,18 @@ export type CalendarStatus = {
 	provider?: string;
 };
 
+export type EmailSettings = {
+	smtp_host: string;
+	smtp_port: string;
+	smtp_user: string;
+	smtp_pass_set: boolean; // true when a password is stored; never returned directly
+	smtp_tls: boolean;
+	smtp_starttls: boolean;
+	email_from: string;
+	email_from_name: string;
+	enabled: boolean;
+};
+
 export type AvailabilityRule = {
 	id: string;
 	event_type_id: string | null;

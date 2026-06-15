@@ -2,6 +2,7 @@ package handler
 
 import (
 	"database/sql"
+	"encoding/hex"
 	"log/slog"
 	"net/http"
 
@@ -18,7 +19,8 @@ type Handler struct {
 	logger       *slog.Logger
 	bookingSvc   *booking.Service
 	mailer       mailer.Mailer
-	emailEnabled bool // true only when a real SMTP sender is configured
+	live         *mailer.Live // non-nil in production; nil in tests using a direct stub
+	encKey       [32]byte     // AES-256 key for encrypting secrets stored in the DB
 	gcal         *gcal.Client
 	webhookSvc   *webhook.Service
 	baseURL      string
@@ -39,16 +41,24 @@ func New(db *sql.DB, logger *slog.Logger) *Handler {
 }
 
 // SetMailer configures the email sender and the base URL used in email links.
-// Called from server.New; sets emailEnabled=true only when m is not a Noop.
+// If m is a *mailer.Live, it is also stored as h.live for hot-swap support.
 func (h *Handler) SetMailer(m mailer.Mailer, baseURL string) {
 	h.mailer = m
 	h.baseURL = baseURL
-	_, isNoop := m.(*mailer.Noop)
-	h.emailEnabled = !isNoop
+	if l, ok := m.(*mailer.Live); ok {
+		h.live = l
+	}
+}
+
+// SetEncKey stores the AES-256 encryption key used for secrets in the DB.
+func (h *Handler) SetEncKey(hexKey string) {
+	if b, err := hex.DecodeString(hexKey); err == nil && len(b) == 32 {
+		copy(h.encKey[:], b)
+	}
+	// If empty or invalid, encKey stays zero — suitable for dev/test.
 }
 
 // SetBaseURL sets the base URL used in redirects and email links.
-// Called from server.New before any SMTP or GCal init.
 func (h *Handler) SetBaseURL(url string) {
 	h.baseURL = url
 }
@@ -59,15 +69,24 @@ func (h *Handler) SetDataDir(dir string) {
 }
 
 // SetCalendar configures the Google Calendar client.
-// Called from server.New when GOOGLE_CLIENT_ID is set.
 func (h *Handler) SetCalendar(c *gcal.Client) {
 	h.gcal = c
 }
 
 // SetWebhookSvc replaces the default ephemeral-key webhook service with one
-// backed by the configured encryption key. Called from server.New.
+// backed by the configured encryption key.
 func (h *Handler) SetWebhookSvc(svc *webhook.Service) {
 	h.webhookSvc = svc
+}
+
+// isEmailEnabled reports whether a real SMTP sender is configured.
+func (h *Handler) isEmailEnabled() bool {
+	if h.live != nil {
+		return h.live.IsEnabled()
+	}
+	// Fallback for tests that inject a direct stub mailer (not wrapped in Live).
+	_, isNoop := h.mailer.(*mailer.Noop)
+	return !isNoop
 }
 
 func (h *Handler) writeError(w http.ResponseWriter, status int, msg string) {
