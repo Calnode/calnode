@@ -122,7 +122,7 @@
 		<!-- Sidebar -->
 		<aside class="flex w-56 shrink-0 flex-col border-r border-sidebar-border bg-sidebar">
 			<!-- User section -->
-			<div class="flex items-center gap-3 border-b border-sidebar-border px-4 py-3">
+			<a href="{base}/settings/profile" class="flex items-center gap-3 border-b border-sidebar-border px-4 py-3 hover:bg-sidebar-accent/60 transition-colors">
 				{#if $currentUser?.avatar_url}
 					<img src={$currentUser.avatar_url} alt={$currentUser.name} class="h-7 w-7 shrink-0 rounded-full object-cover" />
 				{:else}
@@ -133,7 +133,7 @@
 				<div class="min-w-0 flex-1">
 					<p class="truncate text-sm font-medium text-sidebar-foreground">{$currentUser?.name ?? ''}</p>
 				</div>
-			</div>
+			</a>
 
 			<!-- Nav -->
 			<nav class="flex-1 space-y-0.5 p-2">
