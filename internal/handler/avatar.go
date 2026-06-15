@@ -5,9 +5,14 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 )
 
 var avatarExts = []string{".jpg", ".png", ".gif", ".webp"}
+
+// validUserID rejects any userID that isn't a lowercase hex UUID, preventing
+// path traversal in ServeAvatar (e.g. "../../../etc/passwd").
+var validUserID = regexp.MustCompile(`^[0-9a-f-]+$`)
 
 // UploadAvatar handles POST /v1/users/me/avatar.
 // Accepts multipart/form-data with an "avatar" file field (JPEG/PNG/GIF/WebP, ≤5 MB).
@@ -54,29 +59,52 @@ func (h *Handler) UploadAvatar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Remove old avatar files for this user (other extensions).
-	for _, old := range avatarExts {
-		_ = os.Remove(filepath.Join(avatarDir, user.ID+old))
-	}
-
-	dest := filepath.Join(avatarDir, user.ID+ext)
-	f, err := os.Create(dest)
+	// Write to a temp file first; rename atomically on success so a failed
+	// write never leaves a corrupt file at the final path.
+	tmp, err := os.CreateTemp(avatarDir, "upload-*")
 	if err != nil {
-		h.logger.ErrorContext(r.Context(), "avatar: create", "error", err)
+		h.logger.ErrorContext(r.Context(), "avatar: create temp", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	defer f.Close()
+	tmpPath := tmp.Name()
+	committed := false
+	defer func() {
+		tmp.Close()
+		if !committed {
+			os.Remove(tmpPath)
+		}
+	}()
 
-	if _, err := f.Write(sniff[:n]); err != nil {
+	if _, err := tmp.Write(sniff[:n]); err != nil {
 		h.logger.ErrorContext(r.Context(), "avatar: write sniff", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	if _, err := io.Copy(f, file); err != nil {
+	if _, err := io.Copy(tmp, file); err != nil {
 		h.logger.ErrorContext(r.Context(), "avatar: write body", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal error")
 		return
+	}
+	if err := tmp.Close(); err != nil {
+		h.logger.ErrorContext(r.Context(), "avatar: close temp", "error", err)
+		h.writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	dest := filepath.Join(avatarDir, user.ID+ext)
+	if err := os.Rename(tmpPath, dest); err != nil {
+		h.logger.ErrorContext(r.Context(), "avatar: rename", "error", err)
+		h.writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	committed = true
+
+	// Remove old avatar files for this user (other extensions).
+	for _, old := range avatarExts {
+		if old != ext {
+			_ = os.Remove(filepath.Join(avatarDir, user.ID+old))
+		}
 	}
 
 	avatarURL := "/avatars/" + user.ID
@@ -110,14 +138,31 @@ func (h *Handler) DeleteAvatar(w http.ResponseWriter, r *http.Request) {
 // Public — no auth required. Scans for the stored file across supported extensions.
 func (h *Handler) ServeAvatar(w http.ResponseWriter, r *http.Request) {
 	userID := r.PathValue("userID")
+
+	// Reject anything that isn't a lowercase hex UUID to prevent path traversal.
+	if !validUserID.MatchString(userID) {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
+	userID = filepath.Base(userID) // belt-and-suspenders: strip any path separators
+
 	avatarDir := filepath.Join(h.dataDir, "avatars")
 	for _, ext := range avatarExts {
 		path := filepath.Join(avatarDir, userID+ext)
-		if _, err := os.Stat(path); err == nil {
-			w.Header().Set("Cache-Control", "public, max-age=86400")
-			http.ServeFile(w, r, path)
-			return
+		f, err := os.Open(path)
+		if err != nil {
+			continue
 		}
+		defer f.Close()
+		fi, err := f.Stat()
+		if err != nil {
+			continue
+		}
+		// private: browser may cache, but CDNs and shared caches must not.
+		w.Header().Set("Cache-Control", "private, max-age=86400")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		http.ServeContent(w, r, path, fi.ModTime(), f)
+		return
 	}
 	http.Error(w, "not found", http.StatusNotFound)
 }

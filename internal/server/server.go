@@ -88,8 +88,9 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	// Users
 	mux.HandleFunc("GET /v1/users/me", h.RequireAuth(h.GetMe))
 	mux.HandleFunc("PATCH /v1/users/me", h.RequireAuth(h.PatchMe))
-	mux.HandleFunc("POST /v1/users/me/avatar", h.RequireAuth(h.UploadAvatar))
-	mux.HandleFunc("DELETE /v1/users/me/avatar", h.RequireAuth(h.DeleteAvatar))
+	avatarRL := RateLimit(20, time.Minute)
+	mux.HandleFunc("POST /v1/users/me/avatar", avatarRL(h.RequireAuth(h.UploadAvatar)))
+	mux.HandleFunc("DELETE /v1/users/me/avatar", avatarRL(h.RequireAuth(h.DeleteAvatar)))
 	mux.HandleFunc("GET /avatars/{userID}", h.ServeAvatar)
 
 	// Event types
