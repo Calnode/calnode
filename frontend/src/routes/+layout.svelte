@@ -21,6 +21,12 @@
 
 	const navItems = [
 		{
+			href: `${base}/`,
+			label: 'Home',
+			adminOnly: false,
+			icon: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>`
+		},
+		{
 			href: `${base}/event-types`,
 			label: 'Event Types',
 			adminOnly: false,
@@ -129,7 +135,9 @@
 			<nav class="flex-1 space-y-0.5 p-2">
 				{#each navItems as item}
 					{#if !item.adminOnly || $currentUser?.is_admin}
-						{@const active = $page.url.pathname.startsWith(item.href)}
+						{@const active = item.href.endsWith('/') && item.href === `${base}/`
+							? $page.url.pathname === item.href || $page.url.pathname === base
+							: $page.url.pathname.startsWith(item.href)}
 						<a
 							href={item.href}
 							class="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium transition-colors
