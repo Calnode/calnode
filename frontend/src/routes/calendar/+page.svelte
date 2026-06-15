@@ -10,12 +10,14 @@
 	let error = $state('');
 	let disconnecting = $state(false);
 	let justConnected = $state(false);
+	let notConfigured = $state(false);
 
 	async function load() {
 		try {
 			status = await api.get<CalendarStatus>('/v1/calendar/status');
 		} catch (e: any) {
 			if (e.message?.includes('not configured')) {
+				notConfigured = true;
 				status = { connected: false };
 			} else {
 				error = e.message;
@@ -72,7 +74,12 @@
 			</div>
 		</div>
 
-		{#if status?.connected}
+		{#if notConfigured}
+			<div class="rounded-md bg-amber-50 px-3 py-2.5 text-sm text-amber-800 ring-1 ring-inset ring-amber-200">
+				<p class="font-medium">Google Calendar not configured</p>
+				<p class="mt-1 text-amber-700">Set <code class="font-mono text-xs">GOOGLE_CLIENT_ID</code> and <code class="font-mono text-xs">GOOGLE_CLIENT_SECRET</code> in your <code class="font-mono text-xs">.env</code> file and restart the server.</p>
+			</div>
+		{:else if status?.connected}
 			<div class="mb-4 flex items-center gap-2 rounded-md bg-green-50 px-3 py-2.5 text-sm text-green-700 ring-1 ring-inset ring-green-600/20">
 				<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
 				<div>

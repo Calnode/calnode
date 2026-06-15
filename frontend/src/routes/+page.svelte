@@ -4,6 +4,7 @@
 	import { api, type CalendarStatus, type AvailabilityRule, type EventType } from '$lib/api';
 
 	let calendarConnected = $state(false);
+	let calendarConfigured = $state(true);
 	let hasAvailability = $state(false);
 	let hasEventType = $state(false);
 	let firstSlug = $state('');
@@ -17,7 +18,10 @@
 		origin = window.location.origin;
 		try {
 			const [cal, rules, events] = await Promise.all([
-				api.get<CalendarStatus>('/v1/calendar/status').catch(() => ({ connected: false })),
+				api.get<CalendarStatus>('/v1/calendar/status').catch((e: any) => {
+					if (e.message?.includes('not configured')) calendarConfigured = false;
+					return { connected: false };
+				}),
 				api.get<{ items: AvailabilityRule[] }>('/v1/availability-rules').catch(() => ({ items: [] })),
 				api.get<{ items: EventType[] }>('/v1/event-types').catch(() => ({ items: [] }))
 			]);
@@ -34,7 +38,8 @@
 		if (copyTimer !== null) clearTimeout(copyTimer);
 	});
 
-	const allDone = $derived(calendarConnected && hasAvailability && hasEventType);
+	const calendarDone = $derived(!calendarConfigured || calendarConnected);
+	const allDone = $derived(calendarDone && hasAvailability && hasEventType);
 	const bookingUrl = $derived(firstSlug && origin ? `${origin}/book/${firstSlug}` : '');
 
 	async function copyLink() {
@@ -91,7 +96,8 @@
 
 	<!-- Checklist -->
 	<div class="rounded-lg border bg-card divide-y">
-		<!-- Calendar -->
+		<!-- Calendar — only shown when Google Calendar is configured -->
+		{#if calendarConfigured}
 		<a
 			href="{base}/calendar"
 			class="flex items-start gap-4 px-5 py-4 transition-colors hover:bg-muted/40 group"
@@ -116,6 +122,7 @@
 				<polyline points="9 18 15 12 9 6"/>
 			</svg>
 		</a>
+		{/if}
 
 		<!-- Availability -->
 		<a
