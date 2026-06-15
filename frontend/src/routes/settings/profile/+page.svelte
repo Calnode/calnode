@@ -6,6 +6,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
+	import * as Avatar from '$lib/components/ui/avatar';
 	import { toast } from 'svelte-sonner';
 	import { saveOnCmdS } from '$lib/save-shortcut';
 
@@ -99,25 +100,28 @@
 			<h2 class="mb-4 text-sm font-semibold">Profile</h2>
 			<div class="space-y-4">
 				<div class="flex items-center gap-4">
-					{#if avatarUrl}
-						<img src={avatarUrl} alt={user?.name} class="h-16 w-16 rounded-full object-cover ring-2 ring-border" />
-					{:else}
-						<div class="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-muted text-xl font-semibold text-muted-foreground">
-							{initials(user?.name ?? 'U')}
+					<input bind:this={fileInput} type="file" accept="image/jpeg,image/png,image/gif,image/webp" class="hidden" onchange={uploadAvatar} />
+					<button
+						type="button"
+						onclick={() => fileInput?.click()}
+						disabled={uploading}
+						title={avatarUrl ? 'Replace photo' : 'Upload photo'}
+						class="group relative cursor-pointer rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-wait"
+					>
+						<Avatar.Root class="size-16 text-xl font-semibold">
+							<Avatar.Image src={avatarUrl || undefined} alt={user?.name} />
+							<Avatar.Fallback>{initials(user?.name ?? 'U')}</Avatar.Fallback>
+						</Avatar.Root>
+						<div class="absolute inset-0 flex items-center justify-center rounded-full bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
+							<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
 						</div>
-					{/if}
+					</button>
 					<div class="flex flex-col gap-1.5">
 						<p class="text-sm font-medium">Profile photo</p>
-						<div class="flex gap-2">
-							<input bind:this={fileInput} type="file" accept="image/jpeg,image/png,image/gif,image/webp" class="hidden" onchange={uploadAvatar} />
-							<Button type="button" variant="outline" size="sm" onclick={() => fileInput?.click()} disabled={uploading}>
-								{uploading ? 'Uploading…' : 'Upload photo'}
-							</Button>
-							{#if avatarUrl}
-								<Button type="button" variant="ghost" size="sm" onclick={removeAvatar} class="text-destructive hover:text-destructive">Remove</Button>
-							{/if}
-						</div>
-						<p class="text-xs text-muted-foreground">JPEG, PNG, GIF or WebP · max 5 MB</p>
+						<p class="text-xs text-muted-foreground">Click your avatar to {avatarUrl ? 'replace' : 'upload'} · JPEG, PNG, GIF or WebP · max 5 MB</p>
+						{#if avatarUrl}
+							<Button type="button" variant="ghost" size="sm" onclick={removeAvatar} class="w-fit text-destructive hover:text-destructive">Remove photo</Button>
+						{/if}
 					</div>
 				</div>
 
