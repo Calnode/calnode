@@ -2,10 +2,14 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"regexp"
 	"syscall"
 	"time"
 	_ "time/tzdata" // embed IANA timezone database so scratch/distroless images work
@@ -20,6 +24,11 @@ import (
 func main() {
 	// Load .env if present (dev convenience). Real env vars always win.
 	_ = godotenv.Load()
+
+	// Ensure a persistent encryption key exists before loading config.
+	// If CALNODE_ENCRYPTION_KEY is not set, generate one and save it to .env
+	// so it survives restarts. This is a one-time operation on first boot.
+	ensureEncryptionKey()
 
 	cfg := config.Load()
 
@@ -94,4 +103,62 @@ func main() {
 
 	<-workerDone // wait for current poll cycle to complete before db.Close()
 	logger.Info("server stopped")
+}
+
+// ensureEncryptionKey generates CALNODE_ENCRYPTION_KEY on first boot and
+// persists it to .env so it survives restarts. If the file write fails,
+// the key is still set for this session and a clear warning is logged.
+func ensureEncryptionKey() {
+	if os.Getenv("CALNODE_ENCRYPTION_KEY") != "" {
+		return // already set via real env var or .env
+	}
+
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		slog.Error("could not generate encryption key", "error", err)
+		os.Exit(1)
+	}
+	key := hex.EncodeToString(b)
+
+	if err := persistKeyToEnvFile(key); err != nil {
+		slog.Warn("generated CALNODE_ENCRYPTION_KEY for this session — could not save to .env; add it manually to make it permanent",
+			"error", err,
+			"CALNODE_ENCRYPTION_KEY", key)
+	} else {
+		slog.Info("generated CALNODE_ENCRYPTION_KEY and saved to .env — back it up; losing it makes stored secrets unrecoverable")
+	}
+
+	os.Setenv("CALNODE_ENCRYPTION_KEY", key)
+}
+
+// persistKeyToEnvFile writes the key to .env, creating the file if it does
+// not exist. If the key already appears with an empty value (e.g. copied from
+// .env.example), that line is replaced in-place so comments are preserved.
+func persistKeyToEnvFile(key string) error {
+	const envFile = ".env"
+	line := "CALNODE_ENCRYPTION_KEY=" + key
+
+	content, err := os.ReadFile(envFile)
+	if os.IsNotExist(err) {
+		return os.WriteFile(envFile, []byte(line+"\n"), 0o600)
+	}
+	if err != nil {
+		return err
+	}
+
+	// Replace an empty / commented-out entry so we don't create duplicates.
+	// Matches: `CALNODE_ENCRYPTION_KEY=` or `# CALNODE_ENCRYPTION_KEY=` (trailing whitespace ok).
+	re := regexp.MustCompile(`(?m)^#?\s*CALNODE_ENCRYPTION_KEY\s*=\s*$`)
+	if re.Match(content) {
+		return os.WriteFile(envFile, re.ReplaceAll(content, []byte(line)), 0o600)
+	}
+
+	// Key not in file at all — append.
+	f, err := os.OpenFile(envFile, os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	_, err = fmt.Fprintf(f, "\n%s\n", line)
+	return err
 }

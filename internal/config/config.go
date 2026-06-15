@@ -76,12 +76,14 @@ func loadEncryptionKey() string {
 		}
 		return key
 	}
-	// Dev-only fallback: ephemeral random key. Tokens encrypted with this key
-	// are lost on restart. Set CALNODE_ENCRYPTION_KEY for any persistent deployment.
+	// Last-resort fallback: ephemeral random key. In the normal startup path
+	// (cmd/calnode/main.go) the key is generated and saved to .env before this
+	// function runs, so this branch should only be reached in tests or if the
+	// binary is invoked in an unusual way.
 	b := make([]byte, 32)
 	_, _ = rand.Read(b)
 	ephemeral := hex.EncodeToString(b)
-	slog.Warn("CALNODE_ENCRYPTION_KEY not set — using ephemeral key; calendar tokens will not survive restart; DO NOT use in production")
+	slog.Warn("CALNODE_ENCRYPTION_KEY not set — using an ephemeral key that will change on restart; any secrets stored in the database will become unreadable after a restart")
 	return ephemeral
 }
 
