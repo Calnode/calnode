@@ -10,6 +10,7 @@
 	import { Textarea } from '$lib/components/ui/textarea';
 	import { Switch } from '$lib/components/ui/switch';
 	import * as Tooltip from '$lib/components/ui/tooltip';
+	import { toast } from 'svelte-sonner';
 
 	const LOCATION_TYPES = [
 		{ value: 'link',         label: 'Video link (custom)' },
@@ -31,8 +32,6 @@
 	let etLoading = $state(true);
 	let etError = $state('');
 	let etSaving = $state(false);
-	let etSaveError = $state('');
-	let etSaved = $state(false);
 
 	let form = $state({
 		name: '', description: '', duration_minutes: 30,
@@ -101,10 +100,8 @@
 	}
 
 	async function saveET() {
-		etSaveError = '';
-		etSaved = false;
-		if (!form.name.trim()) { etSaveError = 'Name is required.'; return; }
-		if (form.duration_minutes < 5) { etSaveError = 'Duration must be at least 5 minutes.'; return; }
+		if (!form.name.trim()) { toast.error('Name is required.'); return; }
+		if (form.duration_minutes < 5) { toast.error('Duration must be at least 5 minutes.'); return; }
 		etSaving = true;
 		try {
 			await api.patch(`/v1/event-types/${slug}`, {
@@ -125,11 +122,10 @@
 				msg_reschedule: msg_reschedule.trim() || null,
 				msg_reminder: msg_reminder.trim() || null,
 			});
-			etSaved = true;
-			setTimeout(() => (etSaved = false), 3000);
+			toast.success('Changes saved');
 			await loadET();
 		} catch (e: any) {
-			etSaveError = e.message;
+			toast.error(e.message || 'Could not save changes');
 		} finally {
 			etSaving = false;
 		}
@@ -299,9 +295,6 @@
 <div class="mb-8">
 	<h2 class="mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">General</h2>
 	<div class="rounded-lg border bg-card p-6">
-		{#if etSaveError}<p class="mb-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{etSaveError}</p>{/if}
-		{#if etSaved}<p class="mb-4 rounded-md bg-green-50 px-3 py-2 text-sm text-green-700">Saved.</p>{/if}
-
 		<div class="grid grid-cols-2 gap-4">
 			<div class="space-y-1.5">
 				<Label for="et-name">Name</Label>

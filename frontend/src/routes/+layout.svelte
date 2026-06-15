@@ -6,6 +6,7 @@
 	import { api, type User } from '$lib/api';
 	import { currentUser } from '$lib/stores';
 	import { prefs, prefsFromUser } from '$lib/prefs';
+	import { Toaster } from '$lib/components/ui/sonner';
 	import type { Snippet } from 'svelte';
 
 	let { children }: { children: Snippet } = $props();
@@ -107,6 +108,8 @@
 			.slice(0, 2);
 	}
 </script>
+
+<Toaster position="bottom-right" />
 
 {#if isPublicRoute}
 	{@render children()}
