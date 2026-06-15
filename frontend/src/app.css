@@ -1,6 +1,21 @@
 @import "tailwindcss";
+@import "tw-animate-css";
 
 @custom-variant dark (&:is(.dark *));
+
+/*
+ * Tailwind v4 has built-in data-* variants: `data-foo:` targets `[data-foo]`.
+ * bits-ui exposes presence states (data-selected, data-today, data-outside-month,
+ * data-disabled — Checkbox/Calendar) as bare attributes, so those built-ins match
+ * as-is and need NO declaration. But on/off and open/closed are exposed via a
+ * single `data-state="…"` attribute, which `[data-checked]`/`[data-open]` do NOT
+ * match — so we remap those four. Without these, the Switch and tooltip
+ * transitions render unstyled. Guarded by src/visual-smoke.test.ts.
+ */
+@custom-variant data-checked (&:where([data-state="checked"]));
+@custom-variant data-unchecked (&:where([data-state="unchecked"]));
+@custom-variant data-open (&:where([data-state="open"]));
+@custom-variant data-closed (&:where([data-state="closed"]));
 
 @theme inline {
 	--font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
