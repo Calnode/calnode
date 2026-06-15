@@ -391,7 +391,7 @@
 
 	<!-- Google OAuth settings -->
 	{#if $currentUser?.is_admin}
-	<div class="mt-4 max-w-lg">
+	<div id="google-oauth" class="mt-4 max-w-lg">
 		<div class="rounded-lg border bg-card p-6">
 			<div class="mb-4 flex items-start justify-between gap-2">
 				<div>
