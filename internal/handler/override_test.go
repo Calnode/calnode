@@ -5,9 +5,20 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
+	"time"
 )
+
+// nextMonday returns the date string (YYYY-MM-DD UTC) for the next Monday
+// that is strictly in the future so slot-filtering doesn't trim the day.
+func nextMonday() string {
+	now := time.Now().UTC()
+	daysUntilMonday := (int(time.Monday) - int(now.Weekday()) + 7) % 7
+	if daysUntilMonday == 0 {
+		daysUntilMonday = 7
+	}
+	return now.AddDate(0, 0, daysUntilMonday).Format("2006-01-02")
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -275,8 +286,9 @@ func TestDeleteAvailabilityOverride_cannotDeleteOtherUsersOverride(t *testing.T)
 func TestGetSlots_blockedDayOverride_returnsNoSlots(t *testing.T) {
 	h, key, _ := setupWorkspace(t)
 	slug, etID := seedEventTypeHTTP(t, h, key)
+	monday := nextMonday()
 
-	// Add a Monday availability rule (2026-06-15 is a Monday).
+	// Add a Monday availability rule.
 	ruleBody := fmt.Sprintf(`{"event_type_id":%q,"day_of_week":1,"start_time":"09:00","end_time":"17:00"}`, etID)
 	ruleReq := authReq(http.MethodPost, "/v1/availability-rules", ruleBody, key)
 	ruleRec := httptest.NewRecorder()
@@ -287,7 +299,7 @@ func TestGetSlots_blockedDayOverride_returnsNoSlots(t *testing.T) {
 
 	// Without override: slots should exist.
 	req := httptest.NewRequest(http.MethodGet,
-		"/v1/event-types/"+slug+"/slots?from=2026-06-15&to=2026-06-15&tz=UTC", nil)
+		"/v1/event-types/"+slug+"/slots?from="+monday+"&to="+monday+"&tz=UTC", nil)
 	req.SetPathValue("slug", slug)
 	rec := httptest.NewRecorder()
 	h.GetSlots(rec, req)
@@ -300,15 +312,16 @@ func TestGetSlots_blockedDayOverride_returnsNoSlots(t *testing.T) {
 		t.Fatal("expected slots before override; got none")
 	}
 
-	// Block 2026-06-15.
-	code, overrideResp := createOverride(t, h, key, `{"date":"2026-06-15","is_available":false}`)
+	// Block that Monday.
+	blockBody := fmt.Sprintf(`{"date":%q,"is_available":false}`, monday)
+	code, overrideResp := createOverride(t, h, key, blockBody)
 	if code != http.StatusCreated {
 		t.Fatalf("create override: %d — %v", code, overrideResp)
 	}
 
 	// Now slots for that day must be empty.
 	req2 := httptest.NewRequest(http.MethodGet,
-		"/v1/event-types/"+slug+"/slots?from=2026-06-15&to=2026-06-15&tz=UTC", nil)
+		"/v1/event-types/"+slug+"/slots?from="+monday+"&to="+monday+"&tz=UTC", nil)
 	req2.SetPathValue("slug", slug)
 	rec2 := httptest.NewRecorder()
 	h.GetSlots(rec2, req2)
@@ -325,6 +338,7 @@ func TestGetSlots_blockedDayOverride_returnsNoSlots(t *testing.T) {
 func TestGetSlots_customHoursOverride_limitsSlots(t *testing.T) {
 	h, key, _ := setupWorkspace(t)
 	slug, etID := seedEventTypeHTTP(t, h, key)
+	monday := nextMonday()
 
 	// Add Mon 09:00-17:00 rule.
 	ruleBody := fmt.Sprintf(`{"event_type_id":%q,"day_of_week":1,"start_time":"09:00","end_time":"17:00"}`, etID)
@@ -335,15 +349,15 @@ func TestGetSlots_customHoursOverride_limitsSlots(t *testing.T) {
 		t.Fatalf("create rule: %d", ruleRec.Code)
 	}
 
-	// Override 2026-06-15 to only 10:00-12:00.
-	code, ovResp := createOverride(t, h, key,
-		`{"date":"2026-06-15","is_available":true,"start_time":"10:00","end_time":"12:00"}`)
+	// Override that Monday to only 10:00-12:00.
+	ovBody := fmt.Sprintf(`{"date":%q,"is_available":true,"start_time":"10:00","end_time":"12:00"}`, monday)
+	code, ovResp := createOverride(t, h, key, ovBody)
 	if code != http.StatusCreated {
 		t.Fatalf("create override: %d — %v", code, ovResp)
 	}
 
 	req := httptest.NewRequest(http.MethodGet,
-		"/v1/event-types/"+slug+"/slots?from=2026-06-15&to=2026-06-15&tz=UTC", nil)
+		"/v1/event-types/"+slug+"/slots?from="+monday+"&to="+monday+"&tz=UTC", nil)
 	req.SetPathValue("slug", slug)
 	rec := httptest.NewRecorder()
 	h.GetSlots(rec, req)
@@ -362,16 +376,21 @@ func TestGetSlots_customHoursOverride_limitsSlots(t *testing.T) {
 	if len(resp.Slots) == 0 {
 		t.Fatal("expected slots in custom window; got none")
 	}
-	// All slots must fall within 10:00-12:00 UTC.
+	// All slots must fall within 10:00-12:00 UTC — check by parsing the time component.
 	for _, s := range resp.Slots {
-		if !strings.HasPrefix(s.Start, "2026-06-15T10:") &&
-			!strings.HasPrefix(s.Start, "2026-06-15T11:") {
+		parsed, err := time.Parse(time.RFC3339, s.Start)
+		if err != nil {
+			t.Fatalf("parse slot start %q: %v", s.Start, err)
+		}
+		h := parsed.UTC().Hour()
+		if h < 10 || h >= 12 {
 			t.Errorf("slot start %s is outside 10:00-12:00 window", s.Start)
 		}
 	}
 	// No slot should start at or after 12:00.
 	for _, s := range resp.Slots {
-		if s.Start >= "2026-06-15T12:00:00Z" {
+		parsed, _ := time.Parse(time.RFC3339, s.Start)
+		if parsed.UTC().Hour() >= 12 {
 			t.Errorf("slot %s starts at or after 12:00; override not respected", s.Start)
 		}
 	}

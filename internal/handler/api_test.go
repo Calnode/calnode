@@ -442,9 +442,9 @@ func TestGetSlots_withRules_returnsSlots(t *testing.T) {
 		t.Fatalf("create rule: %d — %s", ruleRec.Code, ruleRec.Body.String())
 	}
 
-	// 2026-06-15 is a Monday. Expect slots from 09:00 to 16:30 (30-min slots).
+	monday := nextMonday()
 	req := httptest.NewRequest(http.MethodGet,
-		"/v1/event-types/"+slug+"/slots?from=2026-06-15&to=2026-06-15&tz=UTC", nil)
+		"/v1/event-types/"+slug+"/slots?from="+monday+"&to="+monday+"&tz=UTC", nil)
 	req.SetPathValue("slug", slug)
 	rec := httptest.NewRecorder()
 	h.GetSlots(rec, req)
