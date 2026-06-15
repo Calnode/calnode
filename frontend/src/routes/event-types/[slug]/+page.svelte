@@ -1,9 +1,14 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { page } from '$app/stores';
-	import { goto } from '$app/navigation';
 	import { base } from '$app/paths';
 	import { api, type EventType, type Question } from '$lib/api';
+	import { Button, buttonVariants } from '$lib/components/ui/button';
+	import { Input } from '$lib/components/ui/input';
+	import { Label } from '$lib/components/ui/label';
+	import { Checkbox } from '$lib/components/ui/checkbox';
+	import { Textarea } from '$lib/components/ui/textarea';
+	import * as Tooltip from '$lib/components/ui/tooltip';
 
 	const LOCATION_TYPES = [
 		{ value: 'link',         label: 'Video link (custom)' },
@@ -16,30 +21,25 @@
 	];
 
 	const LOCATION_NEEDS_VALUE: Record<string, string> = {
-		link: 'Meeting URL',
-		zoom: 'Zoom link',
-		google_meet: 'Meet link',
-		teams: 'Teams link',
-		phone: 'Phone number',
-		in_person: 'Address',
-		custom_video: 'Meeting URL',
+		link: 'Meeting URL', zoom: 'Zoom link', google_meet: 'Meet link',
+		teams: 'Teams link', phone: 'Phone number', in_person: 'Address', custom_video: 'Meeting URL',
 	};
 
 	// ── Event type ───────────────────────────────────────────────────────────────
-	let et: EventType | null = null;
-	let etLoading = true;
-	let etError = '';
-	let etSaving = false;
-	let etSaveError = '';
-	let etSaved = false;
+	let et: EventType | null = $state(null);
+	let etLoading = $state(true);
+	let etError = $state('');
+	let etSaving = $state(false);
+	let etSaveError = $state('');
+	let etSaved = $state(false);
 
-	let form = {
+	let form = $state({
 		name: '', description: '', duration_minutes: 30,
 		is_active: true, is_public: true,
 		location_type: 'link', location_value: '',
 		buffer_before_minutes: 0, buffer_after_minutes: 0,
 		min_notice_minutes: 0, max_future_days: 60,
-	};
+	});
 
 	const slug = $page.params.slug;
 
@@ -88,6 +88,7 @@
 				max_future_days: Number(form.max_future_days),
 			});
 			etSaved = true;
+			setTimeout(() => (etSaved = false), 3000);
 			await loadET();
 		} catch (e: any) {
 			etSaveError = e.message;
@@ -96,19 +97,19 @@
 		}
 	}
 
-	// ── Intake questions ─────────────────────────────────────────────────────────
-	let questions: Question[] = [];
-	let qLoading = true;
-	let qError = '';
+	// ── Intake questions ──────────────────────────────────────────────────────────
+	let questions: Question[] = $state([]);
+	let qLoading = $state(true);
+	let qError = $state('');
 
-	let qForm = { label: '', type: 'text' as 'text'|'select'|'checkbox', options: '', required: false };
-	let qAdding = false;
-	let qAddError = '';
+	let qForm = $state({ label: '', type: 'text' as 'text'|'select'|'checkbox', options: '', required: false });
+	let qAdding = $state(false);
+	let qAddError = $state('');
 
-	let editingQId: string | null = null;
-	let editQForm = { label: '', type: 'text' as 'text'|'select'|'checkbox', options: '', required: false };
-	let qSaving = false;
-	let qSaveError = '';
+	let editingQId: string | null = $state(null);
+	let editQForm = $state({ label: '', type: 'text' as 'text'|'select'|'checkbox', options: '', required: false });
+	let qSaving = $state(false);
+	let qSaveError = $state('');
 
 	async function loadQuestions() {
 		qError = '';
@@ -151,12 +152,7 @@
 
 	function startEditQ(q: Question) {
 		editingQId = q.id;
-		editQForm = {
-			label: q.label,
-			type: q.type,
-			options: (q.options ?? []).join('\n'),
-			required: q.required,
-		};
+		editQForm = { label: q.label, type: q.type, options: (q.options ?? []).join('\n'), required: q.required };
 		qSaveError = '';
 	}
 
@@ -199,296 +195,258 @@
 		loadET();
 		loadQuestions();
 	});
+
+	const selectCls = 'flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring';
 </script>
 
 <svelte:head><title>{et?.name ?? slug} — Event Type — Calnode</title></svelte:head>
 
-<div class="page-header">
-	<div>
-		<a href="{base}/event-types" class="back-link">← Event Types</a>
-		<h1>{et?.name ?? slug}</h1>
-	</div>
+<div class="mb-8">
+	<a href="{base}/event-types" class="mb-2 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+		<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+		Event Types
+	</a>
+	<h1 class="text-2xl font-semibold tracking-tight">{et?.name ?? slug}</h1>
 </div>
 
 {#if etLoading}
-	<div style="color:var(--text-muted);padding:24px 0;">Loading…</div>
+	<p class="py-8 text-sm text-muted-foreground">Loading…</p>
 {:else if etError}
-	<div class="error-msg">{etError}</div>
+	<p class="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{etError}</p>
 {:else}
 
-<!-- ── General settings ──────────────────────────────────────────────────────── -->
-<div class="section-label">General</div>
-<div class="card" style="margin-bottom:24px;">
-	{#if etSaveError}<div class="error-msg">{etSaveError}</div>{/if}
-	{#if etSaved}<div class="success-msg">Saved.</div>{/if}
+<!-- General Settings -->
+<div class="mb-8">
+	<h2 class="mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">General</h2>
+	<div class="rounded-lg border bg-card p-6">
+		{#if etSaveError}<p class="mb-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{etSaveError}</p>{/if}
+		{#if etSaved}<p class="mb-4 rounded-md bg-green-50 px-3 py-2 text-sm text-green-700">Saved.</p>{/if}
 
-	<div class="settings-grid">
-		<div class="field">
-			<label for="et-name">Name</label>
-			<input id="et-name" bind:value={form.name} />
+		<div class="grid grid-cols-2 gap-4">
+			<div class="space-y-1.5">
+				<Label for="et-name">Name</Label>
+				<Input id="et-name" bind:value={form.name} />
+			</div>
+			<div class="space-y-1.5">
+				<Label for="et-dur">Duration (minutes)</Label>
+				<Input id="et-dur" type="number" min="5" step="5" bind:value={form.duration_minutes} />
+			</div>
+			<div class="col-span-2 space-y-1.5">
+				<Label for="et-desc">Description</Label>
+				<Input id="et-desc" bind:value={form.description} placeholder="Optional" />
+			</div>
+			<div class="space-y-1.5">
+				<p class="text-sm font-medium">Status</p>
+				<div class="flex items-center gap-2">
+					<Checkbox id="is-active" bind:checked={form.is_active} />
+					<Label for="is-active" class="cursor-pointer font-normal">Active (accepting bookings)</Label>
+				</div>
+			</div>
+			<div class="space-y-1.5">
+				<p class="text-sm font-medium">Visibility</p>
+				<div class="flex items-center gap-2">
+					<Checkbox id="is-public" bind:checked={form.is_public} />
+					<Label for="is-public" class="cursor-pointer font-normal">Public (visible in booking page)</Label>
+				</div>
+			</div>
 		</div>
-		<div class="field">
-			<label for="et-dur">Duration (minutes)</label>
-			<input id="et-dur" type="number" min="5" step="5" bind:value={form.duration_minutes} />
+
+		<!-- Location -->
+		<div class="mt-6 border-t pt-5">
+			<p class="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Location</p>
+			<div class="grid grid-cols-2 gap-4">
+				<div class="space-y-1.5">
+					<Label for="et-loc">Type</Label>
+					<select id="et-loc" bind:value={form.location_type} class={selectCls}>
+						{#each LOCATION_TYPES as lt}
+							<option value={lt.value}>{lt.label}</option>
+						{/each}
+					</select>
+				</div>
+				<div class="space-y-1.5">
+					<Label for="et-loc-val">{LOCATION_NEEDS_VALUE[form.location_type] ?? 'Details'}</Label>
+					<Input id="et-loc-val" bind:value={form.location_value} placeholder="Optional" />
+				</div>
+			</div>
 		</div>
-		<div class="field" style="grid-column:1/-1;">
-			<label for="et-desc">Description</label>
-			<input id="et-desc" bind:value={form.description} placeholder="Optional" />
+
+		<!-- Scheduling -->
+		<div class="mt-6 border-t pt-5">
+			<p class="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Scheduling</p>
+			<div class="grid grid-cols-2 gap-4">
+				<div class="space-y-1.5">
+					<Label for="et-buf-before">Buffer before (min)</Label>
+					<Input id="et-buf-before" type="number" min="0" step="5" bind:value={form.buffer_before_minutes} />
+					<p class="text-xs text-muted-foreground">Blocked time before each meeting</p>
+				</div>
+				<div class="space-y-1.5">
+					<Label for="et-buf-after">Buffer after (min)</Label>
+					<Input id="et-buf-after" type="number" min="0" step="5" bind:value={form.buffer_after_minutes} />
+					<p class="text-xs text-muted-foreground">Blocked time after each meeting</p>
+				</div>
+				<div class="space-y-1.5">
+					<Label for="et-notice">Minimum notice (min)</Label>
+					<Input id="et-notice" type="number" min="0" step="30" bind:value={form.min_notice_minutes} />
+					<p class="text-xs text-muted-foreground">e.g. 60 = bookings must be 1h+ in future</p>
+				</div>
+				<div class="space-y-1.5">
+					<Label for="et-future">Booking window (days)</Label>
+					<Input id="et-future" type="number" min="0" bind:value={form.max_future_days} />
+					<p class="text-xs text-muted-foreground">How far ahead people can book. 0 = unlimited</p>
+				</div>
+			</div>
 		</div>
-		<div class="field">
-			<label>Status</label>
-			<label class="toggle">
-				<input type="checkbox" bind:checked={form.is_active} />
-				<span>Active (accepting bookings)</span>
-			</label>
-		</div>
-		<div class="field">
-			<label>Visibility</label>
-			<label class="toggle">
-				<input type="checkbox" bind:checked={form.is_public} />
-				<span>Public (visible in booking page)</span>
-			</label>
-		</div>
+
+		<Button onclick={saveET} disabled={etSaving} class="mt-6">
+			{etSaving ? 'Saving…' : 'Save changes'}
+		</Button>
 	</div>
-
-	<!-- Location -->
-	<div class="subsection-label">Location</div>
-	<div class="settings-grid">
-		<div class="field">
-			<label for="et-loc">Type</label>
-			<select id="et-loc" bind:value={form.location_type}>
-				{#each LOCATION_TYPES as lt}
-					<option value={lt.value}>{lt.label}</option>
-				{/each}
-			</select>
-		</div>
-		<div class="field">
-			<label for="et-loc-val">{LOCATION_NEEDS_VALUE[form.location_type] ?? 'Details'}</label>
-			<input id="et-loc-val" bind:value={form.location_value} placeholder="Optional" />
-		</div>
-	</div>
-
-	<!-- Scheduling -->
-	<div class="subsection-label">Scheduling</div>
-	<div class="settings-grid">
-		<div class="field">
-			<label for="et-buf-before">Buffer before (min)</label>
-			<input id="et-buf-before" type="number" min="0" step="5" bind:value={form.buffer_before_minutes} />
-			<div class="field-hint">Blocked time before each meeting</div>
-		</div>
-		<div class="field">
-			<label for="et-buf-after">Buffer after (min)</label>
-			<input id="et-buf-after" type="number" min="0" step="5" bind:value={form.buffer_after_minutes} />
-			<div class="field-hint">Blocked time after each meeting</div>
-		</div>
-		<div class="field">
-			<label for="et-notice">Minimum notice (min)</label>
-			<input id="et-notice" type="number" min="0" step="30" bind:value={form.min_notice_minutes} />
-			<div class="field-hint">e.g. 60 = bookings must be 1h+ in future. 0 = no restriction</div>
-		</div>
-		<div class="field">
-			<label for="et-future">Booking window (days)</label>
-			<input id="et-future" type="number" min="0" bind:value={form.max_future_days} />
-			<div class="field-hint">How far ahead people can book. 0 = unlimited</div>
-		</div>
-	</div>
-
-	<button class="btn-primary" on:click={saveET} disabled={etSaving} style="margin-top:8px;">
-		{etSaving ? 'Saving…' : 'Save changes'}
-	</button>
 </div>
 
-<!-- ── Intake questions ──────────────────────────────────────────────────────── -->
-<div class="section-label">Intake Questions</div>
-<p class="section-hint">Collect information from attendees when they book.</p>
-<div class="card">
-	{#if qError}<div class="error-msg">{qError}</div>{/if}
+<!-- Intake Questions -->
+<div>
+	<h2 class="mb-1 text-sm font-semibold uppercase tracking-wider text-muted-foreground">Intake Questions</h2>
+	<p class="mb-3 text-sm text-muted-foreground">Collect information from attendees when they book.</p>
 
-	{#if qLoading}
-		<div style="color:var(--text-muted);">Loading…</div>
-	{:else if questions.length === 0}
-		<div style="color:var(--text-muted);padding:8px 0 16px;">No questions yet.</div>
-	{:else}
-		<table style="margin-bottom:20px;">
-			<thead>
-				<tr><th>#</th><th>Question</th><th>Type</th><th>Required</th><th></th></tr>
-			</thead>
-			<tbody>
-				{#each questions as q}
-					{#if editingQId === q.id}
-						<tr class="editing-row">
-							<td style="color:var(--text-muted);">{q.position + 1}</td>
-							<td colspan="3">
-								<div class="q-edit-grid">
-									<div class="field" style="margin:0;">
-										<label>Label</label>
-										<input bind:value={editQForm.label} />
-									</div>
-									<div class="field" style="margin:0;">
-										<label>Type</label>
-										<select bind:value={editQForm.type}>
-											<option value="text">Text</option>
-											<option value="checkbox">Checkbox (yes/no)</option>
-											<option value="select">Dropdown</option>
-										</select>
-									</div>
-									{#if editQForm.type === 'select'}
-										<div class="field" style="margin:0;grid-column:1/-1;">
-											<label>Options (one per line)</label>
-											<textarea bind:value={editQForm.options} rows="3" style="resize:vertical;"></textarea>
+	<div class="rounded-lg border bg-card">
+		{#if qError}<p class="px-4 pt-4 text-sm text-destructive">{qError}</p>{/if}
+
+		{#if qLoading}
+			<p class="px-4 py-4 text-sm text-muted-foreground">Loading…</p>
+		{:else if questions.length > 0}
+			<table class="w-full text-sm">
+				<thead>
+					<tr class="border-b">
+						<th class="px-4 pb-3 pt-3 text-left text-xs font-medium text-muted-foreground">#</th>
+						<th class="px-4 pb-3 pt-3 text-left text-xs font-medium text-muted-foreground">Question</th>
+						<th class="px-4 pb-3 pt-3 text-left text-xs font-medium text-muted-foreground">Type</th>
+						<th class="px-4 pb-3 pt-3 text-left text-xs font-medium text-muted-foreground">Required</th>
+						<th class="px-4 pb-3 pt-3"></th>
+					</tr>
+				</thead>
+				<tbody class="divide-y">
+					{#each questions as q}
+						{#if editingQId === q.id}
+							<tr class="bg-muted/20">
+								<td class="px-4 py-3 text-muted-foreground">{q.position + 1}</td>
+								<td colspan="3" class="px-4 py-3">
+									<div class="grid grid-cols-2 gap-3">
+										<div class="space-y-1.5">
+											<Label for="eq-label-{q.id}" class="text-xs text-muted-foreground">Label</Label>
+											<Input id="eq-label-{q.id}" bind:value={editQForm.label} />
 										</div>
-									{/if}
-									<div class="field" style="margin:0;grid-column:1/-1;">
-										<label class="toggle">
-											<input type="checkbox" bind:checked={editQForm.required} />
-											<span>Required</span>
-										</label>
+										<div class="space-y-1.5">
+											<Label for="eq-type-{q.id}" class="text-xs text-muted-foreground">Type</Label>
+											<select id="eq-type-{q.id}" bind:value={editQForm.type} class={selectCls}>
+												<option value="text">Text</option>
+												<option value="checkbox">Checkbox (yes/no)</option>
+												<option value="select">Dropdown</option>
+											</select>
+										</div>
+										{#if editQForm.type === 'select'}
+											<div class="col-span-2 space-y-1.5">
+												<Label for="eq-options-{q.id}" class="text-xs text-muted-foreground">Options (one per line)</Label>
+												<Textarea id="eq-options-{q.id}" bind:value={editQForm.options} rows={3} />
+											</div>
+										{/if}
+										<div class="col-span-2 flex items-center gap-2">
+											<Checkbox id="eq-required-{q.id}" bind:checked={editQForm.required} />
+											<Label for="eq-required-{q.id}" class="cursor-pointer font-normal">Required</Label>
+										</div>
 									</div>
-								</div>
-								{#if qSaveError}<div class="error-msg" style="margin-top:6px;">{qSaveError}</div>{/if}
-							</td>
-							<td style="text-align:right;white-space:nowrap;vertical-align:top;padding-top:8px;">
-								<button class="btn-primary btn-sm" on:click={() => saveQuestion(q)} disabled={qSaving}>
-									{qSaving ? 'Saving…' : 'Save'}
-								</button>
-								<button class="btn-secondary btn-sm" on:click={cancelEditQ} style="margin-left:4px;">Cancel</button>
-							</td>
-						</tr>
-					{:else}
-						<tr>
-							<td style="color:var(--text-muted);">{q.position + 1}</td>
-							<td style="font-weight:500;">{q.label}
-								{#if q.type === 'select' && q.options?.length}
-									<div style="font-size:11px;color:var(--text-muted);margin-top:2px;">{q.options.join(', ')}</div>
-								{/if}
-							</td>
-							<td><span class="badge badge-gray">{q.type}</span></td>
-							<td>{q.required ? '✓' : '—'}</td>
-							<td style="text-align:right;white-space:nowrap;">
-								<button class="btn-secondary btn-sm" on:click={() => startEditQ(q)}>Edit</button>
-								<button class="btn-danger btn-sm" on:click={() => deleteQuestion(q)} style="margin-left:4px;">Remove</button>
-							</td>
-						</tr>
-					{/if}
-				{/each}
-			</tbody>
-		</table>
-	{/if}
+									{#if qSaveError}<p class="mt-2 text-xs text-destructive">{qSaveError}</p>{/if}
+								</td>
+								<td class="px-4 py-3 align-top">
+									<div class="flex items-center justify-end gap-2 pt-5">
+										<Button size="sm" onclick={() => saveQuestion(q)} disabled={qSaving}>
+											{qSaving ? 'Saving…' : 'Save'}
+										</Button>
+										<Button size="sm" variant="outline" onclick={cancelEditQ}>Cancel</Button>
+									</div>
+								</td>
+							</tr>
+						{:else}
+							<tr class="transition-colors hover:bg-muted/30">
+								<td class="px-4 py-3 text-muted-foreground">{q.position + 1}</td>
+								<td class="px-4 py-3">
+									<div class="font-medium">{q.label}</div>
+									{#if q.type === 'select' && q.options?.length}
+										<div class="mt-0.5 text-xs text-muted-foreground">{q.options.join(', ')}</div>
+									{/if}
+								</td>
+								<td class="px-4 py-3">
+									<span class="inline-flex items-center rounded-md bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground">
+										{q.type}
+									</span>
+								</td>
+								<td class="px-4 py-3 text-muted-foreground">{q.required ? '✓' : '—'}</td>
+								<td class="px-4 py-3">
+									<Tooltip.Provider>
+										<div class="flex items-center justify-end gap-1">
+											<Tooltip.Root>
+												<Tooltip.Trigger
+													class={buttonVariants({ variant: 'ghost', size: 'icon' })}
+													onclick={() => startEditQ(q)}
+												>
+													<!-- Pencil/edit icon -->
+													<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+												</Tooltip.Trigger>
+												<Tooltip.Content>Edit</Tooltip.Content>
+											</Tooltip.Root>
+											<Tooltip.Root>
+												<Tooltip.Trigger
+													class={buttonVariants({ variant: 'ghost', size: 'icon' })}
+													onclick={() => deleteQuestion(q)}
+												>
+													<!-- Trash icon -->
+													<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+												</Tooltip.Trigger>
+												<Tooltip.Content>Remove</Tooltip.Content>
+											</Tooltip.Root>
+										</div>
+									</Tooltip.Provider>
+								</td>
+							</tr>
+						{/if}
+					{/each}
+				</tbody>
+			</table>
+		{:else}
+			<p class="px-4 py-4 text-sm text-muted-foreground">No questions yet.</p>
+		{/if}
 
-	<div class="add-rule-form">
-		{#if qAddError}<div class="error-msg">{qAddError}</div>{/if}
-		<div class="q-edit-grid">
-			<div class="field" style="margin:0;">
-				<label for="q-label">Label</label>
-				<input id="q-label" bind:value={qForm.label} placeholder="e.g. What's the meeting about?" />
-			</div>
-			<div class="field" style="margin:0;">
-				<label for="q-type">Type</label>
-				<select id="q-type" bind:value={qForm.type}>
-					<option value="text">Text</option>
-					<option value="checkbox">Checkbox (yes/no)</option>
-					<option value="select">Dropdown</option>
-				</select>
-			</div>
-			{#if qForm.type === 'select'}
-				<div class="field" style="margin:0;grid-column:1/-1;">
-					<label for="q-options">Options (one per line)</label>
-					<textarea id="q-options" bind:value={qForm.options} rows="3" style="resize:vertical;" placeholder="Option A&#10;Option B&#10;Option C"></textarea>
+		<!-- Add question form -->
+		<div class="border-t px-4 py-4">
+			{#if qAddError}<p class="mb-3 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{qAddError}</p>{/if}
+			<div class="grid grid-cols-2 gap-3">
+				<div class="space-y-1.5">
+					<Label for="q-label">Label</Label>
+					<Input id="q-label" bind:value={qForm.label} placeholder="e.g. What's the meeting about?" />
 				</div>
-			{/if}
-			<div class="field" style="margin:0;grid-column:1/-1;">
-				<label class="toggle">
-					<input type="checkbox" bind:checked={qForm.required} />
-					<span>Required</span>
-				</label>
+				<div class="space-y-1.5">
+					<Label for="q-type">Type</Label>
+					<select id="q-type" bind:value={qForm.type} class={selectCls}>
+						<option value="text">Text</option>
+						<option value="checkbox">Checkbox (yes/no)</option>
+						<option value="select">Dropdown</option>
+					</select>
+				</div>
+				{#if qForm.type === 'select'}
+					<div class="col-span-2 space-y-1.5">
+						<Label for="q-options">Options (one per line)</Label>
+						<Textarea id="q-options" bind:value={qForm.options} rows={3} placeholder={"Option A\nOption B\nOption C"} />
+					</div>
+				{/if}
+				<div class="col-span-2 flex items-center gap-2">
+					<Checkbox id="q-required" bind:checked={qForm.required} />
+					<Label for="q-required" class="cursor-pointer font-normal">Required</Label>
+				</div>
 			</div>
+			<Button onclick={addQuestion} disabled={qAdding} class="mt-3">
+				{qAdding ? 'Adding…' : 'Add question'}
+			</Button>
 		</div>
-		<button class="btn-primary" on:click={addQuestion} disabled={qAdding} style="margin-top:12px;">
-			{qAdding ? 'Adding…' : 'Add question'}
-		</button>
 	</div>
 </div>
 
 {/if}
-
-<style>
-	.back-link {
-		font-size: 13px;
-		color: var(--text-muted);
-		text-decoration: none;
-		display: block;
-		margin-bottom: 4px;
-	}
-	.back-link:hover { color: var(--accent); }
-
-	.section-label {
-		font-size: 13px;
-		font-weight: 600;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		color: var(--text-muted);
-		margin-bottom: 8px;
-	}
-
-	.subsection-label {
-		font-size: 12px;
-		font-weight: 600;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		color: var(--text-muted);
-		margin: 20px 0 10px;
-		padding-top: 16px;
-		border-top: 1px solid var(--border);
-	}
-
-	.section-hint {
-		font-size: 13px;
-		color: var(--text-muted);
-		margin: -4px 0 10px;
-	}
-
-	.settings-grid {
-		display: grid;
-		grid-template-columns: 1fr 1fr;
-		gap: 12px;
-	}
-
-	.field-hint {
-		font-size: 11px;
-		color: var(--text-muted);
-		margin-top: 3px;
-	}
-
-	.toggle {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		cursor: pointer;
-		font-weight: normal;
-		margin-top: 4px;
-	}
-	.toggle input[type="checkbox"] { width: auto; margin: 0; }
-
-	.add-rule-form {
-		border-top: 1px solid var(--border);
-		padding-top: 16px;
-	}
-
-	.q-edit-grid {
-		display: grid;
-		grid-template-columns: 1fr 1fr;
-		gap: 10px;
-	}
-
-	.editing-row { background: var(--surface); }
-
-	.success-msg {
-		color: #16a34a;
-		background: #f0fdf4;
-		border: 1px solid #bbf7d0;
-		border-radius: var(--radius);
-		padding: 8px 12px;
-		font-size: 13px;
-		margin-bottom: 12px;
-	}
-</style>

@@ -79,6 +79,7 @@ export type AvailabilityOverride = {
 	id: string;
 	date: string;
 	is_available: boolean;
+	reason: 'day_off' | 'out_of_office' | 'custom_hours';
 	start_time: string | null;
 	end_time: string | null;
 };

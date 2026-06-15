@@ -121,7 +121,6 @@ func (h *Handler) GetSlots(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-
 	// Load availability overrides.
 	ovRows, err := h.db.QueryContext(r.Context(), `
 		SELECT date, is_available, COALESCE(start_time,''), COALESCE(end_time,'')
@@ -248,8 +247,17 @@ func (h *Handler) GetSlots(w http.ResponseWriter, r *http.Request) {
 
 // parseDateRange extracts from/to query params as UTC midnight times.
 // Returns (from, to, ok). ok=false means the params were malformed.
+// maxFutureDays=0 is treated as 365 (no configured limit). The resolved
+// cap is always enforced on the to= param to prevent CPU-DoS via far-future dates.
 func parseDateRange(r *http.Request, now time.Time, maxFutureDays int) (time.Time, time.Time, bool) {
 	today := now.UTC().Truncate(24 * time.Hour)
+
+	// Mirror generate.go: 0 means "no configured limit"; use 365 as the cap.
+	effectiveMax := maxFutureDays
+	if effectiveMax <= 0 {
+		effectiveMax = 365
+	}
+	cap := today.AddDate(0, 0, effectiveMax)
 
 	fromStr := r.URL.Query().Get("from")
 	toStr := r.URL.Query().Get("to")
@@ -266,11 +274,15 @@ func parseDateRange(r *http.Request, now time.Time, maxFutureDays int) (time.Tim
 		}
 	}
 	if toStr == "" {
-		dateTo = today.AddDate(0, 0, maxFutureDays)
+		dateTo = cap
 	} else {
 		dateTo, err = time.Parse("2006-01-02", toStr)
 		if err != nil {
 			return time.Time{}, time.Time{}, false
+		}
+		// Clamp caller-supplied to= against the cap to prevent DoS.
+		if dateTo.After(cap) {
+			dateTo = cap
 		}
 	}
 	if dateTo.Before(dateFrom) {

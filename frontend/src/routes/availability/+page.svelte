@@ -1,17 +1,21 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { api, type AvailabilityRule, type AvailabilityOverride } from '$lib/api';
-	import { prefs } from '$lib/prefs';
+	import { prefs, fmtDate } from '$lib/prefs';
+	import { Button, buttonVariants } from '$lib/components/ui/button';
+	import { Badge } from '$lib/components/ui/badge';
+	import * as Tooltip from '$lib/components/ui/tooltip';
+	import { DatePicker } from '$lib/components/ui/date-picker';
 
 	const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
-	// 30-minute time slots for the selects
 	const TIME_SLOTS: string[] = [];
 	for (let h = 0; h < 24; h++) {
 		for (const m of [0, 30]) {
 			TIME_SLOTS.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
 		}
 	}
+
 	function fmtTime(t: string) {
 		const [hh, mm] = t.split(':').map(Number);
 		if ($prefs.time_format === '24h') {
@@ -22,32 +26,35 @@
 		return mm === 0 ? `${h12}${ampm}` : `${h12}:${String(mm).padStart(2,'0')}${ampm}`;
 	}
 
-	// ── Weekly rules ────────────────────────────────────────────────────────────
-	let rules: AvailabilityRule[] = [];
-	let rulesLoading = true;
-	let rulesError = '';
+	// ── Weekly rules — 7-day model ────────────────────────────────────────────────
+	type DayBlock = { id: string; start_time: string; end_time: string; saving: boolean; error: string }
+	type DayState = { day_of_week: number; blocks: DayBlock[]; error: string }
 
-	// Reactive sort: respects week_start pref (0=Sun first, 1=Mon first)
-	$: sortedRules = [...rules].sort((a, b) => {
-		const ws = $prefs.week_start;
+	let days: DayState[] = $state(
+		Array.from({ length: 7 }, (_, i) => ({ day_of_week: i, blocks: [], error: '' }))
+	);
+
+	let rulesLoading = $state(true);
+	let rulesError = $state('');
+
+	let orderedDays = $derived([...days].sort((a, b) => {
+		const ws = $prefs.week_start ?? 1;
 		return ((a.day_of_week - ws + 7) % 7) - ((b.day_of_week - ws + 7) % 7);
-	});
-
-	let ruleForm = { day_of_week: 1, start_time: '09:00', end_time: '17:00' };
-	let addingRule = false;
-	let ruleAddError = '';
-
-	// Inline edit state for rules
-	let editingRuleId: string | null = null;
-	let editRuleForm = { day_of_week: 0, start_time: '', end_time: '' };
-	let savingRule = false;
-	let ruleSaveError = '';
+	}));
 
 	async function loadRules() {
 		rulesError = '';
+		rulesLoading = true;
 		try {
 			const res = await api.get<{ items: AvailabilityRule[] }>('/v1/availability-rules');
-			rules = res.items ?? [];
+			for (const day of days) { day.blocks = []; day.error = ''; }
+			for (const r of (res.items ?? [])) {
+				const day = days[r.day_of_week];
+				if (day) day.blocks.push({ id: r.id, start_time: r.start_time, end_time: r.end_time, saving: false, error: '' });
+			}
+			for (const day of days) {
+				day.blocks.sort((a, b) => a.start_time.localeCompare(b.start_time));
+			}
 		} catch (e: any) {
 			rulesError = e.message;
 		} finally {
@@ -55,88 +62,78 @@
 		}
 	}
 
-	function startEditRule(r: AvailabilityRule) {
-		editingRuleId = r.id;
-		editRuleForm = { day_of_week: r.day_of_week, start_time: r.start_time, end_time: r.end_time };
-		ruleSaveError = '';
-	}
-
-	function cancelEditRule() {
-		editingRuleId = null;
-		ruleSaveError = '';
-	}
-
-	async function saveRule(id: string) {
-		ruleSaveError = '';
-		if (editRuleForm.start_time >= editRuleForm.end_time) {
-			ruleSaveError = 'End time must be after start time.';
-			return;
-		}
-		savingRule = true;
+	async function addBlock(day: DayState) {
+		const newBlock: DayBlock = { id: '', start_time: '09:00', end_time: '17:00', saving: true, error: '' };
+		day.blocks.push(newBlock);
 		try {
-			await api.patch(`/v1/availability-rules/${id}`, {
-				day_of_week: Number(editRuleForm.day_of_week),
-				start_time: editRuleForm.start_time,
-				end_time: editRuleForm.end_time
+			const r = await api.post<AvailabilityRule>('/v1/availability-rules', {
+				day_of_week: day.day_of_week,
+				start_time: '09:00',
+				end_time: '17:00'
 			});
-			editingRuleId = null;
-			await loadRules();
+			newBlock.id = r.id;
 		} catch (e: any) {
-			ruleSaveError = e.message;
+			const idx = day.blocks.indexOf(newBlock);
+			if (idx !== -1) day.blocks.splice(idx, 1);
+			day.error = e.message;
 		} finally {
-			savingRule = false;
+			newBlock.saving = false;
 		}
 	}
 
-	async function addRule() {
-		ruleAddError = '';
-		if (!ruleForm.start_time || !ruleForm.end_time) {
-			ruleAddError = 'Start and end time are required.';
+	async function updateBlock(block: DayBlock) {
+		if (!block.id) return;
+		if (block.start_time >= block.end_time) {
+			block.error = 'End must be after start';
 			return;
 		}
-		if (ruleForm.start_time >= ruleForm.end_time) {
-			ruleAddError = 'End time must be after start time.';
-			return;
-		}
-		addingRule = true;
+		block.error = '';
+		block.saving = true;
 		try {
-			await api.post('/v1/availability-rules', {
-				day_of_week: Number(ruleForm.day_of_week),
-				start_time: ruleForm.start_time,
-				end_time: ruleForm.end_time
+			await api.patch(`/v1/availability-rules/${block.id}`, {
+				start_time: block.start_time,
+				end_time: block.end_time
 			});
-			await loadRules();
 		} catch (e: any) {
-			ruleAddError = e.message;
+			block.error = e.message;
 		} finally {
-			addingRule = false;
+			block.saving = false;
 		}
 	}
 
-	async function deleteRule(id: string) {
-		if (!confirm('Remove this availability rule?')) return;
+	async function removeBlock(day: DayState, block: DayBlock) {
+		if (!block.id) return;
+		block.saving = true;
 		try {
-			await api.del(`/v1/availability-rules/${id}`);
-			await loadRules();
+			await api.del(`/v1/availability-rules/${block.id}`);
+			const idx = day.blocks.indexOf(block);
+			if (idx !== -1) day.blocks.splice(idx, 1);
 		} catch (e: any) {
-			rulesError = e.message;
+			block.error = e.message;
+			block.saving = false;
 		}
 	}
 
-	// ── Date overrides ──────────────────────────────────────────────────────────
-	let overrides: AvailabilityOverride[] = [];
-	let overridesLoading = true;
-	let overridesError = '';
+	// ── Date overrides ────────────────────────────────────────────────────────────
+	let overrides: AvailabilityOverride[] = $state([]);
+	let overridesLoading = $state(true);
+	let overridesError = $state('');
 
-	let ovForm = { date: '', is_available: false, start_time: '09:00', end_time: '17:00' };
-	let addingOv = false;
-	let ovAddError = '';
+	type OverrideReason = 'day_off' | 'out_of_office' | 'custom_hours';
+	const REASON_LABELS: Record<OverrideReason, string> = {
+		day_off: 'Day off',
+		out_of_office: 'Out of office',
+		custom_hours: 'Custom hours'
+	};
 
-	// Inline edit state for overrides
-	let editingOvId: string | null = null;
-	let editOvForm = { is_available: false, start_time: '09:00', end_time: '17:00' };
-	let savingOv = false;
-	let ovSaveError = '';
+	let ovForm = $state({ date: '', reason: 'day_off' as OverrideReason, start_time: '09:00', end_time: '17:00' });
+	let addingOv = $state(false);
+	let ovAddError = $state('');
+
+	let editingOvId: string | null = $state(null);
+	let editOvForm = $state({ reason: 'day_off' as OverrideReason, start_time: '09:00', end_time: '17:00' });
+	let savingOv = $state(false);
+	let ovSaveError = $state('');
 
 	async function loadOverrides() {
 		overridesError = '';
@@ -153,29 +150,25 @@
 	function startEditOv(ov: AvailabilityOverride) {
 		editingOvId = ov.id;
 		editOvForm = {
-			is_available: ov.is_available,
+			reason: (ov.reason ?? 'day_off') as OverrideReason,
 			start_time: ov.start_time ?? '09:00',
 			end_time: ov.end_time ?? '17:00'
 		};
 		ovSaveError = '';
 	}
 
-	function cancelEditOv() {
-		editingOvId = null;
-		ovSaveError = '';
-	}
+	function cancelEditOv() { editingOvId = null; ovSaveError = ''; }
 
 	async function saveOv(id: string) {
 		ovSaveError = '';
-		if (editOvForm.is_available && editOvForm.start_time >= editOvForm.end_time) {
-			ovSaveError = 'End time must be after start time.';
-			return;
+		if (editOvForm.reason === 'custom_hours' && editOvForm.start_time >= editOvForm.end_time) {
+			ovSaveError = 'End time must be after start time.'; return;
 		}
 		savingOv = true;
 		try {
 			await api.patch(`/v1/availability-overrides/${id}`, {
-				is_available: editOvForm.is_available,
-				...(editOvForm.is_available
+				reason: editOvForm.reason,
+				...(editOvForm.reason === 'custom_hours'
 					? { start_time: editOvForm.start_time, end_time: editOvForm.end_time }
 					: {})
 			});
@@ -191,24 +184,22 @@
 	async function addOverride() {
 		ovAddError = '';
 		if (!ovForm.date) { ovAddError = 'Date is required.'; return; }
-		if (ovForm.is_available && (!ovForm.start_time || !ovForm.end_time)) {
-			ovAddError = 'Start and end time are required for custom hours.';
-			return;
+		if (ovForm.reason === 'custom_hours' && (!ovForm.start_time || !ovForm.end_time)) {
+			ovAddError = 'Start and end time are required for custom hours.'; return;
 		}
-		if (ovForm.is_available && ovForm.start_time >= ovForm.end_time) {
-			ovAddError = 'End time must be after start time.';
-			return;
+		if (ovForm.reason === 'custom_hours' && ovForm.start_time >= ovForm.end_time) {
+			ovAddError = 'End time must be after start time.'; return;
 		}
 		addingOv = true;
 		try {
 			await api.post('/v1/availability-overrides', {
 				date: ovForm.date,
-				is_available: ovForm.is_available,
-				...(ovForm.is_available
+				reason: ovForm.reason,
+				...(ovForm.reason === 'custom_hours'
 					? { start_time: ovForm.start_time, end_time: ovForm.end_time }
 					: {})
 			});
-			ovForm = { date: '', is_available: false, start_time: '09:00', end_time: '17:00' };
+			ovForm = { date: '', reason: 'day_off', start_time: '09:00', end_time: '17:00' };
 			await loadOverrides();
 		} catch (e: any) {
 			ovAddError = e.message;
@@ -231,292 +222,246 @@
 		loadRules();
 		loadOverrides();
 	});
+
+	const selectCls = 'flex h-8 rounded-md border border-input bg-background px-2 py-1 text-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring';
+	const selectFullCls = 'flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring';
 </script>
 
 <svelte:head><title>Availability — Calnode</title></svelte:head>
 
-<!-- ── Weekly Hours ─────────────────────────────────────────────────────────── -->
-<div class="page-header">
-	<h1>Availability</h1>
+<div class="mb-8">
+	<h1 class="text-2xl font-semibold tracking-tight">Availability</h1>
+	<p class="mt-1 text-sm text-muted-foreground">Set your weekly hours and block off specific dates.</p>
 </div>
 
-<div class="section-label">Weekly Hours</div>
-<div class="card" style="margin-bottom:24px;">
-	{#if rulesError}<div class="error-msg">{rulesError}</div>{/if}
+<!-- Weekly Hours -->
+<div class="mb-8">
+	<h2 class="mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">Weekly Hours</h2>
+
+	{#if rulesError}<p class="mb-3 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{rulesError}</p>{/if}
 
 	{#if rulesLoading}
-		<div style="color:var(--text-muted);">Loading…</div>
-	{:else if rules.length === 0}
-		<div style="color:var(--text-muted);padding:8px 0 16px;">No weekly rules yet. Add one below.</div>
+		<p class="py-4 text-sm text-muted-foreground">Loading…</p>
 	{:else}
-		<table style="margin-bottom:20px;">
-			<thead>
-				<tr>
-					<th>Day</th>
-					<th>Hours</th>
-					<th></th>
-				</tr>
-			</thead>
-			<tbody>
-				{#each sortedRules as r}
-					{#if editingRuleId === r.id}
-						<tr class="editing-row">
-							<td>
-								<select bind:value={editRuleForm.day_of_week} class="inline-input">
-									{#each DAY_NAMES as name, i}
-										<option value={i}>{name}</option>
-									{/each}
-								</select>
-							</td>
-							<td>
-								<div class="inline-time-fields">
-									<select class="inline-input" bind:value={editRuleForm.start_time}>
-										{#each TIME_SLOTS as t}<option value={t}>{fmtTime(t)}</option>{/each}
-									</select>
-									<span style="color:var(--text-muted);">–</span>
-									<select class="inline-input" bind:value={editRuleForm.end_time}>
-										{#each TIME_SLOTS as t}<option value={t}>{fmtTime(t)}</option>{/each}
-									</select>
+		<div class="rounded-lg border bg-card">
+			<Tooltip.Provider>
+				{#each orderedDays as day, i}
+					<div class="flex gap-4 px-4 py-3 {i > 0 ? 'border-t' : ''}">
+						<!-- Day name -->
+						<div class="w-24 shrink-0 pt-1.5 text-sm {day.blocks.length === 0 ? 'font-normal text-muted-foreground' : 'font-medium'}">
+							{DAY_NAMES[day.day_of_week]}
+						</div>
+
+						<!-- Blocks -->
+						<div class="flex-1 space-y-2">
+							{#if day.error}
+								<p class="text-xs text-destructive">{day.error}</p>
+							{/if}
+
+							{#if day.blocks.length === 0}
+								<div class="flex items-center gap-3 py-0.5">
+									<span class="text-sm text-muted-foreground/50">No hours set</span>
+									<button
+										onclick={() => addBlock(day)}
+										class="text-sm text-primary hover:underline"
+									>
+										+ Add hours
+									</button>
 								</div>
-								{#if ruleSaveError}<div class="error-msg" style="margin-top:4px;">{ruleSaveError}</div>{/if}
-							</td>
-							<td style="text-align:right;white-space:nowrap;">
-								<button class="btn-primary btn-sm" on:click={() => saveRule(r.id)} disabled={savingRule}>
-									{savingRule ? 'Saving…' : 'Save'}
-								</button>
-								<button class="btn-secondary btn-sm" on:click={cancelEditRule} style="margin-left:4px;">Cancel</button>
-							</td>
-						</tr>
-					{:else}
-						<tr>
-							<td style="font-weight:500;">{DAY_NAMES[r.day_of_week]}</td>
-							<td class="mono">{r.start_time} – {r.end_time}</td>
-							<td style="text-align:right;white-space:nowrap;">
-								<button class="btn-secondary btn-sm" on:click={() => startEditRule(r)}>Edit</button>
-								<button class="btn-danger btn-sm" on:click={() => deleteRule(r.id)} style="margin-left:4px;">Remove</button>
-							</td>
-						</tr>
-					{/if}
-				{/each}
-			</tbody>
-		</table>
-	{/if}
-
-	<div class="add-rule-form">
-		{#if ruleAddError}<div class="error-msg">{ruleAddError}</div>{/if}
-		<div class="inline-fields">
-			<div class="field">
-				<label for="rule-day">Day</label>
-				<select id="rule-day" bind:value={ruleForm.day_of_week}>
-					{#each DAY_NAMES as name, i}
-						<option value={i}>{name}</option>
-					{/each}
-				</select>
-			</div>
-			<div class="field">
-				<label for="rule-start">From</label>
-				<select id="rule-start" bind:value={ruleForm.start_time}>
-					{#each TIME_SLOTS as t}<option value={t}>{fmtTime(t)}</option>{/each}
-				</select>
-			</div>
-			<div class="field">
-				<label for="rule-end">To</label>
-				<select id="rule-end" bind:value={ruleForm.end_time}>
-					{#each TIME_SLOTS as t}<option value={t}>{fmtTime(t)}</option>{/each}
-				</select>
-			</div>
-			<div class="field-btn">
-				<button class="btn-primary" on:click={addRule} disabled={addingRule}>
-					{addingRule ? 'Adding…' : 'Add rule'}
-				</button>
-			</div>
-		</div>
-	</div>
-</div>
-
-<!-- ── Date Overrides ───────────────────────────────────────────────────────── -->
-<div class="section-label">Date Overrides</div>
-<p class="section-hint">Block out a specific date, or set custom hours for it.</p>
-
-<div class="card">
-	{#if overridesError}<div class="error-msg">{overridesError}</div>{/if}
-
-	{#if overridesLoading}
-		<div style="color:var(--text-muted);">Loading…</div>
-	{:else if overrides.length === 0}
-		<div style="color:var(--text-muted);padding:8px 0 16px;">No overrides yet.</div>
-	{:else}
-		<table style="margin-bottom:20px;">
-			<thead>
-				<tr>
-					<th>Date</th>
-					<th>Type</th>
-					<th>Hours</th>
-					<th></th>
-				</tr>
-			</thead>
-			<tbody>
-				{#each overrides as ov}
-					{#if editingOvId === ov.id}
-						<tr class="editing-row">
-							<td style="font-weight:500;">{ov.date}</td>
-							<td>
-								<select bind:value={editOvForm.is_available} class="inline-input">
-									<option value={false}>Day off</option>
-									<option value={true}>Custom hours</option>
-								</select>
-							</td>
-							<td>
-								{#if editOvForm.is_available}
-									<div class="inline-time-fields">
-										<select class="inline-input" bind:value={editOvForm.start_time}>
+							{:else}
+								{#each day.blocks as block}
+									<div class="flex items-center gap-2">
+										<select
+											bind:value={block.start_time}
+											onchange={() => updateBlock(block)}
+											disabled={block.saving || !block.id}
+											class={selectCls}
+										>
 											{#each TIME_SLOTS as t}<option value={t}>{fmtTime(t)}</option>{/each}
 										</select>
-										<span style="color:var(--text-muted);">–</span>
-										<select class="inline-input" bind:value={editOvForm.end_time}>
+										<span class="text-muted-foreground">–</span>
+										<select
+											bind:value={block.end_time}
+											onchange={() => updateBlock(block)}
+											disabled={block.saving || !block.id}
+											class={selectCls}
+										>
 											{#each TIME_SLOTS as t}<option value={t}>{fmtTime(t)}</option>{/each}
 										</select>
+										{#if block.saving}
+											<span class="text-xs text-muted-foreground">saving…</span>
+										{:else if block.error}
+											<span class="text-xs text-destructive">{block.error}</span>
+										{/if}
+										<Tooltip.Root>
+											<Tooltip.Trigger
+												class={buttonVariants({ variant: 'ghost', size: 'icon' })}
+												onclick={() => removeBlock(day, block)}
+												disabled={block.saving}
+											>
+												<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+											</Tooltip.Trigger>
+											<Tooltip.Content>Remove</Tooltip.Content>
+										</Tooltip.Root>
 									</div>
-								{:else}
-									<span style="color:var(--text-muted);">—</span>
-								{/if}
-								{#if ovSaveError}<div class="error-msg" style="margin-top:4px;">{ovSaveError}</div>{/if}
-							</td>
-							<td style="text-align:right;white-space:nowrap;">
-								<button class="btn-primary btn-sm" on:click={() => saveOv(ov.id)} disabled={savingOv}>
-									{savingOv ? 'Saving…' : 'Save'}
+								{/each}
+								<button
+									onclick={() => addBlock(day)}
+									class="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+								>
+									<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+									Add block
 								</button>
-								<button class="btn-secondary btn-sm" on:click={cancelEditOv} style="margin-left:4px;">Cancel</button>
-							</td>
-						</tr>
-					{:else}
-						<tr>
-							<td style="font-weight:500;">{ov.date}</td>
-							<td>
-								{#if ov.is_available}
-									<span class="badge badge-green">Custom hours</span>
-								{:else}
-									<span class="badge badge-gray">Day off</span>
-								{/if}
-							</td>
-							<td class="mono">
-								{ov.is_available && ov.start_time && ov.end_time
-									? `${ov.start_time} – ${ov.end_time}`
-									: '—'}
-							</td>
-							<td style="text-align:right;white-space:nowrap;">
-								<button class="btn-secondary btn-sm" on:click={() => startEditOv(ov)}>Edit</button>
-								<button class="btn-danger btn-sm" on:click={() => deleteOverride(ov.id)} style="margin-left:4px;">Remove</button>
-							</td>
-						</tr>
-					{/if}
+							{/if}
+						</div>
+					</div>
 				{/each}
-			</tbody>
-		</table>
+			</Tooltip.Provider>
+		</div>
 	{/if}
+</div>
 
-	<div class="add-rule-form">
-		{#if ovAddError}<div class="error-msg">{ovAddError}</div>{/if}
-		<div class="inline-fields">
-			<div class="field">
-				<label for="ov-date">Date</label>
-				<input id="ov-date" type="date" bind:value={ovForm.date} />
-			</div>
-			<div class="field">
-				<label for="ov-type">Type</label>
-				<select id="ov-type" bind:value={ovForm.is_available}>
-					<option value={false}>Day off</option>
-					<option value={true}>Custom hours</option>
-				</select>
-			</div>
-			{#if ovForm.is_available}
-				<div class="field">
-					<label for="ov-start">From</label>
-					<select id="ov-start" bind:value={ovForm.start_time}>
-						{#each TIME_SLOTS as t}<option value={t}>{fmtTime(t)}</option>{/each}
+<!-- Date Overrides -->
+<div>
+	<h2 class="mb-1 text-sm font-semibold uppercase tracking-wider text-muted-foreground">Date Overrides</h2>
+	<p class="mb-3 text-sm text-muted-foreground">Block out a specific date, or set custom hours for it.</p>
+
+	<div class="rounded-lg border bg-card">
+		{#if overridesError}<p class="px-4 pt-4 text-sm text-destructive">{overridesError}</p>{/if}
+
+		{#if overridesLoading}
+			<p class="px-4 py-4 text-sm text-muted-foreground">Loading…</p>
+		{:else if overrides.length > 0}
+			<table class="w-full text-sm">
+				<thead>
+					<tr class="border-b">
+						<th class="px-4 pb-3 pt-3 text-left text-xs font-medium text-muted-foreground">Date</th>
+						<th class="px-4 pb-3 pt-3 text-left text-xs font-medium text-muted-foreground">Type</th>
+						<th class="px-4 pb-3 pt-3 text-left text-xs font-medium text-muted-foreground">Hours</th>
+						<th class="px-4 pb-3 pt-3"></th>
+					</tr>
+				</thead>
+				<tbody class="divide-y">
+					{#each overrides as ov}
+						{#if editingOvId === ov.id}
+							<tr class="bg-muted/20">
+								<td class="px-4 py-3 font-medium">{fmtDate(ov.date, $prefs)}</td>
+								<td class="px-4 py-3">
+									<select bind:value={editOvForm.reason} class={selectFullCls} style="width: auto">
+										<option value="day_off">Day off</option>
+										<option value="out_of_office">Out of office</option>
+										<option value="custom_hours">Custom hours</option>
+									</select>
+								</td>
+								<td class="px-4 py-3">
+									{#if editOvForm.reason === 'custom_hours'}
+										<div class="flex items-center gap-2">
+											<select class={selectCls} bind:value={editOvForm.start_time}>
+												{#each TIME_SLOTS as t}<option value={t}>{fmtTime(t)}</option>{/each}
+											</select>
+											<span class="text-muted-foreground">–</span>
+											<select class={selectCls} bind:value={editOvForm.end_time}>
+												{#each TIME_SLOTS as t}<option value={t}>{fmtTime(t)}</option>{/each}
+											</select>
+										</div>
+									{:else}
+										<span class="text-muted-foreground">—</span>
+									{/if}
+									{#if ovSaveError}<p class="mt-1 text-xs text-destructive">{ovSaveError}</p>{/if}
+								</td>
+								<td class="px-4 py-3">
+									<div class="flex items-center justify-end gap-2">
+										<Button size="sm" onclick={() => saveOv(ov.id)} disabled={savingOv}>
+											{savingOv ? 'Saving…' : 'Save'}
+										</Button>
+										<Button size="sm" variant="outline" onclick={cancelEditOv}>Cancel</Button>
+									</div>
+								</td>
+							</tr>
+						{:else}
+							<tr class="transition-colors hover:bg-muted/30">
+								<td class="px-4 py-3 font-medium">{fmtDate(ov.date, $prefs)}</td>
+								<td class="px-4 py-3">
+									{#if ov.reason === 'custom_hours'}
+										<Badge class="bg-blue-50 text-blue-700 border-blue-200">Custom hours</Badge>
+									{:else if ov.reason === 'out_of_office'}
+										<Badge class="bg-amber-50 text-amber-700 border-amber-200">Out of office</Badge>
+									{:else}
+										<Badge variant="secondary">Day off</Badge>
+									{/if}
+								</td>
+								<td class="px-4 py-3 font-mono text-xs text-muted-foreground">
+									{ov.is_available && ov.start_time && ov.end_time
+										? `${fmtTime(ov.start_time)} – ${fmtTime(ov.end_time)}`
+										: '—'}
+								</td>
+								<td class="px-4 py-3">
+									<Tooltip.Provider>
+										<div class="flex items-center justify-end gap-1">
+											<Tooltip.Root>
+												<Tooltip.Trigger
+													class={buttonVariants({ variant: 'ghost', size: 'icon' })}
+													onclick={() => startEditOv(ov)}
+												>
+													<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+												</Tooltip.Trigger>
+												<Tooltip.Content>Edit</Tooltip.Content>
+											</Tooltip.Root>
+											<Tooltip.Root>
+												<Tooltip.Trigger
+													class={buttonVariants({ variant: 'ghost', size: 'icon' })}
+													onclick={() => deleteOverride(ov.id)}
+												>
+													<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+												</Tooltip.Trigger>
+												<Tooltip.Content>Delete</Tooltip.Content>
+											</Tooltip.Root>
+										</div>
+									</Tooltip.Provider>
+								</td>
+							</tr>
+						{/if}
+					{/each}
+				</tbody>
+			</table>
+		{:else}
+			<p class="px-4 py-4 text-sm text-muted-foreground">No overrides yet.</p>
+		{/if}
+
+		<!-- Add override form -->
+		<div class="border-t px-4 py-4">
+			{#if ovAddError}<p class="mb-3 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{ovAddError}</p>{/if}
+			<div class="flex flex-wrap items-end gap-3">
+				<div class="space-y-1.5">
+					<label for="ov-date" class="text-sm font-medium">Date</label>
+					<DatePicker bind:value={ovForm.date} placeholder="Pick a date" />
+				</div>
+				<div class="space-y-1.5">
+					<label for="ov-type" class="text-sm font-medium">Type</label>
+					<select id="ov-type" bind:value={ovForm.reason} class={selectFullCls} style="width: auto">
+						<option value="day_off">Day off</option>
+						<option value="out_of_office">Out of office</option>
+						<option value="custom_hours">Custom hours</option>
 					</select>
 				</div>
-				<div class="field">
-					<label for="ov-end">To</label>
-					<select id="ov-end" bind:value={ovForm.end_time}>
-						{#each TIME_SLOTS as t}<option value={t}>{fmtTime(t)}</option>{/each}
-					</select>
-				</div>
-			{/if}
-			<div class="field-btn">
-				<button class="btn-primary" on:click={addOverride} disabled={addingOv}>
+				{#if ovForm.reason === 'custom_hours'}
+					<div class="space-y-1.5">
+						<label for="ov-start" class="text-sm font-medium">From</label>
+						<select id="ov-start" bind:value={ovForm.start_time} class={selectCls}>
+							{#each TIME_SLOTS as t}<option value={t}>{fmtTime(t)}</option>{/each}
+						</select>
+					</div>
+					<div class="space-y-1.5">
+						<label for="ov-end" class="text-sm font-medium">To</label>
+						<select id="ov-end" bind:value={ovForm.end_time} class={selectCls}>
+							{#each TIME_SLOTS as t}<option value={t}>{fmtTime(t)}</option>{/each}
+						</select>
+					</div>
+				{/if}
+				<Button onclick={addOverride} disabled={addingOv}>
 					{addingOv ? 'Adding…' : 'Add override'}
-				</button>
+				</Button>
 			</div>
 		</div>
 	</div>
 </div>
-
-<style>
-	.section-label {
-		font-size: 13px;
-		font-weight: 600;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
-		color: var(--text-muted);
-		margin-bottom: 8px;
-	}
-
-	.section-hint {
-		font-size: 13px;
-		color: var(--text-muted);
-		margin: -4px 0 10px;
-	}
-
-	.add-rule-form {
-		border-top: 1px solid var(--border);
-		padding-top: 16px;
-	}
-
-	.inline-fields {
-		display: flex;
-		gap: 12px;
-		align-items: flex-end;
-		flex-wrap: wrap;
-	}
-
-	.inline-fields .field {
-		margin-bottom: 0;
-		min-width: 120px;
-		flex: 1;
-	}
-
-	.field-btn {
-		flex: 0 0 auto;
-		min-width: unset;
-	}
-
-	.field-btn button {
-		white-space: nowrap;
-	}
-
-	.editing-row {
-		background: var(--surface);
-	}
-
-	.inline-input {
-		padding: 4px 8px;
-		font-size: 13px;
-		border: 1px solid var(--border);
-		border-radius: var(--radius);
-		background: var(--bg);
-		color: inherit;
-		width: 100%;
-	}
-
-	.inline-time-fields {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-	}
-
-	.inline-time-fields .inline-input {
-		width: auto;
-		flex: 1;
-	}
-</style>

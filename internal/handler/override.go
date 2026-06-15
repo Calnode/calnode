@@ -14,8 +14,13 @@ type availOverrideJSON struct {
 	ID          string  `json:"id"`
 	Date        string  `json:"date"`        // YYYY-MM-DD
 	IsAvailable bool    `json:"is_available"`
+	Reason      string  `json:"reason"`      // "day_off" | "out_of_office" | "custom_hours"
 	StartTime   *string `json:"start_time"`  // HH:MM; only when IsAvailable
 	EndTime     *string `json:"end_time"`    // HH:MM; only when IsAvailable
+}
+
+func validOverrideReason(r string) bool {
+	return r == "day_off" || r == "out_of_office" || r == "custom_hours"
 }
 
 // CreateAvailabilityOverride handles POST /v1/availability-overrides.
@@ -32,10 +37,12 @@ func (h *Handler) CreateAvailabilityOverride(w http.ResponseWriter, r *http.Requ
 	r.Body = http.MaxBytesReader(w, r.Body, 32<<10)
 
 	var req struct {
-		Date        string  `json:"date"`
-		IsAvailable bool    `json:"is_available"`
-		StartTime   *string `json:"start_time"`
-		EndTime     *string `json:"end_time"`
+		Date      string  `json:"date"`
+		Reason    string  `json:"reason"`
+		StartTime *string `json:"start_time"`
+		EndTime   *string `json:"end_time"`
+		// Legacy field — ignored if reason is provided.
+		IsAvailable *bool `json:"is_available"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.writeError(w, http.StatusBadRequest, "invalid JSON")
@@ -49,9 +56,22 @@ func (h *Handler) CreateAvailabilityOverride(w http.ResponseWriter, r *http.Requ
 		h.writeError(w, http.StatusBadRequest, "date must be YYYY-MM-DD")
 		return
 	}
-	if req.IsAvailable {
+	// Derive reason: prefer explicit reason field, fall back to is_available for old callers.
+	if req.Reason == "" {
+		if req.IsAvailable != nil && *req.IsAvailable {
+			req.Reason = "custom_hours"
+		} else {
+			req.Reason = "day_off"
+		}
+	}
+	if !validOverrideReason(req.Reason) {
+		h.writeError(w, http.StatusBadRequest, "reason must be 'day_off', 'out_of_office', or 'custom_hours'")
+		return
+	}
+	isCustom := req.Reason == "custom_hours"
+	if isCustom {
 		if req.StartTime == nil || req.EndTime == nil || *req.StartTime == "" || *req.EndTime == "" {
-			h.writeError(w, http.StatusBadRequest, "start_time and end_time are required when is_available is true")
+			h.writeError(w, http.StatusBadRequest, "start_time and end_time are required for custom_hours")
 			return
 		}
 		if !validHHMM(*req.StartTime) || !validHHMM(*req.EndTime) {
@@ -62,23 +82,21 @@ func (h *Handler) CreateAvailabilityOverride(w http.ResponseWriter, r *http.Requ
 			h.writeError(w, http.StatusBadRequest, "start_time must be before end_time")
 			return
 		}
-	}
-
-	isAvailInt := 0
-	if req.IsAvailable {
-		isAvailInt = 1
-	}
-	// Discard times for blocked days — callers might send them but they're meaningless.
-	if !req.IsAvailable {
+	} else {
 		req.StartTime = nil
 		req.EndTime = nil
 	}
 
+	isAvailInt := 0
+	if isCustom {
+		isAvailInt = 1
+	}
+
 	id := uid.New()
 	if _, err := h.db.ExecContext(r.Context(), `
-		INSERT INTO availability_overrides (id, user_id, date, is_available, start_time, end_time)
-		VALUES (?, ?, ?, ?, ?, ?)`,
-		id, user.ID, req.Date, isAvailInt, req.StartTime, req.EndTime); err != nil {
+		INSERT INTO availability_overrides (id, user_id, date, is_available, reason, start_time, end_time)
+		VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		id, user.ID, req.Date, isAvailInt, req.Reason, req.StartTime, req.EndTime); err != nil {
 		if strings.Contains(err.Error(), "UNIQUE constraint failed") {
 			h.writeError(w, http.StatusConflict, "an override already exists for this date; delete it first")
 			return
@@ -91,9 +109,10 @@ func (h *Handler) CreateAvailabilityOverride(w http.ResponseWriter, r *http.Requ
 	resp := availOverrideJSON{
 		ID:          id,
 		Date:        req.Date,
-		IsAvailable: req.IsAvailable,
+		IsAvailable: isCustom,
+		Reason:      req.Reason,
 	}
-	if req.IsAvailable {
+	if isCustom {
 		resp.StartTime = req.StartTime
 		resp.EndTime = req.EndTime
 	}
@@ -105,7 +124,7 @@ func (h *Handler) ListAvailabilityOverrides(w http.ResponseWriter, r *http.Reque
 	user, _ := userFromContext(r.Context())
 
 	rows, err := h.db.QueryContext(r.Context(), `
-		SELECT id, date, is_available,
+		SELECT id, date, is_available, COALESCE(reason,'day_off'),
 		       COALESCE(start_time,''), COALESCE(end_time,'')
 		FROM availability_overrides
 		WHERE user_id = ?
@@ -122,7 +141,7 @@ func (h *Handler) ListAvailabilityOverrides(w http.ResponseWriter, r *http.Reque
 		var item availOverrideJSON
 		var isAvail int
 		var startT, endT string
-		if err := rows.Scan(&item.ID, &item.Date, &isAvail, &startT, &endT); err != nil {
+		if err := rows.Scan(&item.ID, &item.Date, &isAvail, &item.Reason, &startT, &endT); err != nil {
 			h.logger.ErrorContext(r.Context(), "scan availability override", "error", err)
 			h.writeError(w, http.StatusInternalServerError, "internal error")
 			return
@@ -149,9 +168,11 @@ func (h *Handler) UpdateAvailabilityOverride(w http.ResponseWriter, r *http.Requ
 	r.Body = http.MaxBytesReader(w, r.Body, 32<<10)
 
 	var req struct {
-		IsAvailable *bool   `json:"is_available"`
-		StartTime   *string `json:"start_time"`
-		EndTime     *string `json:"end_time"`
+		Reason    *string `json:"reason"`
+		StartTime *string `json:"start_time"`
+		EndTime   *string `json:"end_time"`
+		// Legacy field — accepted but reason takes precedence.
+		IsAvailable *bool `json:"is_available"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.writeError(w, http.StatusBadRequest, "invalid JSON")
@@ -162,9 +183,9 @@ func (h *Handler) UpdateAvailabilityOverride(w http.ResponseWriter, r *http.Requ
 	var isAvail int
 	var startT, endT string
 	err := h.db.QueryRowContext(r.Context(),
-		`SELECT id, date, is_available, COALESCE(start_time,''), COALESCE(end_time,'')
+		`SELECT id, date, is_available, COALESCE(reason,'day_off'), COALESCE(start_time,''), COALESCE(end_time,'')
 		 FROM availability_overrides WHERE id = ? AND user_id = ?`, id, user.ID).
-		Scan(&current.ID, &current.Date, &isAvail, &startT, &endT)
+		Scan(&current.ID, &current.Date, &isAvail, &current.Reason, &startT, &endT)
 	if err == sql.ErrNoRows {
 		h.writeError(w, http.StatusNotFound, "override not found")
 		return
@@ -180,9 +201,22 @@ func (h *Handler) UpdateAvailabilityOverride(w http.ResponseWriter, r *http.Requ
 		current.EndTime = &endT
 	}
 
-	if req.IsAvailable != nil {
-		current.IsAvailable = *req.IsAvailable
+	if req.Reason != nil {
+		if !validOverrideReason(*req.Reason) {
+			h.writeError(w, http.StatusBadRequest, "reason must be 'day_off', 'out_of_office', or 'custom_hours'")
+			return
+		}
+		current.Reason = *req.Reason
+	} else if req.IsAvailable != nil {
+		// Legacy fallback.
+		if *req.IsAvailable {
+			current.Reason = "custom_hours"
+		} else if current.Reason == "custom_hours" {
+			current.Reason = "day_off"
+		}
 	}
+	current.IsAvailable = current.Reason == "custom_hours"
+
 	if req.StartTime != nil {
 		if !validHHMM(*req.StartTime) {
 			h.writeError(w, http.StatusBadRequest, "start_time must be HH:MM (e.g. 09:00)")
@@ -200,7 +234,7 @@ func (h *Handler) UpdateAvailabilityOverride(w http.ResponseWriter, r *http.Requ
 
 	if current.IsAvailable {
 		if current.StartTime == nil || current.EndTime == nil || *current.StartTime == "" || *current.EndTime == "" {
-			h.writeError(w, http.StatusBadRequest, "start_time and end_time are required when is_available is true")
+			h.writeError(w, http.StatusBadRequest, "start_time and end_time are required for custom_hours")
 			return
 		}
 		if *current.StartTime >= *current.EndTime {
@@ -217,8 +251,8 @@ func (h *Handler) UpdateAvailabilityOverride(w http.ResponseWriter, r *http.Requ
 		isAvailInt = 1
 	}
 	if _, err := h.db.ExecContext(r.Context(),
-		`UPDATE availability_overrides SET is_available=?, start_time=?, end_time=? WHERE id=? AND user_id=?`,
-		isAvailInt, current.StartTime, current.EndTime, id, user.ID); err != nil {
+		`UPDATE availability_overrides SET is_available=?, reason=?, start_time=?, end_time=? WHERE id=? AND user_id=?`,
+		isAvailInt, current.Reason, current.StartTime, current.EndTime, id, user.ID); err != nil {
 		h.logger.ErrorContext(r.Context(), "update availability override", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal error")
 		return

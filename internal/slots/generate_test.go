@@ -411,6 +411,36 @@ func TestGenerate_maxFutureFiltersLateSlots(t *testing.T) {
 	}
 }
 
+func TestGenerate_maxFutureDaysZero_treatedAsUnlimited(t *testing.T) {
+	// MaxFutureDays=0 must NOT block all future slots. It should behave as
+	// "no configured limit" and allow slots well into the future (1-year guard).
+	// Regression test: previously maxFuture = now + 0 = now, so every future
+	// slot was filtered by t.After(maxFuture), returning an empty result.
+	loc := time.UTC
+	now := utcTime(2026, 6, 14, 0, 0, 0)
+
+	req := slots.Request{
+		Event: slots.EventConfig{
+			DurationMinutes:     30,
+			SlotIntervalMinutes: 30,
+			MaxFutureDays:       0, // explicitly zero — must not block everything
+			RoutingMode:         "fixed",
+		},
+		Hosts:    []slots.HostAvailability{singleHost("h1", loc, monRules("09:00", "10:00"))},
+		DateFrom: utcDate(2026, 6, 15), // one day after now
+		DateTo:   utcDate(2026, 6, 15),
+		BookerTZ: loc,
+		Now:      now,
+	}
+	got, err := slots.Generate(req)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	if len(got) == 0 {
+		t.Error("MaxFutureDays=0 should be treated as unlimited, but got no slots")
+	}
+}
+
 // ─── date overrides ──────────────────────────────────────────────────────────
 
 func TestGenerate_dateOverrideBlocksDay(t *testing.T) {

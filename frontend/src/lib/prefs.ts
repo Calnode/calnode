@@ -46,8 +46,12 @@ export function fmtDateTime(iso: string, p: UserPrefs = get(prefs)): string {
 	return `${datePart}, ${timePart}`;
 }
 
-export function fmtDate(iso: string, p: UserPrefs = get(prefs)): string {
-	return fmtDatePart(new Date(iso), p.date_format);
+export function fmtDate(ymd: string, p: UserPrefs = get(prefs)): string {
+	// ymd is always YYYY-MM-DD from the API — parse directly to avoid TZ shift from new Date()
+	const [y, m, d] = ymd.split('-');
+	if (p.date_format === 'mdy') return `${m}/${d}/${y}`;
+	if (p.date_format === 'ymd') return `${y}-${m}-${d}`;
+	return `${d}/${m}/${y}`;
 }
 
 export function fmtTime(iso: string, p: UserPrefs = get(prefs)): string {

@@ -77,7 +77,12 @@ func Generate(req Request) ([]Slot, error) {
 	bufBefore := time.Duration(req.Event.BufferBeforeMinutes) * time.Minute
 	bufAfter := time.Duration(req.Event.BufferAfterMinutes) * time.Minute
 	minNotice := req.Now.Add(time.Duration(req.Event.MinNoticeMinutes) * time.Minute)
-	maxFuture := req.Now.Add(time.Duration(req.Event.MaxFutureDays) * 24 * time.Hour)
+	var maxFuture time.Time
+	if req.Event.MaxFutureDays > 0 {
+		maxFuture = req.Now.Add(time.Duration(req.Event.MaxFutureDays) * 24 * time.Hour)
+	} else {
+		maxFuture = req.Now.Add(365 * 24 * time.Hour) // 0 = no configured limit; use 1-year guard
+	}
 
 	// perStart[slotStartUTC] = set of host IDs that have that start free.
 	type hostSet map[string]bool

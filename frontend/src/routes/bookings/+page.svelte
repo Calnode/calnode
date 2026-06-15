@@ -2,21 +2,24 @@
 	import { onMount } from 'svelte';
 	import { api, type Booking } from '$lib/api';
 	import { prefs, fmtDateTime, fmtTime } from '$lib/prefs';
+	import { Button, buttonVariants } from '$lib/components/ui/button';
+	import { Badge } from '$lib/components/ui/badge';
+	import * as Tooltip from '$lib/components/ui/tooltip';
+	import { DatePicker } from '$lib/components/ui/date-picker';
 
-	let items: Booking[] = [];
-	let loading = true;
-	let error = '';
+	let items: Booking[] = $state([]);
+	let loading = $state(true);
+	let error = $state('');
 
-	// Reschedule state
-	let reschedulingId: string | null = null;
-	let reschedulingSlug = '';
-	let rescheduleDate = '';
-	let slots: { start: string; end: string }[] = [];
-	let slotsLoading = false;
-	let slotsError = '';
-	let selectedSlot = '';
-	let rescheduling = false;
-	let rescheduleError = '';
+	let reschedulingId: string | null = $state(null);
+	let reschedulingSlug = $state('');
+	let rescheduleDate = $state('');
+	let slots: { start: string; end: string }[] = $state([]);
+	let slotsLoading = $state(false);
+	let slotsError = $state('');
+	let selectedSlot = $state('');
+	let rescheduling = $state(false);
+	let rescheduleError = $state('');
 
 	async function load() {
 		try {
@@ -55,6 +58,10 @@
 		reschedulingId = null;
 	}
 
+	$effect(() => {
+		if (rescheduleDate) loadSlots();
+	});
+
 	async function loadSlots() {
 		if (!rescheduleDate) return;
 		slotsLoading = true;
@@ -92,7 +99,6 @@
 	function fmt(iso: string) { return fmtDateTime(iso, $prefs); }
 	function fmtSlotTime(iso: string) { return fmtTime(iso, $prefs); }
 
-	// Minimum selectable date: today (can't reschedule to the past)
 	function todayISO() {
 		return new Date().toISOString().slice(0, 10);
 	}
@@ -100,112 +106,123 @@
 
 <svelte:head><title>Bookings — Calnode</title></svelte:head>
 
-<div class="page-header">
-	<h1>Bookings</h1>
+<div class="mb-8">
+	<h1 class="text-2xl font-semibold tracking-tight">Bookings</h1>
+	<p class="mt-1 text-sm text-muted-foreground">All scheduled and past meetings.</p>
 </div>
 
-{#if error}<div class="error-msg">{error}</div>{/if}
+{#if error}<p class="mb-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>{/if}
 
 {#if loading}
-	<div style="color:var(--text-muted);padding:24px 0;">Loading…</div>
+	<p class="py-8 text-sm text-muted-foreground">Loading…</p>
 {:else if items.length === 0}
-	<div class="card empty-state">
-		<strong>No bookings yet</strong>
-		<p>Bookings will appear here once attendees schedule time with you.</p>
+	<div class="rounded-lg border border-dashed bg-card p-12 text-center">
+		<p class="text-sm font-medium">No bookings yet</p>
+		<p class="mt-1 text-sm text-muted-foreground">Bookings will appear here once attendees schedule time with you.</p>
 	</div>
 {:else}
-	<div class="card" style="padding:0;overflow:hidden;">
-		<table>
+	<div class="rounded-lg border bg-card overflow-hidden">
+		<table class="w-full text-sm">
 			<thead>
-				<tr>
-					<th>Attendee</th>
-					<th>Event</th>
-					<th>Start time</th>
-					<th>Status</th>
-					<th></th>
+				<tr class="border-b">
+					<th class="px-4 pb-3 pt-3 text-left text-xs font-medium text-muted-foreground">Attendee</th>
+					<th class="px-4 pb-3 pt-3 text-left text-xs font-medium text-muted-foreground">Event</th>
+					<th class="px-4 pb-3 pt-3 text-left text-xs font-medium text-muted-foreground">Start time</th>
+					<th class="px-4 pb-3 pt-3 text-left text-xs font-medium text-muted-foreground">Status</th>
+					<th class="px-4 pb-3 pt-3"></th>
 				</tr>
 			</thead>
-			<tbody>
+			<tbody class="divide-y">
 				{#each items as b}
-					<tr>
-						<td>
+					<tr class="transition-colors hover:bg-muted/30">
+						<td class="px-4 py-3">
 							{#if b.attendees && b.attendees.length > 0}
-								<div style="font-weight:500;">{b.attendees[0].name}</div>
-								<div style="color:var(--text-muted);font-size:12px;">{b.attendees[0].email}</div>
+								<div class="font-medium">{b.attendees[0].name}</div>
+								<div class="text-xs text-muted-foreground">{b.attendees[0].email}</div>
 							{:else}
-								<span style="color:var(--text-muted);">—</span>
+								<span class="text-muted-foreground">—</span>
 							{/if}
 						</td>
-						<td class="mono">{b.event_type_slug ?? '—'}</td>
-						<td>{fmt(b.start_at)}</td>
-						<td>
-							<span
-								class="badge"
-								class:badge-green={b.status === 'confirmed'}
-								class:badge-red={b.status === 'cancelled'}
-							>
-								{b.status}
-							</span>
-						</td>
-						<td style="text-align:right;white-space:nowrap;">
+						<td class="px-4 py-3 font-mono text-xs text-muted-foreground">{b.event_type_slug ?? '—'}</td>
+						<td class="px-4 py-3 text-muted-foreground">{fmt(b.start_at)}</td>
+						<td class="px-4 py-3">
 							{#if b.status === 'confirmed'}
-								{#if reschedulingId === b.id}
-									<button class="btn-secondary btn-sm" on:click={cancelReschedule}>
-										Cancel reschedule
-									</button>
-								{:else}
-									<button
-										class="btn-secondary btn-sm"
-										style="margin-right:6px;"
-										on:click={() => startReschedule(b)}
-									>
-										Reschedule
-									</button>
-									<button class="btn-danger btn-sm" on:click={() => cancel(b.id)}>
-										Cancel
-									</button>
-								{/if}
+								<Badge class="bg-green-50 text-green-700 border-green-200">{b.status}</Badge>
+							{:else if b.status === 'cancelled'}
+								<Badge variant="destructive" class="bg-destructive/10 text-destructive border-transparent">{b.status}</Badge>
+							{:else}
+								<Badge variant="secondary">{b.status}</Badge>
+							{/if}
+						</td>
+						<td class="px-4 py-3">
+							{#if b.status === 'confirmed'}
+								<Tooltip.Provider>
+									<div class="flex items-center justify-end gap-1">
+										{#if reschedulingId === b.id}
+											<Button variant="outline" size="sm" onclick={cancelReschedule}>
+												Cancel reschedule
+											</Button>
+										{:else}
+											<Tooltip.Root>
+												<Tooltip.Trigger
+													class={buttonVariants({ variant: 'ghost', size: 'icon' })}
+													onclick={() => startReschedule(b)}
+												>
+													<!-- Calendar icon -->
+													<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+												</Tooltip.Trigger>
+												<Tooltip.Content>Reschedule</Tooltip.Content>
+											</Tooltip.Root>
+
+											<Tooltip.Root>
+												<Tooltip.Trigger
+													class={buttonVariants({ variant: 'ghost', size: 'icon' })}
+													onclick={() => cancel(b.id)}
+												>
+													<!-- X/cancel icon -->
+													<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+												</Tooltip.Trigger>
+												<Tooltip.Content>Cancel booking</Tooltip.Content>
+											</Tooltip.Root>
+										{/if}
+									</div>
+								</Tooltip.Provider>
 							{/if}
 						</td>
 					</tr>
 
 					{#if reschedulingId === b.id}
 						<tr>
-							<td colspan="5" style="padding:0;">
-								<div style="padding:16px;background:var(--surface-hover);border-top:1px solid var(--border);">
-									<div style="font-weight:500;margin-bottom:12px;">
-										Reschedule — {b.attendees?.[0]?.name ?? 'attendee'}
-									</div>
+							<td colspan="5" class="p-0">
+								<div class="border-t bg-muted/30 px-4 py-4">
+									<p class="mb-3 text-sm font-medium">Reschedule — {b.attendees?.[0]?.name ?? 'attendee'}</p>
 
-									<div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
-										<div class="field" style="margin:0;">
-											<label for="reschedule-date-{b.id}">New date</label>
-											<input
-												id="reschedule-date-{b.id}"
-												type="date"
-												min={todayISO()}
+									<div class="flex flex-wrap items-end gap-3">
+										<div class="space-y-1.5">
+											<p class="text-sm font-medium">New date</p>
+											<DatePicker
 												bind:value={rescheduleDate}
-												on:change={loadSlots}
+												placeholder="Pick a date"
+												minToday
+												class="w-[180px]"
 											/>
 										</div>
 
 										{#if slotsLoading}
-											<div style="color:var(--text-muted);padding-bottom:6px;">Loading slots…</div>
+											<p class="pb-1 text-sm text-muted-foreground">Loading slots…</p>
 										{:else if slotsError}
-											<div class="error-msg" style="margin:0;">{slotsError}</div>
+											<p class="rounded-md bg-destructive/10 px-3 py-1.5 text-sm text-destructive">{slotsError}</p>
 										{:else if rescheduleDate && slots.length === 0}
-											<div style="color:var(--text-muted);padding-bottom:6px;">No available slots on this date.</div>
+											<p class="pb-1 text-sm text-muted-foreground">No available slots on this date.</p>
 										{/if}
 									</div>
 
 									{#if slots.length > 0}
-										<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;">
+										<div class="mt-3 flex flex-wrap gap-2">
 											{#each slots as slot}
 												<button
-													class="btn-secondary btn-sm"
-													class:btn-primary={selectedSlot === slot.start}
-													style={selectedSlot === slot.start ? 'border:none;' : ''}
-													on:click={() => (selectedSlot = slot.start)}
+													onclick={() => (selectedSlot = slot.start)}
+													class="inline-flex items-center justify-center rounded-md px-3 py-1.5 text-xs font-medium transition-colors {selectedSlot === slot.start ? 'bg-primary text-primary-foreground hover:bg-primary/90' : 'border bg-background hover:bg-accent hover:text-accent-foreground'}"
 												>
 													{fmtSlotTime(slot.start)}
 												</button>
@@ -214,21 +231,17 @@
 									{/if}
 
 									{#if rescheduleError}
-										<div class="error-msg" style="margin-top:12px;">{rescheduleError}</div>
+										<p class="mt-3 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{rescheduleError}</p>
 									{/if}
 
 									{#if selectedSlot}
-										<div style="margin-top:16px;display:flex;gap:8px;">
-											<button
-												class="btn-primary"
-												on:click={confirmReschedule}
-												disabled={rescheduling}
-											>
+										<div class="mt-4 flex gap-2">
+											<Button onclick={confirmReschedule} disabled={rescheduling}>
 												{rescheduling ? 'Rescheduling…' : `Confirm — ${fmtSlotTime(selectedSlot)}`}
-											</button>
-											<button class="btn-secondary" on:click={cancelReschedule}>
+											</Button>
+											<Button variant="outline" onclick={cancelReschedule}>
 												Cancel
-											</button>
+											</Button>
 										</div>
 									{/if}
 								</div>

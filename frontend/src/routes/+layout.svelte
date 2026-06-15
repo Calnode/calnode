@@ -1,25 +1,55 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { page } from '$app/stores';
-	import { goto } from '$app/navigation';
 	import { base } from '$app/paths';
 	import '../app.css';
 	import { api, type User } from '$lib/api';
 	import { currentUser } from '$lib/stores';
 	import { prefs, prefsFromUser } from '$lib/prefs';
+	import type { Snippet } from 'svelte';
 
-	let checking = true;
+	let { children }: { children: Snippet } = $props();
 
-	$: isLogin = $page.route.id === '/login';
+	let checking = $state(true);
+
+	const isLogin = $derived($page.route.id === '/login');
 
 	const navItems = [
-		{ href: `${base}/event-types`, label: 'Event Types', icon: '📅' },
-		{ href: `${base}/availability`, label: 'Availability', icon: '🕐' },
-		{ href: `${base}/bookings`, label: 'Bookings', icon: '📋' },
-		{ href: `${base}/api-keys`, label: 'API Keys', icon: '🔑' },
-		{ href: `${base}/webhooks`, label: 'Webhooks', icon: '🔔' },
-		{ href: `${base}/calendar`, label: 'Calendar', icon: '📆' },
-		{ href: `${base}/settings`, label: 'Settings', icon: '⚙️' }
+		{
+			href: `${base}/event-types`,
+			label: 'Event Types',
+			icon: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`
+		},
+		{
+			href: `${base}/availability`,
+			label: 'Availability',
+			icon: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`
+		},
+		{
+			href: `${base}/bookings`,
+			label: 'Bookings',
+			icon: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>`
+		},
+		{
+			href: `${base}/api-keys`,
+			label: 'API Keys',
+			icon: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>`
+		},
+		{
+			href: `${base}/webhooks`,
+			label: 'Webhooks',
+			icon: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>`
+		},
+		{
+			href: `${base}/calendar`,
+			label: 'Calendar',
+			icon: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><rect x="8" y="14" width="2" height="2"/><rect x="13" y="14" width="2" height="2"/></svg>`
+		},
+		{
+			href: `${base}/settings`,
+			label: 'Settings',
+			icon: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`
+		}
 	];
 
 	onMount(async () => {
@@ -42,120 +72,75 @@
 		await fetch('/v1/auth/logout', { method: 'POST', credentials: 'same-origin' });
 		window.location.href = '/v1/auth/login';
 	}
+
+	function initials(name: string) {
+		return name
+			.split(' ')
+			.map((p) => p[0])
+			.join('')
+			.toUpperCase()
+			.slice(0, 2);
+	}
 </script>
 
 {#if isLogin}
-	<slot />
+	{@render children()}
 {:else if checking}
-	<div style="display:flex;align-items:center;justify-content:center;height:100vh;color:#64748b;">
+	<div class="flex h-full items-center justify-center text-sm text-muted-foreground">
 		Loading…
 	</div>
 {:else}
-	<div class="app-shell">
-		<nav class="sidebar">
-			<div class="logo">
-				<span class="logo-mark">⚡</span>
-				<span class="logo-text">Calnode</span>
+	<div class="flex h-full">
+		<!-- Sidebar -->
+		<aside class="flex w-56 shrink-0 flex-col border-r border-sidebar-border bg-sidebar">
+			<!-- User section -->
+			<div class="flex items-center gap-3 border-b border-sidebar-border px-4 py-3">
+				<div class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
+					{initials($currentUser?.name ?? 'U')}
+				</div>
+				<div class="min-w-0 flex-1">
+					<p class="truncate text-sm font-medium text-sidebar-foreground">{$currentUser?.name ?? ''}</p>
+				</div>
 			</div>
 
-			<ul class="nav-list">
+			<!-- Nav -->
+			<nav class="flex-1 space-y-0.5 p-2">
 				{#each navItems as item}
-					<li>
-						<a
-							href={item.href}
-							class="nav-link"
-							class:active={$page.url.pathname.startsWith(item.href)}
-						>
-							<span class="nav-icon">{item.icon}</span>
-							{item.label}
-						</a>
-					</li>
+					{@const active = $page.url.pathname.startsWith(item.href)}
+					<a
+						href={item.href}
+						class="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium transition-colors
+							{active
+								? 'bg-sidebar-accent text-sidebar-accent-foreground'
+								: 'text-sidebar-foreground/70 hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground'}"
+					>
+						<span class="shrink-0 {active ? 'opacity-100' : 'opacity-60'}">{@html item.icon}</span>
+						{item.label}
+					</a>
 				{/each}
-			</ul>
+			</nav>
 
-			<div class="sidebar-footer">
-				{#if $currentUser}
-					<div class="user-info">
-						<div class="user-name">{$currentUser.name}</div>
-						<div class="user-email">{$currentUser.email}</div>
-					</div>
-				{/if}
-				<button class="btn-secondary btn-sm" on:click={logout} style="width:100%;margin-top:8px;">
+			<!-- Footer -->
+			<div class="border-t border-sidebar-border p-2">
+				<button
+					onclick={logout}
+					class="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium text-sidebar-foreground/60 transition-colors hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground"
+				>
+					<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="shrink-0">
+						<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+						<polyline points="16 17 21 12 16 7"/>
+						<line x1="21" y1="12" x2="9" y2="12"/>
+					</svg>
 					Sign out
 				</button>
 			</div>
-		</nav>
+		</aside>
 
-		<main class="content">
-			<slot />
+		<!-- Main content -->
+		<main class="flex-1 overflow-y-auto bg-background">
+			<div class="mx-auto max-w-4xl px-8 py-8">
+				{@render children()}
+			</div>
 		</main>
 	</div>
 {/if}
-
-<style>
-	.app-shell {
-		display: flex;
-		height: 100vh;
-		overflow: hidden;
-	}
-
-	.sidebar {
-		width: var(--sidebar-w);
-		min-width: var(--sidebar-w);
-		background: var(--sidebar-bg);
-		display: flex;
-		flex-direction: column;
-		padding: 0;
-		overflow-y: auto;
-	}
-
-	.logo {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		padding: 18px 16px 14px;
-		border-bottom: 1px solid rgba(255,255,255,0.08);
-		margin-bottom: 8px;
-	}
-	.logo-mark { font-size: 18px; }
-	.logo-text { font-size: 16px; font-weight: 700; color: #f8fafc; letter-spacing: -0.02em; }
-
-	.nav-list {
-		list-style: none;
-		margin: 0;
-		padding: 0 8px;
-		flex: 1;
-	}
-	.nav-list li { margin: 2px 0; }
-
-	.nav-link {
-		display: flex;
-		align-items: center;
-		gap: 10px;
-		padding: 8px 10px;
-		border-radius: 6px;
-		color: var(--sidebar-text);
-		font-size: 13px;
-		font-weight: 500;
-		text-decoration: none;
-		transition: background 0.15s, color 0.15s;
-	}
-	.nav-link:hover { background: var(--sidebar-hover); color: #f8fafc; text-decoration: none; }
-	.nav-link.active { background: var(--sidebar-active-bg); color: var(--sidebar-active); }
-
-	.nav-icon { font-size: 14px; width: 18px; text-align: center; }
-
-	.sidebar-footer {
-		padding: 12px 8px 16px;
-		border-top: 1px solid rgba(255,255,255,0.08);
-	}
-	.user-info { padding: 0 4px; }
-	.user-name { font-size: 13px; font-weight: 600; color: #f8fafc; }
-	.user-email { font-size: 11px; color: var(--sidebar-text); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-
-	.content {
-		flex: 1;
-		overflow-y: auto;
-		padding: 28px 32px;
-	}
-</style>

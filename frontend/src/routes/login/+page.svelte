@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/stores';
+	import { Button } from '$lib/components/ui/button';
 
 	const errorMessages: Record<string, string> = {
 		state: 'Login failed: invalid session state. Please try again.',
@@ -10,87 +11,37 @@
 		session: 'Could not create a session. Please try again.'
 	};
 
-	$: errorKey = $page.url.searchParams.get('error') ?? '';
-	$: errorMsg = errorKey ? (errorMessages[errorKey] ?? 'An error occurred. Please try again.') : '';
+	const errorKey = $derived($page.url.searchParams.get('error') ?? '');
+	const errorMsg = $derived(errorKey ? (errorMessages[errorKey] ?? 'An error occurred. Please try again.') : '');
 </script>
 
 <svelte:head><title>Sign in — Calnode</title></svelte:head>
 
-<div class="login-wrap">
-	<div class="login-card">
-		<div class="brand">
-			<span class="brand-icon">⚡</span>
-			<span class="brand-name">Calnode</span>
+<div class="flex min-h-screen items-center justify-center bg-muted/30 p-6">
+	<div class="w-full max-w-sm">
+		<div class="mb-8 text-center">
+			<div class="mb-3 flex justify-center">
+				<svg viewBox="0 0 27 31" width="36" xmlns="http://www.w3.org/2000/svg">
+					<rect width="27" height="31" rx="4" fill="#6366f1"/>
+					<path fill="white" d="m 3.043653,30.614292 c -1.04707,-0.32444 -1.94939,-1.09611 -2.51053002,-2.14706 l -0.28493,-0.53364 -0.0338,-10.26902 c -0.0333,-10.1001 -0.0296,-10.28026 0.22157,-10.95165 C 0.93698298,5.3738426 2.254043,4.3160626 3.592343,4.1779326 l 0.66734,-0.069 0.0442,1.54722 c 0.0411,1.4322294 0.069,1.5846294 0.37758,2.0507194 0.43775,0.66128 1.06374,1.03377 1.8697695,1.11256 0.83411,0.0815 1.60889,-0.30288 2.1454309,-1.06449 0.35775,-0.50781 0.37448,-0.59108 0.41656,-2.0715194 l 0.0439,-1.54245 h 4.3226446 4.32263 l 0.0491,1.45985 c 0.0578,1.7152194 0.26715,2.2526994 1.10313,2.8320394 0.44147,0.30594 0.6462,0.36331 1.30282,0.36509 0.6673,0.002 0.85479,-0.0513 1.30717,-0.3706 0.83953,-0.59252 1.03808,-1.10942 1.09117,-2.8410394 l 0.0452,-1.47436 0.61114,0.0588 c 0.88513,0.085 1.92322,0.66148 2.52855,1.40407 0.98071,1.2030494 0.9433,0.7026404 0.90509,12.1120594 l -0.0339,10.12241 -0.34547,0.70339 c -0.37943,0.77247 -1.03179,1.43013 -1.85424,1.86928 l -0.53363,0.28492 -10.31215,0.0218 c -5.6716955,0.0121 -10.451945,-0.0215 -10.622765,-0.0745 z m 10.486245,-7.12509 c 0.41676,-0.42858 2.30921,-2.34577 4.20548,-4.26044 3.89443,-3.93222 3.79896,-3.77881 2.93494,-4.71617 -0.86333,-0.9366 -0.70987,-1.03489 -4.7574,3.04728 -2.01816,2.03542 -3.63135,3.56753 -3.70704,3.52074 -0.0737,-0.0455 -0.86549,-0.83379 -1.759495,-1.7516 -1.7365396,-1.78282 -2.1646795,-2.10404 -2.5380305,-1.90423 -0.40259,0.21546 -1.13741,1.12099 -1.13741,1.40162 0,0.18848 0.79327,1.06899 2.5741409,2.85723 3.0861346,3.09893 2.9741146,3.05059 4.1848146,1.80557 z"/>
+				</svg>
+			</div>
+			<h1 class="text-xl font-semibold tracking-tight">Sign in to Calnode</h1>
+			<p class="mt-1 text-sm text-muted-foreground">Use your Google account to continue.</p>
 		</div>
 
-		<h1>Admin sign in</h1>
-		<p class="subtitle">Sign in with your Google account to manage your workspace.</p>
-
 		{#if errorMsg}
-			<div class="error-msg">{errorMsg}</div>
+			<div class="mb-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{errorMsg}</div>
 		{/if}
 
-		<a href="/v1/auth/login" class="google-btn">
-			<svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true">
+		<Button variant="outline" class="w-full" onclick={() => window.location.href = '/v1/auth/login'}>
+			<svg width="16" height="16" viewBox="0 0 48 48" aria-hidden="true" class="mr-2">
 				<path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
 				<path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
 				<path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
 				<path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.29-8.16 2.29-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
 			</svg>
 			Sign in with Google
-		</a>
+		</Button>
 	</div>
 </div>
-
-<style>
-	.login-wrap {
-		min-height: 100vh;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		background: var(--bg);
-		padding: 24px;
-	}
-
-	.login-card {
-		background: var(--surface);
-		border: 1px solid var(--border);
-		border-radius: 10px;
-		padding: 40px 36px;
-		width: 100%;
-		max-width: 380px;
-		text-align: center;
-	}
-
-	.brand {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		gap: 8px;
-		margin-bottom: 24px;
-	}
-	.brand-icon { font-size: 24px; }
-	.brand-name { font-size: 22px; font-weight: 700; color: var(--text); letter-spacing: -0.03em; }
-
-	h1 { margin: 0 0 6px; font-size: 18px; font-weight: 600; }
-	.subtitle { margin: 0 0 24px; color: var(--text-muted); font-size: 13px; }
-
-	.google-btn {
-		display: inline-flex;
-		align-items: center;
-		gap: 10px;
-		background: var(--surface);
-		border: 1px solid var(--border);
-		border-radius: 6px;
-		padding: 10px 20px;
-		font-size: 14px;
-		font-weight: 500;
-		color: var(--text);
-		text-decoration: none;
-		cursor: pointer;
-		transition: background 0.15s, box-shadow 0.15s;
-		width: 100%;
-		justify-content: center;
-	}
-	.google-btn:hover { background: var(--bg); box-shadow: 0 1px 3px rgba(0,0,0,0.1); text-decoration: none; }
-</style>

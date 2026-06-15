@@ -9,314 +9,312 @@
 
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
-  background: #f1f5f9;
-  color: #1e293b;
+  background: #f3f4f6;
+  color: #111827;
   min-height: 100vh;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 2.5rem 1rem;
 }
 
-/* ── Page layout ─────────────────────────────────── */
-.page {
+/* ── Card ────────────────────────────────────────── */
+.card {
   display: flex;
-  min-height: 100vh;
-  max-width: 860px;
-  margin: 2rem auto;
   background: #fff;
-  border-radius: 12px;
-  box-shadow: 0 1px 3px rgba(0,0,0,.08), 0 8px 32px rgba(0,0,0,.08);
+  border-radius: 16px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.06), 0 12px 40px rgba(0,0,0,.1);
   overflow: hidden;
+  width: 100%;
+  max-width: 860px;
 }
 
 /* ── Info panel ──────────────────────────────────── */
 .info {
-  width: 260px;
+  width: 240px;
   flex-shrink: 0;
   padding: 2rem 1.5rem;
-  border-right: 1px solid #e2e8f0;
-  background: #fafafa;
+  border-right: 1px solid #e5e7eb;
 }
-.host-name   { font-size: .8125rem; color: #64748b; margin-bottom: .5rem; }
-.event-name  { font-size: 1.25rem; font-weight: 700; line-height: 1.3; margin-bottom: .875rem; }
-.meta        { list-style: none; display: flex; flex-direction: column; gap: .375rem; margin-bottom: 1.125rem; }
-.meta li     { display: flex; align-items: center; gap: .4rem; font-size: .8125rem; color: #475569; }
-.meta svg    { flex-shrink: 0; }
-.description { font-size: .8125rem; color: #64748b; line-height: 1.65; }
+.host-name  { font-size: .8125rem; color: #6b7280; margin-bottom: .375rem; }
+.event-name { font-size: 1.25rem; font-weight: 700; margin-bottom: 1rem; line-height: 1.3; }
+.meta       { list-style: none; display: flex; flex-direction: column; gap: .5rem; }
+.meta li    { display: flex; align-items: center; gap: .5rem; font-size: .8125rem; color: #4b5563; }
+.meta svg   { flex-shrink: 0; color: #9ca3af; }
+.description { margin-top: 1rem; font-size: .8125rem; color: #6b7280; line-height: 1.65; }
 
-/* ── Main content ────────────────────────────────── */
-.main { flex: 1; padding: 2rem; min-width: 0; }
-
-.picker-wrap {
-  display: flex;
-  gap: 2rem;
-  align-items: flex-start;
+/* ── Calendar column ─────────────────────────────── */
+.cal-col {
+  flex: 0 0 auto;
+  padding: 2rem 1.5rem 2rem 2rem;
+  border-right: 1px solid #e5e7eb;
 }
-
-/* ── Calendar ────────────────────────────────────── */
-.cal-section { flex: 0 0 auto; }
-
-.step-title {
+.col-title {
   font-size: .9375rem;
   font-weight: 600;
-  margin-bottom: .875rem;
-  color: #1e293b;
+  margin-bottom: 1.25rem;
+  color: #111827;
 }
 
 .cal-nav {
   display: flex;
   align-items: center;
-  margin-bottom: .625rem;
+  margin-bottom: 1rem;
+  gap: .5rem;
 }
 .cal-nav button {
-  width: 30px; height: 30px;
-  border: 1px solid #e2e8f0;
+  width: 28px; height: 28px;
+  border: 1px solid #e5e7eb;
   background: #fff;
   border-radius: 6px;
   cursor: pointer;
-  font-size: .9rem;
-  color: #475569;
+  color: #6b7280;
   display: flex; align-items: center; justify-content: center;
+  transition: background .12s, color .12s;
   flex-shrink: 0;
 }
-.cal-nav button:hover:not(:disabled) { background: #f8fafc; color: #1e293b; }
-.cal-nav button:disabled { opacity: .35; cursor: default; }
+.cal-nav button:hover:not(:disabled) { background: #f9fafb; color: #111827; }
+.cal-nav button:disabled { opacity: .3; cursor: default; }
 #month-label {
   flex: 1;
-  text-align: center;
-  font-size: .875rem;
+  font-size: .9375rem;
   font-weight: 600;
+  color: #111827;
 }
 
 .cal-grid {
   display: grid;
-  grid-template-columns: repeat(7, 36px);
+  grid-template-columns: repeat(7, 40px);
   gap: 2px;
 }
 .ch {
+  width: 40px; height: 28px;
   text-align: center;
   font-size: .6875rem;
-  font-weight: 600;
-  color: #94a3b8;
-  padding: 4px 0;
+  font-weight: 500;
+  color: #9ca3af;
+  display: flex; align-items: center; justify-content: center;
 }
 .cd {
-  width: 36px; height: 36px;
+  width: 40px; height: 40px;
   border: none; background: none;
+  border-radius: 8px;
+  font-size: .875rem;
+  color: #374151;
   cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background .1s, color .1s;
+  position: relative;
+}
+.cd.available { background: #f3f4f6; }
+.cd.available:hover { background: #e5e7eb; }
+.cd.sel { background: #111827 !important; color: #fff !important; font-weight: 600; }
+.cd.today::after {
+  content: '';
+  position: absolute;
+  bottom: 4px;
+  left: 50%; transform: translateX(-50%);
+  width: 4px; height: 4px;
   border-radius: 50%;
-  font-size: .8125rem;
-  color: #1e293b;
+  background: currentColor;
 }
-.cd:hover:not(:disabled) { background: #eff6ff; color: #2563eb; }
-.cd.sel   { background: #2563eb; color: #fff; font-weight: 600; }
-.cd.today { font-weight: 700; }
-.cd:disabled { color: #cbd5e1; cursor: default; }
+.cd.sel.today::after { background: #fff; }
+.cd:disabled { color: #d1d5db; cursor: default; background: none !important; }
 
-.tz-hint {
+.tz-label {
+  margin-top: .875rem;
   font-size: .6875rem;
-  color: #94a3b8;
-  margin-top: .625rem;
-  line-height: 1.4;
+  color: #9ca3af;
 }
 
-/* ── Right panel ─────────────────────────────────── */
-.right-section { flex: 1; min-width: 160px; }
+/* ── Right column ────────────────────────────────── */
+.right-col {
+  flex: 1;
+  min-width: 0;
+  padding: 2rem 1.5rem;
+}
 .hidden { display: none !important; }
 
 /* Slots */
-.slots-date  { font-size: .9375rem; font-weight: 600; margin-bottom: .75rem; }
-.slots-list  { display: flex; flex-direction: column; gap: .375rem; }
+.slots-header { font-size: .9375rem; font-weight: 600; margin-bottom: 1rem; color: #111827; }
+.slots-list { display: flex; flex-direction: column; gap: .5rem; max-height: 340px; overflow-y: auto; }
 .slot-btn {
-  width: 100%; padding: .575rem 1rem;
-  border: 1.5px solid #e2e8f0; background: #fff;
+  padding: .625rem 1rem;
+  border: 1.5px solid #e5e7eb;
+  background: #fff;
   border-radius: 8px;
-  font-size: .875rem; font-weight: 500; color: #2563eb;
-  cursor: pointer; text-align: center;
+  font-size: .875rem;
+  font-weight: 500;
+  color: #111827;
+  cursor: pointer;
+  text-align: center;
+  transition: border-color .12s, background .12s;
 }
-.slot-btn:hover { border-color: #2563eb; background: #eff6ff; }
-.slot-btn.sel   { background: #2563eb; color: #fff; border-color: #2563eb; }
-
-.hint      { font-size: .8125rem; color: #94a3b8; padding: .25rem 0; }
-.error-msg { font-size: .8125rem; color: #dc2626; margin-top: .375rem; min-height: 1.2em; }
+.slot-btn:hover { border-color: #111827; background: #f9fafb; }
+.slot-btn.sel   { background: #111827; color: #fff; border-color: #111827; }
+.hint { font-size: .8125rem; color: #9ca3af; }
 
 /* Form */
-.back-link {
+.back-btn {
   display: inline-flex; align-items: center; gap: .25rem;
-  background: none; border: none; color: #2563eb;
-  cursor: pointer; font-size: .8125rem; margin-bottom: .875rem; padding: 0;
+  background: none; border: none; color: #6b7280;
+  cursor: pointer; font-size: .8125rem; margin-bottom: 1rem; padding: 0;
 }
-.back-link:hover { text-decoration: underline; }
-.form-slot-label { font-size: .9375rem; font-weight: 600; margin-bottom: 1.125rem; color: #1e293b; }
+.back-btn:hover { color: #111827; }
+.slot-label { font-size: .875rem; font-weight: 600; color: #111827; margin-bottom: 1.25rem; }
 .field { display: flex; flex-direction: column; gap: .3rem; margin-bottom: .75rem; }
-.field label { font-size: .75rem; font-weight: 600; color: #475569; letter-spacing: .01em; }
+.field label { font-size: .75rem; font-weight: 500; color: #6b7280; }
 .field input {
   padding: .55rem .75rem;
-  border: 1.5px solid #e2e8f0; border-radius: 8px;
-  font-size: .875rem; color: #1e293b; outline: none;
-  transition: border-color .15s, box-shadow .15s;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: .875rem;
+  color: #111827;
+  outline: none;
+  transition: border-color .12s, box-shadow .12s;
 }
-.field input:focus {
-  border-color: #2563eb;
-  box-shadow: 0 0 0 3px rgba(37,99,235,.1);
-}
+.field input:focus { border-color: #111827; box-shadow: 0 0 0 3px rgba(17,24,39,.06); }
 .btn-primary {
   width: 100%; padding: .675rem 1rem; margin-top: .5rem;
-  background: #2563eb; color: #fff;
+  background: #111827; color: #fff;
   border: none; border-radius: 8px;
-  font-size: .9375rem; font-weight: 600; cursor: pointer;
-  transition: background .15s;
+  font-size: .9375rem; font-weight: 600;
+  cursor: pointer; transition: background .12s;
 }
-.btn-primary:hover:not(:disabled) { background: #1d4ed8; }
-.btn-primary:disabled { opacity: .6; cursor: default; }
+.btn-primary:hover:not(:disabled) { background: #1f2937; }
+.btn-primary:disabled { opacity: .5; cursor: default; }
+.form-error { font-size: .8125rem; color: #dc2626; margin-top: .375rem; min-height: 1.2em; }
 
 /* Confirmation */
 .confirm-icon {
-  width: 52px; height: 52px;
-  background: #dcfce7; color: #16a34a;
+  width: 48px; height: 48px;
+  background: #dcfce7;
   border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
-  font-size: 1.5rem; margin-bottom: 1rem;
+  margin-bottom: .875rem;
 }
-.confirm-view h3    { font-size: 1.0625rem; font-weight: 700; margin-bottom: .5rem; }
-.confirm-view .when { font-size: .9rem; font-weight: 600; color: #1e293b; margin-bottom: .375rem; }
-.confirm-view .hint { font-size: .8125rem; color: #64748b; }
+.confirm-view h3 { font-size: 1rem; font-weight: 700; margin-bottom: .375rem; }
+.confirm-view .when { font-size: .875rem; font-weight: 600; color: #111827; margin-bottom: .25rem; }
+.confirm-view .sub { font-size: .8125rem; color: #6b7280; }
 
 /* ── Mobile ──────────────────────────────────────── */
-@media (max-width: 640px) {
-  body { background: #fff; }
-  .page {
-    flex-direction: column;
-    margin: 0;
-    border-radius: 0;
-    box-shadow: none;
-    min-height: 100vh;
-  }
-  .info {
-    width: 100%;
-    border-right: none;
-    border-bottom: 1px solid #e2e8f0;
-    padding: 1.25rem 1rem;
-  }
-  .main { padding: 1.25rem 1rem; }
-  .picker-wrap { flex-direction: column; gap: 1.25rem; }
-  .cal-grid {
-    grid-template-columns: repeat(7, 1fr);
-    width: 100%;
-  }
-  .cd { width: 100%; }
-  .right-section { width: 100%; }
+@media (max-width: 700px) {
+  body { padding: 0; align-items: stretch; }
+  .card { flex-direction: column; border-radius: 0; box-shadow: none; min-height: 100vh; }
+  .info { width: 100%; border-right: none; border-bottom: 1px solid #e5e7eb; padding: 1.25rem 1rem; }
+  .cal-col { border-right: none; border-bottom: 1px solid #e5e7eb; padding: 1.25rem 1rem; }
+  .cal-grid { grid-template-columns: repeat(7, 1fr); width: 100%; }
+  .ch, .cd { width: 100%; }
+  .right-col { padding: 1.25rem 1rem; }
 }
 </style>
 </head>
 <body>
 
-<div class="page">
+<div class="card">
 
-  <!-- ── Info panel ─────────────────────────────── -->
+  <!-- Info panel -->
   <aside class="info">
     <p class="host-name">{{.HostName}}</p>
     <h1 class="event-name">{{.Name}}</h1>
     <ul class="meta">
       <li>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-        </svg>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
         {{.DurationLabel}}
       </li>
       <li>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
-        </svg>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
         {{.LocationLabel}}
       </li>
     </ul>
     {{if .Description}}<p class="description">{{.Description}}</p>{{end}}
   </aside>
 
-  <!-- ── Main: calendar + right panel ──────────── -->
-  <main class="main">
-    <div class="picker-wrap">
-
-      <!-- Calendar column -->
-      <section class="cal-section" aria-label="Date picker">
-        <p class="step-title">Select a date &amp; time</p>
-        <div class="cal-nav">
-          <button id="prev-btn" aria-label="Previous month">&#8592;</button>
-          <span id="month-label" aria-live="polite"></span>
-          <button id="next-btn" aria-label="Next month">&#8594;</button>
-        </div>
-        <div id="cal" class="cal-grid" role="grid"></div>
-        <p class="tz-hint" id="tz-hint"></p>
-      </section>
-
-      <!-- Right column: slots / form / confirmation -->
-      <section class="right-section" aria-live="polite">
-
-        <!-- Slots view -->
-        <div id="slots-view" class="hidden">
-          <p class="slots-date" id="slots-date"></p>
-          <div id="slots-list" class="slots-list"></div>
-        </div>
-
-        <!-- Booking form -->
-        <div id="form-view" class="hidden">
-          <button class="back-link" id="back-btn">&#8592; Back</button>
-          <p class="form-slot-label" id="form-slot-label"></p>
-          <form id="booking-form" novalidate>
-            <div class="field">
-              <label for="f-name">Name</label>
-              <input id="f-name" name="name" type="text" required autocomplete="name" placeholder="Your full name">
-            </div>
-            <div class="field">
-              <label for="f-email">Email</label>
-              <input id="f-email" name="email" type="email" required autocomplete="email" placeholder="you@example.com">
-            </div>
-            <p id="form-error" class="error-msg" role="alert" aria-live="assertive"></p>
-            <button type="submit" id="submit-btn" class="btn-primary">Confirm booking</button>
-          </form>
-        </div>
-
-        <!-- Confirmation -->
-        <div id="confirm-view" class="hidden">
-          <div class="confirm-icon" aria-hidden="true">&#10003;</div>
-          <h3>Booking confirmed!</h3>
-          <p class="when" id="confirm-time"></p>
-          <p class="hint">A confirmation email has been sent to you.</p>
-        </div>
-
-      </section>
+  <!-- Calendar column -->
+  <section class="cal-col" aria-label="Date picker">
+    <p class="col-title">Select a date &amp; time</p>
+    <div class="cal-nav">
+      <span id="month-label" aria-live="polite"></span>
+      <button id="prev-btn" aria-label="Previous month">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+      </button>
+      <button id="next-btn" aria-label="Next month">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+      </button>
     </div>
-  </main>
+    <div id="cal" class="cal-grid" role="grid"></div>
+    <p class="tz-label" id="tz-label"></p>
+  </section>
+
+  <!-- Right column -->
+  <section class="right-col" aria-live="polite">
+
+    <!-- Slots -->
+    <div id="slots-view" class="hidden">
+      <p class="slots-header" id="slots-date"></p>
+      <div id="slots-list" class="slots-list"></div>
+    </div>
+
+    <!-- Form -->
+    <div id="form-view" class="hidden">
+      <button class="back-btn" id="back-btn">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+        Back
+      </button>
+      <p class="slot-label" id="form-slot-label"></p>
+      <form id="booking-form" novalidate>
+        <div class="field">
+          <label for="f-name">Name</label>
+          <input id="f-name" name="name" type="text" required autocomplete="name" placeholder="Your full name">
+        </div>
+        <div class="field">
+          <label for="f-email">Email</label>
+          <input id="f-email" name="email" type="email" required autocomplete="email" placeholder="you@example.com">
+        </div>
+        <p id="form-error" class="form-error" role="alert"></p>
+        <button type="submit" id="submit-btn" class="btn-primary">Confirm booking</button>
+      </form>
+    </div>
+
+    <!-- Confirmation -->
+    <div id="confirm-view" class="hidden">
+      <div class="confirm-icon">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+      </div>
+      <div class="confirm-view">
+        <h3>Booking confirmed</h3>
+        <p class="when" id="confirm-time"></p>
+        <p class="sub">A confirmation email has been sent to you.</p>
+      </div>
+    </div>
+
+  </section>
 </div>
 
 <script>
 (function () {
   'use strict';
 
-  // Config injected server-side
   const SLUG     = "{{.Slug}}";
   const MAX_DAYS = {{.MaxFutureDays}};
   const TZ       = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-  // State
   const today = new Date(); today.setHours(0, 0, 0, 0);
-  const maxDate = new Date(today); maxDate.setDate(maxDate.getDate() + MAX_DAYS);
-  let navYear = today.getFullYear(), navMonth = today.getMonth();
-  let pickedDate  = null;
-  let slotsCache  = [];
-  let pickedSlot  = null;
+  const maxDate = MAX_DAYS > 0 ? new Date(today.getTime() + MAX_DAYS * 86400000) : null;
 
-  // Helpers
-  const $   = id => document.getElementById(id);
-  const pad = n  => String(n).padStart(2, '0');
+  let navYear = today.getFullYear(), navMonth = today.getMonth();
+  let pickedDate = null, slotsCache = [], pickedSlot = null;
+
+  const $ = id => document.getElementById(id);
+  const pad = n => String(n).padStart(2, '0');
 
   function fmtTime(iso) {
     return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
   }
   function fmtDate(d) {
-    return d.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
+    return d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
   }
-  function toDateStr(y, m, d) {
-    return `${y}-${pad(m + 1)}-${pad(d)}`;
-  }
+  function toDateStr(y, m, d) { return `${y}-${pad(m+1)}-${pad(d)}`; }
 
   function showView(id) {
     ['slots-view', 'form-view', 'confirm-view'].forEach(v =>
@@ -324,39 +322,51 @@ body {
     );
   }
 
-  // ── Calendar ───────────────────────────────────────────────────────────────
+  // ── Calendar ──────────────────────────────────────────────────────────────
+  // Week starts Monday (index 1). Days: Mo Tu We Th Fr Sa Su
+  const DOW_LABELS = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
+
+  function dowIndex(date) {
+    // Convert JS 0=Sun…6=Sat → 0=Mon…6=Sun
+    return (date.getDay() + 6) % 7;
+  }
 
   function renderCal() {
-    const first       = new Date(navYear, navMonth, 1);
+    const first = new Date(navYear, navMonth, 1);
     const daysInMonth = new Date(navYear, navMonth + 1, 0).getDate();
-    const startDow    = first.getDay();
+    const startOffset = dowIndex(first); // 0=Mon offset
 
-    $('month-label').textContent = first.toLocaleDateString([], { month: 'long', year: 'numeric' });
+    $('month-label').textContent =
+      first.toLocaleDateString([], { month: 'long', year: 'numeric' });
 
+    const thisMonFirst = new Date(today.getFullYear(), today.getMonth(), 1);
     const navFirst     = new Date(navYear, navMonth, 1);
-    const thisFirst    = new Date(today.getFullYear(), today.getMonth(), 1);
-    const maxMonFirst  = new Date(maxDate.getFullYear(), maxDate.getMonth(), 1);
-    $('prev-btn').disabled = navFirst <= thisFirst;
-    $('next-btn').disabled = navFirst >= maxMonFirst;
+    $('prev-btn').disabled = navFirst <= thisMonFirst;
+    $('next-btn').disabled = maxDate
+      ? navFirst >= new Date(maxDate.getFullYear(), maxDate.getMonth(), 1)
+      : false;
 
-    const DOW = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
-    let h = DOW.map(d => `<div class="ch" role="columnheader">${d}</div>`).join('');
-    for (let i = 0; i < startDow; i++) h += '<div></div>';
+    let h = DOW_LABELS.map(d => `<div class="ch">${d}</div>`).join('');
+    for (let i = 0; i < startOffset; i++) h += '<div></div>';
 
     for (let d = 1; d <= daysInMonth; d++) {
       const date     = new Date(navYear, navMonth, d);
-      const disabled = date < today || date > maxDate;
-      const sel      = pickedDate && date.toDateString() === pickedDate.toDateString();
+      const past     = date < today;
+      const tooFar   = maxDate && date > maxDate;
+      const disabled = past || tooFar;
       const isToday  = date.toDateString() === today.toDateString();
-      let cls = 'cd';
-      if (sel)     cls += ' sel';
-      if (isToday) cls += ' today';
+      const isSel    = pickedDate && date.toDateString() === pickedDate.toDateString();
 
+      let cls = 'cd';
+      if (!disabled) cls += ' available';
+      if (isSel)     cls += ' sel';
+      if (isToday)   cls += ' today';
+
+      const ds = toDateStr(navYear, navMonth, d);
       if (disabled) {
-        h += `<button class="${cls}" disabled aria-disabled="true">${d}</button>`;
+        h += `<button class="${cls}" disabled>${d}</button>`;
       } else {
-        const ds = toDateStr(navYear, navMonth, d);
-        h += `<button class="${cls}" data-ds="${ds}" data-y="${navYear}" data-m="${navMonth}" data-d="${d}"${sel ? ' aria-pressed="true"' : ''}>${d}</button>`;
+        h += `<button class="${cls}" data-ds="${ds}" data-y="${navYear}" data-m="${navMonth}" data-d="${d}">${d}</button>`;
       }
     }
 
@@ -378,8 +388,7 @@ body {
     pickDate(btn.dataset.ds, +btn.dataset.y, +btn.dataset.m, +btn.dataset.d);
   });
 
-  // ── Date selection ─────────────────────────────────────────────────────────
-
+  // ── Date pick ─────────────────────────────────────────────────────────────
   async function pickDate(ds, y, m, d) {
     pickedDate = new Date(y, m, d);
     pickedSlot = null;
@@ -387,25 +396,23 @@ body {
     showView('slots-view');
     $('slots-date').textContent = fmtDate(pickedDate);
     const list = $('slots-list');
-    list.innerHTML = '<p class="hint">Loading&hellip;</p>';
+    list.innerHTML = '<p class="hint">Loading…</p>';
 
     try {
-      const r = await fetch(
-        `/v1/event-types/${SLUG}/slots?from=${ds}&to=${ds}&tz=${encodeURIComponent(TZ)}`
-      );
+      const r = await fetch(`/v1/event-types/${SLUG}/slots?from=${ds}&to=${ds}&tz=${encodeURIComponent(TZ)}`);
       if (!r.ok) throw new Error(r.status);
       const data = await r.json();
       slotsCache = data.slots || [];
 
       if (!slotsCache.length) {
-        list.innerHTML = '<p class="hint">No available times for this date.</p>';
+        list.innerHTML = '<p class="hint">No available times.</p>';
         return;
       }
       list.innerHTML = slotsCache.map((s, i) =>
         `<button class="slot-btn" data-i="${i}">${fmtTime(s.start)}</button>`
       ).join('');
     } catch {
-      list.innerHTML = '<p class="error-msg">Could not load available times. Please try again.</p>';
+      list.innerHTML = '<p class="hint" style="color:#dc2626">Could not load times. Please try again.</p>';
     }
   }
 
@@ -415,23 +422,20 @@ body {
     pickSlot(+btn.dataset.i);
   });
 
-  // ── Slot selection ─────────────────────────────────────────────────────────
-
+  // ── Slot pick ─────────────────────────────────────────────────────────────
   function pickSlot(i) {
     if (i < 0 || i >= slotsCache.length) return;
     pickedSlot = slotsCache[i];
     document.querySelectorAll('.slot-btn').forEach((b, j) =>
       b.classList.toggle('sel', j === i)
     );
-    $('form-slot-label').textContent =
-      `${fmtDate(pickedDate)} at ${fmtTime(pickedSlot.start)}`;
+    $('form-slot-label').textContent = `${fmtDate(pickedDate)} · ${fmtTime(pickedSlot.start)}`;
     showView('form-view');
   }
 
   $('back-btn').addEventListener('click', () => showView('slots-view'));
 
-  // ── Booking form ───────────────────────────────────────────────────────────
-
+  // ── Booking form ──────────────────────────────────────────────────────────
   $('booking-form').addEventListener('submit', async e => {
     e.preventDefault();
     if (!pickedSlot) return;
@@ -444,54 +448,47 @@ body {
       return;
     }
 
-    btn.disabled       = true;
-    btn.textContent    = 'Confirming…';
-    errEl.textContent  = '';
+    btn.disabled = true; btn.textContent = 'Confirming…'; errEl.textContent = '';
 
     try {
       const r = await fetch('/v1/bookings', {
-        method:  'POST',
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           event_type_slug: SLUG,
-          start_at:        pickedSlot.start,
-          name:            form.name.value.trim(),
-          email:           form.email.value.trim(),
-          timezone:        TZ,
+          start_at: pickedSlot.start,
+          name: form.name.value.trim(),
+          email: form.email.value.trim(),
+          timezone: TZ,
         }),
       });
 
       if (r.status === 409) {
-        errEl.textContent = 'That slot was just booked. Please choose another time.';
-        // Re-fetch so they see the updated availability
+        errEl.textContent = 'That slot was just taken. Please choose another time.';
         const ds = toDateStr(pickedDate.getFullYear(), pickedDate.getMonth(), pickedDate.getDate());
         await pickDate(ds, pickedDate.getFullYear(), pickedDate.getMonth(), pickedDate.getDate());
-        btn.disabled    = false;
-        btn.textContent = 'Confirm booking';
+        btn.disabled = false; btn.textContent = 'Confirm booking';
         return;
       }
 
       if (!r.ok) {
         const data = await r.json().catch(() => ({}));
         errEl.textContent = data.error || 'Booking failed. Please try again.';
-        btn.disabled    = false;
-        btn.textContent = 'Confirm booking';
+        btn.disabled = false; btn.textContent = 'Confirm booking';
         return;
       }
 
-      $('confirm-time').textContent =
-        `${fmtDate(pickedDate)} at ${fmtTime(pickedSlot.start)}`;
+      $('confirm-time').textContent = `${fmtDate(pickedDate)} · ${fmtTime(pickedSlot.start)}`;
       showView('confirm-view');
 
     } catch {
-      errEl.textContent = 'Network error. Please check your connection and try again.';
-      btn.disabled    = false;
-      btn.textContent = 'Confirm booking';
+      errEl.textContent = 'Network error. Please check your connection.';
+      btn.disabled = false; btn.textContent = 'Confirm booking';
     }
   });
 
-  // ── Init ───────────────────────────────────────────────────────────────────
-  $('tz-hint').textContent = TZ.replace(/_/g, ' ').replace(/\//g, ' / ');
+  // ── Init ──────────────────────────────────────────────────────────────────
+  $('tz-label').textContent = TZ.replace(/_/g, ' ').replace(/\//g, ' / ');
   renderCal();
 
 }());

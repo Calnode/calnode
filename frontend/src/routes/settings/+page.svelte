@@ -3,17 +3,20 @@
 	import { api, type User } from '$lib/api';
 	import { prefs, prefsFromUser, TIMEZONES, WEEK_DAYS } from '$lib/prefs';
 	import { currentUser } from '$lib/stores';
+	import { Button } from '$lib/components/ui/button';
+	import { Input } from '$lib/components/ui/input';
+	import { Label } from '$lib/components/ui/label';
 
-	let user: User | null = null;
-	let loading = true;
-	let saving = false;
-	let saved = false;
-	let error = '';
+	let user: User | null = $state(null);
+	let loading = $state(true);
+	let saving = $state(false);
+	let saved = $state(false);
+	let error = $state('');
 
-	let timezone = 'UTC';
-	let time_format: '12h' | '24h' = '12h';
-	let week_start = 1;
-	let date_format: 'dmy' | 'mdy' | 'ymd' = 'dmy';
+	let timezone = $state('UTC');
+	let time_format = $state<'12h' | '24h'>('12h');
+	let week_start = $state(1);
+	let date_format = $state<'dmy' | 'mdy' | 'ymd'>('dmy');
 
 	onMount(async () => {
 		try {
@@ -41,7 +44,6 @@
 			setTimeout(() => (saved = false), 3000);
 		} catch (e: any) {
 			error = e.message;
-			// Revert form to last known server state so UI stays consistent with DB.
 			if (user) {
 				timezone = user.timezone;
 				time_format = user.time_format ?? '12h';
@@ -52,110 +54,88 @@
 			saving = false;
 		}
 	}
+
+	const selectCls = 'flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring';
 </script>
 
 <svelte:head><title>Settings — Calnode</title></svelte:head>
 
-<div class="page-header">
-	<h1>Settings</h1>
+<div class="mb-8">
+	<h1 class="text-2xl font-semibold tracking-tight">Settings</h1>
+	<p class="mt-1 text-sm text-muted-foreground">Manage your profile and preferences.</p>
 </div>
 
-{#if error}<div class="error-msg">{error}</div>{/if}
-{#if saved}<div class="success-msg">Settings saved.</div>{/if}
+{#if error}<p class="mb-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>{/if}
+{#if saved}<p class="mb-4 rounded-md bg-green-50 px-3 py-2 text-sm text-green-700">Settings saved.</p>{/if}
 
 {#if loading}
-	<div style="color:var(--text-muted);padding:24px 0;">Loading…</div>
+	<p class="py-8 text-sm text-muted-foreground">Loading…</p>
 {:else}
-	<form on:submit|preventDefault={save} style="max-width:480px;">
-		<div class="card">
-			<h2 style="margin:0 0 20px;font-size:15px;font-weight:600;">Profile</h2>
-
-			<div class="field">
-				<label>Name</label>
-				<input type="text" value={user?.name ?? ''} disabled style="opacity:0.6;" />
-			</div>
-			<div class="field">
-				<label>Email</label>
-				<input type="email" value={user?.email ?? ''} disabled style="opacity:0.6;" />
-			</div>
-		</div>
-
-		<div class="card" style="margin-top:16px;">
-			<h2 style="margin:0 0 20px;font-size:15px;font-weight:600;">Preferences</h2>
-
-			<div class="field">
-				<label for="timezone">Timezone</label>
-				<select id="timezone" bind:value={timezone}>
-					{#each TIMEZONES as tz}
-						<option value={tz}>{tz}</option>
-					{/each}
-				</select>
-				<p class="field-hint">Used when computing available slots for your booking pages.</p>
-			</div>
-
-			<div class="field">
-				<label>Time format</label>
-				<div style="display:flex;gap:8px;margin-top:6px;">
-					<label class="radio-option" class:selected={time_format === '12h'}>
-						<input type="radio" bind:group={time_format} value="12h" />
-						12-hour <span style="color:var(--text-muted);">(1:30 PM)</span>
-					</label>
-					<label class="radio-option" class:selected={time_format === '24h'}>
-						<input type="radio" bind:group={time_format} value="24h" />
-						24-hour <span style="color:var(--text-muted);">(13:30)</span>
-					</label>
+	<form onsubmit={(e) => { e.preventDefault(); save(); }} class="max-w-lg space-y-4">
+		<!-- Profile -->
+		<div class="rounded-lg border bg-card p-6">
+			<h2 class="mb-4 text-sm font-semibold">Profile</h2>
+			<div class="space-y-4">
+				<div class="space-y-1.5">
+					<Label for="profile-name" class="text-muted-foreground">Name</Label>
+					<Input id="profile-name" type="text" disabled value={user?.name ?? ''} class="opacity-60" />
+				</div>
+				<div class="space-y-1.5">
+					<Label for="profile-email" class="text-muted-foreground">Email</Label>
+					<Input id="profile-email" type="email" disabled value={user?.email ?? ''} class="opacity-60" />
 				</div>
 			</div>
+		</div>
 
-			<div class="field">
-				<label for="week-start">First day of week</label>
-				<select id="week-start" bind:value={week_start}>
-					{#each [0, 1] as d}
-						<option value={d}>{WEEK_DAYS[d]}</option>
-					{/each}
-				</select>
-			</div>
+		<!-- Preferences -->
+		<div class="rounded-lg border bg-card p-6">
+			<h2 class="mb-4 text-sm font-semibold">Preferences</h2>
+			<div class="space-y-4">
+				<div class="space-y-1.5">
+					<Label for="timezone">Timezone</Label>
+					<select id="timezone" bind:value={timezone} class={selectCls}>
+						{#each TIMEZONES as tz}
+							<option value={tz}>{tz}</option>
+						{/each}
+					</select>
+					<p class="text-xs text-muted-foreground">Used when computing available slots for your booking pages.</p>
+				</div>
 
-			<div class="field">
-				<label for="date-format">Date format</label>
-				<select id="date-format" bind:value={date_format}>
-					<option value="dmy">DD/MM/YYYY <span style="color:var(--text-muted);">(15/06/2026)</span></option>
-					<option value="mdy">MM/DD/YYYY <span style="color:var(--text-muted);">(06/15/2026)</span></option>
-					<option value="ymd">YYYY-MM-DD <span style="color:var(--text-muted);">(2026-06-15)</span></option>
-				</select>
+				<div class="space-y-1.5">
+					<p class="text-sm font-medium">Time format</p>
+					<div class="flex gap-2">
+						{#each [{ value: '12h', label: '12-hour', hint: '1:30 PM' }, { value: '24h', label: '24-hour', hint: '13:30' }] as opt}
+							<label class="flex flex-1 cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors {time_format === opt.value ? 'border-primary bg-primary/5' : 'bg-background hover:bg-accent/50'}">
+								<input type="radio" bind:group={time_format} value={opt.value} class="sr-only" />
+								{opt.label}
+								<span class="text-xs text-muted-foreground">({opt.hint})</span>
+							</label>
+						{/each}
+					</div>
+				</div>
+
+				<div class="space-y-1.5">
+					<Label for="week-start">First day of week</Label>
+					<select id="week-start" bind:value={week_start} class={selectCls}>
+						{#each [0, 1] as d}
+							<option value={d}>{WEEK_DAYS[d]}</option>
+						{/each}
+					</select>
+				</div>
+
+				<div class="space-y-1.5">
+					<Label for="date-format">Date format</Label>
+					<select id="date-format" bind:value={date_format} class={selectCls}>
+						<option value="dmy">DD/MM/YYYY</option>
+						<option value="mdy">MM/DD/YYYY</option>
+						<option value="ymd">YYYY-MM-DD</option>
+					</select>
+				</div>
 			</div>
 		</div>
 
-		<div style="margin-top:16px;">
-			<button type="submit" class="btn-primary" disabled={saving}>
-				{saving ? 'Saving…' : 'Save settings'}
-			</button>
-		</div>
+		<Button type="submit" disabled={saving}>
+			{saving ? 'Saving…' : 'Save settings'}
+		</Button>
 	</form>
 {/if}
-
-<style>
-	.radio-option {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		padding: 7px 12px;
-		border: 1px solid var(--border);
-		border-radius: var(--radius);
-		cursor: pointer;
-		font-size: 13px;
-		background: var(--surface);
-		transition: border-color 0.15s, background 0.15s;
-	}
-	.radio-option.selected {
-		border-color: var(--accent);
-		background: color-mix(in srgb, var(--accent) 8%, var(--surface));
-	}
-	.radio-option input { display: none; }
-
-	.field-hint {
-		margin: 4px 0 0;
-		font-size: 12px;
-		color: var(--text-muted);
-	}
-</style>

@@ -2,12 +2,14 @@
 	import { onMount } from 'svelte';
 	import { page } from '$app/stores';
 	import { api, type CalendarStatus } from '$lib/api';
+	import { Button } from '$lib/components/ui/button';
+	import { Badge } from '$lib/components/ui/badge';
 
-	let status: CalendarStatus | null = null;
-	let loading = true;
-	let error = '';
-	let disconnecting = false;
-	let justConnected = false;
+	let status: CalendarStatus | null = $state(null);
+	let loading = $state(true);
+	let error = $state('');
+	let disconnecting = $state(false);
+	let justConnected = $state(false);
 
 	async function load() {
 		try {
@@ -44,48 +46,53 @@
 
 <svelte:head><title>Calendar — Calnode</title></svelte:head>
 
-<div class="page-header">
-	<h1>Calendar</h1>
+<div class="mb-8">
+	<h1 class="text-2xl font-semibold tracking-tight">Calendar</h1>
+	<p class="mt-1 text-sm text-muted-foreground">Connect your Google Calendar to check availability and log bookings.</p>
 </div>
 
-{#if error}<div class="error-msg">{error}</div>{/if}
-{#if justConnected}<div class="success-msg">Google Calendar connected successfully.</div>{/if}
+{#if error}
+	<p class="mb-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>
+{/if}
+{#if justConnected}
+	<p class="mb-4 rounded-md bg-green-50 px-3 py-2 text-sm text-green-700">Google Calendar connected successfully.</p>
+{/if}
 
 {#if loading}
-	<div style="color:var(--text-muted);padding:24px 0;">Loading…</div>
+	<p class="py-8 text-sm text-muted-foreground">Loading…</p>
 {:else}
-	<div class="card" style="max-width:480px;">
-		<div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
-			<div style="font-size:32px;">📆</div>
+	<div class="max-w-md rounded-lg border bg-card p-6">
+		<div class="mb-5 flex items-start gap-3">
+			<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mt-0.5 shrink-0 text-muted-foreground">
+				<rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+			</svg>
 			<div>
-				<div style="font-weight:600;font-size:16px;">Google Calendar</div>
-				<div style="color:var(--text-muted);font-size:13px;">
-					Check availability and write confirmed bookings to your calendar.
-				</div>
+				<p class="font-medium">Google Calendar</p>
+				<p class="mt-0.5 text-sm text-muted-foreground">Check availability and write confirmed bookings to your calendar.</p>
 			</div>
 		</div>
 
 		{#if status?.connected}
-			<div style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;margin-bottom:16px;">
-				<span style="color:#16a34a;font-size:18px;">✓</span>
+			<div class="mb-4 flex items-center gap-2 rounded-md bg-green-50 px-3 py-2.5 text-sm text-green-700 ring-1 ring-inset ring-green-600/20">
+				<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
 				<div>
-					<div style="font-weight:500;color:#15803d;">Connected</div>
+					<span class="font-medium">Connected</span>
 					{#if status.calendar_id}
-						<div style="font-size:12px;color:#166534;" class="mono">{status.calendar_id}</div>
+						<span class="ml-2 font-mono text-xs opacity-75">{status.calendar_id}</span>
 					{/if}
 				</div>
 			</div>
-			<button class="btn-secondary" on:click={disconnect} disabled={disconnecting}>
+			<Button variant="outline" onclick={disconnect} disabled={disconnecting}>
 				{disconnecting ? 'Disconnecting…' : 'Disconnect calendar'}
-			</button>
+			</Button>
 		{:else}
-			<div style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:#f8fafc;border:1px solid var(--border);border-radius:6px;margin-bottom:16px;">
-				<span style="color:var(--text-muted);font-size:18px;">○</span>
-				<div style="font-weight:500;color:var(--text-muted);">Not connected</div>
+			<div class="mb-4 flex items-center gap-2 rounded-md bg-muted px-3 py-2.5 text-sm text-muted-foreground">
+				<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+				Not connected
 			</div>
-			<button class="btn-primary" on:click={() => window.location.href = '/v1/calendar/connect'}>
+			<Button onclick={() => window.location.href = '/v1/calendar/connect'}>
 				Connect Google Calendar
-			</button>
+			</Button>
 		{/if}
 	</div>
 {/if}
