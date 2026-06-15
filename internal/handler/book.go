@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"bytes"
 	"database/sql"
 	_ "embed"
 	"encoding/json"
@@ -8,6 +9,10 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
+
+	"github.com/yuin/goldmark"
+	"github.com/yuin/goldmark/extension"
+	"github.com/yuin/goldmark/renderer/html"
 )
 
 //go:embed templates/book.html
@@ -26,7 +31,7 @@ type bookQuestion struct {
 type bookPageData struct {
 	Slug          string
 	Name          string
-	Description   string
+	Description   template.HTML
 	DurationLabel string
 	HostName      string
 	HostInitial   string
@@ -49,6 +54,22 @@ func durationLabel(minutes int) string {
 		return fmt.Sprintf("%d hours", h)
 	}
 	return fmt.Sprintf("%d hr %d min", h, m)
+}
+
+var mdRenderer = goldmark.New(
+	goldmark.WithExtensions(extension.Strikethrough),
+	goldmark.WithRendererOptions(html.WithHardWraps()),
+)
+
+func renderMarkdown(src string) template.HTML {
+	if src == "" {
+		return ""
+	}
+	var buf bytes.Buffer
+	if err := mdRenderer.Convert([]byte(src), &buf); err != nil {
+		return template.HTML(template.HTMLEscapeString(src))
+	}
+	return template.HTML(buf.String())
 }
 
 func locationLabel(locType, locValue string) string {
@@ -142,7 +163,7 @@ func (h *Handler) BookPage(w http.ResponseWriter, r *http.Request) {
 	data := bookPageData{
 		Slug:          slug,
 		Name:          name,
-		Description:   description,
+		Description:   renderMarkdown(description),
 		DurationLabel: durationLabel(durMins),
 		HostName:      hostName,
 		HostInitial:   initial,

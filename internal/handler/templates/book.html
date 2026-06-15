@@ -55,6 +55,9 @@ body {
 .meta li    { display: flex; align-items: center; gap: .5rem; font-size: .8125rem; color: #4b5563; }
 .meta svg   { flex-shrink: 0; color: #9ca3af; }
 .description { margin-top: 1rem; font-size: .8125rem; color: #6b7280; line-height: 1.65; }
+.description p + p { margin-top: .5rem; }
+.description strong { font-weight: 600; color: #4b5563; }
+.description em { font-style: italic; }
 
 /* ── Calendar column ─────────────────────────────── */
 .cal-col {
@@ -300,7 +303,7 @@ body {
         {{.LocationLabel}}
       </li>
     </ul>
-    {{if .Description}}<p class="description">{{.Description}}</p>{{end}}
+    {{if .Description}}<div class="description">{{.Description}}</div>{{end}}
   </aside>
 
   <!-- Calendar column -->

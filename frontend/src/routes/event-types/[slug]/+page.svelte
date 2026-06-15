@@ -299,7 +299,7 @@
 			</div>
 			<div class="col-span-2 space-y-1.5">
 				<Label for="et-desc">Description</Label>
-				<Input id="et-desc" bind:value={form.description} placeholder="Optional" />
+				<Textarea id="et-desc" bind:value={form.description} placeholder="Optional — supports **bold** and *italic* markdown" rows={3} class="resize-y" />
 			</div>
 			<div class="space-y-1.5">
 				<p class="text-sm font-medium">Status</p>
