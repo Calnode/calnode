@@ -48,3 +48,7 @@ node_modules/
 .svelte-kit/
 build/
 pnpm-debug.log*
+
+# Vitest browser-mode artifacts (failure screenshots / attachments)
+__screenshots__/
+.vitest-attachments/
