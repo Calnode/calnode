@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "clsx": "^2.1.1",
+    "cropperjs": "^1.6.2",
     "tailwind-merge": "^2.5.0"
   },
   "devDependencies": {

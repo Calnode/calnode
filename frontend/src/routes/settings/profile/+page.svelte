@@ -7,8 +7,11 @@
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
 	import * as Avatar from '$lib/components/ui/avatar';
+	import * as Dialog from '$lib/components/ui/dialog';
 	import { toast } from 'svelte-sonner';
 	import { saveOnCmdS } from '$lib/save-shortcut';
+	import Cropper from 'cropperjs';
+	import 'cropperjs/dist/cropper.min.css';
 
 	let user: User | null = $state(null);
 	let loading = $state(true);
@@ -22,36 +25,69 @@
 	let week_start = $state(1);
 	let date_format = $state<'dmy' | 'mdy' | 'ymd'>('dmy');
 
-	onMount(async () => {
-		try {
-			user = await api.get<User>('/v1/users/me');
-			timezone = user.timezone;
-			time_format = user.time_format ?? '12h';
-			week_start = user.week_start ?? 1;
-			date_format = user.date_format ?? 'dmy';
-			avatarUrl = user.avatar_url ?? '';
-		} catch (e: any) {
-			toast.error(e.message || 'Could not load profile');
-		} finally {
-			loading = false;
-		}
+	// Crop dialog state
+	let cropOpen = $state(false);
+	let cropSrc = $state('');
+	let cropperEl: HTMLImageElement | undefined = $state(undefined);
+	let hasExistingAvatar = $state(false);
+	let cropperInstance: Cropper | null = null;
+
+	$effect(() => {
+		if (!cropperEl) return;
+		const c = new Cropper(cropperEl, {
+			aspectRatio: 1,
+			viewMode: 1,
+			autoCropArea: 0.8,
+			movable: true,
+			zoomable: true,
+			rotatable: false,
+			scalable: false,
+		});
+		cropperInstance = c;
+		return () => { c.destroy(); cropperInstance = null; };
 	});
 
-	async function uploadAvatar() {
-		if (!fileInput?.files?.[0]) return;
-		const data = new FormData();
-		data.append('avatar', fileInput.files[0]);
+	function onFileChange() {
+		const file = fileInput?.files?.[0];
+		if (!file) return;
+		hasExistingAvatar = !!avatarUrl;
+		const reader = new FileReader();
+		reader.onload = (e) => {
+			cropSrc = e.target?.result as string;
+			cropOpen = true;
+		};
+		reader.readAsDataURL(file);
+	}
+
+	function cancelCrop() {
+		cropOpen = false;
+		cropSrc = '';
+		if (fileInput) fileInput.value = '';
+	}
+
+	async function cropAndUpload() {
+		if (!cropperInstance) return;
+
 		uploading = true;
 		try {
+			const croppedCanvas = cropperInstance.getCroppedCanvas({ width: 400, height: 400 });
+			const blob = await new Promise<Blob>((resolve, reject) =>
+				croppedCanvas.toBlob(b => b ? resolve(b) : reject(new Error('Canvas export failed')), 'image/jpeg', 0.88)
+			);
+			const data = new FormData();
+			data.append('avatar', blob, 'avatar.jpg');
 			const res = await api.postForm<{ avatar_url: string }>('/v1/users/me/avatar', data);
 			avatarUrl = res.avatar_url;
 			const updated = await api.get<User>('/v1/users/me');
 			currentUser.set(updated);
+			cropOpen = false;
+			cropSrc = '';
+			if (fileInput) fileInput.value = '';
+			toast.success('Avatar updated');
 		} catch (e: any) {
 			toast.error(e.message || 'Could not upload avatar');
 		} finally {
 			uploading = false;
-			if (fileInput) fileInput.value = '';
 		}
 	}
 
@@ -100,7 +136,7 @@
 			<h2 class="mb-4 text-sm font-semibold">Profile</h2>
 			<div class="space-y-4">
 				<div class="flex items-center gap-4">
-					<input bind:this={fileInput} type="file" accept="image/jpeg,image/png,image/gif,image/webp" class="hidden" onchange={uploadAvatar} />
+					<input bind:this={fileInput} type="file" accept="image/jpeg,image/png,image/gif,image/webp" class="hidden" onchange={onFileChange} />
 					<button
 						type="button"
 						onclick={() => fileInput?.click()}
@@ -187,3 +223,23 @@
 		</Button>
 	</form>
 {/if}
+
+<Dialog.Root bind:open={cropOpen} onOpenChange={(o) => { if (!o) cancelCrop(); }}>
+	<Dialog.Content class="max-w-md">
+		<Dialog.Header>
+			<Dialog.Title>{hasExistingAvatar ? 'Replace photo' : 'Upload photo'}</Dialog.Title>
+			<Dialog.Description>Drag or pinch to adjust. The cropped area will be saved.</Dialog.Description>
+		</Dialog.Header>
+		<div class="mt-2 overflow-hidden rounded-md bg-muted" style="max-height: 360px;">
+			{#if cropSrc}
+				<img bind:this={cropperEl} src={cropSrc} alt="Crop preview" class="block max-w-full" />
+			{/if}
+		</div>
+		<Dialog.Footer class="mt-4">
+			<Button variant="outline" onclick={cancelCrop} disabled={uploading}>Cancel</Button>
+			<Button onclick={cropAndUpload} disabled={uploading}>
+				{uploading ? 'Uploading…' : 'Save photo'}
+			</Button>
+		</Dialog.Footer>
+	</Dialog.Content>
+</Dialog.Root>
