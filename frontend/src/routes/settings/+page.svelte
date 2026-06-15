@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { api, type User, type EmailSettings } from '$lib/api';
+	import { api, type User, type EmailSettings, type GoogleSettings } from '$lib/api';
 	import { prefs, prefsFromUser, TIMEZONES, WEEK_DAYS } from '$lib/prefs';
 	import { currentUser } from '$lib/stores';
 	import { Button } from '$lib/components/ui/button';
@@ -21,6 +21,14 @@
 	let time_format = $state<'12h' | '24h'>('12h');
 	let week_start = $state(1);
 	let date_format = $state<'dmy' | 'mdy' | 'ymd'>('dmy');
+
+	// Google OAuth settings
+	let googleSettings: GoogleSettings | null = $state(null);
+	let googleClientID = $state('');
+	let googleClientSecret = $state('');
+	let googleSaving = $state(false);
+	let googleSaved = $state(false);
+	let googleError = $state('');
 
 	// Email (SMTP) settings — separate card/form
 	let emailSettings: EmailSettings | null = $state(null);
@@ -50,9 +58,10 @@
 
 	onMount(async () => {
 		try {
-			const [me, email] = await Promise.all([
+			const [me, email, google] = await Promise.all([
 				api.get<User>('/v1/users/me'),
 				api.get<EmailSettings>('/v1/settings/email'),
+				api.get<GoogleSettings>('/v1/settings/google'),
 			]);
 			user = me;
 			timezone = user.timezone;
@@ -68,6 +77,9 @@
 			notify_host_cancel = user.notify_host_cancel ?? true;
 			notify_host_reschedule = user.notify_host_reschedule ?? true;
 
+			googleSettings = google;
+			googleClientID = google.client_id;
+
 			emailSettings = email;
 			smtpHost = email.smtp_host;
 			smtpPort = email.smtp_port || '587';
@@ -82,6 +94,24 @@
 			loading = false;
 		}
 	});
+
+	async function saveGoogleSettings() {
+		googleSaving = true;
+		googleSaved = false;
+		googleError = '';
+		try {
+			const body: Record<string, unknown> = { client_id: googleClientID };
+			if (googleClientSecret) body.client_secret = googleClientSecret;
+			googleSettings = await api.patch<GoogleSettings>('/v1/settings/google', body);
+			googleClientSecret = '';
+			googleSaved = true;
+			setTimeout(() => (googleSaved = false), 4000);
+		} catch (e: any) {
+			googleError = e.message;
+		} finally {
+			googleSaving = false;
+		}
+	}
 
 	async function saveEmailSettings() {
 		emailSaving = true;
@@ -358,6 +388,56 @@
 			{saving ? 'Saving…' : 'Save settings'}
 		</Button>
 	</form>
+
+	<!-- Google OAuth settings -->
+	{#if $currentUser?.is_admin}
+	<div class="mt-4 max-w-lg">
+		<div class="rounded-lg border bg-card p-6">
+			<div class="mb-4 flex items-start justify-between gap-2">
+				<div>
+					<h2 class="text-sm font-semibold">Google OAuth</h2>
+					<p class="mt-0.5 text-xs text-muted-foreground">Enables Google sign-in and Google Calendar integration.</p>
+				</div>
+				{#if googleSettings !== null}
+					<span class="flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium {googleSettings.configured ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'}">
+						<span class="h-1.5 w-1.5 rounded-full {googleSettings.configured ? 'bg-green-500' : 'bg-amber-400'}"></span>
+						{googleSettings.configured ? 'Configured' : 'Not configured'}
+					</span>
+				{/if}
+			</div>
+
+			{#if googleError}<p class="mb-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{googleError}</p>{/if}
+			{#if googleSaved}<p class="mb-4 rounded-md bg-green-50 px-3 py-2 text-sm text-green-700">Saved. Restart the server for changes to take effect.</p>{/if}
+
+			<div class="space-y-3">
+				<div class="space-y-1.5">
+					<Label for="g-client-id">Client ID</Label>
+					<Input id="g-client-id" type="text" placeholder="123456789-abc.apps.googleusercontent.com" bind:value={googleClientID} />
+				</div>
+				<div class="space-y-1.5">
+					<Label for="g-client-secret">Client Secret</Label>
+					<Input id="g-client-secret" type="password"
+						placeholder={googleSettings?.client_secret_set ? '•••••••• (stored)' : 'Enter client secret'}
+						bind:value={googleClientSecret} />
+					{#if googleSettings?.client_secret_set && !googleClientSecret}
+						<p class="text-xs text-muted-foreground">Secret is stored — leave blank to keep it.</p>
+					{/if}
+				</div>
+			</div>
+
+			<p class="mt-3 text-xs text-muted-foreground">
+				Create credentials at <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" class="underline">console.cloud.google.com</a>.
+				Add <code class="font-mono">http://localhost:3000/v1/calendar/callback</code> as an authorised redirect URI.
+			</p>
+
+			<div class="mt-5">
+				<Button onclick={saveGoogleSettings} disabled={googleSaving}>
+					{googleSaving ? 'Saving…' : 'Save Google settings'}
+				</Button>
+			</div>
+		</div>
+	</div>
+	{/if}
 
 	<!-- Email settings — separate save, separate API endpoint -->
 	<div class="mt-4 max-w-lg">

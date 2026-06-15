@@ -75,13 +75,24 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 		logger.Info("webhook worker started")
 	}
 
-	if cfg.GoogleClientID != "" {
+	// DB Google settings take priority over env vars.
+	googleClientID := cfg.GoogleClientID
+	googleClientSecret := cfg.GoogleClientSecret
+	if dbGoogle, dbGoogleErr := handler.LoadGoogleSettingsFromDB(db, encKey); dbGoogleErr != nil {
+		logger.Warn("google settings: could not load from database", "error", dbGoogleErr)
+	} else if dbGoogle != nil {
+		googleClientID = dbGoogle.ClientID
+		googleClientSecret = dbGoogle.ClientSecret
+		logger.Info("Google OAuth: credentials loaded from database")
+	}
+
+	if googleClientID != "" {
 		authRedirect := cfg.BaseURL + "/v1/auth/callback"
-		h.SetGoogleAuth(cfg.GoogleClientID, cfg.GoogleClientSecret, authRedirect, cfg.CookieSecure)
+		h.SetGoogleAuth(googleClientID, googleClientSecret, authRedirect, cfg.CookieSecure)
 		logger.Info("Google OAuth login configured", "redirect_url", authRedirect)
 
 		calRedirect := cfg.BaseURL + "/v1/calendar/callback"
-		gc, err := gcal.New(db, cfg.GoogleClientID, cfg.GoogleClientSecret, calRedirect, cfg.EncryptionKey)
+		gc, err := gcal.New(db, googleClientID, googleClientSecret, calRedirect, cfg.EncryptionKey)
 		if err != nil {
 			logger.Error("gcal: init failed", "error", err)
 		} else {
@@ -89,7 +100,7 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 			logger.Info("Google Calendar configured", "redirect_url", calRedirect)
 		}
 	} else {
-		logger.Info("Google OAuth not configured (set GOOGLE_CLIENT_ID to enable sign-in and calendar)")
+		logger.Info("Google OAuth not configured — add credentials in Settings or set GOOGLE_CLIENT_ID")
 	}
 
 	// Ops
@@ -138,11 +149,13 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	mux.HandleFunc("DELETE /v1/users/me/avatar", avatarRL(h.RequireAuth(h.DeleteAvatar)))
 	mux.HandleFunc("GET /avatars/{userID}", h.ServeAvatar)
 
-	// Server settings — email (SMTP)
+	// Server settings — email (SMTP) and Google OAuth
 	settingsRL := RateLimit(20, time.Minute)
 	mux.HandleFunc("GET /v1/settings/email", h.RequireAuth(h.GetEmailSettings))
 	mux.HandleFunc("PATCH /v1/settings/email", settingsRL(h.RequireAuth(h.PatchEmailSettings)))
 	mux.HandleFunc("POST /v1/settings/email/test", settingsRL(h.RequireAuth(h.TestEmailConnection)))
+	mux.HandleFunc("GET /v1/settings/google", h.RequireAuth(h.GetGoogleSettings))
+	mux.HandleFunc("PATCH /v1/settings/google", settingsRL(h.RequireAuth(h.PatchGoogleSettings)))
 
 	// Event types
 	mux.HandleFunc("POST /v1/event-types", h.RequireAuth(h.CreateEventType))

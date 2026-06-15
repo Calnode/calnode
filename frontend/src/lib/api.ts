@@ -93,6 +93,12 @@ export type EmailSettings = {
 	enabled: boolean;
 };
 
+export type GoogleSettings = {
+	client_id: string;
+	client_secret_set: boolean;
+	configured: boolean;
+};
+
 export type TeamMember = {
 	id: string;
 	email: string;
