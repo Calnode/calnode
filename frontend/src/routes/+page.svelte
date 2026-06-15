@@ -56,16 +56,37 @@
 
 {#if loading}
 	<p class="py-8 text-sm text-muted-foreground">Loading…</p>
+{:else if allDone}
+	<div class="mb-8">
+		<h1 class="text-2xl font-semibold tracking-tight">Dashboard</h1>
+		<p class="mt-1 text-sm text-muted-foreground">Your booking page is live and ready to share.</p>
+	</div>
+	{#if bookingUrl}
+		<div class="rounded-lg border bg-card px-5 py-4">
+			<p class="text-sm font-medium mb-2">Your booking link</p>
+			<div class="flex items-center gap-2">
+				<a
+					href={bookingUrl}
+					target="_blank"
+					rel="noopener noreferrer"
+					class="truncate text-sm text-primary hover:underline font-mono"
+				>
+					{bookingUrl}
+				</a>
+				<button
+					onclick={copyLink}
+					class="shrink-0 rounded px-2 py-0.5 text-xs border bg-background hover:bg-muted transition-colors
+						{copyFailed ? 'border-destructive text-destructive' : ''}"
+				>
+					{copied ? 'Copied!' : copyFailed ? 'Failed' : 'Copy'}
+				</button>
+			</div>
+		</div>
+	{/if}
 {:else}
 	<div class="mb-8">
-		<h1 class="text-2xl font-semibold tracking-tight">
-			{allDone ? 'Dashboard' : 'Getting started'}
-		</h1>
-		<p class="mt-1 text-sm text-muted-foreground">
-			{allDone
-				? 'Your booking page is live and ready to share.'
-				: "Complete these steps and you'll be ready to take bookings."}
-		</p>
+		<h1 class="text-2xl font-semibold tracking-tight">Getting started</h1>
+		<p class="mt-1 text-sm text-muted-foreground">Complete these steps and you'll be ready to take bookings.</p>
 	</div>
 
 	<!-- Checklist -->

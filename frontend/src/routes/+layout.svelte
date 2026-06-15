@@ -95,7 +95,7 @@
 
 	async function logout() {
 		await fetch('/v1/auth/logout', { method: 'POST', credentials: 'same-origin' });
-		window.location.href = '/v1/auth/login';
+		window.location.href = '/admin/login';
 	}
 
 	function initials(name: string) {
