@@ -116,6 +116,25 @@ export type TeamMember = {
 	created_at: string;
 	archived: boolean;
 	archived_at?: string;
+	teams: { id: string; name: string }[];
+};
+
+export type Team = {
+	id: string;
+	name: string;
+	slug: string;
+	created_at: string;
+	member_count: number;
+	members?: TeamMemberRef[];
+};
+
+export type TeamMemberRef = {
+	id: string;
+	name: string;
+	email: string;
+	avatar_url?: string;
+	routing_priority: number;
+	archived: boolean;
 };
 
 export type UpcomingBooking = {

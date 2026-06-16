@@ -400,6 +400,7 @@
 						<tr class="border-b">
 							<th class="px-4 pb-3 pt-3 text-left text-xs font-medium text-muted-foreground">Name</th>
 							<th class="px-4 pb-3 pt-3 text-left text-xs font-medium text-muted-foreground">Role</th>
+							<th class="px-4 pb-3 pt-3 text-left text-xs font-medium text-muted-foreground">Teams</th>
 							<th class="px-4 pb-3 pt-3 text-left text-xs font-medium text-muted-foreground">Auth</th>
 							<th class="px-4 pb-3 pt-3 text-left text-xs font-medium text-muted-foreground">Joined</th>
 							{#if $currentUser?.is_admin}<th class="px-4 pb-3 pt-3"></th>{/if}
@@ -430,6 +431,15 @@
 									<div class="flex items-center gap-1.5">
 										<Badge variant={roleVariant(m)}>{roleLabel(m)}</Badge>
 										{#if m.archived}<Badge variant="outline" class="text-xs text-muted-foreground">Archived</Badge>{/if}
+									</div>
+								</td>
+								<td class="px-4 py-3">
+									<div class="flex gap-1.5 flex-wrap">
+										{#each m.teams as tm}
+											<Badge variant="secondary" class="text-xs">{tm.name}</Badge>
+										{:else}
+											<span class="text-xs text-muted-foreground/50">—</span>
+										{/each}
 									</div>
 								</td>
 								<td class="px-4 py-3">

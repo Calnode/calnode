@@ -149,6 +149,16 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	mux.HandleFunc("POST /v1/users/{id}/archive", h.RequireAuth(h.ArchiveUser))
 	mux.HandleFunc("POST /v1/users/{id}/restore", h.RequireAuth(h.RestoreUser))
 	mux.HandleFunc("GET /v1/users/{id}/upcoming-bookings", h.RequireAuth(h.ListUserUpcomingBookings))
+
+	// Teams
+	mux.HandleFunc("POST /v1/teams", h.RequireAuth(h.CreateTeam))
+	mux.HandleFunc("GET /v1/teams", h.RequireAuth(h.ListTeams))
+	mux.HandleFunc("GET /v1/teams/{id}", h.RequireAuth(h.GetTeam))
+	mux.HandleFunc("PATCH /v1/teams/{id}", h.RequireAuth(h.PatchTeam))
+	mux.HandleFunc("DELETE /v1/teams/{id}", h.RequireAuth(h.DeleteTeam))
+	mux.HandleFunc("POST /v1/teams/{id}/members", h.RequireAuth(h.AddTeamMember))
+	mux.HandleFunc("PATCH /v1/teams/{id}/members/{userId}", h.RequireAuth(h.UpdateTeamMember))
+	mux.HandleFunc("DELETE /v1/teams/{id}/members/{userId}", h.RequireAuth(h.RemoveTeamMember))
 	mux.HandleFunc("GET /v1/users/me", h.RequireAuth(h.GetMe))
 	mux.HandleFunc("PATCH /v1/users/me", h.RequireAuth(h.PatchMe))
 	avatarRL := RateLimit(20, time.Minute)

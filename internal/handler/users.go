@@ -31,22 +31,28 @@ func (h *Handler) ListUsers(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 
-	type userRow struct {
-		ID         string `json:"id"`
-		Email      string `json:"email"`
-		Name       string `json:"name"`
-		Timezone   string `json:"timezone"`
-		IsAdmin    bool   `json:"is_admin"`
-		IsOwner    bool   `json:"is_owner"`
-		Role       string `json:"role"` // "owner" | "admin" | "member"
-		EmailLogin bool   `json:"email_login"`
-		Provider   string `json:"provider,omitempty"`
-		AvatarURL  string `json:"avatar_url,omitempty"`
-		CreatedAt  string `json:"created_at"`
-		Archived   bool   `json:"archived"`
-		ArchivedAt string `json:"archived_at,omitempty"`
+	type teamRef struct {
+		ID   string `json:"id"`
+		Name string `json:"name"`
 	}
-	var out []userRow
+	type userRow struct {
+		ID         string    `json:"id"`
+		Email      string    `json:"email"`
+		Name       string    `json:"name"`
+		Timezone   string    `json:"timezone"`
+		IsAdmin    bool      `json:"is_admin"`
+		IsOwner    bool      `json:"is_owner"`
+		Role       string    `json:"role"` // "owner" | "admin" | "member"
+		EmailLogin bool      `json:"email_login"`
+		Provider   string    `json:"provider,omitempty"`
+		AvatarURL  string    `json:"avatar_url,omitempty"`
+		CreatedAt  string    `json:"created_at"`
+		Archived   bool      `json:"archived"`
+		ArchivedAt string    `json:"archived_at,omitempty"`
+		Teams      []teamRef `json:"teams"`
+	}
+	out := []userRow{}
+	byID := map[string]*userRow{}
 	for rows.Next() {
 		var u userRow
 		var isAdmin, isOwner, emailLogin int
@@ -60,6 +66,7 @@ func (h *Handler) ListUsers(w http.ResponseWriter, r *http.Request) {
 		u.EmailLogin = emailLogin != 0
 		u.Archived = archivedAt.Valid
 		u.ArchivedAt = archivedAt.String
+		u.Teams = []teamRef{}
 		switch {
 		case u.IsOwner:
 			u.Role = "owner"
@@ -70,9 +77,31 @@ func (h *Handler) ListUsers(w http.ResponseWriter, r *http.Request) {
 		}
 		out = append(out, u)
 	}
-	if out == nil {
-		out = []userRow{}
+	for i := range out {
+		byID[out[i].ID] = &out[i]
 	}
+
+	// Attach each member's teams (the Members↔Teams cross-reference).
+	tmRows, err := h.db.QueryContext(r.Context(), `
+		SELECT tm.user_id, t.id, t.name
+		FROM team_members tm JOIN teams t ON t.id = tm.team_id
+		ORDER BY t.name ASC`)
+	if err != nil {
+		h.logger.ErrorContext(r.Context(), "list users: team memberships", "error", err)
+	} else {
+		defer tmRows.Close()
+		for tmRows.Next() {
+			var userID string
+			var tr teamRef
+			if err := tmRows.Scan(&userID, &tr.ID, &tr.Name); err != nil {
+				continue
+			}
+			if u := byID[userID]; u != nil {
+				u.Teams = append(u.Teams, tr)
+			}
+		}
+	}
+
 	h.writeJSON(w, http.StatusOK, out)
 }
 
