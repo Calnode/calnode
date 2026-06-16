@@ -299,7 +299,7 @@ func (h *Handler) GetBooking(w http.ResponseWriter, r *http.Request) {
 // Returns bookings enriched with event_type_slug and the organizer attendee.
 func (h *Handler) ListBookings(w http.ResponseWriter, r *http.Request) {
 	user, _ := userFromContext(r.Context())
-	bookings, err := h.bookingSvc.ListVisible(r.Context(), user.ID, user.IsAdmin)
+	bookings, err := h.bookingSvc.ListVisible(r.Context(), user.ID)
 	if err != nil {
 		h.logger.ErrorContext(r.Context(), "list bookings", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal error")

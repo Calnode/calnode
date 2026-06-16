@@ -255,25 +255,18 @@ func (s *Service) ListByHost(ctx context.Context, hostID string) ([]Booking, err
 	return out, rows.Err()
 }
 
-// ListVisible returns the non-cancelled bookings a viewer should see in the
-// admin dashboard. Admins see every booking in the workspace; other members see
-// bookings they host OR that belong to an event type they own (so the owner of a
-// round-robin event sees bookings routed to other team members).
-func (s *Service) ListVisible(ctx context.Context, viewerID string, isAdmin bool) ([]Booking, error) {
-	const cols = `b.id, b.event_type_id, b.host_id, b.start_at, b.end_at, b.status,
-		COALESCE(b.cancellation_reason, ''), COALESCE(b.location_value, ''),
-		b.created_at, b.updated_at`
-	var rows *sql.Rows
-	var err error
-	if isAdmin {
-		rows, err = s.db.QueryContext(ctx, `SELECT `+cols+`
-			FROM bookings b WHERE b.status != 'cancelled' ORDER BY b.start_at`)
-	} else {
-		rows, err = s.db.QueryContext(ctx, `SELECT `+cols+`
-			FROM bookings b JOIN event_types et ON et.id = b.event_type_id
-			WHERE b.status != 'cancelled' AND (b.host_id = ? OR et.user_id = ?)
-			ORDER BY b.start_at`, viewerID, viewerID)
-	}
+// ListVisible returns the non-cancelled bookings a viewer should see: ones they
+// host, plus ones on an event type they own (so the owner of a round-robin event
+// sees bookings routed to other team members). Members never see bookings they
+// are neither a host of nor the owner of the event type for.
+func (s *Service) ListVisible(ctx context.Context, viewerID string) ([]Booking, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT b.id, b.event_type_id, b.host_id, b.start_at, b.end_at, b.status,
+		       COALESCE(b.cancellation_reason, ''), COALESCE(b.location_value, ''),
+		       b.created_at, b.updated_at
+		FROM bookings b JOIN event_types et ON et.id = b.event_type_id
+		WHERE b.status != 'cancelled' AND (b.host_id = ? OR et.user_id = ?)
+		ORDER BY b.start_at`, viewerID, viewerID)
 	if err != nil {
 		return nil, fmt.Errorf("booking: list visible: %w", err)
 	}
