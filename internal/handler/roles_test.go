@@ -172,6 +172,67 @@ func TestDeleteUser_adminCannotRemoveAdmin(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// POST /v1/users/{id}/password — role-gated (no privilege escalation)
+// ---------------------------------------------------------------------------
+
+func TestAdminSetPassword_adminCannotResetOwner(t *testing.T) {
+	h, database, _, ownerID := setupWorkspaceWithDB(t)
+	adminKey := "admin-resets-owner-key"
+	database.Exec(`INSERT INTO users (id,email,name,iana_timezone,is_admin,is_owner) VALUES ('u2','a@example.com','Admin','UTC',1,0)`)
+	database.Exec(`INSERT INTO api_keys (id,user_id,name,key_hash,created_at) VALUES ('k2','u2','t',?,'2024-01-01')`, sha256HexForTest(adminKey))
+
+	req := authReq(http.MethodPost, "/v1/users/"+ownerID+"/password", `{"password":"newpassword123"}`, adminKey)
+	req.SetPathValue("id", ownerID)
+	rec := httptest.NewRecorder()
+	h.RequireAuth(h.AdminSetPassword)(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("got %d; want 403 (admin cannot reset owner password) — %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestAdminSetPassword_adminCannotResetAdmin(t *testing.T) {
+	h, database, _, _ := setupWorkspaceWithDB(t)
+	adminKey := "admin-resets-admin-key"
+	database.Exec(`INSERT INTO users (id,email,name,iana_timezone,is_admin,is_owner) VALUES ('u2','a@example.com','Admin','UTC',1,0)`)
+	database.Exec(`INSERT INTO api_keys (id,user_id,name,key_hash,created_at) VALUES ('k2','u2','t',?,'2024-01-01')`, sha256HexForTest(adminKey))
+	database.Exec(`INSERT INTO users (id,email,name,iana_timezone,is_admin) VALUES ('u3','a3@example.com','Admin3','UTC',1)`)
+
+	req := authReq(http.MethodPost, "/v1/users/u3/password", `{"password":"newpassword123"}`, adminKey)
+	req.SetPathValue("id", "u3")
+	rec := httptest.NewRecorder()
+	h.RequireAuth(h.AdminSetPassword)(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("got %d; want 403 (admin cannot reset another admin) — %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestAdminSetPassword_ownerCanResetAdmin_adminCanResetMember(t *testing.T) {
+	h, database, ownerKey, _ := setupWorkspaceWithDB(t)
+	adminKey := "admin-resets-member-key"
+	database.Exec(`INSERT INTO users (id,email,name,iana_timezone,is_admin,is_owner) VALUES ('u2','a@example.com','Admin','UTC',1,0)`)
+	database.Exec(`INSERT INTO api_keys (id,user_id,name,key_hash,created_at) VALUES ('k2','u2','t',?,'2024-01-01')`, sha256HexForTest(adminKey))
+	database.Exec(`INSERT INTO users (id,email,name,iana_timezone,is_admin) VALUES ('u3','m@example.com','Member','UTC',0)`)
+
+	// Owner resets the admin's password → allowed.
+	req := authReq(http.MethodPost, "/v1/users/u2/password", `{"password":"newpassword123"}`, ownerKey)
+	req.SetPathValue("id", "u2")
+	rec := httptest.NewRecorder()
+	h.RequireAuth(h.AdminSetPassword)(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Errorf("owner reset admin: got %d; want 200 — %s", rec.Code, rec.Body.String())
+	}
+
+	// Admin resets a plain member's password → allowed.
+	req = authReq(http.MethodPost, "/v1/users/u3/password", `{"password":"newpassword123"}`, adminKey)
+	req.SetPathValue("id", "u3")
+	rec = httptest.NewRecorder()
+	h.RequireAuth(h.AdminSetPassword)(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Errorf("admin reset member: got %d; want 200 — %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestDeleteUser_blockedByUpcomingBookings(t *testing.T) {
 	h, database, ownerKey, _ := setupWorkspaceWithDB(t)
 	database.Exec(`INSERT INTO users (id,email,name,iana_timezone,is_admin) VALUES ('u2','host2@example.com','Host','UTC',0)`)

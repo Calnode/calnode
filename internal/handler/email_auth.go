@@ -1,7 +1,9 @@
 package handler
 
 import (
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -152,15 +154,29 @@ func (h *Handler) AdminSetPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var exists int
-	if err := h.db.QueryRowContext(r.Context(),
-		`SELECT COUNT(*) FROM users WHERE id = ?`, targetID).Scan(&exists); err != nil {
+	// Load the target's role so we don't allow a privilege-escalation path: an
+	// admin must not be able to reset the owner's (or another admin's) password
+	// and then log in as them. Only the owner can reset an admin's password, and
+	// the owner's own password is changed only via /v1/users/me/password.
+	var targetIsAdmin, targetIsOwner int
+	err := h.db.QueryRowContext(r.Context(),
+		`SELECT is_admin, is_owner FROM users WHERE id = ?`, targetID).
+		Scan(&targetIsAdmin, &targetIsOwner)
+	if errors.Is(err, sql.ErrNoRows) {
+		h.writeError(w, http.StatusNotFound, "user not found")
+		return
+	}
+	if err != nil {
 		h.logger.ErrorContext(r.Context(), "admin set password: db query", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	if exists == 0 {
-		h.writeError(w, http.StatusNotFound, "user not found")
+	if targetIsOwner != 0 {
+		h.writeError(w, http.StatusForbidden, "the owner's password can only be changed by the owner")
+		return
+	}
+	if targetIsAdmin != 0 && !admin.IsOwner {
+		h.writeError(w, http.StatusForbidden, "only the workspace owner can reset an admin's password")
 		return
 	}
 

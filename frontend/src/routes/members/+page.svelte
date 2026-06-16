@@ -469,8 +469,10 @@
 														{/if}
 														<Button size="sm" variant="ghost" class="h-7 text-xs" onclick={() => confirmTransfer(m)}>Transfer ownership</Button>
 													{/if}
-													<Button size="sm" variant="ghost" class="h-7 text-xs" onclick={() => startReset(m.id)}>Reset password</Button>
+													<!-- Reset password + Archive only on members this viewer may manage:
+													     never the owner; another admin only if the viewer is the owner. -->
 													{#if !m.is_owner && (!m.is_admin || $currentUser.is_owner)}
+														<Button size="sm" variant="ghost" class="h-7 text-xs" onclick={() => startReset(m.id)}>Reset password</Button>
 														<Button size="sm" variant="ghost" class="h-7 text-xs text-destructive hover:text-destructive" onclick={() => startArchive(m)}>Archive</Button>
 													{/if}
 												{/if}
