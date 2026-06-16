@@ -73,7 +73,7 @@ func (h *Handler) RequireAuth(next http.HandlerFunc) http.HandlerFunc {
 				       COALESCE(u.notify_confirmation,1), COALESCE(u.notify_cancellation,1), COALESCE(u.notify_reschedule,1), COALESCE(u.notify_reminder,1),
 				       COALESCE(u.notify_host_booking,1), COALESCE(u.notify_host_cancel,1), COALESCE(u.notify_host_reschedule,1)
 				FROM api_keys ak JOIN users u ON u.id = ak.user_id
-				WHERE ak.key_hash = ?`, hash).
+				WHERE ak.key_hash = ? AND u.archived_at IS NULL`, hash).
 				Scan(&keyID, &user.ID, &user.Email, &user.Name, &user.IANATZ, &user.TimeFormat, &user.WeekStart, &user.DateFormat, &user.AvatarURL, &user.IsAdmin, &user.IsOwner,
 					&nc, &nca, &nr, &nrm, &nhb, &nhc, &nhr)
 			user.NotifyConfirmation, user.NotifyCancellation, user.NotifyReschedule, user.NotifyReminder = nc != 0, nca != 0, nr != 0, nrm != 0
@@ -100,7 +100,7 @@ func (h *Handler) RequireAuth(next http.HandlerFunc) http.HandlerFunc {
 				       COALESCE(u.notify_host_booking,1), COALESCE(u.notify_host_cancel,1), COALESCE(u.notify_host_reschedule,1)
 				FROM sessions s
 				JOIN users u ON u.id = s.user_id
-				WHERE s.id = ? AND s.expires_at > ?`,
+				WHERE s.id = ? AND s.expires_at > ? AND u.archived_at IS NULL`,
 				cookie.Value, now).
 				Scan(&user.ID, &user.Email, &user.Name, &user.IANATZ, &user.TimeFormat, &user.WeekStart, &user.DateFormat, &user.AvatarURL, &user.IsAdmin, &user.IsOwner,
 					&nc, &nca, &nr, &nrm, &nhb, &nhc, &nhr); err == nil {

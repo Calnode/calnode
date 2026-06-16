@@ -14,10 +14,16 @@ func (h *Handler) ListUsers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Archived members are hidden unless explicitly requested (?include_archived=true).
+	includeArchived := r.URL.Query().Get("include_archived") == "true"
+	where := "WHERE archived_at IS NULL"
+	if includeArchived {
+		where = ""
+	}
 	rows, err := h.db.QueryContext(r.Context(), `
 		SELECT id, email, name, iana_timezone, is_admin, is_owner, email_login,
-		       COALESCE(provider,''), COALESCE(avatar_url,''), created_at
-		FROM users ORDER BY created_at ASC`)
+		       COALESCE(provider,''), COALESCE(avatar_url,''), created_at, archived_at
+		FROM users `+where+` ORDER BY created_at ASC`)
 	if err != nil {
 		h.logger.ErrorContext(r.Context(), "list users: query", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal error")
@@ -37,18 +43,23 @@ func (h *Handler) ListUsers(w http.ResponseWriter, r *http.Request) {
 		Provider   string `json:"provider,omitempty"`
 		AvatarURL  string `json:"avatar_url,omitempty"`
 		CreatedAt  string `json:"created_at"`
+		Archived   bool   `json:"archived"`
+		ArchivedAt string `json:"archived_at,omitempty"`
 	}
 	var out []userRow
 	for rows.Next() {
 		var u userRow
 		var isAdmin, isOwner, emailLogin int
+		var archivedAt sql.NullString
 		if err := rows.Scan(&u.ID, &u.Email, &u.Name, &u.Timezone, &isAdmin, &isOwner, &emailLogin,
-			&u.Provider, &u.AvatarURL, &u.CreatedAt); err != nil {
+			&u.Provider, &u.AvatarURL, &u.CreatedAt, &archivedAt); err != nil {
 			continue
 		}
 		u.IsAdmin = isAdmin != 0
 		u.IsOwner = isOwner != 0
 		u.EmailLogin = emailLogin != 0
+		u.Archived = archivedAt.Valid
+		u.ArchivedAt = archivedAt.String
 		switch {
 		case u.IsOwner:
 			u.Role = "owner"
