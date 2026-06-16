@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 	"time"
 
@@ -52,10 +53,13 @@ func (s *Service) Create(ctx context.Context, p CreateParams) (*Booking, error) 
 		WHERE host_id = ? AND status != 'cancelled'
 		  AND start_at < ? AND end_at > ?`
 
-	// Select the host. Round-robin picks the least-loaded *free* candidate (even
-	// distribution; the slice order — priority — breaks ties). Any other mode
-	// requires every candidate to be free and uses the first as the host.
+	// Select hosts. Round-robin picks the least-loaded *free* candidate from the
+	// rotation pool (even distribution; slice order — priority — breaks ties). Any
+	// other mode requires every HostID free and all of them attend (Normal = one
+	// host; Group/collective = several). Optional hosts join only if free.
+	// `assigned` is everyone who will attend; `chosenHost` is the primary.
 	var chosenHost string
+	var assigned []string
 	if p.RoutingMode == "round_robin" {
 		var free []string
 		for _, hostID := range p.HostIDs {
@@ -75,6 +79,7 @@ func (s *Service) Create(ctx context.Context, p CreateParams) (*Booking, error) 
 			return nil, err
 		}
 		chosenHost = chosen
+		assigned = []string{chosen}
 	} else {
 		for _, hostID := range p.HostIDs {
 			var n int
@@ -86,6 +91,21 @@ func (s *Service) Create(ctx context.Context, p CreateParams) (*Booking, error) 
 			}
 		}
 		chosenHost = p.HostIDs[0]
+		assigned = append(assigned, p.HostIDs...)
+	}
+
+	// Optional hosts attend only if free; a busy one is simply left off.
+	for _, hostID := range p.OptionalHosts {
+		if slices.Contains(assigned, hostID) {
+			continue
+		}
+		var n int
+		if err := tx.QueryRowContext(ctx, overlapQ, hostID, endStr, startStr).Scan(&n); err != nil {
+			return nil, fmt.Errorf("booking: optional overlap check: %w", err)
+		}
+		if n == 0 {
+			assigned = append(assigned, hostID)
+		}
 	}
 
 	// Enforce the per-invitee active-booking cap (0 = unlimited). "Active" means a
@@ -119,6 +139,20 @@ func (s *Service) Create(ctx context.Context, p CreateParams) (*Booking, error) 
 			return nil, ErrDoubleBooked
 		}
 		return nil, fmt.Errorf("booking: insert: %w", err)
+	}
+
+	// Record every attending host; the primary mirrors bookings.host_id.
+	for _, hostID := range assigned {
+		isPrimary := 0
+		if hostID == chosenHost {
+			isPrimary = 1
+		}
+		if _, err = tx.ExecContext(ctx, `
+			INSERT INTO booking_hosts (id, booking_id, user_id, is_primary)
+			VALUES (?, ?, ?, ?)`,
+			uid.New(), bookingID, hostID, isPrimary); err != nil {
+			return nil, fmt.Errorf("booking: insert host: %w", err)
+		}
 	}
 
 	tz := p.Organizer.IANATimezone

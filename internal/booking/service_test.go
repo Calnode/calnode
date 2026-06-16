@@ -238,6 +238,63 @@ func TestCreate_emptyHostIDs_returnsError(t *testing.T) {
 	}
 }
 
+func TestCreate_multiHostWritesBookingHosts(t *testing.T) {
+	database := newTestDB(t)
+	svc := booking.New(database)
+	h1 := seedHost(t, database) // required (primary)
+	h2 := seedHost(t, database) // required
+	h3 := seedHost(t, database) // optional, free → attends
+	h4 := seedHost(t, database) // optional, busy → omitted
+	etID := seedEventType(t, database, h1)
+
+	// Make h4 busy at the slot so the optional host is skipped.
+	if _, err := svc.Create(context.Background(), booking.CreateParams{
+		EventTypeID: etID, HostIDs: []string{h4},
+		StartAt: slot(9, 0), EndAt: slot(9, 30),
+		Organizer: booking.Attendee{Name: "Pre", Email: "pre@example.com"},
+	}); err != nil {
+		t.Fatalf("seed busy h4: %v", err)
+	}
+
+	// Group/collective: h1+h2 required (all attend), h3+h4 optional (free ones only).
+	b, err := svc.Create(context.Background(), booking.CreateParams{
+		EventTypeID:   etID,
+		HostIDs:       []string{h1, h2},
+		RoutingMode:   "collective",
+		OptionalHosts: []string{h3, h4},
+		StartAt:       slot(9, 0), EndAt: slot(9, 30),
+		Organizer: booking.Attendee{Name: "Alice", Email: "alice@example.com"},
+	})
+	if err != nil {
+		t.Fatalf("collective Create: %v", err)
+	}
+
+	rows, _ := database.Query(`SELECT user_id, is_primary FROM booking_hosts WHERE booking_id = ?`, b.ID)
+	defer rows.Close()
+	got := map[string]int{}
+	for rows.Next() {
+		var uid string
+		var primary int
+		rows.Scan(&uid, &primary)
+		got[uid] = primary
+	}
+	if len(got) != 3 {
+		t.Fatalf("booking_hosts = %v; want 3 (h1, h2, h3 — h4 busy, omitted)", got)
+	}
+	if _, ok := got[h4]; ok {
+		t.Error("busy optional host h4 should not be a booking host")
+	}
+	if got[h1] != 1 {
+		t.Errorf("h1 should be the primary host; is_primary=%d", got[h1])
+	}
+	if got[h2] != 0 || got[h3] != 0 {
+		t.Error("only the primary host should have is_primary=1")
+	}
+	if b.HostID != h1 {
+		t.Errorf("booking host_id = %s; want primary h1", b.HostID)
+	}
+}
+
 func TestCancel_success(t *testing.T) {
 	database := newTestDB(t)
 	svc := booking.New(database)

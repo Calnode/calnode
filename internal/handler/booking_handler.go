@@ -135,14 +135,20 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	var candidates []string
+	var candidates, optional []string
 	for _, hh := range hosts {
 		if et.RoutingMode == "round_robin" {
 			if hh.Role == "rotation" {
 				candidates = append(candidates, hh.UserID)
 			}
-		} else if hh.Role == "required" {
-			candidates = append(candidates, hh.UserID)
+		} else {
+			// fixed + collective: required hosts must attend; optional join if free.
+			switch hh.Role {
+			case "required":
+				candidates = append(candidates, hh.UserID)
+			case "optional":
+				optional = append(optional, hh.UserID)
+			}
 		}
 	}
 	if len(candidates) == 0 {
@@ -155,6 +161,7 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 		EventTypeID:   et.ID,
 		HostIDs:       candidates,
 		RoutingMode:   et.RoutingMode,
+		OptionalHosts: optional,
 		StartAt:       startAt.UTC(),
 		EndAt:         endAt,
 		LocationValue: locValue,

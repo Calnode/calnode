@@ -49,6 +49,9 @@ type CreateParams struct {
 	// the first. For Phase A there is a single candidate for fixed.
 	HostIDs       []string
 	RoutingMode   string
+	// OptionalHosts attend only if free at booking time; they never block the
+	// booking (Group/collective "optional" hosts). Busy ones are simply omitted.
+	OptionalHosts []string
 	StartAt       time.Time
 	EndAt         time.Time
 	LocationValue string
