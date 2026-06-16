@@ -261,7 +261,7 @@
 						<div class="flex items-center gap-2">
 							<select
 								bind:value={addChoice[team.id]}
-								class="h-8 rounded-md border border-input bg-background px-2 text-sm"
+								class="h-8 rounded-md border border-input bg-background px-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
 								disabled={membersNotIn(team).length === 0}
 							>
 								<option value="" disabled selected>Add a member…</option>

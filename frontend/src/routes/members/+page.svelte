@@ -292,7 +292,7 @@
 					<div class="flex flex-wrap items-center gap-2">
 						<select
 							bind:value={resolveChoice[b.id]}
-							class="h-8 rounded-md border border-input bg-background px-2 text-sm"
+							class="h-8 rounded-md border border-input bg-background px-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
 							disabled={resolveBusy || reassignTargets.length === 0}
 						>
 							<option value="" disabled selected>Reassign to…</option>
