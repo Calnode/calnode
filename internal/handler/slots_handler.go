@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 	"time"
 
@@ -74,136 +75,41 @@ func (h *Handler) GetSlots(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Load host user (timezone).
-	var hostTZName string
-	if err := h.db.QueryRowContext(r.Context(),
-		`SELECT iana_timezone FROM users WHERE id = ?`, et.UserID).
-		Scan(&hostTZName); err != nil {
-		h.logger.ErrorContext(r.Context(), "slots: load host", "error", err)
+	// Resolve the host pool for this event type by routing mode. Round-robin
+	// offers a slot if any rotation host is free; fixed/collective gate on the
+	// required hosts. Archived hosts are already excluded by resolveEventTypeHosts.
+	hosts, err := h.resolveEventTypeHosts(r.Context(), et.ID)
+	if err != nil {
+		h.logger.ErrorContext(r.Context(), "slots: resolve hosts", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	hostLoc, err := time.LoadLocation(hostTZName)
-	if err != nil {
-		hostLoc = time.UTC
-	}
-
-	// Load availability rules (event-type-specific + global).
-	ruleRows, err := h.db.QueryContext(r.Context(), `
-		SELECT day_of_week, start_time, end_time
-		FROM availability_rules
-		WHERE user_id = ? AND (event_type_id = ? OR event_type_id IS NULL)
-		ORDER BY day_of_week, start_time`, et.UserID, et.ID)
-	if err != nil {
-		h.logger.ErrorContext(r.Context(), "slots: load rules", "error", err)
-		h.writeError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-	defer ruleRows.Close()
-
-	var rules []slots.AvailabilityRule
-	for ruleRows.Next() {
-		var dow int
-		var start, end string
-		if err := ruleRows.Scan(&dow, &start, &end); err != nil {
-			h.logger.ErrorContext(r.Context(), "slots: scan rule", "error", err)
-			h.writeError(w, http.StatusInternalServerError, "internal error")
-			return
+	var poolIDs []string
+	for _, hh := range hosts {
+		if et.RoutingMode == "round_robin" {
+			if hh.Role == "rotation" {
+				poolIDs = append(poolIDs, hh.UserID)
+			}
+		} else if hh.Role == "required" { // fixed + collective gate on required hosts
+			poolIDs = append(poolIDs, hh.UserID)
 		}
-		rules = append(rules, slots.AvailabilityRule{
-			DayOfWeek: time.Weekday(dow),
-			StartTime: start,
-			EndTime:   end,
-		})
 	}
-	if err := ruleRows.Err(); err != nil {
-		h.logger.ErrorContext(r.Context(), "slots: rules rows", "error", err)
-		h.writeError(w, http.StatusInternalServerError, "internal error")
+	if len(poolIDs) == 0 {
+		// No bookable hosts (e.g. all archived, or a round-robin with no rotation
+		// members) — offer nothing rather than erroring.
+		h.writeJSON(w, http.StatusOK, map[string]any{"slots": []slotJSON{}})
 		return
 	}
-	// Load availability overrides.
-	ovRows, err := h.db.QueryContext(r.Context(), `
-		SELECT date, is_available, COALESCE(start_time,''), COALESCE(end_time,'')
-		FROM availability_overrides
-		WHERE user_id = ?`, et.UserID)
-	if err != nil {
-		h.logger.ErrorContext(r.Context(), "slots: load overrides", "error", err)
-		h.writeError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-	defer ovRows.Close()
 
-	var overrides []slots.AvailabilityOverride
-	for ovRows.Next() {
-		var dateStr string
-		var isAvail int
-		var startT, endT string
-		if err := ovRows.Scan(&dateStr, &isAvail, &startT, &endT); err != nil {
-			h.logger.ErrorContext(r.Context(), "slots: scan override", "error", err)
-			h.writeError(w, http.StatusInternalServerError, "internal error")
-			return
-		}
-		date, err := time.Parse("2006-01-02", dateStr)
+	hostAvails := make([]slots.HostAvailability, 0, len(poolIDs))
+	for _, hostID := range poolIDs {
+		ha, err := h.hostAvailability(r.Context(), hostID, et.ID, dateFrom, dateTo)
 		if err != nil {
-			continue // skip malformed dates rather than failing the whole request
-		}
-		overrides = append(overrides, slots.AvailabilityOverride{
-			Date:        date,
-			IsAvailable: isAvail != 0,
-			StartTime:   startT,
-			EndTime:     endT,
-		})
-	}
-	if err := ovRows.Err(); err != nil {
-		h.logger.ErrorContext(r.Context(), "slots: overrides rows", "error", err)
-		h.writeError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-
-	// Load confirmed bookings as busy intervals.
-	busyFrom := dateFrom.Format(time.RFC3339)
-	busyTo := dateTo.Add(24 * time.Hour).Format(time.RFC3339)
-	busyRows, err := h.db.QueryContext(r.Context(), `
-		SELECT start_at, end_at FROM bookings
-		WHERE host_id = ? AND status != 'cancelled'
-		  AND start_at >= ? AND start_at < ?`, et.UserID, busyFrom, busyTo)
-	if err != nil {
-		h.logger.ErrorContext(r.Context(), "slots: load busy", "error", err)
-		h.writeError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-	defer busyRows.Close()
-
-	var busy []slots.Interval
-	for busyRows.Next() {
-		var startStr, endStr string
-		if err := busyRows.Scan(&startStr, &endStr); err != nil {
-			h.logger.ErrorContext(r.Context(), "slots: scan busy", "error", err)
+			h.logger.ErrorContext(r.Context(), "slots: load host availability", "error", err, "host", hostID)
 			h.writeError(w, http.StatusInternalServerError, "internal error")
 			return
 		}
-		s, err1 := time.Parse(time.RFC3339Nano, startStr)
-		e, err2 := time.Parse(time.RFC3339Nano, endStr)
-		if err1 != nil || err2 != nil {
-			continue
-		}
-		busy = append(busy, slots.Interval{Start: s, End: e})
-	}
-	if err := busyRows.Err(); err != nil {
-		h.logger.ErrorContext(r.Context(), "slots: busy rows", "error", err)
-		h.writeError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-
-	// Merge Google Calendar free/busy (check_conflicts connections only).
-	if gc := h.getGCal(); gc != nil {
-		gcalBusy, err := gc.FreeBusy(r.Context(), et.UserID, dateFrom, dateTo.Add(24*time.Hour))
-		if err != nil {
-			// Non-fatal: log and continue with DB-only busy intervals.
-			h.logger.ErrorContext(r.Context(), "slots: gcal freebusy", "error", err)
-		} else {
-			busy = append(busy, gcalBusy...)
-		}
+		hostAvails = append(hostAvails, ha)
 	}
 
 	result, err := slots.Generate(slots.Request{
@@ -216,13 +122,7 @@ func (h *Handler) GetSlots(w http.ResponseWriter, r *http.Request) {
 			MaxFutureDays:       et.MaxFutureDays,
 			RoutingMode:         et.RoutingMode,
 		},
-		Hosts: []slots.HostAvailability{{
-			HostID:    et.UserID,
-			Location:  hostLoc,
-			Rules:     rules,
-			Overrides: overrides,
-			Busy:      busy,
-		}},
+		Hosts:    hostAvails,
 		DateFrom: dateFrom,
 		DateTo:   dateTo,
 		BookerTZ: bookerTZ,
@@ -243,6 +143,105 @@ func (h *Handler) GetSlots(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	h.writeJSON(w, http.StatusOK, map[string]any{"slots": out})
+}
+
+// hostAvailability loads one host's timezone, availability rules, overrides, and
+// busy intervals (DB bookings + Google Calendar free/busy) for the date range.
+func (h *Handler) hostAvailability(ctx context.Context, userID, eventTypeID string, dateFrom, dateTo time.Time) (slots.HostAvailability, error) {
+	var hostTZName string
+	if err := h.db.QueryRowContext(ctx,
+		`SELECT iana_timezone FROM users WHERE id = ?`, userID).Scan(&hostTZName); err != nil {
+		return slots.HostAvailability{}, err
+	}
+	hostLoc, err := time.LoadLocation(hostTZName)
+	if err != nil {
+		hostLoc = time.UTC
+	}
+
+	ruleRows, err := h.db.QueryContext(ctx, `
+		SELECT day_of_week, start_time, end_time
+		FROM availability_rules
+		WHERE user_id = ? AND (event_type_id = ? OR event_type_id IS NULL)
+		ORDER BY day_of_week, start_time`, userID, eventTypeID)
+	if err != nil {
+		return slots.HostAvailability{}, err
+	}
+	defer ruleRows.Close()
+	var rules []slots.AvailabilityRule
+	for ruleRows.Next() {
+		var dow int
+		var start, end string
+		if err := ruleRows.Scan(&dow, &start, &end); err != nil {
+			return slots.HostAvailability{}, err
+		}
+		rules = append(rules, slots.AvailabilityRule{DayOfWeek: time.Weekday(dow), StartTime: start, EndTime: end})
+	}
+	if err := ruleRows.Err(); err != nil {
+		return slots.HostAvailability{}, err
+	}
+
+	ovRows, err := h.db.QueryContext(ctx, `
+		SELECT date, is_available, COALESCE(start_time,''), COALESCE(end_time,'')
+		FROM availability_overrides WHERE user_id = ?`, userID)
+	if err != nil {
+		return slots.HostAvailability{}, err
+	}
+	defer ovRows.Close()
+	var overrides []slots.AvailabilityOverride
+	for ovRows.Next() {
+		var dateStr string
+		var isAvail int
+		var startT, endT string
+		if err := ovRows.Scan(&dateStr, &isAvail, &startT, &endT); err != nil {
+			return slots.HostAvailability{}, err
+		}
+		date, err := time.Parse("2006-01-02", dateStr)
+		if err != nil {
+			continue
+		}
+		overrides = append(overrides, slots.AvailabilityOverride{Date: date, IsAvailable: isAvail != 0, StartTime: startT, EndTime: endT})
+	}
+	if err := ovRows.Err(); err != nil {
+		return slots.HostAvailability{}, err
+	}
+
+	busyFrom := dateFrom.Format(time.RFC3339)
+	busyTo := dateTo.Add(24 * time.Hour).Format(time.RFC3339)
+	busyRows, err := h.db.QueryContext(ctx, `
+		SELECT start_at, end_at FROM bookings
+		WHERE host_id = ? AND status != 'cancelled' AND start_at >= ? AND start_at < ?`,
+		userID, busyFrom, busyTo)
+	if err != nil {
+		return slots.HostAvailability{}, err
+	}
+	defer busyRows.Close()
+	var busy []slots.Interval
+	for busyRows.Next() {
+		var startStr, endStr string
+		if err := busyRows.Scan(&startStr, &endStr); err != nil {
+			return slots.HostAvailability{}, err
+		}
+		s, err1 := time.Parse(time.RFC3339Nano, startStr)
+		e, err2 := time.Parse(time.RFC3339Nano, endStr)
+		if err1 != nil || err2 != nil {
+			continue
+		}
+		busy = append(busy, slots.Interval{Start: s, End: e})
+	}
+	if err := busyRows.Err(); err != nil {
+		return slots.HostAvailability{}, err
+	}
+
+	// Merge Google Calendar free/busy (check_conflicts connections only). Non-fatal.
+	if gc := h.getGCal(); gc != nil {
+		if gcalBusy, err := gc.FreeBusy(ctx, userID, dateFrom, dateTo.Add(24*time.Hour)); err != nil {
+			h.logger.ErrorContext(ctx, "slots: gcal freebusy", "error", err, "host", userID)
+		} else {
+			busy = append(busy, gcalBusy...)
+		}
+	}
+
+	return slots.HostAvailability{HostID: userID, Location: hostLoc, Rules: rules, Overrides: overrides, Busy: busy}, nil
 }
 
 // parseDateRange extracts from/to query params as UTC midnight times.

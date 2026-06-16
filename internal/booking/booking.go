@@ -41,11 +41,14 @@ type Answer struct {
 }
 
 // CreateParams is the input to Service.Create.
-// HostIDs comes from Slot.HostIDs — single element for fixed/round_robin/priority,
-// all host IDs for collective. All hosts are checked for overlap before inserting.
 type CreateParams struct {
-	EventTypeID   string
+	EventTypeID string
+	// HostIDs are the candidate hosts. For RoutingMode "round_robin" Create picks
+	// ONE free candidate (least-loaded for this event type; the slice order breaks
+	// ties). For any other mode every candidate must be free and host_id is set to
+	// the first. For Phase A there is a single candidate for fixed.
 	HostIDs       []string
+	RoutingMode   string
 	StartAt       time.Time
 	EndAt         time.Time
 	LocationValue string

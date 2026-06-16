@@ -97,13 +97,14 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 		Name              string
 		DurationMinutes   int
 		LocationValue     *string
+		RoutingMode       string
 		IsActive          int
 		MaxActiveBookings int
 	}
 	err = h.db.QueryRowContext(r.Context(), `
-		SELECT id, user_id, name, duration_minutes, location_value, is_active, max_active_bookings
+		SELECT id, user_id, name, duration_minutes, location_value, routing_mode, is_active, max_active_bookings
 		FROM event_types WHERE slug = ?`, req.EventTypeSlug).
-		Scan(&et.ID, &et.UserID, &et.Name, &et.DurationMinutes, &et.LocationValue, &et.IsActive, &et.MaxActiveBookings)
+		Scan(&et.ID, &et.UserID, &et.Name, &et.DurationMinutes, &et.LocationValue, &et.RoutingMode, &et.IsActive, &et.MaxActiveBookings)
 	if err != nil {
 		h.writeError(w, http.StatusNotFound, "event type not found")
 		return
@@ -126,9 +127,34 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 		locValue = *et.LocationValue
 	}
 
+	// Resolve candidate hosts by routing mode: rotation hosts for round-robin,
+	// required hosts otherwise. Archived hosts are excluded by resolveEventTypeHosts.
+	hosts, err := h.resolveEventTypeHosts(r.Context(), et.ID)
+	if err != nil {
+		h.logger.ErrorContext(r.Context(), "create booking: resolve hosts", "error", err)
+		h.writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	var candidates []string
+	for _, hh := range hosts {
+		if et.RoutingMode == "round_robin" {
+			if hh.Role == "rotation" {
+				candidates = append(candidates, hh.UserID)
+			}
+		} else if hh.Role == "required" {
+			candidates = append(candidates, hh.UserID)
+		}
+	}
+	if len(candidates) == 0 {
+		// No active host can take this booking (e.g. the configured host was archived).
+		h.writeError(w, http.StatusConflict, "this slot is no longer available")
+		return
+	}
+
 	b, err := h.bookingSvc.Create(r.Context(), booking.CreateParams{
 		EventTypeID:   et.ID,
-		HostIDs:       []string{et.UserID},
+		HostIDs:       candidates,
+		RoutingMode:   et.RoutingMode,
 		StartAt:       startAt.UTC(),
 		EndAt:         endAt,
 		LocationValue: locValue,
@@ -182,7 +208,9 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-		if err := h.loadHostIntoData(ctx, et.UserID, &bData); err != nil {
+		// Use the assigned host (the round-robin pick, or the single fixed host),
+		// not the event-type owner — they may differ.
+		if err := h.loadHostIntoData(ctx, b.HostID, &bData); err != nil {
 			h.logger.Error("booking confirmation: load host", "error", err, "booking_id", b.ID)
 			return
 		}
@@ -193,7 +221,7 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 		}
 		// Create Google Calendar event and persist the event ID for later cancellation.
 		if gc := h.getGCal(); gc != nil {
-			eventID, err := gc.CreateEvent(ctx, et.UserID, gcal.CreateEventParams{
+			eventID, err := gc.CreateEvent(ctx, b.HostID, gcal.CreateEventParams{
 				Summary:        et.Name + " with " + req.Name,
 				Description:    "Booking ID: " + b.ID,
 				Start:          b.StartAt,
@@ -212,7 +240,7 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		prefs := allOnPrefs
-		if p, err := h.loadHostPrefs(ctx, et.UserID); err != nil {
+		if p, err := h.loadHostPrefs(ctx, b.HostID); err != nil {
 			h.logger.Error("booking confirmation: load host prefs", "error", err, "booking_id", b.ID)
 		} else {
 			prefs = p
@@ -236,7 +264,7 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 		if err := h.webhookSvc.Enqueue(ctx, "booking.created", webhook.BookingPayload{
 			ID:            b.ID,
 			EventTypeSlug: req.EventTypeSlug,
-			HostID:        et.UserID,
+			HostID:        b.HostID,
 			StartAt:       b.StartAt.UTC().Format(time.RFC3339),
 			EndAt:         b.EndAt.UTC().Format(time.RFC3339),
 			Status:        b.Status,

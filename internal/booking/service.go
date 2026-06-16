@@ -44,23 +44,49 @@ func (s *Service) Create(ctx context.Context, p CreateParams) (*Booking, error) 
 	}
 	defer tx.Rollback() //nolint:errcheck
 
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+
 	// Two intervals [A,B) and [C,D) overlap when A < D and C < B.
 	const overlapQ = `
 		SELECT COUNT(*) FROM bookings
 		WHERE host_id = ? AND status != 'cancelled'
 		  AND start_at < ? AND end_at > ?`
 
-	for _, hostID := range p.HostIDs {
-		var n int
-		if err := tx.QueryRowContext(ctx, overlapQ, hostID, endStr, startStr).Scan(&n); err != nil {
-			return nil, fmt.Errorf("booking: overlap check: %w", err)
+	// Select the host. Round-robin picks the least-loaded *free* candidate (even
+	// distribution; the slice order — priority — breaks ties). Any other mode
+	// requires every candidate to be free and uses the first as the host.
+	var chosenHost string
+	if p.RoutingMode == "round_robin" {
+		var free []string
+		for _, hostID := range p.HostIDs {
+			var n int
+			if err := tx.QueryRowContext(ctx, overlapQ, hostID, endStr, startStr).Scan(&n); err != nil {
+				return nil, fmt.Errorf("booking: overlap check: %w", err)
+			}
+			if n == 0 {
+				free = append(free, hostID)
+			}
 		}
-		if n > 0 {
+		if len(free) == 0 {
 			return nil, ErrDoubleBooked
 		}
+		chosen, err := leastLoadedHost(ctx, tx, p.EventTypeID, free, now)
+		if err != nil {
+			return nil, err
+		}
+		chosenHost = chosen
+	} else {
+		for _, hostID := range p.HostIDs {
+			var n int
+			if err := tx.QueryRowContext(ctx, overlapQ, hostID, endStr, startStr).Scan(&n); err != nil {
+				return nil, fmt.Errorf("booking: overlap check: %w", err)
+			}
+			if n > 0 {
+				return nil, ErrDoubleBooked
+			}
+		}
+		chosenHost = p.HostIDs[0]
 	}
-
-	now := time.Now().UTC().Format(time.RFC3339Nano)
 
 	// Enforce the per-invitee active-booking cap (0 = unlimited). "Active" means a
 	// non-cancelled booking for this event type, held by the same email, that has
@@ -87,7 +113,7 @@ func (s *Service) Create(ctx context.Context, p CreateParams) (*Booking, error) 
 		INSERT INTO bookings
 		  (id, event_type_id, host_id, start_at, end_at, status, location_value, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, 'confirmed', ?, ?, ?)`,
-		bookingID, p.EventTypeID, p.HostIDs[0], startStr, endStr, p.LocationValue, now, now)
+		bookingID, p.EventTypeID, chosenHost, startStr, endStr, p.LocationValue, now, now)
 	if err != nil {
 		if isUniqueViolation(err) {
 			return nil, ErrDoubleBooked
@@ -125,7 +151,7 @@ func (s *Service) Create(ctx context.Context, p CreateParams) (*Booking, error) 
 	return &Booking{
 		ID:            bookingID,
 		EventTypeID:   p.EventTypeID,
-		HostID:        p.HostIDs[0],
+		HostID:        chosenHost,
 		StartAt:       p.StartAt.UTC(),
 		EndAt:         p.EndAt.UTC(),
 		Status:        "confirmed",
@@ -269,6 +295,49 @@ func (s *Service) ValidateManageToken(ctx context.Context, rawToken string) (*Bo
 		return nil, fmt.Errorf("booking: validate token: %w", err)
 	}
 	return s.Get(ctx, bookingID)
+}
+
+// leastLoadedHost returns the candidate with the fewest upcoming (non-cancelled,
+// not-yet-ended) bookings for this event type — even-distribution round-robin.
+// Ties are broken by the order of candidates (caller passes them in priority order).
+func leastLoadedHost(ctx context.Context, tx *sql.Tx, eventTypeID string, candidates []string, now string) (string, error) {
+	ph := make([]string, len(candidates))
+	args := make([]any, 0, len(candidates)+2)
+	args = append(args, eventTypeID, now)
+	for i, c := range candidates {
+		ph[i] = "?"
+		args = append(args, c)
+	}
+	rows, err := tx.QueryContext(ctx, `
+		SELECT host_id, COUNT(*) FROM bookings
+		WHERE event_type_id = ? AND status != 'cancelled' AND end_at > ?
+		  AND host_id IN (`+strings.Join(ph, ",")+`)
+		GROUP BY host_id`, args...)
+	if err != nil {
+		return "", fmt.Errorf("booking: load host loads: %w", err)
+	}
+	defer rows.Close()
+	counts := make(map[string]int)
+	for rows.Next() {
+		var hid string
+		var n int
+		if err := rows.Scan(&hid, &n); err != nil {
+			return "", err
+		}
+		counts[hid] = n
+	}
+	if err := rows.Err(); err != nil {
+		return "", err
+	}
+	best := candidates[0]
+	bestN := counts[best]
+	for _, c := range candidates[1:] {
+		if counts[c] < bestN {
+			bestN = counts[c]
+			best = c
+		}
+	}
+	return best, nil
 }
 
 // Reschedule moves a booking to a new start/end time inside a transaction.
