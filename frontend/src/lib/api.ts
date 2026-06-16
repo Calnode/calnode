@@ -8,6 +8,8 @@ export type User = {
 	date_format: 'dmy' | 'mdy' | 'ymd';
 	avatar_url?: string;
 	is_admin: boolean;
+	is_owner: boolean;
+	role: 'owner' | 'admin' | 'member';
 	notify_confirmation: boolean;
 	notify_cancellation: boolean;
 	notify_reschedule: boolean;
@@ -106,10 +108,24 @@ export type TeamMember = {
 	name: string;
 	timezone: string;
 	is_admin: boolean;
+	is_owner: boolean;
+	role: 'owner' | 'admin' | 'member';
 	email_login: boolean;
 	provider?: string;
 	avatar_url?: string;
 	created_at: string;
+	archived: boolean;
+	archived_at?: string;
+};
+
+export type UpcomingBooking = {
+	id: string;
+	start_at: string;
+	end_at: string;
+	event_type_name: string;
+	event_type_slug: string;
+	attendee_name: string;
+	attendee_email: string;
 };
 
 export type Invite = {

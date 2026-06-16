@@ -365,7 +365,15 @@ func (h *Handler) CancelBooking(w http.ResponseWriter, r *http.Request) {
 	// Ignore decode errors — reason is optional.
 	_ = json.NewDecoder(r.Body).Decode(&req)
 
-	if err := h.bookingSvc.Cancel(r.Context(), user.ID, id, req.Reason); err != nil {
+	// Admins (and the owner) may cancel any booking — needed to resolve a
+	// departing member's meetings. Non-admin hosts can cancel only their own.
+	var cancelErr error
+	if user.IsAdmin {
+		cancelErr = h.bookingSvc.CancelByID(r.Context(), id, req.Reason)
+	} else {
+		cancelErr = h.bookingSvc.Cancel(r.Context(), user.ID, id, req.Reason)
+	}
+	if err := cancelErr; err != nil {
 		switch {
 		case errors.Is(err, booking.ErrNotFound):
 			h.writeError(w, http.StatusNotFound, "booking not found")

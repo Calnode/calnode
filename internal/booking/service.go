@@ -167,6 +167,33 @@ func (s *Service) Cancel(ctx context.Context, hostID, id, reason string) error {
 	return nil
 }
 
+// CancelByID cancels a booking regardless of host — for admin actions such as
+// resolving a departing member's meetings during archiving. Ownership is
+// enforced by the caller (admin check in the handler), not here.
+func (s *Service) CancelByID(ctx context.Context, id, reason string) error {
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	res, err := s.db.ExecContext(ctx, `
+		UPDATE bookings
+		SET status = 'cancelled', cancellation_reason = ?, updated_at = ?
+		WHERE id = ? AND status != 'cancelled'`,
+		reason, now, id)
+	if err != nil {
+		return fmt.Errorf("booking: cancel by id: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		var exists int
+		if err := s.db.QueryRowContext(ctx,
+			`SELECT COUNT(*) FROM bookings WHERE id = ?`, id).Scan(&exists); err != nil {
+			return fmt.Errorf("booking: cancel by id existence check: %w", err)
+		}
+		if exists == 0 {
+			return ErrNotFound
+		}
+		return ErrAlreadyCancelled
+	}
+	return nil
+}
+
 // Get returns a single booking by ID.
 func (s *Service) Get(ctx context.Context, id string) (*Booking, error) {
 	row := s.db.QueryRowContext(ctx, `
