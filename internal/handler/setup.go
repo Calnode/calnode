@@ -70,9 +70,10 @@ func (h *Handler) Setup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The first user is the workspace owner (and therefore an admin).
 	if _, err := tx.ExecContext(r.Context(), `
-		INSERT INTO users (id, email, name, iana_timezone, is_admin)
-		VALUES (?, ?, ?, ?, 1)`,
+		INSERT INTO users (id, email, name, iana_timezone, is_admin, is_owner)
+		VALUES (?, ?, ?, ?, 1, 1)`,
 		userID, req.Email, req.Name, req.Timezone); err != nil {
 		h.logger.ErrorContext(r.Context(), "setup: insert user", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal error")
@@ -111,6 +112,8 @@ func (h *Handler) GetMe(w http.ResponseWriter, r *http.Request) {
 		"week_start":  user.WeekStart,
 		"date_format": user.DateFormat,
 		"is_admin":    user.IsAdmin,
+		"is_owner":    user.IsOwner,
+		"role":        user.Role(),
 		// Notification preferences
 		"notify_confirmation":    user.NotifyConfirmation,
 		"notify_cancellation":    user.NotifyCancellation,
@@ -252,6 +255,8 @@ func (h *Handler) PatchMe(w http.ResponseWriter, r *http.Request) {
 		"week_start":  current.WeekStart,
 		"date_format": current.DateFormat,
 		"is_admin":    user.IsAdmin,
+		"is_owner":    user.IsOwner,
+		"role":        user.Role(),
 		// Notification preferences
 		"notify_confirmation":    current.NotifyConfirmation,
 		"notify_cancellation":    current.NotifyCancellation,

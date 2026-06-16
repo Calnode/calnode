@@ -24,6 +24,7 @@ type AuthUser struct {
 	DateFormat string // "dmy", "mdy", or "ymd"
 	AvatarURL  string
 	IsAdmin    bool
+	IsOwner    bool
 
 	// Notification preferences (all default true).
 	NotifyConfirmation   bool
@@ -38,6 +39,19 @@ type AuthUser struct {
 func userFromContext(ctx context.Context) (AuthUser, bool) {
 	u, ok := ctx.Value(ctxKeyUser).(AuthUser)
 	return u, ok
+}
+
+// Role returns the workspace role string ("owner" | "admin" | "member")
+// derived from the is_owner / is_admin flags. Owner implies admin.
+func (u AuthUser) Role() string {
+	switch {
+	case u.IsOwner:
+		return "owner"
+	case u.IsAdmin:
+		return "admin"
+	default:
+		return "member"
+	}
 }
 
 // RequireAuth wraps a handler with authentication. It accepts either:
@@ -55,12 +69,12 @@ func (h *Handler) RequireAuth(next http.HandlerFunc) http.HandlerFunc {
 			var keyID string
 			var nc, nca, nr, nrm, nhb, nhc, nhr int
 			err := h.db.QueryRowContext(r.Context(), `
-				SELECT ak.id, u.id, u.email, u.name, u.iana_timezone, u.time_format, u.week_start, u.date_format, COALESCE(u.avatar_url,''), u.is_admin,
+				SELECT ak.id, u.id, u.email, u.name, u.iana_timezone, u.time_format, u.week_start, u.date_format, COALESCE(u.avatar_url,''), u.is_admin, u.is_owner,
 				       COALESCE(u.notify_confirmation,1), COALESCE(u.notify_cancellation,1), COALESCE(u.notify_reschedule,1), COALESCE(u.notify_reminder,1),
 				       COALESCE(u.notify_host_booking,1), COALESCE(u.notify_host_cancel,1), COALESCE(u.notify_host_reschedule,1)
 				FROM api_keys ak JOIN users u ON u.id = ak.user_id
 				WHERE ak.key_hash = ?`, hash).
-				Scan(&keyID, &user.ID, &user.Email, &user.Name, &user.IANATZ, &user.TimeFormat, &user.WeekStart, &user.DateFormat, &user.AvatarURL, &user.IsAdmin,
+				Scan(&keyID, &user.ID, &user.Email, &user.Name, &user.IANATZ, &user.TimeFormat, &user.WeekStart, &user.DateFormat, &user.AvatarURL, &user.IsAdmin, &user.IsOwner,
 					&nc, &nca, &nr, &nrm, &nhb, &nhc, &nhr)
 			user.NotifyConfirmation, user.NotifyCancellation, user.NotifyReschedule, user.NotifyReminder = nc != 0, nca != 0, nr != 0, nrm != 0
 			user.NotifyHostBooking, user.NotifyHostCancel, user.NotifyHostReschedule = nhb != 0, nhc != 0, nhr != 0
@@ -81,14 +95,14 @@ func (h *Handler) RequireAuth(next http.HandlerFunc) http.HandlerFunc {
 			var user AuthUser
 			var nc, nca, nr, nrm, nhb, nhc, nhr int
 			if err := h.db.QueryRowContext(r.Context(), `
-				SELECT u.id, u.email, u.name, u.iana_timezone, u.time_format, u.week_start, u.date_format, COALESCE(u.avatar_url,''), u.is_admin,
+				SELECT u.id, u.email, u.name, u.iana_timezone, u.time_format, u.week_start, u.date_format, COALESCE(u.avatar_url,''), u.is_admin, u.is_owner,
 				       COALESCE(u.notify_confirmation,1), COALESCE(u.notify_cancellation,1), COALESCE(u.notify_reschedule,1), COALESCE(u.notify_reminder,1),
 				       COALESCE(u.notify_host_booking,1), COALESCE(u.notify_host_cancel,1), COALESCE(u.notify_host_reschedule,1)
 				FROM sessions s
 				JOIN users u ON u.id = s.user_id
 				WHERE s.id = ? AND s.expires_at > ?`,
 				cookie.Value, now).
-				Scan(&user.ID, &user.Email, &user.Name, &user.IANATZ, &user.TimeFormat, &user.WeekStart, &user.DateFormat, &user.AvatarURL, &user.IsAdmin,
+				Scan(&user.ID, &user.Email, &user.Name, &user.IANATZ, &user.TimeFormat, &user.WeekStart, &user.DateFormat, &user.AvatarURL, &user.IsAdmin, &user.IsOwner,
 					&nc, &nca, &nr, &nrm, &nhb, &nhc, &nhr); err == nil {
 				user.NotifyConfirmation, user.NotifyCancellation, user.NotifyReschedule, user.NotifyReminder = nc != 0, nca != 0, nr != 0, nrm != 0
 				user.NotifyHostBooking, user.NotifyHostCancel, user.NotifyHostReschedule = nhb != 0, nhc != 0, nhr != 0
