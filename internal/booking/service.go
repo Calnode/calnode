@@ -61,6 +61,26 @@ func (s *Service) Create(ctx context.Context, p CreateParams) (*Booking, error) 
 	}
 
 	now := time.Now().UTC().Format(time.RFC3339Nano)
+
+	// Enforce the per-invitee active-booking cap (0 = unlimited). "Active" means a
+	// non-cancelled booking for this event type, held by the same email, that has
+	// not yet ended — past bookings don't count. Checked inside the transaction so
+	// two simultaneous submissions by the same invitee can't both slip past.
+	if p.MaxActivePerInvitee > 0 {
+		var active int
+		if err := tx.QueryRowContext(ctx, `
+			SELECT COUNT(*) FROM bookings b
+			JOIN booking_attendees a ON a.booking_id = b.id AND a.is_organizer = 1
+			WHERE b.event_type_id = ? AND b.status != 'cancelled'
+			  AND b.end_at > ? AND a.email = ? COLLATE NOCASE`,
+			p.EventTypeID, now, p.Organizer.Email).Scan(&active); err != nil {
+			return nil, fmt.Errorf("booking: active-limit check: %w", err)
+		}
+		if active >= p.MaxActivePerInvitee {
+			return nil, ErrBookingLimitReached
+		}
+	}
+
 	bookingID := uid.New()
 
 	_, err = tx.ExecContext(ctx, `

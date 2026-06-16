@@ -5,6 +5,7 @@
 # Project docs (kept local)
 /docs
 *.exe
+*.exe~
 
 # Build output
 dist/

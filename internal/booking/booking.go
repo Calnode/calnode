@@ -6,10 +6,11 @@ import (
 )
 
 var (
-	ErrDoubleBooked     = errors.New("booking: time slot is no longer available")
-	ErrNotFound         = errors.New("booking: not found")
-	ErrAlreadyCancelled = errors.New("booking: already cancelled")
-	ErrTokenNotFound    = errors.New("booking: manage token not found or expired")
+	ErrDoubleBooked        = errors.New("booking: time slot is no longer available")
+	ErrNotFound            = errors.New("booking: not found")
+	ErrAlreadyCancelled    = errors.New("booking: already cancelled")
+	ErrTokenNotFound       = errors.New("booking: manage token not found or expired")
+	ErrBookingLimitReached = errors.New("booking: active booking limit reached for this invitee")
 )
 
 // Booking is a confirmed or cancelled appointment.
@@ -50,4 +51,7 @@ type CreateParams struct {
 	LocationValue string
 	Organizer     Attendee
 	Answers       []Answer
+	// MaxActivePerInvitee caps how many active (upcoming, non-cancelled) bookings
+	// the organizer's email may already hold for this event type. 0 = unlimited.
+	MaxActivePerInvitee int
 }

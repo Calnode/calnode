@@ -31,6 +31,7 @@ export type EventType = {
 	buffer_after_minutes: number;
 	min_notice_minutes: number;
 	max_future_days: number;
+	max_active_bookings: number;
 	created_at: string;
 	msg_confirmation?: string;
 	msg_cancellation?: string;

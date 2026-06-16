@@ -92,17 +92,18 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 
 	// Look up the event type.
 	var et struct {
-		ID              string
-		UserID          string
-		Name            string
-		DurationMinutes int
-		LocationValue   *string
-		IsActive        int
+		ID                string
+		UserID            string
+		Name              string
+		DurationMinutes   int
+		LocationValue     *string
+		IsActive          int
+		MaxActiveBookings int
 	}
 	err = h.db.QueryRowContext(r.Context(), `
-		SELECT id, user_id, name, duration_minutes, location_value, is_active
+		SELECT id, user_id, name, duration_minutes, location_value, is_active, max_active_bookings
 		FROM event_types WHERE slug = ?`, req.EventTypeSlug).
-		Scan(&et.ID, &et.UserID, &et.Name, &et.DurationMinutes, &et.LocationValue, &et.IsActive)
+		Scan(&et.ID, &et.UserID, &et.Name, &et.DurationMinutes, &et.LocationValue, &et.IsActive, &et.MaxActiveBookings)
 	if err != nil {
 		h.writeError(w, http.StatusNotFound, "event type not found")
 		return
@@ -136,11 +137,19 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 			Email:        req.Email,
 			IANATimezone: req.Timezone,
 		},
-		Answers: answers,
+		Answers:             answers,
+		MaxActivePerInvitee: et.MaxActiveBookings,
 	})
 	if err != nil {
 		if errors.Is(err, booking.ErrDoubleBooked) {
 			h.writeError(w, http.StatusConflict, "this slot is no longer available")
+			return
+		}
+		// Not 409 — the booking page treats 409 as "slot taken". Use 422 so its
+		// generic error branch surfaces this message verbatim to the invitee.
+		if errors.Is(err, booking.ErrBookingLimitReached) {
+			h.writeError(w, http.StatusUnprocessableEntity,
+				"You already have the maximum number of upcoming bookings for this event. Please cancel an existing booking or wait until one has passed before booking again.")
 			return
 		}
 		// A question was deleted between validateAnswers and the INSERT — return a

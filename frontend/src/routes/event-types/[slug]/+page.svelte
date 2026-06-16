@@ -40,6 +40,7 @@
 		location_type: 'link', location_value: '',
 		buffer_before_minutes: 0, buffer_after_minutes: 0,
 		min_notice_minutes: 0, max_future_days: 60,
+		max_active_bookings: 1,
 	});
 
 	// Notification / messaging state
@@ -87,6 +88,7 @@
 				buffer_after_minutes: et.buffer_after_minutes,
 				min_notice_minutes: et.min_notice_minutes,
 				max_future_days: et.max_future_days,
+				max_active_bookings: et.max_active_bookings,
 			};
 			reminders = et.reminders ?? [];
 			msg_confirmation = et.msg_confirmation ?? '';
@@ -103,6 +105,7 @@
 	async function saveET() {
 		if (!form.name.trim()) { toast.error('Name is required.'); return; }
 		if (form.duration_minutes < 5) { toast.error('Duration must be at least 5 minutes.'); return; }
+		if (form.max_active_bookings < 0) { toast.error('Max active bookings cannot be negative (0 = unlimited).'); return; }
 		etSaving = true;
 		try {
 			await api.patch(`/v1/event-types/${slug}`, {
@@ -117,6 +120,7 @@
 				buffer_after_minutes: Number(form.buffer_after_minutes),
 				min_notice_minutes: Number(form.min_notice_minutes),
 				max_future_days: Number(form.max_future_days),
+				max_active_bookings: Number(form.max_active_bookings),
 				reminders,
 				msg_confirmation: msg_confirmation.trim() || null,
 				msg_cancellation: msg_cancellation.trim() || null,
@@ -361,6 +365,11 @@
 					<Label for="et-future">Booking window (days)</Label>
 					<Input id="et-future" type="number" min="0" bind:value={form.max_future_days} />
 					<p class="text-xs text-muted-foreground">How far ahead people can book. 0 = unlimited</p>
+				</div>
+				<div class="space-y-1.5">
+					<Label for="et-max-active">Max active bookings per person</Label>
+					<Input id="et-max-active" type="number" min="0" bind:value={form.max_active_bookings} />
+					<p class="text-xs text-muted-foreground">Upcoming bookings one attendee (by email) can hold. 0 = unlimited</p>
 				</div>
 			</div>
 		</div>

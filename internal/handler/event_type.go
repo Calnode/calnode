@@ -31,6 +31,7 @@ type eventTypeJSON struct {
 	BufferAfterMinutes  int      `json:"buffer_after_minutes"`
 	MinNoticeMinutes    int      `json:"min_notice_minutes"`
 	MaxFutureDays       int      `json:"max_future_days"`
+	MaxActiveBookings   int      `json:"max_active_bookings"`
 	IsActive            bool     `json:"is_active"`
 	IsPublic            bool     `json:"is_public"`
 	CreatedAt           string   `json:"created_at"`
@@ -56,7 +57,7 @@ func scanEventType(s rowScanner) (*eventTypeJSON, error) {
 		&et.LocationType, &locVal,
 		&et.RoutingMode,
 		&et.BufferBeforeMinutes, &et.BufferAfterMinutes,
-		&et.MinNoticeMinutes, &et.MaxFutureDays,
+		&et.MinNoticeMinutes, &et.MaxFutureDays, &et.MaxActiveBookings,
 		&isActive, &isPublic, &et.CreatedAt,
 		&msgConf, &msgCancel, &msgResched, &msgRemind,
 	)
@@ -95,7 +96,7 @@ const selectETCols = `SELECT id, slug, name, description,
 	location_type, location_value,
 	routing_mode,
 	buffer_before_minutes, buffer_after_minutes,
-	min_notice_minutes, max_future_days,
+	min_notice_minutes, max_future_days, max_active_bookings,
 	is_active, is_public, created_at,
 	msg_confirmation, msg_cancellation, msg_reschedule, msg_reminder
 FROM event_types`
@@ -139,6 +140,7 @@ func (h *Handler) CreateEventType(w http.ResponseWriter, r *http.Request) {
 		BufferAfterMinutes  *int    `json:"buffer_after_minutes"`
 		MinNoticeMinutes    *int    `json:"min_notice_minutes"`
 		MaxFutureDays       *int    `json:"max_future_days"`
+		MaxActiveBookings   *int    `json:"max_active_bookings"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.writeError(w, http.StatusBadRequest, "invalid JSON")
@@ -146,6 +148,10 @@ func (h *Handler) CreateEventType(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Slug == "" || req.Name == "" {
 		h.writeError(w, http.StatusBadRequest, "slug and name are required")
+		return
+	}
+	if req.MaxActiveBookings != nil && *req.MaxActiveBookings < 0 {
+		h.writeError(w, http.StatusBadRequest, "max_active_bookings cannot be negative (0 = unlimited)")
 		return
 	}
 	if req.DurationMinutes <= 0 {
@@ -178,6 +184,10 @@ func (h *Handler) CreateEventType(w http.ResponseWriter, r *http.Request) {
 	if req.MaxFutureDays != nil {
 		maxFuture = *req.MaxFutureDays
 	}
+	maxActive := 1
+	if req.MaxActiveBookings != nil {
+		maxActive = *req.MaxActiveBookings
+	}
 
 	id := uid.New()
 	_, err := h.db.ExecContext(r.Context(), `
@@ -185,12 +195,12 @@ func (h *Handler) CreateEventType(w http.ResponseWriter, r *http.Request) {
 		  (id, user_id, slug, name, description, duration_minutes,
 		   slot_interval_minutes, location_type, location_value,
 		   routing_mode, buffer_before_minutes, buffer_after_minutes,
-		   min_notice_minutes, max_future_days,
+		   min_notice_minutes, max_future_days, max_active_bookings,
 		   msg_confirmation, msg_cancellation, msg_reschedule, msg_reminder)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		id, user.ID, req.Slug, req.Name, req.Description,
 		req.DurationMinutes, slotInterval, locType, req.LocationValue,
-		routingMode, bufBefore, bufAfter, minNotice, maxFuture,
+		routingMode, bufBefore, bufAfter, minNotice, maxFuture, maxActive,
 		defaultMsgConfirmation, defaultMsgCancellation, defaultMsgReschedule, defaultMsgReminder)
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE constraint failed") {
@@ -290,6 +300,7 @@ func (h *Handler) PatchEventType(w http.ResponseWriter, r *http.Request) {
 		BufferAfterMinutes  *int     `json:"buffer_after_minutes"`
 		MinNoticeMinutes    *int     `json:"min_notice_minutes"`
 		MaxFutureDays       *int     `json:"max_future_days"`
+		MaxActiveBookings   *int     `json:"max_active_bookings"`
 		IsActive            *bool    `json:"is_active"`
 		IsPublic            *bool    `json:"is_public"`
 		MsgConfirmation     *string  `json:"msg_confirmation"`
@@ -364,6 +375,13 @@ func (h *Handler) PatchEventType(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.MaxFutureDays != nil {
 		set("max_future_days", *req.MaxFutureDays)
+	}
+	if req.MaxActiveBookings != nil {
+		if *req.MaxActiveBookings < 0 {
+			h.writeError(w, http.StatusBadRequest, "max_active_bookings cannot be negative (0 = unlimited)")
+			return
+		}
+		set("max_active_bookings", *req.MaxActiveBookings)
 	}
 	if req.IsActive != nil {
 		v := 0

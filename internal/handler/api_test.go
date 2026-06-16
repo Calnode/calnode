@@ -57,7 +57,10 @@ func authReq(method, path, body, apiKey string) *http.Request {
 func seedEventTypeHTTP(t *testing.T, h *handler.Handler, apiKey string) (slug, id string) {
 	t.Helper()
 	slug = "test-meeting-" + uid.New()[:8]
-	body := fmt.Sprintf(`{"slug":%q,"name":"Test Meeting","duration_minutes":30}`, slug)
+	// max_active_bookings:0 = unlimited, so the many tests that create several
+	// bookings for one invitee aren't tripped by the per-invitee cap (default 1).
+	// The cap has its own dedicated test.
+	body := fmt.Sprintf(`{"slug":%q,"name":"Test Meeting","duration_minutes":30,"max_active_bookings":0}`, slug)
 	req := authReq(http.MethodPost, "/v1/event-types", body, apiKey)
 	rec := httptest.NewRecorder()
 	h.RequireAuth(h.CreateEventType)(rec, req)
