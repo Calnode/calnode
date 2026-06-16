@@ -255,34 +255,6 @@ func (s *Service) ListByHost(ctx context.Context, hostID string) ([]Booking, err
 	return out, rows.Err()
 }
 
-// ListVisible returns the non-cancelled bookings a viewer should see: ones they
-// host, plus ones on an event type they own (so the owner of a round-robin event
-// sees bookings routed to other team members). Members never see bookings they
-// are neither a host of nor the owner of the event type for.
-func (s *Service) ListVisible(ctx context.Context, viewerID string) ([]Booking, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT b.id, b.event_type_id, b.host_id, b.start_at, b.end_at, b.status,
-		       COALESCE(b.cancellation_reason, ''), COALESCE(b.location_value, ''),
-		       b.created_at, b.updated_at
-		FROM bookings b JOIN event_types et ON et.id = b.event_type_id
-		WHERE b.status != 'cancelled' AND (b.host_id = ? OR et.user_id = ?)
-		ORDER BY b.start_at`, viewerID, viewerID)
-	if err != nil {
-		return nil, fmt.Errorf("booking: list visible: %w", err)
-	}
-	defer rows.Close()
-
-	var out []Booking
-	for rows.Next() {
-		b, err := scanBooking(rows)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, *b)
-	}
-	return out, rows.Err()
-}
-
 // IssueManageToken generates a cryptographically random manage token for a
 // booking, stores its SHA-256 hash in booking_manage_tokens, and returns the
 // raw hex token (shown once, embedded in emails). Tokens expire in 60 days.

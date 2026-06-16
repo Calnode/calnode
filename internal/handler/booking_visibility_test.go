@@ -7,17 +7,20 @@ import (
 	"testing"
 )
 
-// TestListBookings_showsBookingsRoutedToOtherHosts covers the dashboard-visibility
-// fix: a booking on an event type the viewer owns but hosted by ANOTHER member
-// (e.g. a round-robin assignment) must still appear in the viewer's list.
-func TestListBookings_showsBookingsRoutedToOtherHosts(t *testing.T) {
-	h, database, key, _ := setupWorkspaceWithDB(t)
+// TestListBookings_hostOnly locks in strict host-only visibility: a member sees
+// only the bookings they are the assigned host of. Even the owner of the event
+// type does NOT see a booking routed to another team member (round-robin), and
+// does see one routed to themselves.
+func TestListBookings_hostOnly(t *testing.T) {
+	h, database, key, ownerID := setupWorkspaceWithDB(t)
 	database.Exec(`INSERT INTO users (id,email,name,iana_timezone,is_admin) VALUES ('u2','u2@example.com','Two','UTC',0)`)
-	slug, etID := seedEventTypeHTTP(t, h, key)
-	_ = slug
-	// A confirmed booking on this event type, hosted by u2 (not the owner/viewer).
+	_, etID := seedEventTypeHTTP(t, h, key) // owned by the setup user (the viewer)
+
+	// One booking hosted by another member, one hosted by the viewer.
 	database.Exec(`INSERT INTO bookings (id,event_type_id,host_id,start_at,end_at,status)
-		VALUES ('b-other','`+etID+`','u2','2027-07-01T10:00:00Z','2027-07-01T10:30:00Z','confirmed')`)
+		VALUES ('b-other','` + etID + `','u2','2027-07-01T10:00:00Z','2027-07-01T10:30:00Z','confirmed')`)
+	database.Exec(`INSERT INTO bookings (id,event_type_id,host_id,start_at,end_at,status)
+		VALUES ('b-mine','` + etID + `','` + ownerID + `','2027-07-01T12:00:00Z','2027-07-01T12:30:00Z','confirmed')`)
 
 	req := authReq(http.MethodGet, "/v1/bookings", "", key)
 	rec := httptest.NewRecorder()
@@ -31,13 +34,15 @@ func TestListBookings_showsBookingsRoutedToOtherHosts(t *testing.T) {
 		} `json:"items"`
 	}
 	json.Unmarshal(rec.Body.Bytes(), &resp)
-	var found bool
+
+	seen := map[string]bool{}
 	for _, it := range resp.Items {
-		if it.ID == "b-other" {
-			found = true
-		}
+		seen[it.ID] = true
 	}
-	if !found {
-		t.Error("a booking hosted by another team member on the viewer's event type should appear in the dashboard")
+	if !seen["b-mine"] {
+		t.Error("the viewer should see the booking they host")
+	}
+	if seen["b-other"] {
+		t.Error("the viewer should NOT see a booking hosted by another member, even on their own event type")
 	}
 }
