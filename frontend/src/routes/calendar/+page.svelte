@@ -4,12 +4,14 @@
 	import { api, type CalendarStatus } from '$lib/api';
 	import { Button } from '$lib/components/ui/button';
 	import { Badge } from '$lib/components/ui/badge';
+	import { ConfirmDialog } from '$lib/components/ui/confirm-dialog';
 
 	let status: CalendarStatus | null = $state(null);
 	let loading = $state(true);
 	let error = $state('');
 	let disconnecting = $state(false);
 	let justConnected = $state(false);
+	let disconnectOpen = $state(false);
 
 	async function load() {
 		try {
@@ -26,8 +28,11 @@
 		load();
 	});
 
-	async function disconnect() {
-		if (!confirm('Disconnect Google Calendar? Calnode will stop checking for conflicts.')) return;
+	function disconnect() {
+		disconnectOpen = true;
+	}
+
+	async function doDisconnect() {
 		disconnecting = true;
 		try {
 			await api.del('/v1/calendar');
@@ -39,6 +44,15 @@
 		}
 	}
 </script>
+
+<ConfirmDialog
+	bind:open={disconnectOpen}
+	title="Disconnect Google Calendar?"
+	description="Calnode will stop checking for conflicts and new bookings won't be added to your calendar."
+	confirmText="Disconnect"
+	destructive
+	onConfirm={doDisconnect}
+/>
 
 <svelte:head><title>Calendar — Calnode</title></svelte:head>
 

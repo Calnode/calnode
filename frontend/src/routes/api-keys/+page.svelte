@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { api, type APIKey } from '$lib/api';
 	import { Button, buttonVariants } from '$lib/components/ui/button';
+	import { ConfirmDialog } from '$lib/components/ui/confirm-dialog';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
 	import * as Tooltip from '$lib/components/ui/tooltip';
@@ -14,6 +15,8 @@
 	let creating = $state(false);
 	let createError = $state('');
 	let newKey = $state('');
+	let revokeOpen = $state(false);
+	let revokeTarget = $state<{ id: string; name: string } | null>(null);
 
 	async function load() {
 		try {
@@ -45,10 +48,15 @@
 		}
 	}
 
-	async function revoke(id: string, name: string) {
-		if (!confirm(`Revoke key "${name}"? Any integrations using it will stop working.`)) return;
+	function revoke(id: string, name: string) {
+		revokeTarget = { id, name };
+		revokeOpen = true;
+	}
+
+	async function doRevoke() {
+		if (!revokeTarget) return;
 		try {
-			await api.del(`/v1/api-keys/${id}`);
+			await api.del(`/v1/api-keys/${revokeTarget.id}`);
 			await load();
 		} catch (e: any) {
 			error = e.message;
@@ -63,6 +71,15 @@
 		navigator.clipboard.writeText(newKey).catch(() => {});
 	}
 </script>
+
+<ConfirmDialog
+	bind:open={revokeOpen}
+	title="Revoke API key?"
+	description={revokeTarget ? `Revoke "${revokeTarget.name}"? Any integrations using it will stop working immediately.` : ''}
+	confirmText="Revoke"
+	destructive
+	onConfirm={doRevoke}
+/>
 
 <svelte:head><title>API Keys — Calnode</title></svelte:head>
 

@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { api, type Webhook } from '$lib/api';
 	import { Button, buttonVariants } from '$lib/components/ui/button';
+	import { ConfirmDialog } from '$lib/components/ui/confirm-dialog';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
 	import { Checkbox } from '$lib/components/ui/checkbox';
@@ -18,6 +19,8 @@
 	let form = $state({ url: '', events: ['booking.created', 'booking.cancelled'] });
 	let creating = $state(false);
 	let createError = $state('');
+	let deleteOpen = $state(false);
+	let deleteId = $state('');
 
 	async function load() {
 		try {
@@ -50,10 +53,14 @@
 		}
 	}
 
-	async function del(id: string) {
-		if (!confirm('Delete this webhook?')) return;
+	function del(id: string) {
+		deleteId = id;
+		deleteOpen = true;
+	}
+
+	async function doDelete() {
 		try {
-			await api.del(`/v1/webhooks/${id}`);
+			await api.del(`/v1/webhooks/${deleteId}`);
 			await load();
 		} catch (e: any) {
 			error = e.message;
@@ -72,6 +79,15 @@
 		}
 	}
 </script>
+
+<ConfirmDialog
+	bind:open={deleteOpen}
+	title="Delete webhook?"
+	description="The endpoint will stop receiving events immediately."
+	confirmText="Delete"
+	destructive
+	onConfirm={doDelete}
+/>
 
 <svelte:head><title>Webhooks — Calnode</title></svelte:head>
 

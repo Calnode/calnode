@@ -3,6 +3,7 @@
 	import { api, type AvailabilityRule, type AvailabilityOverride } from '$lib/api';
 	import { prefs, fmtDate } from '$lib/prefs';
 	import { Button, buttonVariants } from '$lib/components/ui/button';
+	import { ConfirmDialog } from '$lib/components/ui/confirm-dialog';
 	import { Badge } from '$lib/components/ui/badge';
 	import * as Tooltip from '$lib/components/ui/tooltip';
 	import { DatePicker } from '$lib/components/ui/date-picker';
@@ -131,6 +132,8 @@
 	let ovAddError = $state('');
 
 	let editingOvId: string | null = $state(null);
+	let deleteOvOpen = $state(false);
+	let deleteOvId = $state('');
 	let editOvForm = $state({ reason: 'day_off' as OverrideReason, start_time: '09:00', end_time: '17:00' });
 	let savingOv = $state(false);
 	let ovSaveError = $state('');
@@ -208,10 +211,14 @@
 		}
 	}
 
-	async function deleteOverride(id: string) {
-		if (!confirm('Remove this date override?')) return;
+	function deleteOverride(id: string) {
+		deleteOvId = id;
+		deleteOvOpen = true;
+	}
+
+	async function doDeleteOverride() {
 		try {
-			await api.del(`/v1/availability-overrides/${id}`);
+			await api.del(`/v1/availability-overrides/${deleteOvId}`);
 			await loadOverrides();
 		} catch (e: any) {
 			overridesError = e.message;
@@ -226,6 +233,15 @@
 	const selectCls = 'flex h-8 rounded-md border border-input bg-background px-2 py-1 text-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring';
 	const selectFullCls = 'flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring';
 </script>
+
+<ConfirmDialog
+	bind:open={deleteOvOpen}
+	title="Remove date override?"
+	description="Your default weekly hours will apply to this date again."
+	confirmText="Remove"
+	destructive
+	onConfirm={doDeleteOverride}
+/>
 
 <svelte:head><title>Availability — Calnode</title></svelte:head>
 

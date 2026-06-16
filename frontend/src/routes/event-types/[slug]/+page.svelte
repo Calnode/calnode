@@ -4,6 +4,7 @@
 	import { base } from '$app/paths';
 	import { api, type EventType, type Question } from '$lib/api';
 	import { Button, buttonVariants } from '$lib/components/ui/button';
+	import { ConfirmDialog } from '$lib/components/ui/confirm-dialog';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
 	import { Checkbox } from '$lib/components/ui/checkbox';
@@ -186,6 +187,8 @@
 	let qAdding = $state(false);
 
 	let editingQId: string | null = $state(null);
+	let deleteQOpen = $state(false);
+	let pendingQ = $state<Question | null>(null);
 	let editQForm = $state({ label: '', type: 'text' as 'text'|'select'|'checkbox', options: '', required: false });
 	let qSaving = $state(false);
 
@@ -255,10 +258,15 @@
 		}
 	}
 
-	async function deleteQuestion(q: Question) {
-		if (!confirm(`Remove question "${q.label}"?`)) return;
+	function deleteQuestion(q: Question) {
+		pendingQ = q;
+		deleteQOpen = true;
+	}
+
+	async function doDeleteQuestion() {
+		if (!pendingQ) return;
 		try {
-			await api.del(`/v1/event-types/${slug}/questions/${q.id}`);
+			await api.del(`/v1/event-types/${slug}/questions/${pendingQ.id}`);
 			await loadQuestions();
 		} catch (e: any) {
 			toast.error(e.message || 'Could not delete question');
@@ -272,6 +280,15 @@
 
 	const selectCls = 'flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring';
 </script>
+
+<ConfirmDialog
+	bind:open={deleteQOpen}
+	title="Remove question?"
+	description={pendingQ ? `"${pendingQ.label}" will be removed from this event type's booking form.` : ''}
+	confirmText="Remove"
+	destructive
+	onConfirm={doDeleteQuestion}
+/>
 
 <svelte:head><title>{et?.name ?? slug} — Event Type — Calnode</title></svelte:head>
 <svelte:window onkeydown={saveOnCmdS(saveET, () => !etSaving)} />

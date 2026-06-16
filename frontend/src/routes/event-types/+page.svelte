@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { api, type EventType } from '$lib/api';
 	import { Button, buttonVariants } from '$lib/components/ui/button';
+	import { ConfirmDialog } from '$lib/components/ui/confirm-dialog';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Switch } from '$lib/components/ui/switch';
 	import { Input } from '$lib/components/ui/input';
@@ -15,6 +16,8 @@
 
 	let form = $state({ slug: '', name: '', description: '', duration_minutes: 30 });
 	let creating = $state(false);
+	let deleteOpen = $state(false);
+	let deleteSlug = $state('');
 
 	async function load() {
 		try {
@@ -61,10 +64,14 @@
 		}
 	}
 
-	async function del(slug: string) {
-		if (!confirm('Delete this event type?')) return;
+	function del(slug: string) {
+		deleteSlug = slug;
+		deleteOpen = true;
+	}
+
+	async function doDelete() {
 		try {
-			await api.del(`/v1/event-types/${slug}`);
+			await api.del(`/v1/event-types/${deleteSlug}`);
 			await load();
 		} catch (e: any) {
 			toast.error(e.message || 'Could not delete event type');
@@ -75,6 +82,15 @@
 		return `${window.location.origin}/book/${slug}`;
 	}
 </script>
+
+<ConfirmDialog
+	bind:open={deleteOpen}
+	title="Delete event type?"
+	description="This will permanently remove the event type and its booking link. Existing bookings are not affected."
+	confirmText="Delete"
+	destructive
+	onConfirm={doDelete}
+/>
 
 <svelte:head><title>Event Types — Calnode</title></svelte:head>
 

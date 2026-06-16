@@ -3,6 +3,7 @@
 	import { api, type TeamMember, type Invite } from '$lib/api';
 	import { currentUser } from '$lib/stores';
 	import { Button } from '$lib/components/ui/button';
+	import { ConfirmDialog } from '$lib/components/ui/confirm-dialog';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
 	import { Badge } from '$lib/components/ui/badge';
@@ -19,6 +20,21 @@
 	let inviteError = $state('');
 	let inviteResult = $state<{ invite_url: string; email: string; email_sent: boolean; note: string } | null>(null);
 	let copied = $state(false);
+
+	// Confirm dialog
+	let confirmOpen = $state(false);
+	let confirmTitle = $state('');
+	let confirmDescription = $state('');
+	let confirmActionText = $state('Confirm');
+	let pendingAction: (() => void) | null = null;
+
+	function openConfirm(opts: { title: string; description: string; confirmText: string; action: () => void }) {
+		confirmTitle = opts.title;
+		confirmDescription = opts.description;
+		confirmActionText = opts.confirmText;
+		pendingAction = opts.action;
+		confirmOpen = true;
+	}
 
 	// Password reset — keyed by user id
 	let resetTarget = $state<string | null>(null);
@@ -64,24 +80,36 @@
 		}
 	}
 
-	async function revokeInvite(id: string) {
-		if (!confirm('Revoke this invite? The link will stop working immediately.')) return;
-		try {
-			await api.del(`/v1/invites/${id}`);
-			await load();
-		} catch (e: any) {
-			error = e.message;
-		}
+	function revokeInvite(id: string) {
+		openConfirm({
+			title: 'Revoke invite?',
+			description: 'The link will stop working immediately.',
+			confirmText: 'Revoke',
+			action: async () => {
+				try {
+					await api.del(`/v1/invites/${id}`);
+					await load();
+				} catch (e: any) {
+					error = e.message;
+				}
+			}
+		});
 	}
 
-	async function deleteUser(id: string, name: string) {
-		if (!confirm(`Remove ${name} from the team? This cannot be undone.`)) return;
-		try {
-			await api.del(`/v1/users/${id}`);
-			await load();
-		} catch (e: any) {
-			error = e.message;
-		}
+	function deleteUser(id: string, name: string) {
+		openConfirm({
+			title: `Remove ${name}?`,
+			description: 'They will lose access to the workspace immediately. This cannot be undone.',
+			confirmText: 'Remove',
+			action: async () => {
+				try {
+					await api.del(`/v1/users/${id}`);
+					await load();
+				} catch (e: any) {
+					error = e.message;
+				}
+			}
+		});
 	}
 
 	function startReset(id: string) {
@@ -143,6 +171,15 @@
 		return Math.max(0, Math.ceil(diff / 86_400_000));
 	}
 </script>
+
+<ConfirmDialog
+	bind:open={confirmOpen}
+	title={confirmTitle}
+	description={confirmDescription}
+	confirmText={confirmActionText}
+	destructive
+	onConfirm={() => pendingAction?.()}
+/>
 
 <svelte:head><title>Team — Calnode</title></svelte:head>
 
