@@ -48,11 +48,14 @@ func TestLoad_envOverrides(t *testing.T) {
 	}
 }
 
-func TestLoad_encryptionKeyGenerated(t *testing.T) {
+func TestLoad_encryptionKeyAbsent(t *testing.T) {
 	os.Unsetenv("CALNODE_ENCRYPTION_KEY")
 	cfg := config.Load()
-	if cfg.EncryptionKey == "" {
-		t.Error("EncryptionKey should be non-empty even when env var is unset")
+	// Config no longer auto-generates a key; the vault handles that at startup.
+	// An empty EncryptionKey is valid here — dev mode gets an ephemeral key,
+	// production fails fast inside keyvault.Open.
+	if cfg.EncryptionKey != "" {
+		t.Errorf("EncryptionKey should be empty when CALNODE_ENCRYPTION_KEY is unset; got %q", cfg.EncryptionKey)
 	}
 }
 

@@ -1,8 +1,6 @@
 package config
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"log/slog"
 	"os"
 	"strconv"
@@ -10,10 +8,11 @@ import (
 )
 
 type Config struct {
-	Port          string
-	DatabaseURL   string
-	EncryptionKey string // 32-byte hex-encoded AES-GCM key
-	BaseURL       string
+	Port           string
+	DatabaseURL    string
+	EncryptionKey  string // platform secret (KEK input); vault derives the real AES key
+	RecoverySecret string // CALNODE_RECOVERY_SECRET — escrow key stored in keystore
+	BaseURL        string
 	LogLevel      slog.Level
 
 	// Email / SMTP
@@ -56,36 +55,14 @@ func Load() *Config {
 		GoogleClientSecret: getEnv("GOOGLE_CLIENT_SECRET", ""),
 	}
 
-	cfg.EncryptionKey = loadEncryptionKey()
+	cfg.EncryptionKey = os.Getenv("CALNODE_ENCRYPTION_KEY")
+	cfg.RecoverySecret = os.Getenv("CALNODE_RECOVERY_SECRET")
 	cfg.LogLevel = parseLogLevel(getEnv("LOG_LEVEL", "info"))
 	cfg.CookieSecure = getBool("COOKIE_SECURE", strings.HasPrefix(cfg.BaseURL, "https://"))
 
 	return cfg
 }
 
-func loadEncryptionKey() string {
-	key := os.Getenv("CALNODE_ENCRYPTION_KEY")
-	if key != "" {
-		if len(key) != 64 {
-			slog.Error("CALNODE_ENCRYPTION_KEY must be exactly 64 hex characters (32 bytes)", "got_len", len(key))
-			os.Exit(1)
-		}
-		if _, err := hex.DecodeString(key); err != nil {
-			slog.Error("CALNODE_ENCRYPTION_KEY is not valid hex", "error", err)
-			os.Exit(1)
-		}
-		return key
-	}
-	// Last-resort fallback: ephemeral random key. In the normal startup path
-	// (cmd/calnode/main.go) the key is generated and saved to .env before this
-	// function runs, so this branch should only be reached in tests or if the
-	// binary is invoked in an unusual way.
-	b := make([]byte, 32)
-	_, _ = rand.Read(b)
-	ephemeral := hex.EncodeToString(b)
-	slog.Warn("CALNODE_ENCRYPTION_KEY not set — using an ephemeral key that will change on restart; any secrets stored in the database will become unreadable after a restart")
-	return ephemeral
-}
 
 func parseLogLevel(s string) slog.Level {
 	switch s {
