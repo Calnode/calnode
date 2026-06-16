@@ -27,6 +27,7 @@ type eventTypeJSON struct {
 	LocationType        string   `json:"location_type"`
 	LocationValue       *string  `json:"location_value"`
 	RoutingMode         string   `json:"routing_mode"`
+	RRStrategy          string   `json:"rr_strategy"`
 	BufferBeforeMinutes int      `json:"buffer_before_minutes"`
 	BufferAfterMinutes  int      `json:"buffer_after_minutes"`
 	MinNoticeMinutes    int      `json:"min_notice_minutes"`
@@ -55,7 +56,7 @@ func scanEventType(s rowScanner) (*eventTypeJSON, error) {
 		&et.ID, &et.Slug, &et.Name, &desc,
 		&et.DurationMinutes, &et.SlotIntervalMinutes,
 		&et.LocationType, &locVal,
-		&et.RoutingMode,
+		&et.RoutingMode, &et.RRStrategy,
 		&et.BufferBeforeMinutes, &et.BufferAfterMinutes,
 		&et.MinNoticeMinutes, &et.MaxFutureDays, &et.MaxActiveBookings,
 		&isActive, &isPublic, &et.CreatedAt,
@@ -94,7 +95,7 @@ func scanEventType(s rowScanner) (*eventTypeJSON, error) {
 const selectETCols = `SELECT id, slug, name, description,
 	duration_minutes, slot_interval_minutes,
 	location_type, location_value,
-	routing_mode,
+	routing_mode, rr_strategy,
 	buffer_before_minutes, buffer_after_minutes,
 	min_notice_minutes, max_future_days, max_active_bookings,
 	is_active, is_public, created_at,
@@ -190,7 +191,15 @@ func (h *Handler) CreateEventType(w http.ResponseWriter, r *http.Request) {
 	}
 
 	id := uid.New()
-	_, err := h.db.ExecContext(r.Context(), `
+	tx, err := h.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		h.logger.ErrorContext(r.Context(), "create event type: begin tx", "error", err)
+		h.writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	_, err = tx.ExecContext(r.Context(), `
 		INSERT INTO event_types
 		  (id, user_id, slug, name, description, duration_minutes,
 		   slot_interval_minutes, location_type, location_value,
@@ -212,6 +221,22 @@ func (h *Handler) CreateEventType(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		h.logger.ErrorContext(r.Context(), "create event type", "error", err)
+		h.writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	// Seed the owner as the single required host (Normal). Keeps host resolution
+	// uniform — every event type has at least one host from creation.
+	if _, err = tx.ExecContext(r.Context(), `
+		INSERT INTO event_type_hosts (id, event_type_id, user_id, role, priority)
+		VALUES (?, ?, ?, 'required', 0)`, uid.New(), id, user.ID); err != nil {
+		h.logger.ErrorContext(r.Context(), "create event type: seed host", "error", err)
+		h.writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	if err = tx.Commit(); err != nil {
+		h.logger.ErrorContext(r.Context(), "create event type: commit", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
@@ -296,6 +321,7 @@ func (h *Handler) PatchEventType(w http.ResponseWriter, r *http.Request) {
 		LocationType        *string  `json:"location_type"`
 		LocationValue       *string  `json:"location_value"`
 		RoutingMode         *string  `json:"routing_mode"`
+		RRStrategy          *string  `json:"rr_strategy"`
 		BufferBeforeMinutes *int     `json:"buffer_before_minutes"`
 		BufferAfterMinutes  *int     `json:"buffer_after_minutes"`
 		MinNoticeMinutes    *int     `json:"min_notice_minutes"`
@@ -362,7 +388,22 @@ func (h *Handler) PatchEventType(w http.ResponseWriter, r *http.Request) {
 		set("location_value", *req.LocationValue)
 	}
 	if req.RoutingMode != nil {
-		set("routing_mode", *req.RoutingMode)
+		switch *req.RoutingMode {
+		case "fixed", "round_robin", "collective":
+			set("routing_mode", *req.RoutingMode)
+		default:
+			h.writeError(w, http.StatusBadRequest, "routing_mode must be 'fixed', 'round_robin', or 'collective'")
+			return
+		}
+	}
+	if req.RRStrategy != nil {
+		switch *req.RRStrategy {
+		case "even", "soonest", "priority":
+			set("rr_strategy", *req.RRStrategy)
+		default:
+			h.writeError(w, http.StatusBadRequest, "rr_strategy must be 'even', 'soonest', or 'priority'")
+			return
+		}
 	}
 	if req.BufferBeforeMinutes != nil {
 		set("buffer_before_minutes", *req.BufferBeforeMinutes)
