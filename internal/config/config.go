@@ -12,7 +12,8 @@ type Config struct {
 	DatabaseURL    string
 	EncryptionKey  string // platform secret (KEK input); vault derives the real AES key
 	RecoverySecret string // CALNODE_RECOVERY_SECRET — escrow key stored in keystore
-	BaseURL        string
+	BaseURL        string // identity host: OAuth callbacks, admin UI, team invites
+	PublicBaseURL  string // booker-facing host: booking links, emails; defaults to BaseURL
 	LogLevel      slog.Level
 
 	// Email / SMTP
@@ -57,6 +58,9 @@ func Load() *Config {
 
 	cfg.EncryptionKey = os.Getenv("CALNODE_ENCRYPTION_KEY")
 	cfg.RecoverySecret = os.Getenv("CALNODE_RECOVERY_SECRET")
+	// PUBLIC_BASE_URL overrides the booker-facing host (custom/vanity domain).
+	// Unset → inherits BASE_URL, so single-domain deploys need only set BASE_URL.
+	cfg.PublicBaseURL = getEnv("PUBLIC_BASE_URL", cfg.BaseURL)
 	cfg.LogLevel = parseLogLevel(getEnv("LOG_LEVEL", "info"))
 	cfg.CookieSecure = getBool("COOKIE_SECURE", strings.HasPrefix(cfg.BaseURL, "https://"))
 

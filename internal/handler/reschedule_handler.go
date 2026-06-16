@@ -121,12 +121,12 @@ func (h *Handler) RescheduleBooking(w http.ResponseWriter, r *http.Request) {
 			h.logger.Error("reschedule booking: load email data", "error", err, "booking_id", bCopy.ID)
 			return
 		}
-		d.BaseURL = h.baseURL
+		d.BaseURL = h.publicURL()
 		d.PreviousStartAt = prevStart
 		d.PreviousEndAt = prevEnd
 
 		if tok, err := h.bookingSvc.RotateManageToken(ctx, bCopy.ID); err == nil {
-			d.ManageURL = h.baseURL + "/manage/" + tok
+			d.ManageURL = h.publicURL() + "/manage/" + tok
 		}
 
 		prefs := allOnPrefs

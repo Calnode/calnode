@@ -177,7 +177,7 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 		StartAt:           b.StartAt,
 		EndAt:             b.EndAt,
 		LocationValue:     b.LocationValue,
-		BaseURL:           h.baseURL,
+		BaseURL:           h.publicURL(),
 	}
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -189,7 +189,7 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 		if tok, err := h.bookingSvc.IssueManageToken(ctx, b.ID); err != nil {
 			h.logger.Error("issue manage token", "error", err, "booking_id", b.ID)
 		} else {
-			bData.ManageURL = h.baseURL + "/manage/" + tok
+			bData.ManageURL = h.publicURL() + "/manage/" + tok
 		}
 		// Create Google Calendar event and persist the event ID for later cancellation.
 		if gc := h.getGCal(); gc != nil {
@@ -409,7 +409,7 @@ func (h *Handler) CancelBooking(w http.ResponseWriter, r *http.Request) {
 			h.logger.Error("booking cancellation: load data", "error", err, "booking_id", bCopy.ID)
 			return
 		}
-		d.BaseURL = h.baseURL
+		d.BaseURL = h.publicURL()
 		prefs := allOnPrefs
 		if p, err := h.loadHostPrefs(ctx, bCopy.HostID); err != nil {
 			h.logger.Error("booking cancellation: load host prefs", "error", err, "booking_id", bCopy.ID)

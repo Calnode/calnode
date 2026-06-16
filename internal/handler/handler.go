@@ -25,8 +25,9 @@ type Handler struct {
 	calMu        sync.RWMutex
 	gcal         *gcal.Client
 	webhookSvc   *webhook.Service
-	baseURL      string
-	dataDir      string
+	baseURL       string
+	publicBaseURL string
+	dataDir       string
 	authMu       sync.RWMutex
 	googleAuth   *oauth2.Config
 	secureCookie bool
@@ -61,9 +62,25 @@ func (h *Handler) SetEncKey(hexKey string) {
 	// If empty or invalid, encKey stays zero — suitable for dev/test.
 }
 
-// SetBaseURL sets the base URL used in redirects and email links.
+// SetBaseURL sets the identity host used for OAuth redirects, admin UI links,
+// and team invites.
 func (h *Handler) SetBaseURL(url string) {
 	h.baseURL = url
+}
+
+// SetPublicBaseURL sets the booker-facing host used for booking-page links and
+// outbound email links. When empty, publicURL falls back to baseURL.
+func (h *Handler) SetPublicBaseURL(url string) {
+	h.publicBaseURL = url
+}
+
+// publicURL returns the booker-facing base URL, defaulting to the identity host
+// (baseURL) when no public host has been configured.
+func (h *Handler) publicURL() string {
+	if h.publicBaseURL != "" {
+		return h.publicBaseURL
+	}
+	return h.baseURL
 }
 
 // SetDataDir sets the directory used for file uploads (avatars, etc.).

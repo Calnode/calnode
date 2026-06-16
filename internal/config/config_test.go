@@ -48,6 +48,27 @@ func TestLoad_envOverrides(t *testing.T) {
 	}
 }
 
+func TestLoad_publicBaseURLDefaultsToBaseURL(t *testing.T) {
+	t.Setenv("BASE_URL", "https://book.acme.com")
+	os.Unsetenv("PUBLIC_BASE_URL")
+	cfg := config.Load()
+	if cfg.PublicBaseURL != "https://book.acme.com" {
+		t.Errorf("PublicBaseURL = %q; want it to inherit BASE_URL", cfg.PublicBaseURL)
+	}
+}
+
+func TestLoad_publicBaseURLOverride(t *testing.T) {
+	t.Setenv("BASE_URL", "https://acme.app.calnode.com")
+	t.Setenv("PUBLIC_BASE_URL", "https://book.acme.com")
+	cfg := config.Load()
+	if cfg.BaseURL != "https://acme.app.calnode.com" {
+		t.Errorf("BaseURL = %q; want canonical host", cfg.BaseURL)
+	}
+	if cfg.PublicBaseURL != "https://book.acme.com" {
+		t.Errorf("PublicBaseURL = %q; want the override", cfg.PublicBaseURL)
+	}
+}
+
 func TestLoad_encryptionKeyAbsent(t *testing.T) {
 	os.Unsetenv("CALNODE_ENCRYPTION_KEY")
 	cfg := config.Load()

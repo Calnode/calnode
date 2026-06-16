@@ -103,7 +103,7 @@ func (h *Handler) SendTestEmail(w http.ResponseWriter, r *http.Request) {
 		PreviousStartAt:  start.AddDate(0, 0, -1), // for reschedule preview
 		PreviousEndAt:    end.AddDate(0, 0, -1),
 		LocationValue:    locVal.String,
-		BaseURL:          h.baseURL,
+		BaseURL:          h.publicURL(),
 		CustomNote:       customNote,
 	}
 

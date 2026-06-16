@@ -24,6 +24,7 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	mux := http.NewServeMux()
 	h := handler.New(db, logger)
 	h.SetBaseURL(cfg.BaseURL)
+	h.SetPublicBaseURL(cfg.PublicBaseURL)
 	h.SetDataDir("data")
 	h.SetEncKey(cfg.EncryptionKey)
 

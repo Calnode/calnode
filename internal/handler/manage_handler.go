@@ -175,13 +175,13 @@ func (h *Handler) RescheduleByToken(w http.ResponseWriter, r *http.Request) {
 			h.logger.Error("reschedule: load email data", "error", err, "booking_id", bCopy.ID)
 			return
 		}
-		d.BaseURL = h.baseURL
+		d.BaseURL = h.publicURL()
 		d.PreviousStartAt = previousStart
 		d.PreviousEndAt = previousEnd
 
 		// Rotate the token so the original confirmation-email link is invalidated.
 		if tok, err := h.bookingSvc.RotateManageToken(ctx, bCopy.ID); err == nil {
-			d.ManageURL = h.baseURL + "/manage/" + tok
+			d.ManageURL = h.publicURL() + "/manage/" + tok
 		}
 
 		prefs := allOnPrefs
@@ -279,7 +279,7 @@ func (h *Handler) CancelByToken(w http.ResponseWriter, r *http.Request) {
 			h.logger.Error("cancel by token: load email data", "error", err, "booking_id", bCopy.ID)
 			return
 		}
-		d.BaseURL = h.baseURL
+		d.BaseURL = h.publicURL()
 
 		prefs := allOnPrefs
 		if p, err := h.loadHostPrefs(ctx, bCopy.HostID); err != nil {
