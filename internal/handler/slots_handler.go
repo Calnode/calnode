@@ -205,8 +205,14 @@ func (h *Handler) hostAvailability(ctx context.Context, userID, eventTypeID stri
 		return slots.HostAvailability{}, err
 	}
 
-	busyFrom := dateFrom.Format(time.RFC3339)
-	busyTo := dateTo.Add(24 * time.Hour).Format(time.RFC3339)
+	// Widen the busy window by a day on each side. Slots are generated for
+	// host-local days, but bookings are stored in UTC — a morning slot for a
+	// positive-UTC-offset host (e.g. NZ) maps to the *previous* UTC day, so a
+	// tight [dateFrom, dateTo] UTC window would miss the booking that blocks it
+	// and the slot would be wrongly offered (then 409 at booking time).
+	// Over-fetching is harmless: the engine only subtracts busy that overlaps.
+	busyFrom := dateFrom.Add(-24 * time.Hour).Format(time.RFC3339)
+	busyTo := dateTo.Add(48 * time.Hour).Format(time.RFC3339)
 	busyRows, err := h.db.QueryContext(ctx, `
 		SELECT start_at, end_at FROM bookings
 		WHERE host_id = ? AND status != 'cancelled' AND start_at >= ? AND start_at < ?`,
