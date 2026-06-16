@@ -56,10 +56,16 @@
 	const ROUTING_MODES = [
 		{ value: 'fixed',       label: 'Normal (just me)' },
 		{ value: 'round_robin', label: 'Round-robin (a team)' },
+		{ value: 'collective',  label: 'Group (several attend)' },
 	];
-	let routingMode = $state<'fixed' | 'round_robin'>('fixed');
-	type RotationHost = { user_id: string; name: string; email: string };
-	let rotationHosts = $state<RotationHost[]>([]);
+	type RoutingMode = 'fixed' | 'round_robin' | 'collective';
+	let routingMode = $state<RoutingMode>('fixed');
+	type Host = { user_id: string; name: string; email: string };
+	// Round-robin rotation pool.
+	let rotationHosts = $state<Host[]>([]);
+	// Group mode: required hosts always attend; optional hosts join only if free.
+	let groupRequired = $state<Host[]>([]);
+	let groupOptional = $state<Host[]>([]);
 	let hostsLoaded = $state(false);
 	let members = $state<User[]>([]);
 	let teams = $state<Team[]>([]);
@@ -67,12 +73,14 @@
 	async function loadHosts() {
 		try {
 			const res = await api.get<{ items: EventTypeHost[] }>(`/v1/event-types/${slug}/hosts`);
-			rotationHosts = (res.items ?? [])
-				.filter((h) => h.role === 'rotation')
-				.map((h) => ({ user_id: h.user_id, name: h.name, email: h.email }));
+			const items = res.items ?? [];
+			const toHost = (h: EventTypeHost): Host => ({ user_id: h.user_id, name: h.name, email: h.email });
+			rotationHosts = items.filter((h) => h.role === 'rotation').map(toHost);
+			groupRequired = items.filter((h) => h.role === 'required').map(toHost);
+			groupOptional = items.filter((h) => h.role === 'optional').map(toHost);
 			hostsLoaded = true;
 		} catch (e: any) {
-			toast.error(e.message || 'Could not load rotation hosts');
+			toast.error(e.message || 'Could not load hosts');
 		}
 	}
 
@@ -97,46 +105,66 @@
 
 	async function onRoutingModeChange(v: string | undefined) {
 		if (!v) return;
-		routingMode = v === 'round_robin' ? 'round_robin' : 'fixed';
-		if (routingMode === 'round_robin') {
+		routingMode = (['round_robin', 'collective'].includes(v) ? v : 'fixed') as RoutingMode;
+		if (routingMode !== 'fixed') {
 			if (!hostsLoaded) await loadHosts();
 			loadMembers();
 			loadTeams();
+			// Group mode always needs at least one required host; seed with the owner.
+			if (routingMode === 'collective' && groupRequired.length === 0 && $currentUser) {
+				groupRequired = [{ user_id: $currentUser.id, name: $currentUser.name, email: $currentUser.email }];
+			}
 		}
 	}
 
-	const availableMembers = $derived(
-		members.filter(
-			(m) =>
-				!m.archived &&
-				m.id !== $currentUser?.id &&
-				!rotationHosts.some((h) => h.user_id === m.id)
-		)
-	);
-
-	function addRotationMember(userId: string | undefined) {
-		if (!userId) return;
-		const m = members.find((x) => x.id === userId);
-		if (!m) return;
-		if (rotationHosts.some((h) => h.user_id === m.id)) return;
-		rotationHosts = [...rotationHosts, { user_id: m.id, name: m.name, email: m.email }];
+	// Host buckets by role. A member can sit in exactly one bucket (the backend
+	// rejects duplicate user_ids), so adding to one removes them from the others.
+	type Bucket = 'rotation' | 'required' | 'optional';
+	function readBucket(b: Bucket): Host[] {
+		return b === 'rotation' ? rotationHosts : b === 'required' ? groupRequired : groupOptional;
+	}
+	function writeBucket(b: Bucket, v: Host[]) {
+		if (b === 'rotation') rotationHosts = v;
+		else if (b === 'required') groupRequired = v;
+		else groupOptional = v;
 	}
 
-	async function addRotationTeam(teamId: string | undefined) {
+	// Members already assigned to any bucket (so the pickers don't re-offer them).
+	const assignedIds = $derived(
+		new Set([...rotationHosts, ...groupRequired, ...groupOptional].map((h) => h.user_id))
+	);
+	const availableMembers = $derived(
+		members.filter((m) => !m.archived && m.id !== $currentUser?.id && !assignedIds.has(m.id))
+	);
+
+	function pushHost(b: Bucket, h: Host) {
+		// Move into this bucket; drop from any other to keep a member single-roled.
+		(['rotation', 'required', 'optional'] as Bucket[]).forEach((other) => {
+			if (other !== b) writeBucket(other, readBucket(other).filter((x) => x.user_id !== h.user_id));
+		});
+		if (!readBucket(b).some((x) => x.user_id === h.user_id)) writeBucket(b, [...readBucket(b), h]);
+	}
+
+	function addMember(b: Bucket, userId: string | undefined) {
+		if (!userId) return;
+		const m = members.find((x) => x.id === userId);
+		if (m) pushHost(b, { user_id: m.id, name: m.name, email: m.email });
+	}
+
+	async function addTeam(b: Bucket, teamId: string | undefined) {
 		if (!teamId) return;
 		try {
 			const team = await api.get<Team>(`/v1/teams/${teamId}`);
-			const toAdd = (team.members ?? [])
-				.filter((tm) => !tm.archived && !rotationHosts.some((h) => h.user_id === tm.id))
-				.map((tm) => ({ user_id: tm.id, name: tm.name, email: tm.email }));
-			if (toAdd.length > 0) rotationHosts = [...rotationHosts, ...toAdd];
+			(team.members ?? [])
+				.filter((tm) => !tm.archived)
+				.forEach((tm) => pushHost(b, { user_id: tm.id, name: tm.name, email: tm.email }));
 		} catch (e: any) {
 			toast.error(e.message || 'Could not load team members');
 		}
 	}
 
-	function removeRotationHost(userId: string) {
-		rotationHosts = rotationHosts.filter((h) => h.user_id !== userId);
+	function removeHost(b: Bucket, userId: string) {
+		writeBucket(b, readBucket(b).filter((h) => h.user_id !== userId));
 	}
 
 	// Notification / messaging state
@@ -187,7 +215,8 @@
 				max_active_bookings: et.max_active_bookings,
 			};
 			reminders = et.reminders ?? [];
-			routingMode = et.routing_mode === 'round_robin' ? 'round_robin' : 'fixed';
+			routingMode = (['round_robin', 'collective'].includes(et.routing_mode ?? '')
+				? et.routing_mode : 'fixed') as RoutingMode;
 			msg_confirmation = et.msg_confirmation ?? '';
 			msg_cancellation = et.msg_cancellation ?? '';
 			msg_reschedule = et.msg_reschedule ?? '';
@@ -205,6 +234,9 @@
 		if (form.max_active_bookings < 0) { toast.error('Max active bookings cannot be negative (0 = unlimited).'); return; }
 		if (routingMode === 'round_robin' && rotationHosts.length === 0) {
 			toast.error('Add at least one rotation host'); return;
+		}
+		if (routingMode === 'collective' && groupRequired.length === 0) {
+			toast.error('Group events need at least one required host'); return;
 		}
 		etSaving = true;
 		try {
@@ -232,6 +264,13 @@
 			if (routingMode === 'round_robin') {
 				await api.put(`/v1/event-types/${slug}/hosts`, {
 					hosts: rotationHosts.map((hh, i) => ({ user_id: hh.user_id, role: 'rotation', priority: i })),
+				});
+			} else if (routingMode === 'collective') {
+				await api.put(`/v1/event-types/${slug}/hosts`, {
+					hosts: [
+						...groupRequired.map((hh, i) => ({ user_id: hh.user_id, role: 'required', priority: i })),
+						...groupOptional.map((hh, i) => ({ user_id: hh.user_id, role: 'optional', priority: i })),
+					],
 				});
 			} else {
 				await api.put(`/v1/event-types/${slug}/hosts`, {
@@ -386,7 +425,7 @@
 	onMount(async () => {
 		await loadET();
 		loadQuestions();
-		if (routingMode === 'round_robin') {
+		if (routingMode !== 'fixed') {
 			await loadHosts();
 			loadMembers();
 			loadTeams();
@@ -403,6 +442,41 @@
 	destructive
 	onConfirm={doDeleteQuestion}
 />
+
+{#snippet hostPickers(bucket: Bucket, idPrefix: string)}
+	<div class="grid grid-cols-2 gap-4">
+		<div class="space-y-1.5">
+			<Label for="{idPrefix}-add-member">Add member</Label>
+			<Select.Root type="single" value="" onValueChange={(v) => addMember(bucket, v)}>
+				<Select.Trigger id="{idPrefix}-add-member" class="w-full">Select a member…</Select.Trigger>
+				<Select.Content>
+					{#if availableMembers.length > 0}
+						{#each availableMembers as m}
+							<Select.Item value={m.id} label={m.name}>{m.name} · {m.email}</Select.Item>
+						{/each}
+					{:else}
+						<div class="px-2 py-1.5 text-xs text-muted-foreground">No members available</div>
+					{/if}
+				</Select.Content>
+			</Select.Root>
+		</div>
+		<div class="space-y-1.5">
+			<Label for="{idPrefix}-add-team">Add team</Label>
+			<Select.Root type="single" value="" onValueChange={(v) => addTeam(bucket, v)}>
+				<Select.Trigger id="{idPrefix}-add-team" class="w-full">Select a team…</Select.Trigger>
+				<Select.Content>
+					{#if teams.length > 0}
+						{#each teams as t}
+							<Select.Item value={t.id} label={t.name}>{t.name} ({t.member_count})</Select.Item>
+						{/each}
+					{:else}
+						<div class="px-2 py-1.5 text-xs text-muted-foreground">No teams</div>
+					{/if}
+				</Select.Content>
+			</Select.Root>
+		</div>
+	</div>
+{/snippet}
 
 <svelte:head><title>{et?.name ?? slug} — Event Type — Calnode</title></svelte:head>
 <svelte:window onkeydown={saveOnCmdS(saveET, () => !etSaving)} />
@@ -528,6 +602,9 @@
 				<p class="text-xs text-muted-foreground">
 					{#if routingMode === 'round_robin'}
 						Bookings are distributed to the least-loaded available member.
+					{:else if routingMode === 'collective'}
+						Required hosts all attend; optional hosts join only when they're free. A
+						slot is offered only when every required host is available.
 					{:else}
 						Bookings go to you.
 					{/if}
@@ -545,7 +622,7 @@
 										<div class="truncate text-sm font-medium">{h.name}</div>
 										<div class="truncate text-xs text-muted-foreground">{h.email}</div>
 									</div>
-									<Button type="button" variant="ghost" size="sm" onclick={() => removeRotationHost(h.user_id)}>
+									<Button type="button" variant="ghost" size="sm" onclick={() => removeHost('rotation', h.user_id)}>
 										Remove
 									</Button>
 								</div>
@@ -555,49 +632,60 @@
 						<p class="text-xs text-muted-foreground">Add members or a team to the rotation.</p>
 					{/if}
 
-					<div class="grid grid-cols-2 gap-4">
-						<div class="space-y-1.5">
-							<Label for="rr-add-member">Add member</Label>
-							<Select.Root
-								type="single"
-								value=""
-								onValueChange={(v) => addRotationMember(v)}
-							>
-								<Select.Trigger id="rr-add-member" class="w-full">
-									Select a member…
-								</Select.Trigger>
-								<Select.Content>
-									{#if availableMembers.length > 0}
-										{#each availableMembers as m}
-											<Select.Item value={m.id} label={m.name}>{m.name} · {m.email}</Select.Item>
-										{/each}
-									{:else}
-										<div class="px-2 py-1.5 text-xs text-muted-foreground">No members available</div>
-									{/if}
-								</Select.Content>
-							</Select.Root>
+					{@render hostPickers('rotation', 'rr')}
+				</div>
+			{:else if routingMode === 'collective'}
+				<div class="mt-4 space-y-5">
+					<!-- Required hosts -->
+					<div class="space-y-3">
+						<div>
+							<p class="text-sm font-medium">Required hosts</p>
+							<p class="text-xs text-muted-foreground">Always attend. The slot is only bookable when all of them are free.</p>
 						</div>
-						<div class="space-y-1.5">
-							<Label for="rr-add-team">Add team</Label>
-							<Select.Root
-								type="single"
-								value=""
-								onValueChange={(v) => addRotationTeam(v)}
-							>
-								<Select.Trigger id="rr-add-team" class="w-full">
-									Select a team…
-								</Select.Trigger>
-								<Select.Content>
-									{#if teams.length > 0}
-										{#each teams as t}
-											<Select.Item value={t.id} label={t.name}>{t.name} ({t.member_count})</Select.Item>
-										{/each}
-									{:else}
-										<div class="px-2 py-1.5 text-xs text-muted-foreground">No teams</div>
-									{/if}
-								</Select.Content>
-							</Select.Root>
+						{#if groupRequired.length > 0}
+							<div class="space-y-2">
+								{#each groupRequired as h (h.user_id)}
+									<div class="flex items-center justify-between rounded-md border px-3 py-2">
+										<div class="min-w-0">
+											<div class="truncate text-sm font-medium">{h.name}</div>
+											<div class="truncate text-xs text-muted-foreground">{h.email}</div>
+										</div>
+										<Button type="button" variant="ghost" size="sm" onclick={() => removeHost('required', h.user_id)}>
+											Remove
+										</Button>
+									</div>
+								{/each}
+							</div>
+						{:else}
+							<p class="text-xs text-muted-foreground">Add at least one required host.</p>
+						{/if}
+						{@render hostPickers('required', 'grp-req')}
+					</div>
+
+					<!-- Optional hosts -->
+					<div class="space-y-3 border-t pt-4">
+						<div>
+							<p class="text-sm font-medium">Optional hosts</p>
+							<p class="text-xs text-muted-foreground">Join the meeting only when they happen to be free. They never block a slot.</p>
 						</div>
+						{#if groupOptional.length > 0}
+							<div class="space-y-2">
+								{#each groupOptional as h (h.user_id)}
+									<div class="flex items-center justify-between rounded-md border px-3 py-2">
+										<div class="min-w-0">
+											<div class="truncate text-sm font-medium">{h.name}</div>
+											<div class="truncate text-xs text-muted-foreground">{h.email}</div>
+										</div>
+										<Button type="button" variant="ghost" size="sm" onclick={() => removeHost('optional', h.user_id)}>
+											Remove
+										</Button>
+									</div>
+								{/each}
+							</div>
+						{:else}
+							<p class="text-xs text-muted-foreground">Optional — add members who attend only when available.</p>
+						{/if}
+						{@render hostPickers('optional', 'grp-opt')}
 					</div>
 				</div>
 			{/if}
