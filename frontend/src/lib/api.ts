@@ -116,6 +116,8 @@ export type TeamMember = {
 	created_at: string;
 	archived: boolean;
 	archived_at?: string;
+	archived_by?: string;
+	archived_by_name?: string;
 	teams: { id: string; name: string }[];
 };
 

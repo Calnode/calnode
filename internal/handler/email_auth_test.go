@@ -69,6 +69,30 @@ func TestLoginEmail_unknownEmail(t *testing.T) {
 	}
 }
 
+func TestLoginEmail_archivedBlocked(t *testing.T) {
+	h, database := newTestHandlerDB(t)
+
+	hash, _ := bcrypt.GenerateFromPassword([]byte("mypassword1"), bcrypt.MinCost)
+	database.Exec(`INSERT INTO users (id,email,name,iana_timezone,is_admin,email_login,password_hash,archived_at)
+		VALUES ('u1','alice@example.com','Alice','UTC',0,1,?,'2026-01-01T00:00:00Z')`, string(hash))
+
+	rec := httptest.NewRecorder()
+	h.LoginEmail(rec, loginEmailReq("alice@example.com", "mypassword1"))
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("archived login: got %d; want 403 — %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "archived") {
+		t.Errorf("expected an 'archived' explanation; got %s", rec.Body.String())
+	}
+	// No session should be set.
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == "calnode_session" {
+			t.Error("archived login must not create a session")
+		}
+	}
+}
+
 func TestLoginEmail_emailLoginDisabled(t *testing.T) {
 	h, database := newTestHandlerDB(t)
 

@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"crypto/rand"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -112,10 +113,15 @@ func (h *Handler) CallbackGoogle(w http.ResponseWriter, r *http.Request) {
 
 	// Only existing users can log in — no self-registration.
 	var userID string
+	var archivedAt sql.NullString
 	if err := h.db.QueryRowContext(r.Context(),
-		`SELECT id FROM users WHERE email = ?`, info.Email).Scan(&userID); err != nil {
+		`SELECT id, archived_at FROM users WHERE email = ?`, info.Email).Scan(&userID, &archivedAt); err != nil {
 		h.logger.WarnContext(r.Context(), "auth: no account for email", "email", info.Email)
 		http.Redirect(w, r, "/admin/login?error=no_account", http.StatusFound)
+		return
+	}
+	if archivedAt.Valid {
+		http.Redirect(w, r, "/admin/login?error=archived", http.StatusFound)
 		return
 	}
 

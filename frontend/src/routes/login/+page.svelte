@@ -24,6 +24,7 @@
 		oauth: 'OAuth error. Please try again.',
 		userinfo: 'Could not fetch your profile. Please try again.',
 		no_account: 'No Calnode account found for your email. Contact your admin.',
+		archived: 'Your account has been archived. If you think this is an error, please contact your workspace admin.',
 		session: 'Could not create a session. Please try again.'
 	};
 

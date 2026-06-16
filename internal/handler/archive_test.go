@@ -96,6 +96,46 @@ func TestArchiveUser_cannotArchiveOwner(t *testing.T) {
 	}
 }
 
+func TestRestoreUser_adminOnlyRestoresOwnArchives(t *testing.T) {
+	h, database, ownerKey, _ := setupWorkspaceWithDB(t)
+	adminAKey := "adminA-restore-key"
+	adminBKey := "adminB-restore-key"
+	database.Exec(`INSERT INTO users (id,email,name,iana_timezone,is_admin,is_owner) VALUES ('a','aa@example.com','AdminA','UTC',1,0)`)
+	database.Exec(`INSERT INTO api_keys (id,user_id,name,key_hash,created_at) VALUES ('ka','a','t',?,'2024-01-01')`, sha256HexForTest(adminAKey))
+	database.Exec(`INSERT INTO users (id,email,name,iana_timezone,is_admin,is_owner) VALUES ('b','bb@example.com','AdminB','UTC',1,0)`)
+	database.Exec(`INSERT INTO api_keys (id,user_id,name,key_hash,created_at) VALUES ('kb','b','t',?,'2024-01-01')`, sha256HexForTest(adminBKey))
+	// Member archived by AdminA.
+	database.Exec(`INSERT INTO users (id,email,name,iana_timezone,is_admin,archived_at,archived_by) VALUES ('m','m@example.com','Member','UTC',0,'2026-01-01T00:00:00Z','a')`)
+
+	// AdminB cannot restore AdminA's archive.
+	req := authReq(http.MethodPost, "/v1/users/m/restore", "", adminBKey)
+	req.SetPathValue("id", "m")
+	rec := httptest.NewRecorder()
+	h.RequireAuth(h.RestoreUser)(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("adminB restoring adminA's archive: got %d; want 403 — %s", rec.Code, rec.Body.String())
+	}
+
+	// AdminA (the archiver) can.
+	req = authReq(http.MethodPost, "/v1/users/m/restore", "", adminAKey)
+	req.SetPathValue("id", "m")
+	rec = httptest.NewRecorder()
+	h.RequireAuth(h.RestoreUser)(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("adminA restoring own archive: got %d; want 200 — %s", rec.Code, rec.Body.String())
+	}
+
+	// Re-archive (by AdminA) and confirm the owner can always restore.
+	database.Exec(`UPDATE users SET archived_at='2026-01-01T00:00:00Z', archived_by='a' WHERE id='m'`)
+	req = authReq(http.MethodPost, "/v1/users/m/restore", "", ownerKey)
+	req.SetPathValue("id", "m")
+	rec = httptest.NewRecorder()
+	h.RequireAuth(h.RestoreUser)(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("owner restoring adminA's archive: got %d; want 200 — %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestRestoreUser_reenablesLogin(t *testing.T) {
 	h, database, ownerKey, _ := setupWorkspaceWithDB(t)
 	memberKey := "member-restore-key"

@@ -16,14 +16,16 @@ func (h *Handler) ListUsers(w http.ResponseWriter, r *http.Request) {
 
 	// Archived members are hidden unless explicitly requested (?include_archived=true).
 	includeArchived := r.URL.Query().Get("include_archived") == "true"
-	where := "WHERE archived_at IS NULL"
+	where := "WHERE u.archived_at IS NULL"
 	if includeArchived {
 		where = ""
 	}
 	rows, err := h.db.QueryContext(r.Context(), `
-		SELECT id, email, name, iana_timezone, is_admin, is_owner, email_login,
-		       COALESCE(provider,''), COALESCE(avatar_url,''), created_at, archived_at
-		FROM users `+where+` ORDER BY created_at ASC`)
+		SELECT u.id, u.email, u.name, u.iana_timezone, u.is_admin, u.is_owner, u.email_login,
+		       COALESCE(u.provider,''), COALESCE(u.avatar_url,''), u.created_at,
+		       u.archived_at, COALESCE(u.archived_by,''), COALESCE(ab.name,'')
+		FROM users u LEFT JOIN users ab ON ab.id = u.archived_by
+		`+where+` ORDER BY u.created_at ASC`)
 	if err != nil {
 		h.logger.ErrorContext(r.Context(), "list users: query", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal error")
@@ -46,10 +48,12 @@ func (h *Handler) ListUsers(w http.ResponseWriter, r *http.Request) {
 		EmailLogin bool      `json:"email_login"`
 		Provider   string    `json:"provider,omitempty"`
 		AvatarURL  string    `json:"avatar_url,omitempty"`
-		CreatedAt  string    `json:"created_at"`
-		Archived   bool      `json:"archived"`
-		ArchivedAt string    `json:"archived_at,omitempty"`
-		Teams      []teamRef `json:"teams"`
+		CreatedAt      string    `json:"created_at"`
+		Archived       bool      `json:"archived"`
+		ArchivedAt     string    `json:"archived_at,omitempty"`
+		ArchivedBy     string    `json:"archived_by,omitempty"`
+		ArchivedByName string    `json:"archived_by_name,omitempty"`
+		Teams          []teamRef `json:"teams"`
 	}
 	out := []userRow{}
 	byID := map[string]*userRow{}
@@ -58,7 +62,7 @@ func (h *Handler) ListUsers(w http.ResponseWriter, r *http.Request) {
 		var isAdmin, isOwner, emailLogin int
 		var archivedAt sql.NullString
 		if err := rows.Scan(&u.ID, &u.Email, &u.Name, &u.Timezone, &isAdmin, &isOwner, &emailLogin,
-			&u.Provider, &u.AvatarURL, &u.CreatedAt, &archivedAt); err != nil {
+			&u.Provider, &u.AvatarURL, &u.CreatedAt, &archivedAt, &u.ArchivedBy, &u.ArchivedByName); err != nil {
 			continue
 		}
 		u.IsAdmin = isAdmin != 0

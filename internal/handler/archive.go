@@ -82,7 +82,7 @@ func (h *Handler) ArchiveUser(w http.ResponseWriter, r *http.Request) {
 	defer tx.Rollback() //nolint:errcheck
 
 	if _, err := tx.ExecContext(r.Context(),
-		`UPDATE users SET archived_at = ? WHERE id = ?`, now, targetID); err != nil {
+		`UPDATE users SET archived_at = ?, archived_by = ? WHERE id = ?`, now, actor.ID, targetID); err != nil {
 		h.logger.ErrorContext(r.Context(), "archive user: set archived_at", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -115,10 +115,10 @@ func (h *Handler) RestoreUser(w http.ResponseWriter, r *http.Request) {
 	targetID := r.PathValue("id")
 
 	var targetIsAdmin int
-	var archivedAt sql.NullString
+	var archivedAt, archivedBy sql.NullString
 	err := h.db.QueryRowContext(r.Context(),
-		`SELECT is_admin, archived_at FROM users WHERE id = ?`, targetID).
-		Scan(&targetIsAdmin, &archivedAt)
+		`SELECT is_admin, archived_at, archived_by FROM users WHERE id = ?`, targetID).
+		Scan(&targetIsAdmin, &archivedAt, &archivedBy)
 	if err == sql.ErrNoRows {
 		h.writeError(w, http.StatusNotFound, "user not found")
 		return
@@ -132,13 +132,21 @@ func (h *Handler) RestoreUser(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusBadRequest, "member is not archived")
 		return
 	}
-	if targetIsAdmin != 0 && !actor.IsOwner {
-		h.writeError(w, http.StatusForbidden, "only the workspace owner can restore an admin")
-		return
+	// Restore gating: the owner can restore anyone; an admin can restore only
+	// members they archived themselves (and never an admin — that's owner-only).
+	if !actor.IsOwner {
+		if targetIsAdmin != 0 {
+			h.writeError(w, http.StatusForbidden, "only the workspace owner can restore an admin")
+			return
+		}
+		if !archivedBy.Valid || archivedBy.String != actor.ID {
+			h.writeError(w, http.StatusForbidden, "you can only restore members you archived; ask the owner to restore this one")
+			return
+		}
 	}
 
 	if _, err := h.db.ExecContext(r.Context(),
-		`UPDATE users SET archived_at = NULL WHERE id = ?`, targetID); err != nil {
+		`UPDATE users SET archived_at = NULL, archived_by = NULL WHERE id = ?`, targetID); err != nil {
 		h.logger.ErrorContext(r.Context(), "restore user: update", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal error")
 		return

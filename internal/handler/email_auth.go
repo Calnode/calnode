@@ -46,9 +46,10 @@ func (h *Handler) LoginEmail(w http.ResponseWriter, r *http.Request) {
 
 	var userID, storedHash string
 	var emailLogin int
+	var archivedAt sql.NullString
 	err := h.db.QueryRowContext(r.Context(),
-		`SELECT id, COALESCE(password_hash,''), email_login FROM users WHERE email = ?`,
-		req.Email).Scan(&userID, &storedHash, &emailLogin)
+		`SELECT id, COALESCE(password_hash,''), email_login, archived_at FROM users WHERE email = ?`,
+		req.Email).Scan(&userID, &storedHash, &emailLogin, &archivedAt)
 
 	// Always run bcrypt to prevent user enumeration via timing side-channel.
 	hashToCompare := storedHash
@@ -59,6 +60,15 @@ func (h *Handler) LoginEmail(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil || emailLogin == 0 || storedHash == "" || bcryptErr != nil {
 		h.writeError(w, http.StatusUnauthorized, "invalid email or password")
+		return
+	}
+
+	// Credentials are valid — but an archived member can't sign in. Tell them why
+	// (only after the password check, so this never leaks archived status to a
+	// wrong-password attempt).
+	if archivedAt.Valid {
+		h.writeError(w, http.StatusForbidden,
+			"Your account has been archived. If you think this is an error, please contact your workspace admin.")
 		return
 	}
 

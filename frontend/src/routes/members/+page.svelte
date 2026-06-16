@@ -454,7 +454,13 @@
 									<td class="px-4 py-3">
 										<div class="flex flex-wrap items-center justify-end gap-1">
 											{#if m.archived}
-												<Button size="sm" variant="outline" class="h-7 text-xs" onclick={() => restoreMember(m)}>Restore</Button>
+												{#if m.archived_by_name}
+													<span class="text-xs text-muted-foreground">Archived by {m.archived_by_name}</span>
+												{/if}
+												<!-- Owner can restore anyone; an admin only members they archived. -->
+												{#if $currentUser.is_owner || m.archived_by === $currentUser.id}
+													<Button size="sm" variant="outline" class="h-7 text-xs" onclick={() => restoreMember(m)}>Restore</Button>
+												{/if}
 											{:else if m.id !== $currentUser.id}
 												{#if resetTarget === m.id}
 													<div class="flex items-center gap-1.5">
