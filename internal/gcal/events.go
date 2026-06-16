@@ -68,7 +68,7 @@ func (c *Client) CreateEvent(ctx context.Context, userID string, p CreateEventPa
 		return "", fmt.Errorf("gcal: create event marshal: %w", err)
 	}
 
-	apiURL := c.apiBase + "/calendars/" + url.PathEscape(calID) + "/events"
+	apiURL := c.apiBase + "/calendars/" + url.PathEscape(calID) + "/events?sendUpdates=all"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewReader(body))
 	if err != nil {
 		return "", fmt.Errorf("gcal: create event request: %w", err)

@@ -105,7 +105,7 @@ func (c *Client) Disconnect(ctx context.Context, userID string) error {
 // Filters by the given check_conflicts and is_destination values (-1 means any).
 // Returns (nil, "", nil) when no matching connection exists.
 func (c *Client) httpClient(ctx context.Context, userID string, checkConflicts, isDestination int) (*http.Client, string, error) {
-	q := `SELECT id, access_token_enc, COALESCE(refresh_token_enc,''), calendar_id
+	q := `SELECT id, access_token_enc, COALESCE(refresh_token_enc,''), calendar_id, COALESCE(expiry_at,'')
 	      FROM calendar_connections
 	      WHERE user_id = ? AND provider = 'google'`
 	args := []any{userID}
@@ -119,8 +119,8 @@ func (c *Client) httpClient(ctx context.Context, userID string, checkConflicts, 
 	}
 	q += " LIMIT 1"
 
-	var connID, accessEnc, refreshEnc, calID string
-	err := c.db.QueryRowContext(ctx, q, args...).Scan(&connID, &accessEnc, &refreshEnc, &calID)
+	var connID, accessEnc, refreshEnc, calID, expiryStr string
+	err := c.db.QueryRowContext(ctx, q, args...).Scan(&connID, &accessEnc, &refreshEnc, &calID, &expiryStr)
 	if err == sql.ErrNoRows {
 		return nil, "", nil
 	}
@@ -141,10 +141,20 @@ func (c *Client) httpClient(ctx context.Context, userID string, checkConflicts, 
 		refresh = string(rb)
 	}
 
+	var expiry time.Time
+	if expiryStr != "" {
+		expiry, _ = time.Parse(time.RFC3339, expiryStr)
+	}
+	// If expiry is zero (old row or missing), treat as already expired so oauth2
+	// refreshes immediately rather than using a stale access token indefinitely.
+	if expiry.IsZero() {
+		expiry = time.Now().Add(-time.Second)
+	}
+
 	tok := &oauth2.Token{
 		AccessToken:  string(access),
 		RefreshToken: refresh,
-		// Expiry not persisted — zero value prompts oauth2 to refresh on first use.
+		Expiry:       expiry,
 	}
 	src := c.config.TokenSource(ctx, tok)
 	saving := &savingTokenSource{
@@ -184,6 +194,11 @@ func (c *Client) saveToken(ctx context.Context, userID, calID string, tok *oauth
 	}
 
 	now := time.Now().UTC().Format(time.RFC3339Nano)
+	var expiryStr string
+	if !tok.Expiry.IsZero() {
+		expiryStr = tok.Expiry.UTC().Format(time.RFC3339)
+	}
+
 	tx, err := c.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("gcal: save token begin: %w", err)
@@ -198,9 +213,9 @@ func (c *Client) saveToken(ctx context.Context, userID, calID string, tok *oauth
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO calendar_connections
 		    (id, user_id, provider, access_token_enc, refresh_token_enc, calendar_id,
-		     check_conflicts, is_destination, created_at)
-		VALUES (?, ?, 'google', ?, ?, ?, 1, 1, ?)`,
-		uid.New(), userID, accessEnc, refreshEnc, calID, now); err != nil {
+		     check_conflicts, is_destination, expiry_at, created_at)
+		VALUES (?, ?, 'google', ?, ?, ?, 1, 1, ?, ?)`,
+		uid.New(), userID, accessEnc, refreshEnc, calID, expiryStr, now); err != nil {
 		return fmt.Errorf("gcal: save token insert: %w", err)
 	}
 	return tx.Commit()
