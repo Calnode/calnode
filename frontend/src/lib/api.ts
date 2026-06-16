@@ -40,6 +40,18 @@ export type EventType = {
 	msg_reschedule?: string;
 	msg_reminder?: string;
 	reminders: number[]; // hours_before values
+	routing_mode: 'fixed' | 'round_robin' | 'collective';
+	rr_strategy: 'even' | 'soonest' | 'priority';
+};
+
+export type EventTypeHost = {
+	user_id: string;
+	name: string;
+	email: string;
+	avatar_url?: string;
+	role: 'required' | 'rotation' | 'optional';
+	priority: number;
+	archived: boolean;
 };
 
 export type Question = {
@@ -208,6 +220,9 @@ export const api = {
 
 	patch: <T>(path: string, body?: unknown) =>
 		apiFetch<T>(path, { method: 'PATCH', body: body ? JSON.stringify(body) : undefined }),
+
+	put: <T>(path: string, body?: unknown) =>
+		apiFetch<T>(path, { method: 'PUT', body: body ? JSON.stringify(body) : undefined }),
 
 	del: <T = null>(path: string) => apiFetch<T>(path, { method: 'DELETE' })
 };

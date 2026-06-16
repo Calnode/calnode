@@ -2,7 +2,8 @@
 	import { onMount } from 'svelte';
 	import { page } from '$app/stores';
 	import { base } from '$app/paths';
-	import { api, type EventType, type Question } from '$lib/api';
+	import { api, type EventType, type EventTypeHost, type Question, type User, type Team } from '$lib/api';
+	import { currentUser } from '$lib/stores';
 	import { Button, buttonVariants } from '$lib/components/ui/button';
 	import { ConfirmDialog } from '$lib/components/ui/confirm-dialog';
 	import { Input } from '$lib/components/ui/input';
@@ -50,6 +51,93 @@
 		min_notice_minutes: 0, max_future_days: 60,
 		max_active_bookings: 1,
 	});
+
+	// ── Routing ──────────────────────────────────────────────────────────────────
+	const ROUTING_MODES = [
+		{ value: 'fixed',       label: 'Normal (just me)' },
+		{ value: 'round_robin', label: 'Round-robin (a team)' },
+	];
+	let routingMode = $state<'fixed' | 'round_robin'>('fixed');
+	type RotationHost = { user_id: string; name: string; email: string };
+	let rotationHosts = $state<RotationHost[]>([]);
+	let hostsLoaded = $state(false);
+	let members = $state<User[]>([]);
+	let teams = $state<Team[]>([]);
+
+	async function loadHosts() {
+		try {
+			const res = await api.get<{ items: EventTypeHost[] }>(`/v1/event-types/${slug}/hosts`);
+			rotationHosts = (res.items ?? [])
+				.filter((h) => h.role === 'rotation')
+				.map((h) => ({ user_id: h.user_id, name: h.name, email: h.email }));
+			hostsLoaded = true;
+		} catch (e: any) {
+			toast.error(e.message || 'Could not load rotation hosts');
+		}
+	}
+
+	async function loadMembers() {
+		if (members.length > 0) return;
+		try {
+			members = await api.get<User[]>('/v1/users');
+		} catch (e: any) {
+			toast.error(e.message || 'Could not load members');
+		}
+	}
+
+	async function loadTeams() {
+		if (teams.length > 0) return;
+		try {
+			const res = await api.get<{ items: Team[] }>('/v1/teams');
+			teams = res.items ?? [];
+		} catch (e: any) {
+			toast.error(e.message || 'Could not load teams');
+		}
+	}
+
+	async function onRoutingModeChange(v: string | undefined) {
+		if (!v) return;
+		routingMode = v === 'round_robin' ? 'round_robin' : 'fixed';
+		if (routingMode === 'round_robin') {
+			if (!hostsLoaded) await loadHosts();
+			loadMembers();
+			loadTeams();
+		}
+	}
+
+	const availableMembers = $derived(
+		members.filter(
+			(m) =>
+				!m.archived &&
+				m.id !== $currentUser?.id &&
+				!rotationHosts.some((h) => h.user_id === m.id)
+		)
+	);
+
+	function addRotationMember(userId: string | undefined) {
+		if (!userId) return;
+		const m = members.find((x) => x.id === userId);
+		if (!m) return;
+		if (rotationHosts.some((h) => h.user_id === m.id)) return;
+		rotationHosts = [...rotationHosts, { user_id: m.id, name: m.name, email: m.email }];
+	}
+
+	async function addRotationTeam(teamId: string | undefined) {
+		if (!teamId) return;
+		try {
+			const team = await api.get<Team>(`/v1/teams/${teamId}`);
+			const toAdd = (team.members ?? [])
+				.filter((tm) => !tm.archived && !rotationHosts.some((h) => h.user_id === tm.id))
+				.map((tm) => ({ user_id: tm.id, name: tm.name, email: tm.email }));
+			if (toAdd.length > 0) rotationHosts = [...rotationHosts, ...toAdd];
+		} catch (e: any) {
+			toast.error(e.message || 'Could not load team members');
+		}
+	}
+
+	function removeRotationHost(userId: string) {
+		rotationHosts = rotationHosts.filter((h) => h.user_id !== userId);
+	}
 
 	// Notification / messaging state
 	const REMINDER_OPTIONS = [
@@ -99,6 +187,7 @@
 				max_active_bookings: et.max_active_bookings,
 			};
 			reminders = et.reminders ?? [];
+			routingMode = et.routing_mode === 'round_robin' ? 'round_robin' : 'fixed';
 			msg_confirmation = et.msg_confirmation ?? '';
 			msg_cancellation = et.msg_cancellation ?? '';
 			msg_reschedule = et.msg_reschedule ?? '';
@@ -114,6 +203,9 @@
 		if (!form.name.trim()) { toast.error('Name is required.'); return; }
 		if (form.duration_minutes < 5) { toast.error('Duration must be at least 5 minutes.'); return; }
 		if (form.max_active_bookings < 0) { toast.error('Max active bookings cannot be negative (0 = unlimited).'); return; }
+		if (routingMode === 'round_robin' && rotationHosts.length === 0) {
+			toast.error('Add at least one rotation host'); return;
+		}
 		etSaving = true;
 		try {
 			await api.patch(`/v1/event-types/${slug}`, {
@@ -129,12 +221,23 @@
 				min_notice_minutes: Number(form.min_notice_minutes),
 				max_future_days: Number(form.max_future_days),
 				max_active_bookings: Number(form.max_active_bookings),
+				routing_mode: routingMode,
+				rr_strategy: 'even',
 				reminders,
 				msg_confirmation: msg_confirmation.trim() || null,
 				msg_cancellation: msg_cancellation.trim() || null,
 				msg_reschedule: msg_reschedule.trim() || null,
 				msg_reminder: msg_reminder.trim() || null,
 			});
+			if (routingMode === 'round_robin') {
+				await api.put(`/v1/event-types/${slug}/hosts`, {
+					hosts: rotationHosts.map((hh, i) => ({ user_id: hh.user_id, role: 'rotation', priority: i })),
+				});
+			} else {
+				await api.put(`/v1/event-types/${slug}/hosts`, {
+					hosts: [{ user_id: $currentUser?.id, role: 'required', priority: 0 }],
+				});
+			}
 			toast.success('Changes saved');
 			await loadET();
 		} catch (e: any) {
@@ -280,9 +383,14 @@
 		}
 	}
 
-	onMount(() => {
-		loadET();
+	onMount(async () => {
+		await loadET();
 		loadQuestions();
+		if (routingMode === 'round_robin') {
+			await loadHosts();
+			loadMembers();
+			loadTeams();
+		}
 	});
 
 </script>
@@ -400,6 +508,99 @@
 					<p class="text-xs text-muted-foreground">Upcoming bookings one attendee (by email) can hold. 0 = unlimited</p>
 				</div>
 			</div>
+		</div>
+
+		<!-- Routing -->
+		<div class="mt-6 border-t pt-5">
+			<p class="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Routing</p>
+			<div class="space-y-1.5">
+				<Label for="et-routing">Who gets booked</Label>
+				<Select.Root type="single" value={routingMode} onValueChange={onRoutingModeChange}>
+					<Select.Trigger id="et-routing" class="w-full">
+						{ROUTING_MODES.find((r) => r.value === routingMode)?.label ?? 'Select…'}
+					</Select.Trigger>
+					<Select.Content>
+						{#each ROUTING_MODES as r}
+							<Select.Item value={r.value} label={r.label}>{r.label}</Select.Item>
+						{/each}
+					</Select.Content>
+				</Select.Root>
+				<p class="text-xs text-muted-foreground">
+					{#if routingMode === 'round_robin'}
+						Bookings are distributed to the least-loaded available member.
+					{:else}
+						Bookings go to you.
+					{/if}
+				</p>
+			</div>
+
+			{#if routingMode === 'round_robin'}
+				<div class="mt-4 space-y-3">
+					<p class="text-sm font-medium">Rotation hosts</p>
+					{#if rotationHosts.length > 0}
+						<div class="space-y-2">
+							{#each rotationHosts as h (h.user_id)}
+								<div class="flex items-center justify-between rounded-md border px-3 py-2">
+									<div class="min-w-0">
+										<div class="truncate text-sm font-medium">{h.name}</div>
+										<div class="truncate text-xs text-muted-foreground">{h.email}</div>
+									</div>
+									<Button type="button" variant="ghost" size="sm" onclick={() => removeRotationHost(h.user_id)}>
+										Remove
+									</Button>
+								</div>
+							{/each}
+						</div>
+					{:else}
+						<p class="text-xs text-muted-foreground">Add members or a team to the rotation.</p>
+					{/if}
+
+					<div class="grid grid-cols-2 gap-4">
+						<div class="space-y-1.5">
+							<Label for="rr-add-member">Add member</Label>
+							<Select.Root
+								type="single"
+								value=""
+								onValueChange={(v) => addRotationMember(v)}
+							>
+								<Select.Trigger id="rr-add-member" class="w-full">
+									Select a member…
+								</Select.Trigger>
+								<Select.Content>
+									{#if availableMembers.length > 0}
+										{#each availableMembers as m}
+											<Select.Item value={m.id} label={m.name}>{m.name} · {m.email}</Select.Item>
+										{/each}
+									{:else}
+										<div class="px-2 py-1.5 text-xs text-muted-foreground">No members available</div>
+									{/if}
+								</Select.Content>
+							</Select.Root>
+						</div>
+						<div class="space-y-1.5">
+							<Label for="rr-add-team">Add team</Label>
+							<Select.Root
+								type="single"
+								value=""
+								onValueChange={(v) => addRotationTeam(v)}
+							>
+								<Select.Trigger id="rr-add-team" class="w-full">
+									Select a team…
+								</Select.Trigger>
+								<Select.Content>
+									{#if teams.length > 0}
+										{#each teams as t}
+											<Select.Item value={t.id} label={t.name}>{t.name} ({t.member_count})</Select.Item>
+										{/each}
+									{:else}
+										<div class="px-2 py-1.5 text-xs text-muted-foreground">No teams</div>
+									{/if}
+								</Select.Content>
+							</Select.Root>
+						</div>
+					</div>
+				</div>
+			{/if}
 		</div>
 
 		<Button onclick={saveET} disabled={etSaving} class="mt-6">
