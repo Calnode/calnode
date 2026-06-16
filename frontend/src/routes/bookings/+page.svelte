@@ -71,6 +71,9 @@
 			await load();
 		} catch (e: any) {
 			error = e.message;
+		} finally {
+			confirmOpen = false;
+			pendingCancelId = null;
 		}
 	}
 

@@ -103,7 +103,7 @@ func (c *Client) CancelEvent(ctx context.Context, userID, eventID string) error 
 		return err
 	}
 
-	apiURL := c.apiBase + "/calendars/" + url.PathEscape(calID) + "/events/" + url.PathEscape(eventID)
+	apiURL := c.apiBase + "/calendars/" + url.PathEscape(calID) + "/events/" + url.PathEscape(eventID) + "?sendUpdates=all"
 	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, apiURL, nil)
 	if err != nil {
 		return fmt.Errorf("gcal: cancel event request: %w", err)
