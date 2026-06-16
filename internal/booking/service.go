@@ -304,6 +304,69 @@ func (s *Service) Reschedule(ctx context.Context, bookingID string, newStart, ne
 	return b, nil
 }
 
+// ReassignHost moves a booking to a different host inside a transaction,
+// checking the new host is free at the booking's time. Returns ErrNotFound if
+// the booking doesn't exist, ErrAlreadyCancelled if it is cancelled, and
+// ErrDoubleBooked if the new host already has an overlapping confirmed booking.
+// Reassigning to the current host is a no-op that returns the booking unchanged.
+func (s *Service) ReassignHost(ctx context.Context, bookingID, newHostID string) (*Booking, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("booking: begin tx: %w", err)
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	b, err := scanBooking(tx.QueryRowContext(ctx, `
+		SELECT id, event_type_id, host_id, start_at, end_at, status,
+		       COALESCE(cancellation_reason,''), COALESCE(location_value,''),
+		       created_at, updated_at
+		FROM bookings WHERE id = ?`, bookingID))
+	if err != nil {
+		return nil, err
+	}
+	if b.Status == "cancelled" {
+		return nil, ErrAlreadyCancelled
+	}
+	if b.HostID == newHostID {
+		return b, nil // already this host — nothing to do
+	}
+
+	startStr := b.StartAt.UTC().Format(time.RFC3339Nano)
+	endStr := b.EndAt.UTC().Format(time.RFC3339Nano)
+
+	var n int
+	if err := tx.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM bookings
+		WHERE host_id = ? AND status != 'cancelled' AND id != ?
+		  AND start_at < ? AND end_at > ?`,
+		newHostID, bookingID, endStr, startStr).Scan(&n); err != nil {
+		return nil, fmt.Errorf("booking: reassign overlap: %w", err)
+	}
+	if n > 0 {
+		return nil, ErrDoubleBooked
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE bookings SET host_id = ?, updated_at = ? WHERE id = ?`,
+		newHostID, now, bookingID); err != nil {
+		if isUniqueViolation(err) {
+			return nil, ErrDoubleBooked
+		}
+		return nil, fmt.Errorf("booking: reassign update: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("booking: reassign commit: %w", err)
+	}
+
+	b.HostID = newHostID
+	if t, err := time.Parse(time.RFC3339Nano, now); err == nil {
+		b.UpdatedAt = t
+	}
+	return b, nil
+}
+
 // CancelByToken cancels a booking authenticated by a manage token.
 // Unlike Cancel, it does not require host authentication.
 func (s *Service) CancelByToken(ctx context.Context, rawToken, reason string) (*Booking, error) {

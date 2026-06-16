@@ -148,6 +148,7 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	mux.HandleFunc("POST /v1/users/{id}/transfer-ownership", h.RequireAuth(h.TransferOwnership))
 	mux.HandleFunc("POST /v1/users/{id}/archive", h.RequireAuth(h.ArchiveUser))
 	mux.HandleFunc("POST /v1/users/{id}/restore", h.RequireAuth(h.RestoreUser))
+	mux.HandleFunc("GET /v1/users/{id}/upcoming-bookings", h.RequireAuth(h.ListUserUpcomingBookings))
 	mux.HandleFunc("GET /v1/users/me", h.RequireAuth(h.GetMe))
 	mux.HandleFunc("PATCH /v1/users/me", h.RequireAuth(h.PatchMe))
 	avatarRL := RateLimit(20, time.Minute)
@@ -203,6 +204,7 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	mux.HandleFunc("GET /v1/bookings", h.RequireAuth(h.ListBookings))
 	mux.HandleFunc("POST /v1/bookings/{id}/cancel", h.RequireAuth(h.CancelBooking))
 	mux.HandleFunc("PATCH /v1/bookings/{id}/reschedule", h.RequireAuth(h.RescheduleBooking))
+	mux.HandleFunc("POST /v1/bookings/{id}/reassign", h.RequireAuth(h.ReassignBooking))
 	mux.HandleFunc("GET /v1/bookings/{id}/answers", h.RequireAuth(h.GetBookingAnswers))
 
 	// Public booking page
