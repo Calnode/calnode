@@ -77,6 +77,10 @@
 						Go to <span class="font-medium">APIs &amp; Services → OAuth consent screen</span>.
 						Choose <span class="font-medium">External</span> (or Internal if you have Google Workspace).
 						Fill in the app name and your email, then save.
+						<p class="mt-1.5 text-xs text-muted-foreground">
+							While the app is in <span class="font-medium">Testing</span>, only Google accounts added as test users can connect, and Google caps this at 100 users. Once your team members are ready to connect their calendars, click <span class="font-medium">Publish app</span> to lift the limit (Internal / Workspace apps have no cap). See
+							<a href="https://support.google.com/cloud/answer/15549945" target="_blank" rel="noopener noreferrer" class="text-primary underline">Google's guide</a>.
+						</p>
 					</div>
 				</li>
 				<li class="flex gap-3">
