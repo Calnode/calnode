@@ -6,6 +6,8 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
+	import * as Select from '$lib/components/ui/select';
+	import { Combobox } from '$lib/components/ui/combobox';
 	import * as Avatar from '$lib/components/ui/avatar';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { toast } from 'svelte-sonner';
@@ -146,7 +148,11 @@
 		return name.split(' ').map((p) => p[0]).join('').toUpperCase().slice(0, 2);
 	}
 
-	const selectCls = 'flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring';
+	const DATE_FORMATS = [
+		{ value: 'dmy', label: 'DD/MM/YYYY' },
+		{ value: 'mdy', label: 'MM/DD/YYYY' },
+		{ value: 'ymd', label: 'YYYY-MM-DD' },
+	];
 </script>
 
 <svelte:window onkeydown={saveOnCmdS(save, () => !saving)} />
@@ -200,11 +206,12 @@
 			<div class="space-y-4">
 				<div class="space-y-1.5">
 					<Label for="timezone">Timezone</Label>
-					<select id="timezone" bind:value={timezone} class={selectCls}>
-						{#each TIMEZONES as tz}
-							<option value={tz}>{tz}</option>
-						{/each}
-					</select>
+					<Combobox
+						items={TIMEZONES.map((tz) => ({ value: tz, label: tz }))}
+						bind:value={timezone}
+						placeholder="Select timezone…"
+						searchPlaceholder="Search timezones…"
+					/>
 					<p class="text-xs text-muted-foreground">Used when computing available slots for your booking pages.</p>
 				</div>
 
@@ -223,20 +230,30 @@
 
 				<div class="space-y-1.5">
 					<Label for="week-start">First day of week</Label>
-					<select id="week-start" bind:value={week_start} class={selectCls}>
-						{#each [0, 1] as d}
-							<option value={d}>{WEEK_DAYS[d]}</option>
-						{/each}
-					</select>
+					<Select.Root type="single" value={String(week_start)} onValueChange={(v) => { if (v) week_start = Number(v); }}>
+						<Select.Trigger id="week-start" class="w-full">
+							{WEEK_DAYS[week_start]}
+						</Select.Trigger>
+						<Select.Content>
+							{#each [0, 1] as d}
+								<Select.Item value={String(d)} label={WEEK_DAYS[d]}>{WEEK_DAYS[d]}</Select.Item>
+							{/each}
+						</Select.Content>
+					</Select.Root>
 				</div>
 
 				<div class="space-y-1.5">
 					<Label for="date-format">Date format</Label>
-					<select id="date-format" bind:value={date_format} class={selectCls}>
-						<option value="dmy">DD/MM/YYYY</option>
-						<option value="mdy">MM/DD/YYYY</option>
-						<option value="ymd">YYYY-MM-DD</option>
-					</select>
+					<Select.Root type="single" value={date_format} onValueChange={(v) => { if (v) date_format = v as 'dmy' | 'mdy' | 'ymd'; }}>
+						<Select.Trigger id="date-format" class="w-full">
+							{DATE_FORMATS.find((f) => f.value === date_format)?.label ?? 'Select…'}
+						</Select.Trigger>
+						<Select.Content>
+							{#each DATE_FORMATS as f}
+								<Select.Item value={f.value} label={f.label}>{f.label}</Select.Item>
+							{/each}
+						</Select.Content>
+					</Select.Root>
 				</div>
 			</div>
 		</div>

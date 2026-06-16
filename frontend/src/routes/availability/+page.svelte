@@ -6,6 +6,7 @@
 	import { ConfirmDialog } from '$lib/components/ui/confirm-dialog';
 	import { Badge } from '$lib/components/ui/badge';
 	import * as Tooltip from '$lib/components/ui/tooltip';
+	import * as Select from '$lib/components/ui/select';
 	import { DatePicker } from '$lib/components/ui/date-picker';
 
 	const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -230,8 +231,15 @@
 		loadOverrides();
 	});
 
-	const selectCls = 'flex h-8 rounded-md border border-input bg-background px-2 py-1 text-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring';
-	const selectFullCls = 'flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring';
+	const REASON_OPTIONS: { value: OverrideReason; label: string }[] = [
+		{ value: 'day_off', label: 'Day off' },
+		{ value: 'out_of_office', label: 'Out of office' },
+		{ value: 'custom_hours', label: 'Custom hours' },
+	];
+
+	// Time-of-day options for the start/end selects, formatted per the user's prefs.
+	let timeOptions = $derived(TIME_SLOTS.map((t) => ({ value: t, label: fmtTime(t) })));
+	function timeLabel(t: string) { return fmtTime(t); }
 </script>
 
 <ConfirmDialog
@@ -287,23 +295,29 @@
 							{:else}
 								{#each day.blocks as block}
 									<div class="flex items-center gap-2">
-										<select
+										<Select.Root
+											type="single"
 											bind:value={block.start_time}
-											onchange={() => updateBlock(block)}
+											onValueChange={() => updateBlock(block)}
 											disabled={block.saving || !block.id}
-											class={selectCls}
 										>
-											{#each TIME_SLOTS as t}<option value={t}>{fmtTime(t)}</option>{/each}
-										</select>
+											<Select.Trigger class="w-fit">{timeLabel(block.start_time)}</Select.Trigger>
+											<Select.Content>
+												{#each timeOptions as t}<Select.Item value={t.value} label={t.label}>{t.label}</Select.Item>{/each}
+											</Select.Content>
+										</Select.Root>
 										<span class="text-muted-foreground">–</span>
-										<select
+										<Select.Root
+											type="single"
 											bind:value={block.end_time}
-											onchange={() => updateBlock(block)}
+											onValueChange={() => updateBlock(block)}
 											disabled={block.saving || !block.id}
-											class={selectCls}
 										>
-											{#each TIME_SLOTS as t}<option value={t}>{fmtTime(t)}</option>{/each}
-										</select>
+											<Select.Trigger class="w-fit">{timeLabel(block.end_time)}</Select.Trigger>
+											<Select.Content>
+												{#each timeOptions as t}<Select.Item value={t.value} label={t.label}>{t.label}</Select.Item>{/each}
+											</Select.Content>
+										</Select.Root>
 										{#if block.saving}
 											<span class="text-xs text-muted-foreground">saving…</span>
 										{:else if block.error}
@@ -363,22 +377,31 @@
 							<tr class="bg-muted/20">
 								<td class="px-4 py-3 font-medium">{fmtDate(ov.date, $prefs)}</td>
 								<td class="px-4 py-3">
-									<select bind:value={editOvForm.reason} class={selectFullCls} style="width: auto">
-										<option value="day_off">Day off</option>
-										<option value="out_of_office">Out of office</option>
-										<option value="custom_hours">Custom hours</option>
-									</select>
+									<Select.Root type="single" value={editOvForm.reason} onValueChange={(v) => { if (v) editOvForm.reason = v as OverrideReason; }}>
+										<Select.Trigger class="w-fit">{REASON_LABELS[editOvForm.reason]}</Select.Trigger>
+										<Select.Content>
+											{#each REASON_OPTIONS as r}
+												<Select.Item value={r.value} label={r.label}>{r.label}</Select.Item>
+											{/each}
+										</Select.Content>
+									</Select.Root>
 								</td>
 								<td class="px-4 py-3">
 									{#if editOvForm.reason === 'custom_hours'}
 										<div class="flex items-center gap-2">
-											<select class={selectCls} bind:value={editOvForm.start_time}>
-												{#each TIME_SLOTS as t}<option value={t}>{fmtTime(t)}</option>{/each}
-											</select>
+											<Select.Root type="single" bind:value={editOvForm.start_time}>
+												<Select.Trigger class="w-fit">{timeLabel(editOvForm.start_time)}</Select.Trigger>
+												<Select.Content>
+													{#each timeOptions as t}<Select.Item value={t.value} label={t.label}>{t.label}</Select.Item>{/each}
+												</Select.Content>
+											</Select.Root>
 											<span class="text-muted-foreground">–</span>
-											<select class={selectCls} bind:value={editOvForm.end_time}>
-												{#each TIME_SLOTS as t}<option value={t}>{fmtTime(t)}</option>{/each}
-											</select>
+											<Select.Root type="single" bind:value={editOvForm.end_time}>
+												<Select.Trigger class="w-fit">{timeLabel(editOvForm.end_time)}</Select.Trigger>
+												<Select.Content>
+													{#each timeOptions as t}<Select.Item value={t.value} label={t.label}>{t.label}</Select.Item>{/each}
+												</Select.Content>
+											</Select.Root>
 										</div>
 									{:else}
 										<span class="text-muted-foreground">—</span>
@@ -454,24 +477,33 @@
 				</div>
 				<div class="space-y-1.5">
 					<label for="ov-type" class="text-sm font-medium">Type</label>
-					<select id="ov-type" bind:value={ovForm.reason} class={selectFullCls} style="width: auto">
-						<option value="day_off">Day off</option>
-						<option value="out_of_office">Out of office</option>
-						<option value="custom_hours">Custom hours</option>
-					</select>
+					<Select.Root type="single" value={ovForm.reason} onValueChange={(v) => { if (v) ovForm.reason = v as OverrideReason; }}>
+						<Select.Trigger id="ov-type" class="w-fit">{REASON_LABELS[ovForm.reason]}</Select.Trigger>
+						<Select.Content>
+							{#each REASON_OPTIONS as r}
+								<Select.Item value={r.value} label={r.label}>{r.label}</Select.Item>
+							{/each}
+						</Select.Content>
+					</Select.Root>
 				</div>
 				{#if ovForm.reason === 'custom_hours'}
 					<div class="space-y-1.5">
 						<label for="ov-start" class="text-sm font-medium">From</label>
-						<select id="ov-start" bind:value={ovForm.start_time} class={selectCls}>
-							{#each TIME_SLOTS as t}<option value={t}>{fmtTime(t)}</option>{/each}
-						</select>
+						<Select.Root type="single" bind:value={ovForm.start_time}>
+							<Select.Trigger id="ov-start" class="w-fit">{timeLabel(ovForm.start_time)}</Select.Trigger>
+							<Select.Content>
+								{#each timeOptions as t}<Select.Item value={t.value} label={t.label}>{t.label}</Select.Item>{/each}
+							</Select.Content>
+						</Select.Root>
 					</div>
 					<div class="space-y-1.5">
 						<label for="ov-end" class="text-sm font-medium">To</label>
-						<select id="ov-end" bind:value={ovForm.end_time} class={selectCls}>
-							{#each TIME_SLOTS as t}<option value={t}>{fmtTime(t)}</option>{/each}
-						</select>
+						<Select.Root type="single" bind:value={ovForm.end_time}>
+							<Select.Trigger id="ov-end" class="w-fit">{timeLabel(ovForm.end_time)}</Select.Trigger>
+							<Select.Content>
+								{#each timeOptions as t}<Select.Item value={t.value} label={t.label}>{t.label}</Select.Item>{/each}
+							</Select.Content>
+						</Select.Root>
 					</div>
 				{/if}
 				<Button onclick={addOverride} disabled={addingOv}>

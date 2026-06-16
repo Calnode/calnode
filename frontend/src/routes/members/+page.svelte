@@ -8,6 +8,7 @@
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
 	import { Badge } from '$lib/components/ui/badge';
+	import * as Select from '$lib/components/ui/select';
 	import { toast } from 'svelte-sonner';
 
 	let members: TeamMember[] = $state([]);
@@ -290,16 +291,21 @@
 						</p>
 					</div>
 					<div class="flex flex-wrap items-center gap-2">
-						<select
-							bind:value={resolveChoice[b.id]}
-							class="h-8 rounded-md border border-input bg-background px-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+						<Select.Root
+							type="single"
+							value={resolveChoice[b.id] ?? ''}
+							onValueChange={(v) => { resolveChoice = { ...resolveChoice, [b.id]: v ?? '' }; }}
 							disabled={resolveBusy || reassignTargets.length === 0}
 						>
-							<option value="" disabled selected>Reassign to…</option>
-							{#each reassignTargets as t}
-								<option value={t.id}>{t.name}</option>
-							{/each}
-						</select>
+							<Select.Trigger class="w-fit min-w-40">
+								{reassignTargets.find((t) => t.id === resolveChoice[b.id])?.name ?? 'Reassign to…'}
+							</Select.Trigger>
+							<Select.Content>
+								{#each reassignTargets as t}
+									<Select.Item value={t.id} label={t.name}>{t.name}</Select.Item>
+								{/each}
+							</Select.Content>
+						</Select.Root>
 						<Button size="sm" variant="outline" class="h-8" disabled={resolveBusy || !resolveChoice[b.id]} onclick={() => reassignOne(b.id)}>
 							Reassign
 						</Button>

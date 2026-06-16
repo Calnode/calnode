@@ -6,6 +6,7 @@
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
 	import { Badge } from '$lib/components/ui/badge';
+	import * as Select from '$lib/components/ui/select';
 	import { toast } from 'svelte-sonner';
 
 	let teams = $state<Team[]>([]);
@@ -259,16 +260,26 @@
 
 						<!-- Add a member -->
 						<div class="flex items-center gap-2">
-							<select
-								bind:value={addChoice[team.id]}
-								class="h-8 rounded-md border border-input bg-background px-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+							<Select.Root
+								type="single"
+								value={addChoice[team.id] ?? ''}
+								onValueChange={(v) => { addChoice = { ...addChoice, [team.id]: v ?? '' }; }}
 								disabled={membersNotIn(team).length === 0}
 							>
-								<option value="" disabled selected>Add a member…</option>
-								{#each membersNotIn(team) as u}
-									<option value={u.id}>{u.name} ({u.email})</option>
-								{/each}
-							</select>
+								<Select.Trigger class="w-fit min-w-48">
+									{#if addChoice[team.id]}
+										{@const u = users.find((x) => x.id === addChoice[team.id])}
+										{u ? `${u.name} (${u.email})` : 'Add a member…'}
+									{:else}
+										Add a member…
+									{/if}
+								</Select.Trigger>
+								<Select.Content>
+									{#each membersNotIn(team) as u}
+										<Select.Item value={u.id} label={`${u.name} (${u.email})`}>{u.name} ({u.email})</Select.Item>
+									{/each}
+								</Select.Content>
+							</Select.Root>
 							<Button size="sm" variant="outline" class="h-8" disabled={!addChoice[team.id]} onclick={() => addMember(team.id)}>Add</Button>
 							{#if membersNotIn(team).length === 0}
 								<span class="text-xs text-muted-foreground">All active members are already in this team.</span>

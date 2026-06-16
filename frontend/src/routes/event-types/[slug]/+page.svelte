@@ -10,6 +10,7 @@
 	import { Checkbox } from '$lib/components/ui/checkbox';
 	import { Textarea } from '$lib/components/ui/textarea';
 	import { Switch } from '$lib/components/ui/switch';
+	import * as Select from '$lib/components/ui/select';
 	import * as Tooltip from '$lib/components/ui/tooltip';
 	import { toast } from 'svelte-sonner';
 	import { saveOnCmdS } from '$lib/save-shortcut';
@@ -22,6 +23,12 @@
 		{ value: 'phone',        label: 'Phone call' },
 		{ value: 'in_person',    label: 'In person' },
 		{ value: 'custom_video', label: 'Other video' },
+	];
+
+	const QUESTION_TYPES = [
+		{ value: 'text', label: 'Text' },
+		{ value: 'checkbox', label: 'Checkbox (yes/no)' },
+		{ value: 'select', label: 'Dropdown' },
 	];
 
 	const LOCATION_NEEDS_VALUE: Record<string, string> = {
@@ -278,7 +285,6 @@
 		loadQuestions();
 	});
 
-	const selectCls = 'flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring';
 </script>
 
 <ConfirmDialog
@@ -346,11 +352,16 @@
 			<div class="grid grid-cols-2 gap-4">
 				<div class="space-y-1.5">
 					<Label for="et-loc">Type</Label>
-					<select id="et-loc" bind:value={form.location_type} class={selectCls}>
-						{#each LOCATION_TYPES as lt}
-							<option value={lt.value}>{lt.label}</option>
-						{/each}
-					</select>
+					<Select.Root type="single" bind:value={form.location_type}>
+						<Select.Trigger id="et-loc" class="w-full">
+							{LOCATION_TYPES.find((lt) => lt.value === form.location_type)?.label ?? 'Select…'}
+						</Select.Trigger>
+						<Select.Content>
+							{#each LOCATION_TYPES as lt}
+								<Select.Item value={lt.value} label={lt.label}>{lt.label}</Select.Item>
+							{/each}
+						</Select.Content>
+					</Select.Root>
 				</div>
 				<div class="space-y-1.5">
 					<Label for="et-loc-val">{LOCATION_NEEDS_VALUE[form.location_type] ?? 'Details'}</Label>
@@ -409,18 +420,24 @@
 			<div class="space-y-2">
 				{#each reminders as hb, i}
 					<div class="flex items-center gap-2">
-						<select
-							value={hb}
-							onchange={(e) => {
-								const v = Number((e.target as HTMLSelectElement).value);
-								reminders = reminders.map((r, idx) => idx === i ? v : r);
+						<Select.Root
+							type="single"
+							value={String(hb)}
+							onValueChange={(v) => {
+								if (!v) return;
+								const n = Number(v);
+								reminders = reminders.map((r, idx) => idx === i ? n : r);
 							}}
-							class="flex h-9 rounded-md border border-input bg-background px-3 py-1 text-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
 						>
-							{#each REMINDER_OPTIONS as opt}
-								<option value={opt.value}>{opt.label}</option>
-							{/each}
-						</select>
+							<Select.Trigger class="w-full">
+								{REMINDER_OPTIONS.find((o) => o.value === hb)?.label ?? 'Select…'}
+							</Select.Trigger>
+							<Select.Content>
+								{#each REMINDER_OPTIONS as opt}
+									<Select.Item value={String(opt.value)} label={opt.label}>{opt.label}</Select.Item>
+								{/each}
+							</Select.Content>
+						</Select.Root>
 						<Button
 							type="button"
 							variant="ghost"
@@ -568,11 +585,16 @@
 										</div>
 										<div class="space-y-1.5">
 											<Label for="eq-type-{q.id}" class="text-xs text-muted-foreground">Type</Label>
-											<select id="eq-type-{q.id}" bind:value={editQForm.type} class={selectCls}>
-												<option value="text">Text</option>
-												<option value="checkbox">Checkbox (yes/no)</option>
-												<option value="select">Dropdown</option>
-											</select>
+											<Select.Root type="single" value={editQForm.type} onValueChange={(v) => { if (v) editQForm.type = v as 'text'|'select'|'checkbox'; }}>
+												<Select.Trigger id="eq-type-{q.id}" class="w-full">
+													{QUESTION_TYPES.find((t) => t.value === editQForm.type)?.label ?? 'Select…'}
+												</Select.Trigger>
+												<Select.Content>
+													{#each QUESTION_TYPES as t}
+														<Select.Item value={t.value} label={t.label}>{t.label}</Select.Item>
+													{/each}
+												</Select.Content>
+											</Select.Root>
 										</div>
 										{#if editQForm.type === 'select'}
 											<div class="col-span-2 space-y-1.5">
@@ -654,11 +676,16 @@
 				</div>
 				<div class="space-y-1.5">
 					<Label for="q-type">Type</Label>
-					<select id="q-type" bind:value={qForm.type} class={selectCls}>
-						<option value="text">Text</option>
-						<option value="checkbox">Checkbox (yes/no)</option>
-						<option value="select">Dropdown</option>
-					</select>
+					<Select.Root type="single" value={qForm.type} onValueChange={(v) => { if (v) qForm.type = v as 'text'|'select'|'checkbox'; }}>
+						<Select.Trigger id="q-type" class="w-full">
+							{QUESTION_TYPES.find((t) => t.value === qForm.type)?.label ?? 'Select…'}
+						</Select.Trigger>
+						<Select.Content>
+							{#each QUESTION_TYPES as t}
+								<Select.Item value={t.value} label={t.label}>{t.label}</Select.Item>
+							{/each}
+						</Select.Content>
+					</Select.Root>
 				</div>
 				{#if qForm.type === 'select'}
 					<div class="col-span-2 space-y-1.5">
