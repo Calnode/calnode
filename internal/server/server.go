@@ -107,6 +107,7 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	// Ops
 	mux.HandleFunc("GET /healthz", h.Healthz)
 	mux.HandleFunc("GET /readyz", h.Readyz)
+	mux.HandleFunc("GET /version", h.Version)
 
 	// Bootstrap — public, once-only
 	mux.HandleFunc("POST /v1/setup", h.Setup)

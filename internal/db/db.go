@@ -1,10 +1,15 @@
 package db
 
 import (
+	"context"
 	"database/sql"
 	"embed"
 	"fmt"
+	"io/fs"
+	"path"
+	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/pressly/goose/v3"
 	_ "modernc.org/sqlite"
@@ -58,6 +63,71 @@ func Migrate(db *sql.DB) error {
 	}
 
 	return nil
+}
+
+var (
+	targetVersionOnce sync.Once
+	targetVersion     int64
+	targetVersionErr  error
+)
+
+// TargetVersion returns the highest migration version embedded in the binary —
+// i.e. the schema version a fully-migrated database should report.
+func TargetVersion() (int64, error) {
+	targetVersionOnce.Do(func() {
+		entries, err := fs.ReadDir(migrations, "migrations")
+		if err != nil {
+			targetVersionErr = fmt.Errorf("read embedded migrations: %w", err)
+			return
+		}
+		for _, e := range entries {
+			if e.IsDir() || !strings.HasSuffix(e.Name(), ".sql") {
+				continue
+			}
+			// Filenames are "NNNNN_description.sql"; the leading number is the version.
+			name := path.Base(e.Name())
+			numPart, _, _ := strings.Cut(name, "_")
+			v, err := strconv.ParseInt(numPart, 10, 64)
+			if err != nil {
+				continue // ignore files that don't follow the goose naming convention
+			}
+			if v > targetVersion {
+				targetVersion = v
+			}
+		}
+	})
+	return targetVersion, targetVersionErr
+}
+
+// AppliedVersion returns the schema version currently applied to db by reading
+// goose's bookkeeping table directly (no goose global state). A missing
+// goose_db_version table returns an error, which callers treat as "not migrated".
+func AppliedVersion(ctx context.Context, db *sql.DB) (int64, error) {
+	var v sql.NullInt64
+	err := db.QueryRowContext(ctx,
+		`SELECT MAX(version_id) FROM goose_db_version WHERE is_applied = 1`).Scan(&v)
+	if err != nil {
+		return 0, err
+	}
+	if !v.Valid {
+		return 0, nil
+	}
+	return v.Int64, nil
+}
+
+// SchemaReady reports whether db has been migrated to the embedded target
+// version. The provisioner / load balancer can poll /readyz, which calls this,
+// to gate traffic until migrations have finished.
+func SchemaReady(ctx context.Context, db *sql.DB) (bool, error) {
+	target, err := TargetVersion()
+	if err != nil {
+		return false, err
+	}
+	applied, err := AppliedVersion(ctx, db)
+	if err != nil {
+		return false, err
+	}
+	return applied >= target, nil
 }
 
 func parseDSN(url string) string {

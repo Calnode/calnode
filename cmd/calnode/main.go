@@ -13,6 +13,7 @@ import (
 
 	"github.com/joho/godotenv"
 
+	"github.com/calnode/calnode/internal/buildinfo"
 	"github.com/calnode/calnode/internal/config"
 	"github.com/calnode/calnode/internal/db"
 	"github.com/calnode/calnode/internal/keyvault"
@@ -45,6 +46,9 @@ func main() {
 		Level: cfg.LogLevel,
 	}))
 	slog.SetDefault(logger)
+
+	bi := buildinfo.Get()
+	logger.Info("starting calnode", "version", bi.Version, "commit", bi.Commit, "build_time", bi.BuildTime, "dirty", bi.Dirty)
 
 	if cfg.GoogleClientID != "" {
 		slog.Info("Google OAuth configured", "client_id_prefix", cfg.GoogleClientID[:20])

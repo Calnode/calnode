@@ -56,12 +56,61 @@ func TestReadyz_returns200_whenDBHealthy(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Errorf("status = %d; want 200", rec.Code)
 	}
-	var body map[string]string
+	var body struct {
+		Status  string `json:"status"`
+		Version struct {
+			Version string `json:"version"`
+		} `json:"version"`
+	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("body not valid JSON: %v", err)
 	}
-	if body["status"] != "ok" {
-		t.Errorf("status = %q; want ok", body["status"])
+	if body.Status != "ok" {
+		t.Errorf("status = %q; want ok", body.Status)
+	}
+	if body.Version.Version == "" {
+		t.Error("readyz body should embed the build version")
+	}
+}
+
+func TestReadyz_returns503_whenNotMigrated(t *testing.T) {
+	// Open a DB but do NOT migrate it — the goose bookkeeping table is absent,
+	// so the schema-readiness gate must report not-ready.
+	database, err := db.Open("sqlite://:memory:")
+	if err != nil {
+		t.Fatalf("db.Open: %v", err)
+	}
+	t.Cleanup(func() { database.Close() })
+
+	h := handler.New(database, slog.Default())
+	req := httptest.NewRequest(http.MethodGet, "/readyz", nil)
+	rec := httptest.NewRecorder()
+
+	h.Readyz(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("status = %d; want 503 (migrations pending)", rec.Code)
+	}
+}
+
+func TestVersion_returns200(t *testing.T) {
+	h := newTestHandler(t)
+	req := httptest.NewRequest(http.MethodGet, "/version", nil)
+	rec := httptest.NewRecorder()
+
+	h.Version(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("status = %d; want 200", rec.Code)
+	}
+	var body struct {
+		Version string `json:"version"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("body not valid JSON: %v", err)
+	}
+	if body.Version == "" {
+		t.Error("version should be non-empty (defaults to \"dev\")")
 	}
 }
 
