@@ -626,6 +626,14 @@ body {
       $('confirm-time').textContent = `${fmtDate(pickedDate)} · ${fmtTime(pickedSlot.start)}`;
       showView('confirm-view');
 
+      // Booking succeeded. Re-enable the button so a second booking attempt in the
+      // same session (before the page is refreshed) isn't silently blocked by a
+      // button left disabled from this success. Every error path already resets it;
+      // the success path didn't, which is what left it stuck on "Confirming…".
+      // The server enforces the per-invitee active-booking cap and returns a clear
+      // message, so the resubmit surfaces that instead of hanging.
+      btn.disabled = false; btn.textContent = 'Confirm booking';
+
     } catch {
       errEl.textContent = 'Network error. Please check your connection.';
       btn.disabled = false; btn.textContent = 'Confirm booking';
