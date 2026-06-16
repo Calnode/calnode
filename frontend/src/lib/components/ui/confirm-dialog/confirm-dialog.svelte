@@ -56,7 +56,7 @@
 				</AlertDialogPrimitive.Cancel>
 				<AlertDialogPrimitive.Action
 					class={buttonVariants({ variant: destructive ? 'destructive' : 'default' })}
-					onclick={() => onConfirm?.()}
+					onclick={() => { open = false; onConfirm?.(); }}
 				>
 					{confirmText}
 				</AlertDialogPrimitive.Action>
