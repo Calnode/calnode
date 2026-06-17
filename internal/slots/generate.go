@@ -15,6 +15,10 @@ type HostAvailability struct {
 	// Busy holds active bookings + external-calendar busy intervals for this
 	// host.  Calnode-tagged events must already be excluded by the caller (§6.2).
 	Busy []Interval
+	// Role is the host's role for round_robin events: "required" (a fixed host who
+	// always attends — must be free for the slot to be offered) or "rotation" (the
+	// pool one is picked from). Empty for other modes, which don't split by role.
+	Role string
 }
 
 // EventConfig holds the event-type parameters that govern slot generation.
@@ -178,13 +182,39 @@ func pickHosts(hosts []HostAvailability, available map[string]bool, mode string)
 		return nil
 
 	case "round_robin":
-		// Slot offered if any host is free; actual round-robin assignment at booking time.
+		// Fixed "required" hosts (if any) must all be free and always attend; one
+		// "rotation" host is picked at booking time. Offer the slot only when every
+		// required host is free AND ≥1 rotation host is free. Hosts with no role tag
+		// are treated as rotation (back-compat with rotation-only round robin).
+		var out []string
+		hasRotationPool := false
+		rotationFree := false
 		for _, h := range hosts {
-			if available[h.HostID] {
-				return []string{h.HostID}
+			if h.Role == "required" {
+				if !available[h.HostID] {
+					return nil // a fixed host is busy — slot not offered
+				}
+				out = append(out, h.HostID)
 			}
 		}
-		return nil
+		for _, h := range hosts {
+			if h.Role == "required" {
+				continue
+			}
+			hasRotationPool = true
+			if available[h.HostID] {
+				out = append(out, h.HostID) // first available rotation host (priority order)
+				rotationFree = true
+				break
+			}
+		}
+		if hasRotationPool && !rotationFree {
+			return nil // rotation pool exists but none free
+		}
+		if len(out) == 0 {
+			return nil
+		}
+		return out
 
 	default: // "fixed" and fallback
 		if len(hosts) == 0 {

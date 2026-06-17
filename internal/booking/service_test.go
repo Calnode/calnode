@@ -281,6 +281,74 @@ func TestCreate_roundRobinPriorityPicksFirstFree(t *testing.T) {
 	}
 }
 
+func TestCreate_roundRobinFixedHostAlwaysAttends(t *testing.T) {
+	database := newTestDB(t)
+	svc := booking.New(database)
+	fixed := seedHost(t, database) // always attends
+	r1 := seedHost(t, database)    // rotation (top priority)
+	r2 := seedHost(t, database)    // rotation
+	etID := seedEventType(t, database, fixed)
+
+	b, err := svc.Create(context.Background(), booking.CreateParams{
+		EventTypeID:   etID,
+		RoutingMode:   "round_robin",
+		RRStrategy:    "priority",
+		RequiredHosts: []string{fixed},
+		HostIDs:       []string{r1, r2},
+		StartAt:       slot(9, 0), EndAt: slot(9, 30),
+		Organizer: booking.Attendee{Name: "A", Email: "a@example.com"},
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if b.HostID != r1 {
+		t.Errorf("primary should be the rotation pick r1; got %s", b.HostID)
+	}
+
+	rows, _ := database.Query(`SELECT user_id, is_primary FROM booking_hosts WHERE booking_id = ?`, b.ID)
+	defer rows.Close()
+	got := map[string]int{}
+	for rows.Next() {
+		var uid string
+		var p int
+		rows.Scan(&uid, &p)
+		got[uid] = p
+	}
+	if _, ok := got[fixed]; !ok {
+		t.Error("the fixed host should always attend")
+	}
+	if _, ok := got[r1]; !ok {
+		t.Error("the rotation pick should attend")
+	}
+	if _, ok := got[r2]; ok {
+		t.Error("only one rotation host should be picked")
+	}
+	if got[fixed] != 0 || got[r1] != 1 {
+		t.Errorf("rotation pick should be primary, fixed host secondary; got fixed=%d r1=%d", got[fixed], got[r1])
+	}
+
+	// If the fixed host is busy, the slot can't be booked at all.
+	if _, err := svc.Create(context.Background(), booking.CreateParams{
+		EventTypeID: etID, HostIDs: []string{fixed},
+		StartAt: slot(10, 0), EndAt: slot(10, 30),
+		Organizer: booking.Attendee{Name: "B", Email: "b@example.com"},
+	}); err != nil {
+		t.Fatalf("seed busy fixed host: %v", err)
+	}
+	_, err = svc.Create(context.Background(), booking.CreateParams{
+		EventTypeID:   etID,
+		RoutingMode:   "round_robin",
+		RRStrategy:    "priority",
+		RequiredHosts: []string{fixed},
+		HostIDs:       []string{r1, r2},
+		StartAt:       slot(10, 0), EndAt: slot(10, 30),
+		Organizer: booking.Attendee{Name: "C", Email: "c@example.com"},
+	})
+	if err != booking.ErrDoubleBooked {
+		t.Errorf("busy fixed host should block the booking; got %v", err)
+	}
+}
+
 func TestCreate_multiHostWritesBookingHosts(t *testing.T) {
 	database := newTestDB(t)
 	svc := booking.New(database)

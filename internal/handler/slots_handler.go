@@ -85,31 +85,36 @@ func (h *Handler) GetSlots(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	var poolIDs []string
+	// Pool the hosts that gate this event's slots, tagged with the role the engine
+	// needs. Round-robin: required (fixed, always attend) + rotation (pick one).
+	// fixed/collective: the required hosts (all must be free).
+	type poolHost struct{ id, role string }
+	var pool []poolHost
 	for _, hh := range hosts {
 		if et.RoutingMode == "round_robin" {
-			if hh.Role == "rotation" {
-				poolIDs = append(poolIDs, hh.UserID)
+			if hh.Role == "rotation" || hh.Role == "required" {
+				pool = append(pool, poolHost{hh.UserID, hh.Role})
 			}
 		} else if hh.Role == "required" { // fixed + collective gate on required hosts
-			poolIDs = append(poolIDs, hh.UserID)
+			pool = append(pool, poolHost{hh.UserID, hh.Role})
 		}
 	}
-	if len(poolIDs) == 0 {
+	if len(pool) == 0 {
 		// No bookable hosts (e.g. all archived, or a round-robin with no rotation
 		// members) — offer nothing rather than erroring.
 		h.writeJSON(w, http.StatusOK, map[string]any{"slots": []slotJSON{}})
 		return
 	}
 
-	hostAvails := make([]slots.HostAvailability, 0, len(poolIDs))
-	for _, hostID := range poolIDs {
-		ha, err := h.hostAvailability(r.Context(), hostID, et.ID, dateFrom, dateTo)
+	hostAvails := make([]slots.HostAvailability, 0, len(pool))
+	for _, ph := range pool {
+		ha, err := h.hostAvailability(r.Context(), ph.id, et.ID, dateFrom, dateTo)
 		if err != nil {
-			h.logger.ErrorContext(r.Context(), "slots: load host availability", "error", err, "host", hostID)
+			h.logger.ErrorContext(r.Context(), "slots: load host availability", "error", err, "host", ph.id)
 			h.writeError(w, http.StatusInternalServerError, "internal error")
 			return
 		}
+		ha.Role = ph.role
 		hostAvails = append(hostAvails, ha)
 	}
 
@@ -146,6 +151,10 @@ func (h *Handler) GetSlots(w http.ResponseWriter, r *http.Request) {
 	// Host metadata (name + avatar) for the candidate pool, so the booking page can
 	// show whose face goes with each slot's host_ids (round-robin: the priority pick;
 	// group: every required host).
+	poolIDs := make([]string, len(pool))
+	for i, ph := range pool {
+		poolIDs[i] = ph.id
+	}
 	h.writeJSON(w, http.StatusOK, map[string]any{
 		"slots": out,
 		"hosts": h.hostDisplayMap(r.Context(), poolIDs),

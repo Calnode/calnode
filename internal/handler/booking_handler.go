@@ -145,11 +145,18 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	var candidates, optional []string
+	var candidates, required, optional []string
 	for _, hh := range hosts {
 		if et.RoutingMode == "round_robin" {
-			if hh.Role == "rotation" {
+			// rotation = the pool one is picked from; required = fixed hosts who
+			// always attend; optional = join if free.
+			switch hh.Role {
+			case "rotation":
 				candidates = append(candidates, hh.UserID)
+			case "required":
+				required = append(required, hh.UserID)
+			case "optional":
+				optional = append(optional, hh.UserID)
 			}
 		} else {
 			// fixed + collective: required hosts must attend; optional join if free.
@@ -172,6 +179,7 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 		HostIDs:       candidates,
 		RoutingMode:   et.RoutingMode,
 		RRStrategy:    et.RRStrategy,
+		RequiredHosts: required,
 		OptionalHosts: optional,
 		StartAt:       startAt.UTC(),
 		EndAt:         endAt,

@@ -551,6 +551,43 @@ func TestGenerate_roundRobin_slotOfferedIfAnyFree(t *testing.T) {
 	assertSlotStarts(t, got, wantStarts)
 }
 
+func TestGenerate_roundRobinFixedHostMustBeFree(t *testing.T) {
+	// Fixed (required) host free Mon 09:00-11:00; rotation host free 10:00-12:00.
+	// A slot is offered only where the fixed host AND a rotation host are free —
+	// the 10:00-11:00 overlap. Each offered slot includes both hosts.
+	req := slots.Request{
+		Event: slots.EventConfig{DurationMinutes: 30, SlotIntervalMinutes: 30, RoutingMode: "round_robin", MaxFutureDays: 30},
+		Hosts: []slots.HostAvailability{
+			{HostID: "fixed", Location: time.UTC, Role: "required", Rules: monRules("09:00", "11:00")},
+			{HostID: "rot", Location: time.UTC, Role: "rotation", Rules: monRules("10:00", "12:00")},
+		},
+		DateFrom: utcDate(2026, 6, 15), DateTo: utcDate(2026, 6, 15),
+		BookerTZ: time.UTC, Now: utcTime(2026, 6, 14, 0, 0, 0),
+	}
+	got, err := slots.Generate(req)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	assertSlotStarts(t, got, []time.Time{
+		utcTime(2026, 6, 15, 10, 0, 0),
+		utcTime(2026, 6, 15, 10, 30, 0),
+	})
+	for _, s := range got {
+		hasFixed, hasRot := false, false
+		for _, id := range s.HostIDs {
+			if id == "fixed" {
+				hasFixed = true
+			}
+			if id == "rot" {
+				hasRot = true
+			}
+		}
+		if !hasFixed || !hasRot {
+			t.Errorf("slot %v HostIDs = %v; want both fixed and rot", s.Start, s.HostIDs)
+		}
+	}
+}
+
 func TestGenerate_collective_slotOfferedOnlyIfAllFree(t *testing.T) {
 	// h1: Mon 09:00-11:00. h2: Mon 10:00-12:00.
 	// Overlap: 10:00-11:00. Only those slots offered.

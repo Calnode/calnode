@@ -61,6 +61,18 @@ func (s *Service) Create(ctx context.Context, p CreateParams) (*Booking, error) 
 	var chosenHost string
 	var assigned []string
 	if p.RoutingMode == "round_robin" {
+		// Fixed hosts always attend — all must be free.
+		for _, hostID := range p.RequiredHosts {
+			var n int
+			if err := tx.QueryRowContext(ctx, overlapQ, hostID, endStr, startStr).Scan(&n); err != nil {
+				return nil, fmt.Errorf("booking: overlap check: %w", err)
+			}
+			if n > 0 {
+				return nil, ErrDoubleBooked
+			}
+			assigned = append(assigned, hostID)
+		}
+		// Rotation pool — pick exactly one free host by strategy.
 		var free []string
 		for _, hostID := range p.HostIDs {
 			var n int
@@ -79,7 +91,7 @@ func (s *Service) Create(ctx context.Context, p CreateParams) (*Booking, error) 
 			return nil, err
 		}
 		chosenHost = chosen
-		assigned = []string{chosen}
+		assigned = append(assigned, chosen)
 	} else {
 		for _, hostID := range p.HostIDs {
 			var n int

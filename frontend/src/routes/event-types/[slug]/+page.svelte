@@ -280,7 +280,11 @@
 			});
 			if (routingMode === 'round_robin') {
 				await api.put(`/v1/event-types/${slug}/hosts`, {
-					hosts: rotationHosts.map((hh, i) => ({ user_id: hh.user_id, role: 'rotation', priority: i })),
+					hosts: [
+						...rotationHosts.map((hh, i) => ({ user_id: hh.user_id, role: 'rotation', priority: i })),
+						...groupRequired.map((hh, i) => ({ user_id: hh.user_id, role: 'required', priority: i })),
+						...groupOptional.map((hh, i) => ({ user_id: hh.user_id, role: 'optional', priority: i })),
+					],
 				});
 			} else if (routingMode === 'collective') {
 				await api.put(`/v1/event-types/${slug}/hosts`, {
@@ -688,6 +692,50 @@
 					{/if}
 
 					{@render hostPickers('rotation', 'rr')}
+
+					<!-- Fixed hosts: always attend, alongside the rotation pick -->
+					<div class="space-y-3 border-t pt-4">
+						<div>
+							<p class="text-sm font-medium">Fixed hosts <span class="font-normal text-muted-foreground">(optional)</span></p>
+							<p class="text-xs text-muted-foreground">Always attend alongside the rotating member — and must be free for a slot to be offered. E.g. a manager who joins every call.</p>
+						</div>
+						{#if groupRequired.length > 0}
+							<div class="space-y-2">
+								{#each groupRequired as h (h.user_id)}
+									<div class="flex items-center justify-between rounded-md border px-3 py-2">
+										<div class="min-w-0">
+											<div class="truncate text-sm font-medium">{h.name}</div>
+											<div class="truncate text-xs text-muted-foreground">{h.email}</div>
+										</div>
+										<Button type="button" variant="ghost" size="sm" onclick={() => removeHost('required', h.user_id)}>Remove</Button>
+									</div>
+								{/each}
+							</div>
+						{/if}
+						{@render hostPickers('required', 'rr-fixed')}
+					</div>
+
+					<!-- Optional hosts: join if free -->
+					<div class="space-y-3 border-t pt-4">
+						<div>
+							<p class="text-sm font-medium">Optional hosts <span class="font-normal text-muted-foreground">(optional)</span></p>
+							<p class="text-xs text-muted-foreground">Join only when they happen to be free. They never block a slot.</p>
+						</div>
+						{#if groupOptional.length > 0}
+							<div class="space-y-2">
+								{#each groupOptional as h (h.user_id)}
+									<div class="flex items-center justify-between rounded-md border px-3 py-2">
+										<div class="min-w-0">
+											<div class="truncate text-sm font-medium">{h.name}</div>
+											<div class="truncate text-xs text-muted-foreground">{h.email}</div>
+										</div>
+										<Button type="button" variant="ghost" size="sm" onclick={() => removeHost('optional', h.user_id)}>Remove</Button>
+									</div>
+								{/each}
+							</div>
+						{/if}
+						{@render hostPickers('optional', 'rr-opt')}
+					</div>
 				</div>
 			{:else if routingMode === 'collective'}
 				<div class="mt-4 space-y-5">
