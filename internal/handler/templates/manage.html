@@ -139,14 +139,14 @@ body {
 .back-btn:hover { color: #111827; }
 
 .btn-primary {
-  width: 100%; padding: .675rem 1rem;
+  display: block; width: 100%; max-width: 340px; padding: .675rem 1rem;
   background: #111827; color: #fff; border: none; border-radius: 8px;
   font-size: .9375rem; font-weight: 600; cursor: pointer; transition: background .12s;
 }
 .btn-primary:hover:not(:disabled) { background: #1f2937; }
 .btn-primary:disabled { opacity: .5; cursor: default; }
 .btn-secondary {
-  width: 100%; padding: .675rem 1rem; margin-top: .5rem;
+  display: block; width: 100%; max-width: 340px; padding: .675rem 1rem; margin-top: .5rem;
   background: #fff; color: #b91c1c; border: 1.5px solid #e5e7eb; border-radius: 8px;
   font-size: .9375rem; font-weight: 600; cursor: pointer; transition: border-color .12s, background .12s;
 }
@@ -357,6 +357,7 @@ body {
   let navYear = today.getFullYear(), navMonth = today.getMonth();
   let pickedDate = null, slotsCache = [], pickedSlot = null;
   let availableDates = new Set();
+  let availabilityLoaded = false; // false = render optimistically (assume all days open)
 
   const $ = id => document.getElementById(id);
   const pad = n => String(n).padStart(2, '0');
@@ -389,6 +390,10 @@ body {
   function dowIndex(date) { return (date.getDay() + 6) % 7; } // 0 = Monday
 
   async function loadMonthAvailability(y, m) {
+    // Render immediately, treating every in-window day as available, so the
+    // calendar paints without waiting on the slots fetch; refine once it returns.
+    availabilityLoaded = false;
+    renderCal();
     const from = toDateStr(y, m, 1);
     const lastDay = new Date(y, m + 1, 0).getDate();
     const to = toDateStr(y, m, lastDay);
@@ -402,7 +407,8 @@ body {
     } catch {
       availableDates = new Set();
     }
-    renderCal();
+    availabilityLoaded = true;
+    renderCal(); // grey out days that came back with no slots
   }
 
   function renderCal() {
@@ -428,7 +434,7 @@ body {
       const isToday = date.toDateString() === today.toDateString();
       const isSel = pickedDate && date.toDateString() === pickedDate.toDateString();
       const ds = toDateStr(navYear, navMonth, d);
-      const hasSlots = availableDates.has(ds);
+      const hasSlots = !availabilityLoaded || availableDates.has(ds);
 
       let cls = 'cd';
       if (!disabled && hasSlots) cls += ' available';

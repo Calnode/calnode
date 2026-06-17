@@ -425,6 +425,7 @@ body {
   let navYear = today.getFullYear(), navMonth = today.getMonth();
   let pickedDate = null, slotsCache = [], pickedSlot = null;
   let availableDates = new Set(); // "YYYY-MM-DD" strings with ≥1 slot this nav month
+  let availabilityLoaded = false; // false = render optimistically (assume all days open)
 
   const $ = id => document.getElementById(id);
   const pad = n => String(n).padStart(2, '0');
@@ -495,6 +496,11 @@ body {
   }
 
   async function loadMonthAvailability(y, m) {
+    // Render immediately, treating every in-window day as available, so the
+    // calendar paints without waiting on the (network-bound) slots fetch; refine
+    // once it returns to grey out days that have no slots.
+    availabilityLoaded = false;
+    renderCal();
     const from = toDateStr(y, m, 1);
     const lastDay = new Date(y, m + 1, 0).getDate();
     const to   = toDateStr(y, m, lastDay);
@@ -509,6 +515,7 @@ body {
     } catch {
       availableDates = new Set();
     }
+    availabilityLoaded = true;
     renderCal();
   }
 
@@ -539,7 +546,7 @@ body {
       const isSel    = pickedDate && date.toDateString() === pickedDate.toDateString();
 
       const ds = toDateStr(navYear, navMonth, d);
-      const hasSlots = availableDates.has(ds);
+      const hasSlots = !availabilityLoaded || availableDates.has(ds);
 
       let cls = 'cd';
       if (!disabled && hasSlots) cls += ' available';
