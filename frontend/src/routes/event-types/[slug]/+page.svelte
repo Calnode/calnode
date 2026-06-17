@@ -139,8 +139,10 @@
 	const assignedIds = $derived(
 		new Set([...rotationHosts, ...groupRequired, ...groupOptional].map((h) => h.user_id))
 	);
+	// Any active member not already assigned to a bucket — including the current
+	// user, who can be a host (rotation/fixed/optional) like anyone else.
 	const availableMembers = $derived(
-		members.filter((m) => !m.archived && m.id !== $currentUser?.id && !assignedIds.has(m.id))
+		members.filter((m) => !m.archived && !assignedIds.has(m.id))
 	);
 
 	function pushHost(b: Bucket, h: Host) {
