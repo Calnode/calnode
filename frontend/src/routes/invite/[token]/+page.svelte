@@ -92,7 +92,7 @@
 					<Input id="password" type="password" autocomplete="new-password" bind:value={password} required minlength={8} />
 					<p class="text-xs text-muted-foreground">Minimum 8 characters</p>
 				</div>
-				<Button type="submit" class="h-9 w-full" disabled={submitting}>
+				<Button type="submit" size="lg" class="w-full" disabled={submitting}>
 					{submitting ? 'Creating account…' : 'Create account'}
 				</Button>
 			</form>
