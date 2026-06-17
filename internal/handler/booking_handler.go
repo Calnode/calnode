@@ -484,43 +484,34 @@ func (h *Handler) cancelSideEffects(b booking.Booking) {
 	}
 
 	// Cancel each assigned host's calendar event and notify each host. Group
-	// bookings put the meeting on several calendars; remove them all.
+	// bookings put the meeting on several calendars; remove them all. Read the
+	// host list fully first — the inner CancelEvent/loadHostPrefs queries can't run
+	// while a cursor holds the single DB connection (would deadlock).
 	gc := h.getGCal()
 	var primaryPrefs = allOnPrefs
-	rows, qErr := h.db.QueryContext(ctx, `
-		SELECT bh.user_id, u.name, u.email, bh.is_primary, COALESCE(bh.external_event_id, '')
-		FROM booking_hosts bh JOIN users u ON u.id = bh.user_id
-		WHERE bh.booking_id = ?
-		ORDER BY bh.is_primary DESC, u.name ASC`, b.ID)
-	if qErr != nil {
-		h.logger.Error("booking cancellation: load hosts", "error", qErr, "booking_id", b.ID)
-	} else {
-		defer rows.Close()
-		for rows.Next() {
-			var uid, name, email, extID string
-			var primary int
-			if err := rows.Scan(&uid, &name, &email, &primary, &extID); err != nil {
-				continue
+	hosts, hErr := h.assignedHosts(ctx, b.ID)
+	if hErr != nil {
+		h.logger.Error("booking cancellation: load hosts", "error", hErr, "booking_id", b.ID)
+	}
+	for _, host := range hosts {
+		if gc != nil && host.ExternalEventID != "" {
+			if err := gc.CancelEvent(ctx, host.UserID, host.ExternalEventID); err != nil {
+				h.logger.Error("cancel gcal event", "error", err, "booking_id", b.ID, "host", host.UserID)
 			}
-			if gc != nil && extID != "" {
-				if err := gc.CancelEvent(ctx, uid, extID); err != nil {
-					h.logger.Error("cancel gcal event", "error", err, "booking_id", b.ID, "host", uid)
-				}
-			}
-			prefs := allOnPrefs
-			if p, err := h.loadHostPrefs(ctx, uid); err == nil {
-				prefs = p
-			}
-			if primary != 0 {
-				primaryPrefs = prefs
-				d.HostName, d.HostEmail = name, email // attendee "With:" = primary host, not owner
-			}
-			if prefs.NotifyHostCancel {
-				hd := d
-				hd.HostName, hd.HostEmail = name, email
-				if err := mailer.SendCancellationToHost(ctx, h.mailer, hd); err != nil {
-					h.logger.Error("booking cancellation email (host)", "error", err, "booking_id", b.ID, "host", uid)
-				}
+		}
+		prefs := allOnPrefs
+		if p, err := h.loadHostPrefs(ctx, host.UserID); err == nil {
+			prefs = p
+		}
+		if host.IsPrimary {
+			primaryPrefs = prefs
+			d.HostName, d.HostEmail = host.Name, host.Email // attendee "With:" = primary host, not owner
+		}
+		if prefs.NotifyHostCancel {
+			hd := d
+			hd.HostName, hd.HostEmail = host.Name, host.Email
+			if err := mailer.SendCancellationToHost(ctx, h.mailer, hd); err != nil {
+				h.logger.Error("booking cancellation email (host)", "error", err, "booking_id", b.ID, "host", host.UserID)
 			}
 		}
 	}
@@ -546,17 +537,21 @@ func (h *Handler) cancelSideEffects(b booking.Booking) {
 
 // assignedHost is one host attending a booking (from booking_hosts).
 type assignedHost struct {
-	UserID    string
-	Name      string
-	Email     string
-	IsPrimary bool
+	UserID          string
+	Name            string
+	Email           string
+	IsPrimary       bool
+	ExternalEventID string // per-host calendar event id, if one was created
 }
 
 // assignedHosts returns every host attending a booking, primary first. Group
-// bookings have several; round-robin/Normal have one.
+// bookings have several; round-robin/Normal have one. The full result is read
+// into a slice before returning so callers can run further queries per host —
+// the DB pool is capped at one connection, so holding an open cursor while
+// querying inside the loop would deadlock.
 func (h *Handler) assignedHosts(ctx context.Context, bookingID string) ([]assignedHost, error) {
 	rows, err := h.db.QueryContext(ctx, `
-		SELECT bh.user_id, u.name, u.email, bh.is_primary
+		SELECT bh.user_id, u.name, u.email, bh.is_primary, COALESCE(bh.external_event_id, '')
 		FROM booking_hosts bh JOIN users u ON u.id = bh.user_id
 		WHERE bh.booking_id = ?
 		ORDER BY bh.is_primary DESC, u.name ASC`, bookingID)
@@ -568,7 +563,7 @@ func (h *Handler) assignedHosts(ctx context.Context, bookingID string) ([]assign
 	for rows.Next() {
 		var a assignedHost
 		var primary int
-		if err := rows.Scan(&a.UserID, &a.Name, &a.Email, &primary); err != nil {
+		if err := rows.Scan(&a.UserID, &a.Name, &a.Email, &primary, &a.ExternalEventID); err != nil {
 			return nil, err
 		}
 		a.IsPrimary = primary != 0
