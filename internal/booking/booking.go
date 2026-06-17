@@ -49,6 +49,10 @@ type CreateParams struct {
 	// the first. For Phase A there is a single candidate for fixed.
 	HostIDs       []string
 	RoutingMode   string
+	// RRStrategy chooses the rotation pick for RoutingMode "round_robin":
+	// "even" (least-loaded; default), "priority" (lowest-priority-number free host),
+	// or "soonest" (falls back to even at assignment time — the slot is already fixed).
+	RRStrategy    string
 	// OptionalHosts attend only if free at booking time; they never block the
 	// booking (Group/collective "optional" hosts). Busy ones are simply omitted.
 	OptionalHosts []string

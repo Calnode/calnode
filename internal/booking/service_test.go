@@ -238,6 +238,49 @@ func TestCreate_emptyHostIDs_returnsError(t *testing.T) {
 	}
 }
 
+func TestCreate_roundRobinPriorityPicksFirstFree(t *testing.T) {
+	database := newTestDB(t)
+	svc := booking.New(database)
+	h1 := seedHost(t, database) // top priority
+	h2 := seedHost(t, database)
+	etID := seedEventType(t, database, h1)
+
+	// Both free → priority picks the first host in the (priority-ordered) list.
+	b, err := svc.Create(context.Background(), booking.CreateParams{
+		EventTypeID: etID, HostIDs: []string{h1, h2},
+		RoutingMode: "round_robin", RRStrategy: "priority",
+		StartAt: slot(9, 0), EndAt: slot(9, 30),
+		Organizer: booking.Attendee{Name: "A", Email: "a@example.com"},
+	})
+	if err != nil {
+		t.Fatalf("first booking: %v", err)
+	}
+	if b.HostID != h1 {
+		t.Errorf("priority should pick the top host h1; got %s", b.HostID)
+	}
+
+	// Make h1 busy at 10:00; priority then falls to the next free host, h2.
+	if _, err := svc.Create(context.Background(), booking.CreateParams{
+		EventTypeID: etID, HostIDs: []string{h1},
+		StartAt: slot(10, 0), EndAt: slot(10, 30),
+		Organizer: booking.Attendee{Name: "B", Email: "b@example.com"},
+	}); err != nil {
+		t.Fatalf("seed busy h1: %v", err)
+	}
+	b2, err := svc.Create(context.Background(), booking.CreateParams{
+		EventTypeID: etID, HostIDs: []string{h1, h2},
+		RoutingMode: "round_robin", RRStrategy: "priority",
+		StartAt: slot(10, 0), EndAt: slot(10, 30),
+		Organizer: booking.Attendee{Name: "C", Email: "c@example.com"},
+	})
+	if err != nil {
+		t.Fatalf("second booking: %v", err)
+	}
+	if b2.HostID != h2 {
+		t.Errorf("priority should fall to free host h2 when h1 is busy; got %s", b2.HostID)
+	}
+}
+
 func TestCreate_multiHostWritesBookingHosts(t *testing.T) {
 	database := newTestDB(t)
 	svc := booking.New(database)

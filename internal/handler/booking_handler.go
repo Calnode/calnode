@@ -98,13 +98,14 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 		DurationMinutes   int
 		LocationValue     *string
 		RoutingMode       string
+		RRStrategy        string
 		IsActive          int
 		MaxActiveBookings int
 	}
 	err = h.db.QueryRowContext(r.Context(), `
-		SELECT id, user_id, name, duration_minutes, location_value, routing_mode, is_active, max_active_bookings
+		SELECT id, user_id, name, duration_minutes, location_value, routing_mode, rr_strategy, is_active, max_active_bookings
 		FROM event_types WHERE slug = ?`, req.EventTypeSlug).
-		Scan(&et.ID, &et.UserID, &et.Name, &et.DurationMinutes, &et.LocationValue, &et.RoutingMode, &et.IsActive, &et.MaxActiveBookings)
+		Scan(&et.ID, &et.UserID, &et.Name, &et.DurationMinutes, &et.LocationValue, &et.RoutingMode, &et.RRStrategy, &et.IsActive, &et.MaxActiveBookings)
 	if err != nil {
 		h.writeError(w, http.StatusNotFound, "event type not found")
 		return
@@ -161,6 +162,7 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 		EventTypeID:   et.ID,
 		HostIDs:       candidates,
 		RoutingMode:   et.RoutingMode,
+		RRStrategy:    et.RRStrategy,
 		OptionalHosts: optional,
 		StartAt:       startAt.UTC(),
 		EndAt:         endAt,

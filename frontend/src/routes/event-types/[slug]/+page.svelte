@@ -60,6 +60,12 @@
 	];
 	type RoutingMode = 'fixed' | 'round_robin' | 'collective';
 	let routingMode = $state<RoutingMode>('fixed');
+	const RR_STRATEGIES = [
+		{ value: 'even',     label: 'Even — fewest upcoming bookings' },
+		{ value: 'priority', label: 'Priority — top of the list first' },
+		{ value: 'soonest',  label: 'Soonest availability' },
+	];
+	let rrStrategy = $state<'even' | 'priority' | 'soonest'>('even');
 	type Host = { user_id: string; name: string; email: string };
 	// Round-robin rotation pool.
 	let rotationHosts = $state<Host[]>([]);
@@ -167,6 +173,15 @@
 		writeBucket(b, readBucket(b).filter((h) => h.user_id !== userId));
 	}
 
+	// Reorder within a bucket (priority = list position; index 0 is highest).
+	function moveHost(b: Bucket, idx: number, dir: -1 | 1) {
+		const list = [...readBucket(b)];
+		const j = idx + dir;
+		if (j < 0 || j >= list.length) return;
+		[list[idx], list[j]] = [list[j], list[idx]];
+		writeBucket(b, list);
+	}
+
 	// Notification / messaging state
 	const REMINDER_OPTIONS = [
 		{ value: 1, label: '1 hour before' },
@@ -217,6 +232,8 @@
 			reminders = et.reminders ?? [];
 			routingMode = (['round_robin', 'collective'].includes(et.routing_mode ?? '')
 				? et.routing_mode : 'fixed') as RoutingMode;
+			rrStrategy = (['even', 'priority', 'soonest'].includes(et.rr_strategy ?? '')
+				? et.rr_strategy : 'even') as 'even' | 'priority' | 'soonest';
 			msg_confirmation = et.msg_confirmation ?? '';
 			msg_cancellation = et.msg_cancellation ?? '';
 			msg_reschedule = et.msg_reschedule ?? '';
@@ -254,7 +271,7 @@
 				max_future_days: Number(form.max_future_days),
 				max_active_bookings: Number(form.max_active_bookings),
 				routing_mode: routingMode,
-				rr_strategy: 'even',
+				rr_strategy: rrStrategy,
 				reminders,
 				msg_confirmation: msg_confirmation.trim() || null,
 				msg_cancellation: msg_cancellation.trim() || null,
@@ -601,7 +618,7 @@
 				</Select.Root>
 				<p class="text-xs text-muted-foreground">
 					{#if routingMode === 'round_robin'}
-						Bookings are distributed to the least-loaded available member.
+						One available member is booked per slot.
 					{:else if routingMode === 'collective'}
 						Required hosts all attend; optional hosts join only when they're free. A
 						slot is offered only when every required host is available.
@@ -613,18 +630,56 @@
 
 			{#if routingMode === 'round_robin'}
 				<div class="mt-4 space-y-3">
+					<div class="space-y-1.5">
+						<Label for="rr-strategy">Assignment strategy</Label>
+						<Select.Root type="single" value={rrStrategy} onValueChange={(v) => { if (v) rrStrategy = v as typeof rrStrategy; }}>
+							<Select.Trigger id="rr-strategy" class="w-full">
+								{RR_STRATEGIES.find((s) => s.value === rrStrategy)?.label ?? 'Select…'}
+							</Select.Trigger>
+							<Select.Content>
+								{#each RR_STRATEGIES as s}
+									<Select.Item value={s.value} label={s.label}>{s.label}</Select.Item>
+								{/each}
+							</Select.Content>
+						</Select.Root>
+						<p class="text-xs text-muted-foreground">
+							{#if rrStrategy === 'priority'}
+								The highest member in the list who's free is booked; fall down the list when they're busy.
+							{:else if rrStrategy === 'soonest'}
+								Offers the earliest slot any member has free.
+							{:else}
+								Spreads bookings evenly — the member with the fewest upcoming meetings is booked.
+							{/if}
+						</p>
+					</div>
+
 					<p class="text-sm font-medium">Rotation hosts</p>
 					{#if rotationHosts.length > 0}
 						<div class="space-y-2">
-							{#each rotationHosts as h (h.user_id)}
-								<div class="flex items-center justify-between rounded-md border px-3 py-2">
-									<div class="min-w-0">
-										<div class="truncate text-sm font-medium">{h.name}</div>
-										<div class="truncate text-xs text-muted-foreground">{h.email}</div>
+							{#each rotationHosts as h, i (h.user_id)}
+								<div class="flex items-center justify-between gap-2 rounded-md border px-3 py-2">
+									<div class="flex min-w-0 items-center gap-2">
+										{#if rrStrategy === 'priority'}
+											<span class="shrink-0 rounded bg-muted px-1.5 py-0.5 text-xs font-medium text-muted-foreground tabular-nums">{i + 1}</span>
+										{/if}
+										<div class="min-w-0">
+											<div class="truncate text-sm font-medium">{h.name}</div>
+											<div class="truncate text-xs text-muted-foreground">{h.email}</div>
+										</div>
 									</div>
-									<Button type="button" variant="ghost" size="sm" onclick={() => removeHost('rotation', h.user_id)}>
-										Remove
-									</Button>
+									<div class="flex shrink-0 items-center gap-1">
+										{#if rrStrategy === 'priority'}
+											<Button type="button" variant="ghost" size="icon" disabled={i === 0} aria-label="Move up" onclick={() => moveHost('rotation', i, -1)}>
+												<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
+											</Button>
+											<Button type="button" variant="ghost" size="icon" disabled={i === rotationHosts.length - 1} aria-label="Move down" onclick={() => moveHost('rotation', i, 1)}>
+												<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+											</Button>
+										{/if}
+										<Button type="button" variant="ghost" size="sm" onclick={() => removeHost('rotation', h.user_id)}>
+											Remove
+										</Button>
+									</div>
 								</div>
 							{/each}
 						</div>

@@ -53,8 +53,8 @@ func (s *Service) Create(ctx context.Context, p CreateParams) (*Booking, error) 
 		WHERE host_id = ? AND status != 'cancelled'
 		  AND start_at < ? AND end_at > ?`
 
-	// Select hosts. Round-robin picks the least-loaded *free* candidate from the
-	// rotation pool (even distribution; slice order — priority — breaks ties). Any
+	// Select hosts. Round-robin picks one *free* candidate from the rotation pool
+	// per p.RRStrategy (free candidates stay in priority order). Any
 	// other mode requires every HostID free and all of them attend (Normal = one
 	// host; Group/collective = several). Optional hosts join only if free.
 	// `assigned` is everyone who will attend; `chosenHost` is the primary.
@@ -74,7 +74,7 @@ func (s *Service) Create(ctx context.Context, p CreateParams) (*Booking, error) 
 		if len(free) == 0 {
 			return nil, ErrDoubleBooked
 		}
-		chosen, err := leastLoadedHost(ctx, tx, p.EventTypeID, free, now)
+		chosen, err := pickRotationHost(ctx, tx, p.EventTypeID, p.RRStrategy, free, now)
 		if err != nil {
 			return nil, err
 		}
@@ -329,6 +329,17 @@ func (s *Service) ValidateManageToken(ctx context.Context, rawToken string) (*Bo
 		return nil, fmt.Errorf("booking: validate token: %w", err)
 	}
 	return s.Get(ctx, bookingID)
+}
+
+// pickRotationHost chooses one free rotation host per strategy. free must already
+// be in priority order (lowest priority number first). "priority" takes the first
+// free host; "even" (and "soonest", which has no meaning once the slot is fixed)
+// take the least-loaded one.
+func pickRotationHost(ctx context.Context, tx *sql.Tx, eventTypeID, strategy string, free []string, now string) (string, error) {
+	if strategy == "priority" {
+		return free[0], nil
+	}
+	return leastLoadedHost(ctx, tx, eventTypeID, free, now)
 }
 
 // leastLoadedHost returns the candidate with the fewest upcoming (non-cancelled,
