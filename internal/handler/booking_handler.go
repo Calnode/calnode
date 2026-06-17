@@ -35,6 +35,14 @@ type bookingJSON struct {
 	CreatedAt          string         `json:"created_at"`
 	UpdatedAt          string         `json:"updated_at"`
 	Attendees          []attendeeJSON `json:"attendees,omitempty"`
+	Hosts              []hostBrief    `json:"hosts,omitempty"` // assigned host(s) for display; set on the public create response
+}
+
+// hostBrief is an assigned host's identity for the booking-confirmation screen.
+type hostBrief struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	AvatarURL string `json:"avatar_url,omitempty"`
 }
 
 func toBookingJSON(b *booking.Booking) bookingJSON {
@@ -198,7 +206,11 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.writeJSON(w, http.StatusCreated, toBookingJSON(b))
+	bj := toBookingJSON(b)
+	for _, hd := range h.displayHostsForBooking(r.Context(), b.ID) {
+		bj.Hosts = append(bj.Hosts, hostBrief{ID: hd.ID, Name: hd.Name, AvatarURL: hd.AvatarURL})
+	}
+	h.writeJSON(w, http.StatusCreated, bj)
 
 	// Send confirmation emails in the background — the booking is committed; a
 	// mail failure must not roll it back or change the HTTP response.
@@ -572,6 +584,32 @@ func (h *Handler) assignedHosts(ctx context.Context, bookingID string) ([]assign
 		out = append(out, a)
 	}
 	return out, rows.Err()
+}
+
+// displayHostsForBooking returns the assigned host(s) of a booking for display
+// (primary first), with name + avatar — used by the manage page and the create
+// confirmation response so they show who's actually attending, not the owner.
+func (h *Handler) displayHostsForBooking(ctx context.Context, bookingID string) []hostDisplay {
+	rows, err := h.db.QueryContext(ctx, `
+		SELECT bh.user_id, u.name, COALESCE(u.avatar_url, '')
+		FROM booking_hosts bh JOIN users u ON u.id = bh.user_id
+		WHERE bh.booking_id = ?
+		ORDER BY bh.is_primary DESC, u.name ASC`, bookingID)
+	if err != nil {
+		h.logger.ErrorContext(ctx, "display hosts for booking", "error", err, "booking_id", bookingID)
+		return nil
+	}
+	defer rows.Close()
+	var out []hostDisplay
+	for rows.Next() {
+		var hd hostDisplay
+		if err := rows.Scan(&hd.ID, &hd.Name, &hd.AvatarURL); err != nil {
+			continue
+		}
+		hd.Initial = firstRune(hd.Name)
+		out = append(out, hd)
+	}
+	return out
 }
 
 // primaryHost returns the primary host (the one flagged is_primary, else the

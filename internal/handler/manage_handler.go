@@ -65,6 +65,13 @@ func (h *Handler) ManagePage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Show the actual assigned host(s) for this booking, not the event-type owner
+	// (round-robin/Group route elsewhere). Falls back to the owner name above if
+	// no booking_hosts rows exist.
+	if hosts := h.displayHostsForBooking(r.Context(), b.ID); len(hosts) > 0 {
+		hostName = hostsLabel(hosts)
+	}
+
 	var orgTZ string
 	_ = h.db.QueryRowContext(r.Context(), `
 		SELECT iana_timezone FROM booking_attendees

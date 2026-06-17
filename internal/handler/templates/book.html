@@ -685,6 +685,15 @@ body {
         return;
       }
 
+      // Show the exact host(s) actually assigned (the response is authoritative —
+      // matters for round-robin 'even', and includes any optional Group hosts who
+      // joined). Falls back to the slot's best-effort face if the body is unusable.
+      const booked = await r.json().catch(() => null);
+      if (booked && Array.isArray(booked.hosts) && booked.hosts.length) {
+        booked.hosts.forEach(h => { hostMeta[h.id] = { name: h.name, avatar_url: h.avatar_url || '' }; });
+        renderHosts(booked.hosts.map(h => h.id));
+      }
+
       $('confirm-time').textContent = `${fmtDate(pickedDate)} · ${fmtTime(pickedSlot.start)}`;
       showView('confirm-view');
 
