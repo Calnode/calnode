@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/calnode/calnode/internal/slots"
@@ -106,16 +107,33 @@ func (h *Handler) GetSlots(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	hostAvails := make([]slots.HostAvailability, 0, len(pool))
-	for _, ph := range pool {
-		ha, err := h.hostAvailability(r.Context(), ph.id, et.ID, dateFrom, dateTo)
+	// Load each host's availability concurrently. The slow part is the Google
+	// Calendar free/busy round-trip (one per host); fetching them in parallel turns
+	// N sequential network calls into ~one call's latency. The DB queries inside
+	// serialize on the single-connection pool (fast) — only the network overlaps.
+	hostAvails := make([]slots.HostAvailability, len(pool))
+	errsByHost := make([]error, len(pool))
+	var wg sync.WaitGroup
+	for i, ph := range pool {
+		wg.Add(1)
+		go func(i int, ph poolHost) {
+			defer wg.Done()
+			ha, err := h.hostAvailability(r.Context(), ph.id, et.ID, dateFrom, dateTo)
+			if err != nil {
+				errsByHost[i] = err
+				return
+			}
+			ha.Role = ph.role
+			hostAvails[i] = ha
+		}(i, ph)
+	}
+	wg.Wait()
+	for i, err := range errsByHost {
 		if err != nil {
-			h.logger.ErrorContext(r.Context(), "slots: load host availability", "error", err, "host", ph.id)
+			h.logger.ErrorContext(r.Context(), "slots: load host availability", "error", err, "host", pool[i].id)
 			h.writeError(w, http.StatusInternalServerError, "internal error")
 			return
 		}
-		ha.Role = ph.role
-		hostAvails = append(hostAvails, ha)
 	}
 
 	result, err := slots.Generate(slots.Request{
