@@ -458,84 +458,90 @@ func (h *Handler) CancelBooking(w http.ResponseWriter, r *http.Request) {
 	}
 	h.writeJSON(w, http.StatusOK, toBookingJSON(b))
 
-	// Cancel the Google Calendar event and send cancellation emails in the background.
-	bCopy := b
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		d, err := h.loadCancellationData(ctx, bCopy)
-		if err != nil {
-			h.logger.Error("booking cancellation: load data", "error", err, "booking_id", bCopy.ID)
-			return
-		}
-		d.BaseURL = h.publicURL()
-		var msgNote sql.NullString
-		_ = h.db.QueryRowContext(ctx, `SELECT msg_cancellation FROM event_types WHERE id = ?`, bCopy.EventTypeID).
-			Scan(&msgNote)
-		if msgNote.Valid {
-			d.CustomNote = msgNote.String
-		}
+	// Cancel calendar events and send cancellation emails in the background.
+	go h.cancelSideEffects(*b)
+}
 
-		// Cancel each assigned host's calendar event and notify each host. Group
-		// bookings put the meeting on several calendars; remove them all.
-		gc := h.getGCal()
-		var primaryPrefs hostPrefs = allOnPrefs
-		rows, qErr := h.db.QueryContext(ctx, `
-			SELECT bh.user_id, u.name, u.email, bh.is_primary, COALESCE(bh.external_event_id, '')
-			FROM booking_hosts bh JOIN users u ON u.id = bh.user_id
-			WHERE bh.booking_id = ?
-			ORDER BY bh.is_primary DESC, u.name ASC`, bCopy.ID)
-		if qErr != nil {
-			h.logger.Error("booking cancellation: load hosts", "error", qErr, "booking_id", bCopy.ID)
-		} else {
-			defer rows.Close()
-			for rows.Next() {
-				var uid, name, email, extID string
-				var primary int
-				if err := rows.Scan(&uid, &name, &email, &primary, &extID); err != nil {
-					continue
+// cancelSideEffects removes every assigned host's calendar event, notifies each
+// host, emails the attendee, and fires the webhook for a cancelled booking. Runs
+// in its own context so it can be launched in a goroutine after the response is
+// written. Shared by the admin (CancelBooking) and manage-link (CancelByToken)
+// cancel paths so both fan out across all hosts (Group bookings).
+func (h *Handler) cancelSideEffects(b booking.Booking) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	d, err := h.loadCancellationData(ctx, &b)
+	if err != nil {
+		h.logger.Error("booking cancellation: load data", "error", err, "booking_id", b.ID)
+		return
+	}
+	d.BaseURL = h.publicURL()
+	var msgNote sql.NullString
+	_ = h.db.QueryRowContext(ctx, `SELECT msg_cancellation FROM event_types WHERE id = ?`, b.EventTypeID).
+		Scan(&msgNote)
+	if msgNote.Valid {
+		d.CustomNote = msgNote.String
+	}
+
+	// Cancel each assigned host's calendar event and notify each host. Group
+	// bookings put the meeting on several calendars; remove them all.
+	gc := h.getGCal()
+	var primaryPrefs = allOnPrefs
+	rows, qErr := h.db.QueryContext(ctx, `
+		SELECT bh.user_id, u.name, u.email, bh.is_primary, COALESCE(bh.external_event_id, '')
+		FROM booking_hosts bh JOIN users u ON u.id = bh.user_id
+		WHERE bh.booking_id = ?
+		ORDER BY bh.is_primary DESC, u.name ASC`, b.ID)
+	if qErr != nil {
+		h.logger.Error("booking cancellation: load hosts", "error", qErr, "booking_id", b.ID)
+	} else {
+		defer rows.Close()
+		for rows.Next() {
+			var uid, name, email, extID string
+			var primary int
+			if err := rows.Scan(&uid, &name, &email, &primary, &extID); err != nil {
+				continue
+			}
+			if gc != nil && extID != "" {
+				if err := gc.CancelEvent(ctx, uid, extID); err != nil {
+					h.logger.Error("cancel gcal event", "error", err, "booking_id", b.ID, "host", uid)
 				}
-				if gc != nil && extID != "" {
-					if err := gc.CancelEvent(ctx, uid, extID); err != nil {
-						h.logger.Error("cancel gcal event", "error", err, "booking_id", bCopy.ID, "host", uid)
-					}
-				}
-				prefs := allOnPrefs
-				if p, err := h.loadHostPrefs(ctx, uid); err == nil {
-					prefs = p
-				}
-				if primary != 0 {
-					primaryPrefs = prefs
-					d.HostName, d.HostEmail = name, email // attendee "With:" = primary host, not owner
-				}
-				if prefs.NotifyHostCancel {
-					hd := d
-					hd.HostName, hd.HostEmail = name, email
-					if err := mailer.SendCancellationToHost(ctx, h.mailer, hd); err != nil {
-						h.logger.Error("booking cancellation email (host)", "error", err, "booking_id", bCopy.ID, "host", uid)
-					}
+			}
+			prefs := allOnPrefs
+			if p, err := h.loadHostPrefs(ctx, uid); err == nil {
+				prefs = p
+			}
+			if primary != 0 {
+				primaryPrefs = prefs
+				d.HostName, d.HostEmail = name, email // attendee "With:" = primary host, not owner
+			}
+			if prefs.NotifyHostCancel {
+				hd := d
+				hd.HostName, hd.HostEmail = name, email
+				if err := mailer.SendCancellationToHost(ctx, h.mailer, hd); err != nil {
+					h.logger.Error("booking cancellation email (host)", "error", err, "booking_id", b.ID, "host", uid)
 				}
 			}
 		}
-		if primaryPrefs.NotifyCancellation {
-			if err := mailer.SendCancellationToAttendee(ctx, h.mailer, d); err != nil {
-				h.logger.Error("booking cancellation email (attendee)", "error", err, "booking_id", bCopy.ID)
-			}
+	}
+	if primaryPrefs.NotifyCancellation {
+		if err := mailer.SendCancellationToAttendee(ctx, h.mailer, d); err != nil {
+			h.logger.Error("booking cancellation email (attendee)", "error", err, "booking_id", b.ID)
 		}
-		if err := h.webhookSvc.Enqueue(ctx, "booking.cancelled", webhook.BookingPayload{
-			ID:                 bCopy.ID,
-			EventTypeSlug:      d.EventTypeSlug,
-			HostID:             bCopy.HostID,
-			StartAt:            bCopy.StartAt.UTC().Format(time.RFC3339),
-			EndAt:              bCopy.EndAt.UTC().Format(time.RFC3339),
-			Status:             bCopy.Status,
-			CancellationReason: bCopy.CancellationReason,
-			LocationValue:      bCopy.LocationValue,
-			CreatedAt:          bCopy.CreatedAt.UTC().Format(time.RFC3339),
-		}); err != nil {
-			h.logger.Error("enqueue booking.cancelled webhook", "error", err, "booking_id", bCopy.ID)
-		}
-	}()
+	}
+	if err := h.webhookSvc.Enqueue(ctx, "booking.cancelled", webhook.BookingPayload{
+		ID:                 b.ID,
+		EventTypeSlug:      d.EventTypeSlug,
+		HostID:             b.HostID,
+		StartAt:            b.StartAt.UTC().Format(time.RFC3339),
+		EndAt:              b.EndAt.UTC().Format(time.RFC3339),
+		Status:             b.Status,
+		CancellationReason: b.CancellationReason,
+		LocationValue:      b.LocationValue,
+		CreatedAt:          b.CreatedAt.UTC().Format(time.RFC3339),
+	}); err != nil {
+		h.logger.Error("enqueue booking.cancelled webhook", "error", err, "booking_id", b.ID)
+	}
 }
 
 // assignedHost is one host attending a booking (from booking_hosts).
