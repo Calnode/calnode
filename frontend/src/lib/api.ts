@@ -72,6 +72,7 @@ export type Booking = {
 	status: 'confirmed' | 'cancelled';
 	attendees: { name: string; email: string }[];
 	created_at: string;
+	host_name?: string; // populated only in the admin "All bookings" view
 };
 
 export type APIKey = {

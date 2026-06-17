@@ -289,6 +289,33 @@ func (s *Service) ListByHost(ctx context.Context, hostID string) ([]Booking, err
 	return out, rows.Err()
 }
 
+// ListAll returns every non-cancelled booking in the workspace, ordered by start
+// time (matching ListByHost). For the admin/owner "All bookings" view — callers
+// must gate this on the admin role.
+func (s *Service) ListAll(ctx context.Context) ([]Booking, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, event_type_id, host_id, start_at, end_at, status,
+		       COALESCE(cancellation_reason, ''), COALESCE(location_value, ''),
+		       created_at, updated_at
+		FROM bookings
+		WHERE status != 'cancelled'
+		ORDER BY start_at`)
+	if err != nil {
+		return nil, fmt.Errorf("booking: list all: %w", err)
+	}
+	defer rows.Close()
+
+	var out []Booking
+	for rows.Next() {
+		b, err := scanBooking(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *b)
+	}
+	return out, rows.Err()
+}
+
 // IssueManageToken generates a cryptographically random manage token for a
 // booking, stores its SHA-256 hash in booking_manage_tokens, and returns the
 // raw hex token (shown once, embedded in emails). Tokens expire in 60 days.

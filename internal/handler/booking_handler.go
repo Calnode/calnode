@@ -27,6 +27,7 @@ type bookingJSON struct {
 	EventTypeID        string         `json:"event_type_id"`
 	EventTypeSlug      string         `json:"event_type_slug,omitempty"`
 	HostID             string         `json:"host_id"`
+	HostName           string         `json:"host_name,omitempty"` // set in the admin "All bookings" view
 	StartAt            string         `json:"start_at"`
 	EndAt              string         `json:"end_at"`
 	Status             string         `json:"status"`
@@ -348,7 +349,18 @@ func (h *Handler) GetBooking(w http.ResponseWriter, r *http.Request) {
 // Returns bookings enriched with event_type_slug and the organizer attendee.
 func (h *Handler) ListBookings(w http.ResponseWriter, r *http.Request) {
 	user, _ := userFromContext(r.Context())
-	bookings, err := h.bookingSvc.ListByHost(r.Context(), user.ID)
+
+	// Members see only bookings they host. Admins/owners may request the whole
+	// workspace with ?scope=all (for team oversight); the scope is ignored for
+	// non-admins so it can't be used to escalate visibility.
+	allScope := r.URL.Query().Get("scope") == "all" && user.IsAdmin
+	var bookings []booking.Booking
+	var err error
+	if allScope {
+		bookings, err = h.bookingSvc.ListAll(r.Context())
+	} else {
+		bookings, err = h.bookingSvc.ListByHost(r.Context(), user.ID)
+	}
 	if err != nil {
 		h.logger.ErrorContext(r.Context(), "list bookings", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal error")
@@ -400,6 +412,30 @@ func (h *Handler) ListBookings(w http.ResponseWriter, r *http.Request) {
 		h.logger.ErrorContext(r.Context(), "list bookings: slugs scan", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal error")
 		return
+	}
+
+	// In the admin "All bookings" view, label each row with its host's name so the
+	// admin can tell whose booking it is.
+	if allScope {
+		hRows, err := h.db.QueryContext(r.Context(),
+			`SELECT b.id, COALESCE(u.name, '') FROM bookings b
+			 LEFT JOIN users u ON u.id = b.host_id
+			 WHERE b.id IN (`+ph+`)`, ids...)
+		if err != nil {
+			h.logger.ErrorContext(r.Context(), "list bookings: host names", "error", err)
+			h.writeError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		defer hRows.Close()
+		for hRows.Next() {
+			var bid, name string
+			if err := hRows.Scan(&bid, &name); err != nil {
+				continue
+			}
+			if i, ok := idxByID[bid]; ok {
+				items[i].HostName = name
+			}
+		}
 	}
 
 	// Fetch organizer attendee for each booking.

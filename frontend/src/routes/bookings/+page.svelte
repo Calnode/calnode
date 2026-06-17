@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { api, type Booking } from '$lib/api';
+	import { currentUser } from '$lib/stores';
 	import { prefs, fmtDateTime, fmtTime } from '$lib/prefs';
 	import { Button, buttonVariants } from '$lib/components/ui/button';
 	import { Badge } from '$lib/components/ui/badge';
@@ -11,6 +12,11 @@
 	let items: Booking[] = $state([]);
 	let loading = $state(true);
 	let error = $state('');
+
+	// Members see only their own hosted bookings. Owners/admins can switch to a
+	// workspace-wide view (?scope=all) for oversight.
+	const isAdmin = $derived($currentUser?.is_admin ?? false);
+	let scope = $state<'mine' | 'all'>('mine');
 
 	let reschedulingId: string | null = $state(null);
 	let reschedulingSlug = $state('');
@@ -44,13 +50,21 @@
 
 	async function load() {
 		try {
-			const res = await api.get<{ items: Booking[] }>('/v1/bookings');
+			const q = scope === 'all' && isAdmin ? '?scope=all' : '';
+			const res = await api.get<{ items: Booking[] }>(`/v1/bookings${q}`);
 			items = res.items;
 		} catch (e: any) {
 			error = e.message;
 		} finally {
 			loading = false;
 		}
+	}
+
+	async function setScope(s: 'mine' | 'all') {
+		if (scope === s) return;
+		scope = s;
+		loading = true;
+		await load();
 	}
 
 	onMount(load);
@@ -139,9 +153,25 @@
 
 <svelte:head><title>Bookings — Calnode</title></svelte:head>
 
-<div class="mb-8">
-	<h1 class="text-2xl font-semibold tracking-tight">Bookings</h1>
-	<p class="mt-1 text-sm text-muted-foreground">All scheduled and past meetings.</p>
+<div class="mb-8 flex items-start justify-between gap-4">
+	<div>
+		<h1 class="text-2xl font-semibold tracking-tight">Bookings</h1>
+		<p class="mt-1 text-sm text-muted-foreground">
+			{scope === 'all' ? 'All meetings across the workspace.' : 'Meetings you are hosting.'}
+		</p>
+	</div>
+	{#if isAdmin}
+		<div class="inline-flex shrink-0 rounded-md border p-0.5">
+			<button
+				class="rounded px-3 py-1 text-sm font-medium transition-colors {scope === 'mine' ? 'bg-secondary text-secondary-foreground' : 'text-muted-foreground hover:text-foreground'}"
+				onclick={() => setScope('mine')}
+			>My bookings</button>
+			<button
+				class="rounded px-3 py-1 text-sm font-medium transition-colors {scope === 'all' ? 'bg-secondary text-secondary-foreground' : 'text-muted-foreground hover:text-foreground'}"
+				onclick={() => setScope('all')}
+			>All bookings</button>
+		</div>
+	{/if}
 </div>
 
 {#if error}<p class="mb-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>{/if}
@@ -159,6 +189,7 @@
 			<thead>
 				<tr class="border-b">
 					<th class="px-4 pb-3 pt-3 text-left text-xs font-medium text-muted-foreground">Attendee</th>
+					{#if scope === 'all'}<th class="px-4 pb-3 pt-3 text-left text-xs font-medium text-muted-foreground">Host</th>{/if}
 					<th class="px-4 pb-3 pt-3 text-left text-xs font-medium text-muted-foreground">Event</th>
 					<th class="px-4 pb-3 pt-3 text-left text-xs font-medium text-muted-foreground">Start time</th>
 					<th class="px-4 pb-3 pt-3 text-left text-xs font-medium text-muted-foreground">Status</th>
@@ -176,6 +207,7 @@
 								<span class="text-muted-foreground">—</span>
 							{/if}
 						</td>
+						{#if scope === 'all'}<td class="px-4 py-3 text-muted-foreground">{b.host_name || '—'}</td>{/if}
 						<td class="px-4 py-3 font-mono text-xs text-muted-foreground">{b.event_type_slug ?? '—'}</td>
 						<td class="px-4 py-3 text-muted-foreground">{fmt(b.start_at)}</td>
 						<td class="px-4 py-3">
@@ -240,7 +272,7 @@
 
 					{#if expandedId === b.id}
 						<tr>
-							<td colspan="5" class="p-0">
+							<td colspan={scope === 'all' ? 6 : 5} class="p-0">
 								<div class="border-t bg-muted/20 px-4 py-3">
 									<p class="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Intake responses</p>
 									{#if answersLoading[b.id]}
@@ -270,7 +302,7 @@
 
 					{#if reschedulingId === b.id}
 						<tr>
-							<td colspan="5" class="p-0">
+							<td colspan={scope === 'all' ? 6 : 5} class="p-0">
 								<div class="border-t bg-muted/30 px-4 py-4">
 									<p class="mb-3 text-sm font-medium">Reschedule — {b.attendees?.[0]?.name ?? 'attendee'}</p>
 
