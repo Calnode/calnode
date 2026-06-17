@@ -245,6 +245,12 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	mux.HandleFunc("POST /v1/api-keys", h.RequireAuth(h.CreateAPIKey))
 	mux.HandleFunc("DELETE /v1/api-keys/{id}", h.RequireAuth(h.DeleteAPIKey))
 
+	// Favicon at the root, shared by the public server-rendered pages and the
+	// browser's default /favicon.ico probe — same embedded source as the admin SPA.
+	favicon := frontend.FaviconHandler()
+	mux.Handle("GET /favicon.svg", favicon)
+	mux.Handle("GET /favicon.ico", favicon)
+
 	// Admin SPA — served at /admin/* with SPA fallback for client-side routing.
 	adminSPA := frontend.Handler()
 	mux.Handle("GET /admin", http.RedirectHandler("/admin/", http.StatusMovedPermanently))

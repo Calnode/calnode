@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <title>Manage booking — {{.EventTypeName}}</title>
 <style>
 /* Shared look with the public booking page (book.html). Keep in sync. */
@@ -20,7 +21,12 @@ body {
   gap: 1.25rem;
 }
 
-.powered-by { color: #111827; font-size: .75rem; font-weight: 600; }
+.powered-by a {
+  display: inline-flex; align-items: center; gap: .375rem;
+  color: #111827; text-decoration: none; font-size: .75rem; font-weight: 600;
+  transition: opacity .12s;
+}
+.powered-by a:hover { opacity: .6; }
 
 /* ── Card ────────────────────────────────────────── */
 .card {
@@ -119,6 +125,8 @@ body {
 .section-title { font-size: .9375rem; font-weight: 600; color: #111827; margin-bottom: 1rem; }
 .scheduled-label { font-size: .6875rem; font-weight: 600; letter-spacing: .03em; text-transform: uppercase; color: #9ca3af; margin-bottom: .25rem; }
 .scheduled-time { font-size: .9375rem; font-weight: 600; color: #111827; margin-bottom: 1.5rem; }
+/* Main view: center the action buttons in the (wide) right column. */
+#main-view .btn-primary, #main-view .btn-secondary { margin-left: auto; margin-right: auto; }
 
 .slots-header { font-size: .9375rem; font-weight: 600; margin-bottom: 1rem; color: #111827; }
 .slots-list { display: flex; flex-direction: column; gap: .5rem; max-height: 340px; overflow-y: auto; }
@@ -336,7 +344,9 @@ body {
 </div>
 {{end}}
 
-<div class="powered-by"><span>Calnode</span></div>
+<footer class="powered-by">
+  <a href="https://calnode.com" target="_blank" rel="noopener noreferrer">Calnode</a>
+</footer>
 
 {{if not .TokenInvalid}}{{if ne .Status "cancelled"}}
 <script>

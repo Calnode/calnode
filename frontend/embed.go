@@ -4,12 +4,30 @@ package frontend
 
 import (
 	"embed"
+	"io"
 	"io/fs"
 	"net/http"
 )
 
 //go:embed all:build
 var buildFS embed.FS
+
+// FaviconHandler serves the embedded favicon (build/favicon.svg) so the public
+// server-rendered pages and the admin SPA share a single favicon source — change
+// frontend/static/favicon.svg, rebuild, and every page updates.
+func FaviconHandler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		f, err := buildFS.Open("build/favicon.svg")
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		defer f.Close()
+		w.Header().Set("Content-Type", "image/svg+xml")
+		w.Header().Set("Cache-Control", "public, max-age=3600")
+		_, _ = io.Copy(w, f)
+	})
+}
 
 // Handler returns an HTTP handler that serves the built admin SPA.
 // Paths not matching a real file fall back to 200.html so that
