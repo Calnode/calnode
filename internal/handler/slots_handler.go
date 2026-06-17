@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/calnode/calnode/internal/slots"
@@ -142,7 +143,43 @@ func (h *Handler) GetSlots(w http.ResponseWriter, r *http.Request) {
 			HostIDs: s.HostIDs,
 		}
 	}
-	h.writeJSON(w, http.StatusOK, map[string]any{"slots": out})
+	// Host metadata (name + avatar) for the candidate pool, so the booking page can
+	// show whose face goes with each slot's host_ids (round-robin: the priority pick;
+	// group: every required host).
+	h.writeJSON(w, http.StatusOK, map[string]any{
+		"slots": out,
+		"hosts": h.hostDisplayMap(r.Context(), poolIDs),
+	})
+}
+
+// hostDisplayMap returns id → {name, avatar_url} for the given users, for rendering
+// host faces on the public booking page.
+func (h *Handler) hostDisplayMap(ctx context.Context, ids []string) map[string]map[string]string {
+	out := map[string]map[string]string{}
+	if len(ids) == 0 {
+		return out
+	}
+	ph := make([]string, len(ids))
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		ph[i] = "?"
+		args[i] = id
+	}
+	rows, err := h.db.QueryContext(ctx,
+		`SELECT id, name, COALESCE(avatar_url, '') FROM users WHERE id IN (`+strings.Join(ph, ",")+`)`, args...)
+	if err != nil {
+		h.logger.ErrorContext(ctx, "slots: host display map", "error", err)
+		return out
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id, name, avatar string
+		if err := rows.Scan(&id, &name, &avatar); err != nil {
+			continue
+		}
+		out[id] = map[string]string{"name": name, "avatar_url": avatar}
+	}
+	return out
 }
 
 // hostAvailability loads one host's timezone, availability rules, overrides, and

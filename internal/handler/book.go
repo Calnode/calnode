@@ -2,6 +2,7 @@ package handler
 
 import (
 	"bytes"
+	"context"
 	"database/sql"
 	_ "embed"
 	"encoding/json"
@@ -36,9 +37,92 @@ type bookPageData struct {
 	HostName      string
 	HostInitial   string
 	AvatarURL     string
+	Hosts         []hostDisplay // faces for the info panel (1 = single, >1 = group stack)
+	HostsLabel    string        // "Alex, Sam & 2 others" for the group case
 	LocationLabel string
 	MaxFutureDays int
 	Questions     []bookQuestion
+}
+
+// hostDisplay is one host's identity for the public booking page.
+type hostDisplay struct {
+	ID        string
+	Name      string
+	Initial   string
+	AvatarURL string
+	Z         int // stacking order: leftmost face paints on top of the next
+}
+
+func firstRune(s string) string {
+	for _, r := range s {
+		return string(r)
+	}
+	return ""
+}
+
+// displayHosts resolves the faces to show for an event type's booking page by
+// routing mode: the single required host (Normal), the top-priority rotation host
+// (round-robin — best-effort, the actual pick happens at booking time), or all
+// required hosts (Group). Archived members are excluded.
+func (h *Handler) displayHosts(ctx context.Context, etID, mode string) []hostDisplay {
+	role := "required"
+	if mode == "round_robin" {
+		role = "rotation"
+	}
+	rows, err := h.db.QueryContext(ctx, `
+		SELECT u.name, COALESCE(u.avatar_url, '')
+		FROM event_type_hosts eth JOIN users u ON u.id = eth.user_id
+		WHERE eth.event_type_id = ? AND eth.role = ? AND u.archived_at IS NULL
+		ORDER BY eth.priority ASC, u.name ASC`, etID, role)
+	if err != nil {
+		h.logger.ErrorContext(ctx, "book page: display hosts", "error", err)
+		return nil
+	}
+	defer rows.Close()
+	var out []hostDisplay
+	for rows.Next() {
+		var name, avatar string
+		if err := rows.Scan(&name, &avatar); err != nil {
+			continue
+		}
+		out = append(out, hostDisplay{Name: name, Initial: firstRune(name), AvatarURL: avatar})
+	}
+	// Round-robin shows a single default face (the top-priority host); the JS swaps
+	// it per selected slot. Other modes show the whole required set.
+	if mode == "round_robin" && len(out) > 1 {
+		out = out[:1]
+	}
+	return out
+}
+
+// hostsLabel renders a group host list as "Alex, Sam & 2 others" (first names).
+func hostsLabel(hosts []hostDisplay) string {
+	first := func(name string) string {
+		for i, r := range name {
+			if r == ' ' {
+				return name[:i]
+			}
+		}
+		return name
+	}
+	n := len(hosts)
+	switch n {
+	case 0:
+		return ""
+	case 1:
+		return hosts[0].Name
+	case 2:
+		return first(hosts[0].Name) + " & " + first(hosts[1].Name)
+	case 3:
+		return first(hosts[0].Name) + ", " + first(hosts[1].Name) + " & " + first(hosts[2].Name)
+	default:
+		unit := "others"
+		if n-3 == 1 {
+			unit = "other"
+		}
+		return fmt.Sprintf("%s, %s, %s & %d %s",
+			first(hosts[0].Name), first(hosts[1].Name), first(hosts[2].Name), n-3, unit)
+	}
 }
 
 func durationLabel(minutes int) string {
@@ -108,15 +192,16 @@ func (h *Handler) BookPage(w http.ResponseWriter, r *http.Request) {
 		maxDays     int
 		hostName    string
 		avatarURL   string
+		routingMode string
 	)
 	err := h.db.QueryRowContext(r.Context(), `
 		SELECT et.id, et.name, COALESCE(et.description, ''),
 		       et.duration_minutes, et.location_type, COALESCE(et.location_value, ''),
-		       et.max_future_days, u.name, COALESCE(u.avatar_url, '')
+		       et.max_future_days, et.routing_mode, u.name, COALESCE(u.avatar_url, '')
 		FROM event_types et
 		JOIN users u ON u.id = et.user_id
 		WHERE et.slug = ? AND et.is_active = 1 AND et.is_public = 1`,
-		slug).Scan(&etID, &name, &description, &durMins, &locType, &locValue, &maxDays, &hostName, &avatarURL)
+		slug).Scan(&etID, &name, &description, &durMins, &locType, &locValue, &maxDays, &routingMode, &hostName, &avatarURL)
 
 	if errors.Is(err, sql.ErrNoRows) {
 		http.Error(w, "Page not found", http.StatusNotFound)
@@ -156,18 +241,25 @@ func (h *Handler) BookPage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	initial := ""
-	if len([]rune(hostName)) > 0 {
-		initial = string([]rune(hostName)[0])
+	// Resolve the host face(s) by routing mode; fall back to the event-type owner
+	// if no hosts are configured (shouldn't happen post-backfill).
+	hosts := h.displayHosts(r.Context(), etID, routingMode)
+	if len(hosts) == 0 {
+		hosts = []hostDisplay{{Name: hostName, Initial: firstRune(hostName), AvatarURL: avatarURL}}
+	}
+	for i := range hosts {
+		hosts[i].Z = (len(hosts) - i) * 10
 	}
 	data := bookPageData{
 		Slug:          slug,
 		Name:          name,
 		Description:   renderMarkdown(description),
 		DurationLabel: durationLabel(durMins),
-		HostName:      hostName,
-		HostInitial:   initial,
-		AvatarURL:     avatarURL,
+		HostName:      hosts[0].Name,
+		HostInitial:   hosts[0].Initial,
+		AvatarURL:     hosts[0].AvatarURL,
+		Hosts:         hosts,
+		HostsLabel:    hostsLabel(hosts),
 		LocationLabel: locationLabel(locType, locValue),
 		MaxFutureDays: maxDays,
 		Questions:     questions,

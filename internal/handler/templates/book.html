@@ -267,6 +267,16 @@ body {
   display: flex; align-items: center; justify-content: center;
   margin-bottom: .75rem;
 }
+/* Host face stack: leftmost paints on top (inline z-index, descending). */
+.host-faces { display: flex; margin-bottom: .75rem; }
+.host-faces .face { position: relative; line-height: 0; }
+.host-faces .face + .face { margin-left: -16px; }
+.host-faces .avatar-img,
+.host-faces .avatar-initials {
+  margin-bottom: 0;
+  border: 2.5px solid #fff;
+  box-shadow: 0 0 0 1px rgba(0,0,0,.06);
+}
 
 /* ── Mobile ──────────────────────────────────────── */
 @media (max-width: 700px) {
@@ -286,12 +296,18 @@ body {
 
   <!-- Info panel -->
   <aside class="info">
-    {{if .AvatarURL}}
-    <img src="{{.AvatarURL}}" alt="{{.HostName}}" class="avatar-img">
-    {{else}}
-    <div class="avatar-initials">{{.HostInitial}}</div>
-    {{end}}
-    <p class="host-name">{{.HostName}}</p>
+    <div id="host-faces" class="host-faces">
+      {{range .Hosts}}
+      <span class="face" style="z-index:{{.Z}}">
+        {{if .AvatarURL}}
+        <img src="{{.AvatarURL}}" alt="{{.Name}}" class="avatar-img">
+        {{else}}
+        <span class="avatar-initials">{{.Initial}}</span>
+        {{end}}
+      </span>
+      {{end}}
+    </div>
+    <p id="host-name" class="host-name">{{.HostsLabel}}</p>
     <h1 class="event-name">{{.Name}}</h1>
     <ul class="meta">
       <li>
@@ -413,6 +429,48 @@ body {
   const $ = id => document.getElementById(id);
   const pad = n => String(n).padStart(2, '0');
 
+  // ── Host faces ──────────────────────────────────────────────────────────────
+  // hostMeta maps host id → {name, avatar_url}, accumulated from /slots responses.
+  // The default face(s) are server-rendered; on slot-pick we swap to the host(s)
+  // that slot's host_ids resolve to (round-robin: the priority pick; group: all).
+  let hostMeta = {};
+  const facesEl = $('host-faces'), nameEl = $('host-name');
+  const defaultFacesHTML = facesEl ? facesEl.innerHTML : '';
+  const defaultName = nameEl ? nameEl.textContent : '';
+
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, c =>
+      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+  function firstName(name) { return String(name).split(' ')[0]; }
+  function hostsLabel(metas) {
+    const n = metas.length;
+    if (n === 0) return '';
+    if (n === 1) return metas[0].name;
+    if (n === 2) return `${firstName(metas[0].name)} & ${firstName(metas[1].name)}`;
+    if (n === 3) return `${firstName(metas[0].name)}, ${firstName(metas[1].name)} & ${firstName(metas[2].name)}`;
+    return `${firstName(metas[0].name)}, ${firstName(metas[1].name)}, ${firstName(metas[2].name)} & ${n - 3} ${n - 3 === 1 ? 'other' : 'others'}`;
+  }
+  function faceHTML(m, z) {
+    const inner = m.avatar_url
+      ? `<img src="${esc(m.avatar_url)}" alt="${esc(m.name)}" class="avatar-img">`
+      : `<span class="avatar-initials">${esc((m.name || '?').charAt(0))}</span>`;
+    return `<span class="face" style="z-index:${z}">${inner}</span>`;
+  }
+  function renderHosts(ids) {
+    if (!facesEl) return;
+    const metas = (ids || []).map(id => hostMeta[id]).filter(Boolean);
+    if (!metas.length) return; // unknown — keep whatever's shown
+    const n = metas.length;
+    facesEl.innerHTML = metas.map((m, i) => faceHTML(m, (n - i) * 10)).join('');
+    nameEl.textContent = hostsLabel(metas);
+  }
+  function restoreDefaultHosts() {
+    if (!facesEl) return;
+    facesEl.innerHTML = defaultFacesHTML;
+    nameEl.textContent = defaultName;
+  }
+
   function fmtTime(iso) {
     return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', timeZone: TZ });
   }
@@ -444,6 +502,7 @@ body {
       const r = await fetch(`/v1/event-types/${SLUG}/slots?from=${from}&to=${to}&tz=${encodeURIComponent(TZ)}`);
       if (!r.ok) throw new Error(r.status);
       const data = await r.json();
+      Object.assign(hostMeta, data.hosts || {});
       availableDates = new Set(
         (data.slots || []).map(s => new Date(s.start).toLocaleDateString('en-CA'))
       );
@@ -516,6 +575,7 @@ body {
   async function pickDate(ds, y, m, d) {
     pickedDate = new Date(y, m, d);
     pickedSlot = null;
+    restoreDefaultHosts();
     renderCal();
     showView('slots-view');
     $('slots-date').textContent = fmtDate(pickedDate);
@@ -526,6 +586,7 @@ body {
       const r = await fetch(`/v1/event-types/${SLUG}/slots?from=${ds}&to=${ds}&tz=${encodeURIComponent(TZ)}`);
       if (!r.ok) throw new Error(r.status);
       const data = await r.json();
+      Object.assign(hostMeta, data.hosts || {});
       slotsCache = data.slots || [];
 
       if (!slotsCache.length) {
@@ -550,6 +611,7 @@ body {
   function pickSlot(i) {
     if (i < 0 || i >= slotsCache.length) return;
     pickedSlot = slotsCache[i];
+    renderHosts(pickedSlot.host_ids);
     document.querySelectorAll('.slot-btn').forEach((b, j) =>
       b.classList.toggle('sel', j === i)
     );
