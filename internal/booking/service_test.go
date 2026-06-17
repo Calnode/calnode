@@ -560,6 +560,44 @@ func TestCreate_collective_success(t *testing.T) {
 	}
 }
 
+func TestListByHost_includesGroupNonPrimary(t *testing.T) {
+	database := newTestDB(t)
+	svc := booking.New(database)
+	h1 := seedHost(t, database) // primary
+	h2 := seedHost(t, database) // non-primary required host
+	etID := seedEventType(t, database, h1)
+
+	b, err := svc.Create(context.Background(), booking.CreateParams{
+		EventTypeID: etID,
+		HostIDs:     []string{h1, h2},
+		RoutingMode: "collective",
+		StartAt:     slot(9, 0), EndAt: slot(9, 30),
+		Organizer: booking.Attendee{Name: "A", Email: "a@example.com"},
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if b.HostID != h1 {
+		t.Fatalf("expected h1 as primary; got %s", b.HostID)
+	}
+
+	// h2 attends but isn't the primary — the Group booking must still show up in
+	// their own "my bookings" list.
+	list, err := svc.ListByHost(context.Background(), h2)
+	if err != nil {
+		t.Fatalf("ListByHost: %v", err)
+	}
+	found := false
+	for _, x := range list {
+		if x.ID == b.ID {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("a non-primary Group host should see the booking in their own list")
+	}
+}
+
 func TestListByHost_empty(t *testing.T) {
 	svc := booking.New(newTestDB(t))
 	bookings, err := svc.ListByHost(context.Background(), "nonexistent-host")

@@ -264,15 +264,21 @@ func (s *Service) Get(ctx context.Context, id string) (*Booking, error) {
 	return scanBooking(row)
 }
 
-// ListByHost returns all non-cancelled bookings for a host, ordered by start time.
+// ListByHost returns all non-cancelled bookings a user is hosting, ordered by
+// start time. A user "hosts" a booking if they are the primary host (host_id) OR
+// any assigned host in booking_hosts — so Group attendees (required or optional,
+// not just the primary) see meetings they're on, not only the ones they lead.
 func (s *Service) ListByHost(ctx context.Context, hostID string) ([]Booking, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, event_type_id, host_id, start_at, end_at, status,
 		       COALESCE(cancellation_reason, ''), COALESCE(location_value, ''),
 		       created_at, updated_at
 		FROM bookings
-		WHERE host_id = ? AND status != 'cancelled'
-		ORDER BY start_at`, hostID)
+		WHERE status != 'cancelled'
+		  AND (host_id = ? OR EXISTS (
+		        SELECT 1 FROM booking_hosts bh
+		        WHERE bh.booking_id = bookings.id AND bh.user_id = ?))
+		ORDER BY start_at`, hostID, hostID)
 	if err != nil {
 		return nil, fmt.Errorf("booking: list: %w", err)
 	}
