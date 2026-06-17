@@ -427,6 +427,7 @@ body {
   let pickedDate = null, slotsCache = [], pickedSlot = null;
   let availableDates = new Set(); // "YYYY-MM-DD" strings with ≥1 slot this nav month
   let availabilityLoaded = false; // false = render optimistically (assume all days open)
+  let slotsByDay = {};            // "YYYY-MM-DD" -> [slot]; cached from the month fetch
 
   const $ = id => document.getElementById(id);
   const pad = n => String(n).padStart(2, '0');
@@ -510,10 +511,17 @@ body {
       if (!r.ok) throw new Error(r.status);
       const data = await r.json();
       Object.assign(hostMeta, data.hosts || {});
-      availableDates = new Set(
-        (data.slots || []).map(s => new Date(s.start).toLocaleDateString('en-CA'))
-      );
+      // Cache the whole month's slots grouped by local day so clicking a day is
+      // instant (no extra request); availableDates falls out of the keys.
+      const byDay = {};
+      (data.slots || []).forEach(s => {
+        const k = new Date(s.start).toLocaleDateString('en-CA');
+        (byDay[k] = byDay[k] || []).push(s);
+      });
+      slotsByDay = byDay;
+      availableDates = new Set(Object.keys(byDay));
     } catch {
+      slotsByDay = {};
       availableDates = new Set();
     }
     availabilityLoaded = true;
@@ -580,6 +588,16 @@ body {
   });
 
   // ── Date pick ─────────────────────────────────────────────────────────────
+  function fillSlots(list) {
+    if (!slotsCache.length) {
+      list.innerHTML = '<p class="hint">No available times.</p>';
+      return;
+    }
+    list.innerHTML = slotsCache.map((s, i) =>
+      `<button class="slot-btn" data-i="${i}">${fmtTime(s.start)}</button>`
+    ).join('');
+  }
+
   async function pickDate(ds, y, m, d) {
     pickedDate = new Date(y, m, d);
     pickedSlot = null;
@@ -588,22 +606,22 @@ body {
     showView('slots-view');
     $('slots-date').textContent = fmtDate(pickedDate);
     const list = $('slots-list');
-    list.innerHTML = '<p class="hint">Loading…</p>';
 
+    // Instant: the month fetch already cached this day's slots.
+    if (slotsByDay[ds]) {
+      slotsCache = slotsByDay[ds];
+      fillSlots(list);
+      return;
+    }
+    // Fallback (clicked before the month load finished): fetch just this day.
+    list.innerHTML = '<p class="hint">Loading…</p>';
     try {
       const r = await fetch(`/v1/event-types/${SLUG}/slots?from=${ds}&to=${ds}&tz=${encodeURIComponent(TZ)}`);
       if (!r.ok) throw new Error(r.status);
       const data = await r.json();
       Object.assign(hostMeta, data.hosts || {});
       slotsCache = data.slots || [];
-
-      if (!slotsCache.length) {
-        list.innerHTML = '<p class="hint">No available times.</p>';
-        return;
-      }
-      list.innerHTML = slotsCache.map((s, i) =>
-        `<button class="slot-btn" data-i="${i}">${fmtTime(s.start)}</button>`
-      ).join('');
+      fillSlots(list);
     } catch {
       list.innerHTML = '<p class="hint" style="color:#dc2626">Could not load times. Please try again.</p>';
     }
@@ -753,7 +771,7 @@ body {
   $('tz-select').addEventListener('change', async e => {
     TZ = e.target.value;
     resizeTzSelect();
-    loadMonthAvailability(navYear, navMonth);
+    await loadMonthAvailability(navYear, navMonth); // rebuild the day cache for the new tz
     if (pickedDate) {
       const ds = toDateStr(pickedDate.getFullYear(), pickedDate.getMonth(), pickedDate.getDate());
       await pickDate(ds, pickedDate.getFullYear(), pickedDate.getMonth(), pickedDate.getDate());
