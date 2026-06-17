@@ -259,9 +259,14 @@ func (h *Handler) hostAvailability(ctx context.Context, userID, eventTypeID stri
 	// Over-fetching is harmless: the engine only subtracts busy that overlaps.
 	busyFrom := dateFrom.Add(-24 * time.Hour).Format(time.RFC3339)
 	busyTo := dateTo.Add(48 * time.Hour).Format(time.RFC3339)
+	// Count every booking this host attends (primary OR a Group/fixed-host seat) as
+	// busy — join booking_hosts rather than matching bookings.host_id, so a host on
+	// a multi-host call isn't offered an overlapping slot on another event.
 	busyRows, err := h.db.QueryContext(ctx, `
-		SELECT start_at, end_at FROM bookings
-		WHERE host_id = ? AND status != 'cancelled' AND start_at >= ? AND start_at < ?`,
+		SELECT b.start_at, b.end_at FROM bookings b
+		JOIN booking_hosts bh ON bh.booking_id = b.id
+		WHERE bh.user_id = ? AND b.status != 'cancelled'
+		  AND b.start_at >= ? AND b.start_at < ?`,
 		userID, busyFrom, busyTo)
 	if err != nil {
 		return slots.HostAvailability{}, err

@@ -47,11 +47,15 @@ func (s *Service) Create(ctx context.Context, p CreateParams) (*Booking, error) 
 
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 
-	// Two intervals [A,B) and [C,D) overlap when A < D and C < B.
+	// Two intervals [A,B) and [C,D) overlap when A < D and C < B. A host is busy if
+	// they attend ANY non-cancelled overlapping booking — primary OR not — so this
+	// joins booking_hosts rather than matching bookings.host_id (which would miss a
+	// host attending a Group / fixed-host booking as a non-primary).
 	const overlapQ = `
-		SELECT COUNT(*) FROM bookings
-		WHERE host_id = ? AND status != 'cancelled'
-		  AND start_at < ? AND end_at > ?`
+		SELECT COUNT(*) FROM bookings b
+		JOIN booking_hosts bh ON bh.booking_id = b.id
+		WHERE bh.user_id = ? AND b.status != 'cancelled'
+		  AND b.start_at < ? AND b.end_at > ?`
 
 	// Select hosts. Round-robin picks one *free* candidate from the rotation pool
 	// per p.RRStrategy (free candidates stay in priority order). Any
@@ -456,16 +460,39 @@ func (s *Service) Reschedule(ctx context.Context, bookingID string, newStart, ne
 		return nil, ErrAlreadyCancelled
 	}
 
-	var n int
-	if err := tx.QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM bookings
-		WHERE host_id = ? AND status != 'cancelled' AND id != ?
-		  AND start_at < ? AND end_at > ?`,
-		b.HostID, bookingID, endStr, startStr).Scan(&n); err != nil {
-		return nil, fmt.Errorf("booking: reschedule overlap: %w", err)
+	// Every host on this booking keeps their seat through a reschedule, so each
+	// must be free at the new time — not just the primary. Read the host list
+	// fully before the per-host overlap queries (single-connection pool).
+	hostRows, err := tx.QueryContext(ctx, `SELECT user_id FROM booking_hosts WHERE booking_id = ?`, bookingID)
+	if err != nil {
+		return nil, fmt.Errorf("booking: reschedule hosts: %w", err)
 	}
-	if n > 0 {
-		return nil, ErrDoubleBooked
+	var hostIDs []string
+	for hostRows.Next() {
+		var u string
+		if err := hostRows.Scan(&u); err != nil {
+			hostRows.Close()
+			return nil, fmt.Errorf("booking: reschedule hosts scan: %w", err)
+		}
+		hostIDs = append(hostIDs, u)
+	}
+	hostRows.Close()
+	if len(hostIDs) == 0 { // legacy booking with no booking_hosts rows
+		hostIDs = []string{b.HostID}
+	}
+	for _, hid := range hostIDs {
+		var n int
+		if err := tx.QueryRowContext(ctx, `
+			SELECT COUNT(*) FROM bookings b2
+			JOIN booking_hosts bh ON bh.booking_id = b2.id
+			WHERE bh.user_id = ? AND b2.status != 'cancelled' AND b2.id != ?
+			  AND b2.start_at < ? AND b2.end_at > ?`,
+			hid, bookingID, endStr, startStr).Scan(&n); err != nil {
+			return nil, fmt.Errorf("booking: reschedule overlap: %w", err)
+		}
+		if n > 0 {
+			return nil, ErrDoubleBooked
+		}
 	}
 
 	now := time.Now().UTC().Format(time.RFC3339Nano)
@@ -520,11 +547,13 @@ func (s *Service) ReassignHost(ctx context.Context, bookingID, newHostID string)
 	startStr := b.StartAt.UTC().Format(time.RFC3339Nano)
 	endStr := b.EndAt.UTC().Format(time.RFC3339Nano)
 
+	// The new host must be free at this time across everything they attend.
 	var n int
 	if err := tx.QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM bookings
-		WHERE host_id = ? AND status != 'cancelled' AND id != ?
-		  AND start_at < ? AND end_at > ?`,
+		SELECT COUNT(*) FROM bookings b2
+		JOIN booking_hosts bh ON bh.booking_id = b2.id
+		WHERE bh.user_id = ? AND b2.status != 'cancelled' AND b2.id != ?
+		  AND b2.start_at < ? AND b2.end_at > ?`,
 		newHostID, bookingID, endStr, startStr).Scan(&n); err != nil {
 		return nil, fmt.Errorf("booking: reassign overlap: %w", err)
 	}

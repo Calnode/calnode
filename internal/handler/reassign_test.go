@@ -43,6 +43,9 @@ func TestReassignBooking_conflictWhenNewHostBusy(t *testing.T) {
 		VALUES ('b1','et1','u2','2099-01-01T10:00:00Z','2099-01-01T10:30:00Z','confirmed')`)
 	database.Exec(`INSERT INTO bookings (id,event_type_id,host_id,start_at,end_at,status)
 		VALUES ('b2','et1','u3','2099-01-01T10:15:00Z','2099-01-01T10:45:00Z','confirmed')`)
+	// Availability is computed from booking_hosts (every attended seat), as real
+	// bookings are recorded — so u3's conflicting booking needs its host row.
+	database.Exec(`INSERT INTO booking_hosts (id,booking_id,user_id,is_primary) VALUES ('bh2','b2','u3',1)`)
 
 	req := authReq(http.MethodPost, "/v1/bookings/b1/reassign", `{"host_id":"u3"}`, ownerKey)
 	req.SetPathValue("id", "b1")

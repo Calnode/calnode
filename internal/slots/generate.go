@@ -187,8 +187,6 @@ func pickHosts(hosts []HostAvailability, available map[string]bool, mode string)
 		// required host is free AND ≥1 rotation host is free. Hosts with no role tag
 		// are treated as rotation (back-compat with rotation-only round robin).
 		var out []string
-		hasRotationPool := false
-		rotationFree := false
 		for _, h := range hosts {
 			if h.Role == "required" {
 				if !available[h.HostID] {
@@ -197,21 +195,22 @@ func pickHosts(hosts []HostAvailability, available map[string]bool, mode string)
 				out = append(out, h.HostID)
 			}
 		}
+		// A round-robin booking ALWAYS assigns exactly one rotation host, so the
+		// slot is offered only when one is free. If there's no rotation pool at all
+		// the event is misconfigured for round_robin (it's really a Group) — don't
+		// offer, to stay consistent with booking-time assignment which would 409.
+		rotationFree := false
 		for _, h := range hosts {
 			if h.Role == "required" {
 				continue
 			}
-			hasRotationPool = true
 			if available[h.HostID] {
 				out = append(out, h.HostID) // first available rotation host (priority order)
 				rotationFree = true
 				break
 			}
 		}
-		if hasRotationPool && !rotationFree {
-			return nil // rotation pool exists but none free
-		}
-		if len(out) == 0 {
+		if !rotationFree {
 			return nil
 		}
 		return out

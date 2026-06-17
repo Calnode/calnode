@@ -588,6 +588,27 @@ func TestGenerate_roundRobinFixedHostMustBeFree(t *testing.T) {
 	}
 }
 
+func TestGenerate_roundRobinNoRotationPool_offersNothing(t *testing.T) {
+	// round_robin with a required (fixed) host but NO rotation pool is misconfigured
+	// — booking-time assignment always needs a rotation pick. The engine must offer
+	// nothing rather than surfacing slots that would 409 on booking.
+	req := slots.Request{
+		Event: slots.EventConfig{DurationMinutes: 30, SlotIntervalMinutes: 30, RoutingMode: "round_robin", MaxFutureDays: 30},
+		Hosts: []slots.HostAvailability{
+			{HostID: "fixed", Location: time.UTC, Role: "required", Rules: monRules("09:00", "17:00")},
+		},
+		DateFrom: utcDate(2026, 6, 15), DateTo: utcDate(2026, 6, 15),
+		BookerTZ: time.UTC, Now: utcTime(2026, 6, 14, 0, 0, 0),
+	}
+	got, err := slots.Generate(req)
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("round_robin with no rotation pool should offer no slots; got %d", len(got))
+	}
+}
+
 func TestGenerate_collective_slotOfferedOnlyIfAllFree(t *testing.T) {
 	// h1: Mon 09:00-11:00. h2: Mon 10:00-12:00.
 	// Overlap: 10:00-11:00. Only those slots offered.
