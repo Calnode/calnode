@@ -195,6 +195,9 @@ func (h *Handler) RescheduleByToken(w http.ResponseWriter, r *http.Request) {
 		d.PreviousStartAt = previousStart
 		d.PreviousEndAt = previousEnd
 
+		// Move the calendar event(s) to the new time (all hosts, for Group bookings).
+		h.moveCalendarEvents(ctx, bCopy.ID, bCopy.StartAt, bCopy.EndAt)
+
 		// Rotate the token so the original confirmation-email link is invalidated.
 		if tok, err := h.bookingSvc.RotateManageToken(ctx, bCopy.ID); err == nil {
 			d.ManageURL = h.publicURL() + "/manage/" + tok

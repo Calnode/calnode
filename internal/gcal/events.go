@@ -92,6 +92,48 @@ func (c *Client) CreateEvent(ctx context.Context, userID string, p CreateEventPa
 	return evResp.ID, nil
 }
 
+// UpdateEvent moves an existing event to a new start/end (used on reschedule).
+// Returns nil if eventID is empty or the user has no connection. sendUpdates=all
+// so the attendee is notified of the new time.
+func (c *Client) UpdateEvent(ctx context.Context, userID, eventID string, start, end time.Time) error {
+	if eventID == "" {
+		return nil
+	}
+	hc, calID, err := c.DestinationClient(ctx, userID)
+	if err != nil || hc == nil {
+		return err
+	}
+
+	body, err := json.Marshal(struct {
+		Start calEventDateTime `json:"start"`
+		End   calEventDateTime `json:"end"`
+	}{
+		Start: calEventDateTime{DateTime: start.UTC().Format(time.RFC3339), TimeZone: "UTC"},
+		End:   calEventDateTime{DateTime: end.UTC().Format(time.RFC3339), TimeZone: "UTC"},
+	})
+	if err != nil {
+		return fmt.Errorf("gcal: update event marshal: %w", err)
+	}
+
+	apiURL := c.apiBase + "/calendars/" + url.PathEscape(calID) + "/events/" + url.PathEscape(eventID) + "?sendUpdates=all"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, apiURL, bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("gcal: update event request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := hc.Do(req)
+	if err != nil {
+		return fmt.Errorf("gcal: update event call: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("gcal: update event status %d", resp.StatusCode)
+	}
+	return nil
+}
+
 // CancelEvent deletes a Google Calendar event by its event ID.
 // Returns nil if eventID is empty or the user has no connection.
 func (c *Client) CancelEvent(ctx context.Context, userID, eventID string) error {

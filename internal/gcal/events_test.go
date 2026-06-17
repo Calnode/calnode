@@ -219,3 +219,48 @@ func TestCancelEvent_serverError_returnsError(t *testing.T) {
 		t.Error("expected error for 500 response")
 	}
 }
+
+func TestUpdateEvent_sendsPatchWithNewTimes(t *testing.T) {
+	var gotMethod string
+	var gotBody calEventReq
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		json.NewDecoder(r.Body).Decode(&gotBody) //nolint:errcheck
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"id":"evt-1"}`)) //nolint:errcheck
+	}))
+	t.Cleanup(srv.Close)
+
+	c := newTestClient(t)
+	c.apiBase = srv.URL
+	saveDestinationConnection(t, c, "user-1", "primary")
+
+	start := time.Date(2027, 6, 18, 10, 0, 0, 0, time.UTC)
+	if err := c.UpdateEvent(context.Background(), "user-1", "evt-1", start, start.Add(30*time.Minute)); err != nil {
+		t.Fatalf("UpdateEvent: %v", err)
+	}
+	if gotMethod != http.MethodPatch {
+		t.Errorf("method = %s; want PATCH", gotMethod)
+	}
+	if gotBody.Start.DateTime != "2027-06-18T10:00:00Z" {
+		t.Errorf("start = %q; want 2027-06-18T10:00:00Z", gotBody.Start.DateTime)
+	}
+	if gotBody.End.DateTime != "2027-06-18T10:30:00Z" {
+		t.Errorf("end = %q; want 2027-06-18T10:30:00Z", gotBody.End.DateTime)
+	}
+}
+
+func TestUpdateEvent_emptyEventID_noOp(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("unexpected HTTP call for empty event ID")
+	}))
+	t.Cleanup(srv.Close)
+
+	c := newTestClient(t)
+	c.apiBase = srv.URL
+	saveDestinationConnection(t, c, "user-1", "primary")
+
+	if err := c.UpdateEvent(context.Background(), "user-1", "", time.Now(), time.Now()); err != nil {
+		t.Errorf("UpdateEvent(\"\") = %v; want nil", err)
+	}
+}

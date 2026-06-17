@@ -585,6 +585,29 @@ func (h *Handler) cancelSideEffects(b booking.Booking) {
 	}
 }
 
+// moveCalendarEvents moves every assigned host's calendar event to a new
+// start/end after a reschedule. Best-effort; a failure leaves that host's event
+// at the old time (logged). Group bookings move all hosts' events.
+func (h *Handler) moveCalendarEvents(ctx context.Context, bookingID string, start, end time.Time) {
+	gc := h.getGCal()
+	if gc == nil {
+		return
+	}
+	hosts, err := h.assignedHosts(ctx, bookingID)
+	if err != nil {
+		h.logger.Error("reschedule: load hosts for calendar move", "error", err, "booking_id", bookingID)
+		return
+	}
+	for _, host := range hosts {
+		if host.ExternalEventID == "" {
+			continue
+		}
+		if err := gc.UpdateEvent(ctx, host.UserID, host.ExternalEventID, start, end); err != nil {
+			h.logger.Error("reschedule: move gcal event", "error", err, "booking_id", bookingID, "host", host.UserID)
+		}
+	}
+}
+
 // assignedHost is one host attending a booking (from booking_hosts).
 type assignedHost struct {
 	UserID          string

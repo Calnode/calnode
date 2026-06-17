@@ -125,6 +125,9 @@ func (h *Handler) RescheduleBooking(w http.ResponseWriter, r *http.Request) {
 		d.PreviousStartAt = prevStart
 		d.PreviousEndAt = prevEnd
 
+		// Move the calendar event(s) to the new time (all hosts, for Group bookings).
+		h.moveCalendarEvents(ctx, bCopy.ID, bCopy.StartAt, bCopy.EndAt)
+
 		if tok, err := h.bookingSvc.RotateManageToken(ctx, bCopy.ID); err == nil {
 			d.ManageURL = h.publicURL() + "/manage/" + tok
 		}
