@@ -24,6 +24,7 @@ type Handler struct {
 	encKey       [32]byte     // AES-256 key for encrypting secrets stored in the DB
 	calMu        sync.RWMutex
 	gcal         *gcal.Client
+	calNudge     chan struct{} // buffered(1): wakes the calendar reconciler after a failed inline op
 	webhookSvc   *webhook.Service
 	baseURL       string
 	publicBaseURL string
@@ -41,6 +42,7 @@ func New(db *sql.DB, logger *slog.Logger) *Handler {
 		bookingSvc: booking.New(db),
 		mailer:     &mailer.Noop{},
 		webhookSvc: whs,
+		calNudge:   make(chan struct{}, 1),
 	}
 }
 

@@ -178,6 +178,20 @@ func (c *Client) DestinationClient(ctx context.Context, userID string) (*http.Cl
 	return c.httpClient(ctx, userID, -1, 1)
 }
 
+// HasDestination reports whether userID has a destination calendar connection
+// (somewhere to write events). Used by the reconciler to skip hosts who can
+// never get a calendar event, avoiding pointless retries.
+func (c *Client) HasDestination(ctx context.Context, userID string) (bool, error) {
+	var x int
+	err := c.db.QueryRowContext(ctx,
+		`SELECT 1 FROM calendar_connections WHERE user_id = ? AND provider = 'google' AND is_destination = 1 LIMIT 1`,
+		userID).Scan(&x)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	return err == nil, err
+}
+
 // saveToken encrypts and upserts an OAuth token for userID.
 // Uses DELETE + INSERT inside a transaction (no unique index on user_id+provider).
 func (c *Client) saveToken(ctx context.Context, userID, calID string, tok *oauth2.Token) error {

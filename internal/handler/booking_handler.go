@@ -256,6 +256,7 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 				})
 				if err != nil {
 					h.logger.Error("create gcal event", "error", err, "booking_id", b.ID, "host", host.UserID)
+					h.nudgeCalendarReconcile() // heal this missing event on a later sweep
 				} else if eventID != "" {
 					if _, err := h.db.ExecContext(ctx,
 						`UPDATE booking_hosts SET external_event_id = ? WHERE booking_id = ? AND user_id = ?`,
@@ -497,6 +498,7 @@ func (h *Handler) cancelSideEffects(b booking.Booking) {
 		if gc != nil && host.ExternalEventID != "" {
 			if err := gc.CancelEvent(ctx, host.UserID, host.ExternalEventID); err != nil {
 				h.logger.Error("cancel gcal event", "error", err, "booking_id", b.ID, "host", host.UserID)
+				h.nudgeCalendarReconcile() // event still on the calendar — heal on a later sweep
 			}
 		}
 		prefs := allOnPrefs

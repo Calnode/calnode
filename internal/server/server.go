@@ -98,6 +98,7 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 			logger.Error("gcal: init failed", "error", err)
 		} else {
 			h.SetCalendar(gc)
+			h.StartCalendarReconciler(ctx)
 			logger.Info("Google Calendar configured", "redirect_url", calRedirect)
 		}
 	} else {
