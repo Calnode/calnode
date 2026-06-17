@@ -16,7 +16,6 @@ body {
 
 .page {
   display: flex;
-  min-height: 100vh;
   max-width: 860px;
   margin: 2rem auto;
   background: #fff;
@@ -32,7 +31,33 @@ body {
   border-right: 1px solid #e2e8f0;
   background: #fafafa;
 }
+.avatar-img {
+  width: 56px; height: 56px;
+  border-radius: 50%; object-fit: cover;
+  margin-bottom: .75rem;
+}
+.avatar-initials {
+  width: 56px; height: 56px;
+  border-radius: 50%;
+  background: #e5e7eb; color: #374151;
+  font-size: 1.25rem; font-weight: 600;
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: .75rem;
+}
 .host-name   { font-size: .8125rem; color: #64748b; margin-bottom: .5rem; }
+
+/* Timezone selector (mirrors the booking page) */
+.tz-label { margin-top: 1.125rem; font-size: .6875rem; color: #94a3b8; }
+.tz-wrapper { display: inline-flex; align-items: center; gap: 2px; }
+.tz-wrapper select {
+  appearance: none; -webkit-appearance: none;
+  font-size: .6875rem; color: #94a3b8; font-family: inherit;
+  background: none; border: none; cursor: pointer; padding: 0; outline: none;
+  max-width: 200px;
+}
+.tz-wrapper svg { pointer-events: none; color: #94a3b8; flex-shrink: 0; }
+.tz-wrapper:hover select, .tz-wrapper:hover svg { color: #64748b; }
+#tz-sizer { position: absolute; visibility: hidden; white-space: nowrap; font-size: .6875rem; font-family: inherit; }
 .event-name  { font-size: 1.25rem; font-weight: 700; line-height: 1.3; margin-bottom: .875rem; }
 .meta        { list-style: none; display: flex; flex-direction: column; gap: .375rem; margin-bottom: 1.125rem; }
 .meta li     { display: flex; align-items: center; gap: .4rem; font-size: .8125rem; color: #475569; }
@@ -219,6 +244,11 @@ body {
 <div class="page">
 
   <aside class="info">
+    {{if .AvatarURL}}
+    <img src="{{.AvatarURL}}" alt="{{.HostName}}" class="avatar-img">
+    {{else}}
+    <div class="avatar-initials">{{.HostInitial}}</div>
+    {{end}}
     <p class="host-name">{{.HostName}}</p>
     <h1 class="event-name">{{.EventTypeName}}</h1>
     <ul class="meta">
@@ -235,6 +265,15 @@ body {
         {{.LocationLabel}}
       </li>{{end}}
     </ul>
+    {{if and (not .TokenInvalid) (ne .Status "cancelled")}}
+    <p class="tz-label">
+      <span class="tz-wrapper">
+        <select id="tz-select" aria-label="Timezone"></select>
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+      </span>
+      <span id="tz-sizer" aria-hidden="true"></span>
+    </p>
+    {{end}}
   </aside>
 
   <main class="main">
@@ -353,14 +392,14 @@ body {
 (function () {
   'use strict';
 
-  const TOKEN       = {{printf "%q" .Token}};
-  const SLUG        = {{printf "%q" .EventTypeSlug}};
+  const TOKEN       = {{.Token}};
+  const SLUG        = {{.EventTypeSlug}};
   const MAX_DAYS    = {{.MaxFutureDays}};
   const DURATION    = {{.DurationMinutes}};
-  const CURRENT_ISO = {{printf "%q" .CurrentStartISO}};
-  const ORG_TZ      = {{printf "%q" .OrganizerTZ}};
+  const CURRENT_ISO = {{.CurrentStartISO}};
+  const ORG_TZ      = {{.OrganizerTZ}};
 
-  const TZ = Intl.DateTimeFormat().resolvedOptions().timeZone || ORG_TZ || 'UTC';
+  let TZ = Intl.DateTimeFormat().resolvedOptions().timeZone || ORG_TZ || 'UTC';
 
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const maxDate = new Date(today); maxDate.setDate(maxDate.getDate() + MAX_DAYS);
@@ -373,15 +412,15 @@ body {
   const pad = n => String(n).padStart(2, '0');
 
   function fmtTime(iso) {
-    return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', timeZone: TZ });
   }
   function fmtDate(d) {
     return d.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
   }
   function fmtDatetime(iso) {
     const d = new Date(iso);
-    return d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' }) +
-           ' at ' + d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    return d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', timeZone: TZ }) +
+           ' at ' + d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', timeZone: TZ });
   }
   function toDateStr(y, m, d) {
     return `${y}-${pad(m + 1)}-${pad(d)}`;
@@ -589,6 +628,59 @@ body {
       btn.textContent = 'Yes, cancel booking';
     }
   });
+
+  // ── Timezone selector (mirrors the booking page) ────────────────────────────
+  function resizeTzSelect() {
+    const sel = $('tz-select'); if (!sel) return;
+    const sizer = $('tz-sizer');
+    sizer.textContent = sel.options[sel.selectedIndex]?.text || '';
+    sel.style.width = sizer.offsetWidth + 'px';
+  }
+  function populateTzSelect() {
+    const sel = $('tz-select'); if (!sel) return;
+    const zones = Intl.supportedValuesOf ? Intl.supportedValuesOf('timeZone') : [TZ];
+    const groups = {};
+    zones.forEach(tz => {
+      const region = tz.includes('/') ? tz.split('/')[0] : 'Other';
+      (groups[region] = groups[region] || []).push(tz);
+    });
+    Object.keys(groups).sort().forEach(region => {
+      const og = document.createElement('optgroup'); og.label = region;
+      groups[region].forEach(tz => {
+        const opt = document.createElement('option');
+        opt.value = tz; opt.textContent = tz.replace(/_/g, ' ');
+        if (tz === TZ) opt.selected = true;
+        og.appendChild(opt);
+      });
+      sel.appendChild(og);
+    });
+    resizeTzSelect();
+  }
+  // Re-render every visible time in the freshly-selected timezone.
+  function refreshTimes() {
+    $('current-time').textContent = fmtDatetime(CURRENT_ISO);
+    if (pickedDate && !$('slots-view').classList.contains('hidden')) {
+      $('slots-date').textContent = fmtDate(pickedDate);
+      document.querySelectorAll('#slots-list .slot-btn').forEach(b => {
+        const s = slotsCache[+b.dataset.i];
+        if (s) b.textContent = fmtTime(s.start);
+      });
+    }
+    if (pickedSlot) {
+      $('prev-time').textContent = fmtDatetime(CURRENT_ISO);
+      $('new-time').textContent  = fmtDate(pickedDate) + ' at ' + fmtTime(pickedSlot.start);
+    }
+  }
+  const tzSel = $('tz-select');
+  if (tzSel) {
+    tzSel.addEventListener('change', e => {
+      TZ = e.target.value;
+      resizeTzSelect();
+      refreshTimes();
+      if ($('tz-hint')) $('tz-hint').textContent = TZ.replace(/_/g, ' ').replace(/\//g, ' / ');
+    });
+    populateTzSelect();
+  }
 
 }());
 </script>

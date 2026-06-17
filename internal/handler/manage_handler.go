@@ -26,6 +26,8 @@ type managePageData struct {
 	EventTypeName   string
 	EventTypeSlug   string
 	HostName        string
+	HostInitial     string
+	AvatarURL       string
 	DurationLabel   string
 	LocationLabel   string
 	MaxFutureDays   int
@@ -67,9 +69,14 @@ func (h *Handler) ManagePage(w http.ResponseWriter, r *http.Request) {
 
 	// Show the actual assigned host(s) for this booking, not the event-type owner
 	// (round-robin/Group route elsewhere). Falls back to the owner name above if
-	// no booking_hosts rows exist.
+	// no booking_hosts rows exist. The avatar uses the primary host.
+	var hostInitial, avatarURL string
 	if hosts := h.displayHostsForBooking(r.Context(), b.ID); len(hosts) > 0 {
 		hostName = hostsLabel(hosts)
+		hostInitial = hosts[0].Initial
+		avatarURL = hosts[0].AvatarURL
+	} else {
+		hostInitial = firstRune(hostName)
 	}
 
 	var orgTZ string
@@ -86,6 +93,8 @@ func (h *Handler) ManagePage(w http.ResponseWriter, r *http.Request) {
 		EventTypeName:   etName,
 		EventTypeSlug:   etSlug,
 		HostName:        hostName,
+		HostInitial:     hostInitial,
+		AvatarURL:       avatarURL,
 		DurationLabel:   durationLabel(durMins),
 		LocationLabel:   locationLabel(locType, locValue),
 		MaxFutureDays:   maxDays,
