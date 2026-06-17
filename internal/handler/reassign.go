@@ -135,6 +135,15 @@ func (h *Handler) ReassignBooking(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Keep the multi-host record in sync — the primary host row follows the
+	// booking's host_id so later cancel/notify fan-out targets the right person.
+	// (Reassign is single-host; the primary row is the one being moved.)
+	if _, err := h.db.ExecContext(r.Context(),
+		`UPDATE booking_hosts SET user_id = ?, external_event_id = NULL WHERE booking_id = ? AND is_primary = 1`,
+		req.HostID, updated.ID); err != nil {
+		h.logger.ErrorContext(r.Context(), "reassign: sync booking_hosts", "error", err)
+	}
+
 	h.writeJSON(w, http.StatusOK, toBookingJSON(updated))
 
 	// Side effects: move the calendar event and notify attendee + new host.
@@ -163,9 +172,16 @@ func (h *Handler) ReassignBooking(w http.ResponseWriter, r *http.Request) {
 			})
 			if err != nil {
 				h.logger.Error("reassign: create new calendar event", "error", err, "booking_id", bCopy.ID)
-			} else if _, err := h.db.ExecContext(ctx,
-				`UPDATE bookings SET external_event_id = ? WHERE id = ?`, newEventID, bCopy.ID); err != nil {
-				h.logger.Error("reassign: persist new event id", "error", err, "booking_id", bCopy.ID)
+			} else {
+				if _, err := h.db.ExecContext(ctx,
+					`UPDATE bookings SET external_event_id = ? WHERE id = ?`, newEventID, bCopy.ID); err != nil {
+					h.logger.Error("reassign: persist new event id", "error", err, "booking_id", bCopy.ID)
+				}
+				if _, err := h.db.ExecContext(ctx,
+					`UPDATE booking_hosts SET external_event_id = ? WHERE booking_id = ? AND is_primary = 1`,
+					newEventID, bCopy.ID); err != nil {
+					h.logger.Error("reassign: persist host event id", "error", err, "booking_id", bCopy.ID)
+				}
 			}
 		}
 

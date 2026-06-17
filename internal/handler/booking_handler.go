@@ -217,42 +217,20 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-		// Use the assigned host (the round-robin pick, or the single fixed host),
-		// not the event-type owner — they may differ.
-		if err := h.loadHostIntoData(ctx, b.HostID, &bData); err != nil {
-			h.logger.Error("booking confirmation: load host", "error", err, "booking_id", b.ID)
-			return
+		// Every assigned host attends (Group books several; round-robin/Normal one).
+		hosts, err := h.assignedHosts(ctx, b.ID)
+		if err != nil || len(hosts) == 0 {
+			h.logger.Error("booking confirmation: load assigned hosts", "error", err, "booking_id", b.ID)
+			// Fall back to the primary host so notifications still go out.
+			fb := assignedHost{UserID: b.HostID, IsPrimary: true}
+			_ = h.db.QueryRowContext(ctx, `SELECT name, email FROM users WHERE id = ?`, b.HostID).
+				Scan(&fb.Name, &fb.Email)
+			hosts = []assignedHost{fb}
 		}
 		if tok, err := h.bookingSvc.IssueManageToken(ctx, b.ID); err != nil {
 			h.logger.Error("issue manage token", "error", err, "booking_id", b.ID)
 		} else {
 			bData.ManageURL = h.publicURL() + "/manage/" + tok
-		}
-		// Create Google Calendar event and persist the event ID for later cancellation.
-		if gc := h.getGCal(); gc != nil {
-			eventID, err := gc.CreateEvent(ctx, b.HostID, gcal.CreateEventParams{
-				Summary:        et.Name + " with " + req.Name,
-				Description:    "Booking ID: " + b.ID,
-				Start:          b.StartAt,
-				End:            b.EndAt,
-				OrganizerName:  req.Name,
-				OrganizerEmail: req.Email,
-			})
-			if err != nil {
-				h.logger.Error("create gcal event", "error", err, "booking_id", b.ID)
-			} else if eventID != "" {
-				if _, err := h.db.ExecContext(ctx,
-					`UPDATE bookings SET external_event_id = ? WHERE id = ?`,
-					eventID, b.ID); err != nil {
-					h.logger.Error("save gcal event id", "error", err, "booking_id", b.ID)
-				}
-			}
-		}
-		prefs := allOnPrefs
-		if p, err := h.loadHostPrefs(ctx, b.HostID); err != nil {
-			h.logger.Error("booking confirmation: load host prefs", "error", err, "booking_id", b.ID)
-		} else {
-			prefs = p
 		}
 		var msgNote sql.NullString
 		_ = h.db.QueryRowContext(ctx, `SELECT msg_confirmation FROM event_types WHERE id = ?`, b.EventTypeID).
@@ -260,14 +238,63 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 		if msgNote.Valid {
 			bData.CustomNote = msgNote.String
 		}
-		if prefs.NotifyConfirmation {
-			if err := mailer.SendConfirmationToAttendee(ctx, h.mailer, bData); err != nil {
-				h.logger.Error("booking confirmation email (attendee)", "error", err, "booking_id", b.ID)
+
+		gc := h.getGCal()
+		var primaryPrefs hostPrefs = allOnPrefs
+		for _, host := range hosts {
+			// Create a calendar event on each host's connected calendar and record
+			// the per-host event ID so it can be cancelled later. The primary's id
+			// also lives on the booking row for back-compat.
+			if gc != nil {
+				eventID, err := gc.CreateEvent(ctx, host.UserID, gcal.CreateEventParams{
+					Summary:        et.Name + " with " + req.Name,
+					Description:    "Booking ID: " + b.ID,
+					Start:          b.StartAt,
+					End:            b.EndAt,
+					OrganizerName:  req.Name,
+					OrganizerEmail: req.Email,
+				})
+				if err != nil {
+					h.logger.Error("create gcal event", "error", err, "booking_id", b.ID, "host", host.UserID)
+				} else if eventID != "" {
+					if _, err := h.db.ExecContext(ctx,
+						`UPDATE booking_hosts SET external_event_id = ? WHERE booking_id = ? AND user_id = ?`,
+						eventID, b.ID, host.UserID); err != nil {
+						h.logger.Error("save host gcal event id", "error", err, "booking_id", b.ID)
+					}
+					if host.IsPrimary {
+						if _, err := h.db.ExecContext(ctx,
+							`UPDATE bookings SET external_event_id = ? WHERE id = ?`, eventID, b.ID); err != nil {
+							h.logger.Error("save gcal event id", "error", err, "booking_id", b.ID)
+						}
+					}
+				}
+			}
+
+			prefs := allOnPrefs
+			if p, err := h.loadHostPrefs(ctx, host.UserID); err != nil {
+				h.logger.Error("booking confirmation: load host prefs", "error", err, "booking_id", b.ID, "host", host.UserID)
+			} else {
+				prefs = p
+			}
+			if host.IsPrimary {
+				primaryPrefs = prefs
+			}
+			if prefs.NotifyHostBooking {
+				hd := bData
+				hd.HostName, hd.HostEmail = host.Name, host.Email
+				if err := mailer.SendConfirmationToHost(ctx, h.mailer, hd); err != nil {
+					h.logger.Error("booking confirmation email (host)", "error", err, "booking_id", b.ID, "host", host.UserID)
+				}
 			}
 		}
-		if prefs.NotifyHostBooking {
-			if err := mailer.SendConfirmationToHost(ctx, h.mailer, bData); err != nil {
-				h.logger.Error("booking confirmation email (host)", "error", err, "booking_id", b.ID)
+
+		// Attendee confirmation, once. "With:" names the primary host; gated on the
+		// primary host's notification preference (matches prior behaviour).
+		bData.HostName, bData.HostEmail = primaryHost(hosts).Name, primaryHost(hosts).Email
+		if primaryPrefs.NotifyConfirmation {
+			if err := mailer.SendConfirmationToAttendee(ctx, h.mailer, bData); err != nil {
+				h.logger.Error("booking confirmation email (attendee)", "error", err, "booking_id", b.ID)
 			}
 		}
 		if err := h.webhookSvc.Enqueue(ctx, "booking.created", webhook.BookingPayload{
@@ -436,45 +463,63 @@ func (h *Handler) CancelBooking(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-		// Cancel the GCal event if one was created at booking time.
-		if gc := h.getGCal(); gc != nil {
-			var extEventID sql.NullString
-			if err := h.db.QueryRowContext(ctx,
-				`SELECT external_event_id FROM bookings WHERE id = ?`, bCopy.ID).
-				Scan(&extEventID); err != nil && !errors.Is(err, sql.ErrNoRows) {
-				h.logger.Error("fetch external_event_id", "error", err, "booking_id", bCopy.ID)
-			} else if extEventID.Valid && extEventID.String != "" {
-				if err := gc.CancelEvent(ctx, bCopy.HostID, extEventID.String); err != nil {
-					h.logger.Error("cancel gcal event", "error", err, "booking_id", bCopy.ID)
-				}
-			}
-		}
 		d, err := h.loadCancellationData(ctx, bCopy)
 		if err != nil {
 			h.logger.Error("booking cancellation: load data", "error", err, "booking_id", bCopy.ID)
 			return
 		}
 		d.BaseURL = h.publicURL()
-		prefs := allOnPrefs
-		if p, err := h.loadHostPrefs(ctx, bCopy.HostID); err != nil {
-			h.logger.Error("booking cancellation: load host prefs", "error", err, "booking_id", bCopy.ID)
-		} else {
-			prefs = p
-		}
 		var msgNote sql.NullString
 		_ = h.db.QueryRowContext(ctx, `SELECT msg_cancellation FROM event_types WHERE id = ?`, bCopy.EventTypeID).
 			Scan(&msgNote)
 		if msgNote.Valid {
 			d.CustomNote = msgNote.String
 		}
-		if prefs.NotifyCancellation {
-			if err := mailer.SendCancellationToAttendee(ctx, h.mailer, d); err != nil {
-				h.logger.Error("booking cancellation email (attendee)", "error", err, "booking_id", bCopy.ID)
+
+		// Cancel each assigned host's calendar event and notify each host. Group
+		// bookings put the meeting on several calendars; remove them all.
+		gc := h.getGCal()
+		var primaryPrefs hostPrefs = allOnPrefs
+		rows, qErr := h.db.QueryContext(ctx, `
+			SELECT bh.user_id, u.name, u.email, bh.is_primary, COALESCE(bh.external_event_id, '')
+			FROM booking_hosts bh JOIN users u ON u.id = bh.user_id
+			WHERE bh.booking_id = ?
+			ORDER BY bh.is_primary DESC, u.name ASC`, bCopy.ID)
+		if qErr != nil {
+			h.logger.Error("booking cancellation: load hosts", "error", qErr, "booking_id", bCopy.ID)
+		} else {
+			defer rows.Close()
+			for rows.Next() {
+				var uid, name, email, extID string
+				var primary int
+				if err := rows.Scan(&uid, &name, &email, &primary, &extID); err != nil {
+					continue
+				}
+				if gc != nil && extID != "" {
+					if err := gc.CancelEvent(ctx, uid, extID); err != nil {
+						h.logger.Error("cancel gcal event", "error", err, "booking_id", bCopy.ID, "host", uid)
+					}
+				}
+				prefs := allOnPrefs
+				if p, err := h.loadHostPrefs(ctx, uid); err == nil {
+					prefs = p
+				}
+				if primary != 0 {
+					primaryPrefs = prefs
+					d.HostName, d.HostEmail = name, email // attendee "With:" = primary host, not owner
+				}
+				if prefs.NotifyHostCancel {
+					hd := d
+					hd.HostName, hd.HostEmail = name, email
+					if err := mailer.SendCancellationToHost(ctx, h.mailer, hd); err != nil {
+						h.logger.Error("booking cancellation email (host)", "error", err, "booking_id", bCopy.ID, "host", uid)
+					}
+				}
 			}
 		}
-		if prefs.NotifyHostCancel {
-			if err := mailer.SendCancellationToHost(ctx, h.mailer, d); err != nil {
-				h.logger.Error("booking cancellation email (host)", "error", err, "booking_id", bCopy.ID)
+		if primaryPrefs.NotifyCancellation {
+			if err := mailer.SendCancellationToAttendee(ctx, h.mailer, d); err != nil {
+				h.logger.Error("booking cancellation email (attendee)", "error", err, "booking_id", bCopy.ID)
 			}
 		}
 		if err := h.webhookSvc.Enqueue(ctx, "booking.cancelled", webhook.BookingPayload{
@@ -491,6 +536,50 @@ func (h *Handler) CancelBooking(w http.ResponseWriter, r *http.Request) {
 			h.logger.Error("enqueue booking.cancelled webhook", "error", err, "booking_id", bCopy.ID)
 		}
 	}()
+}
+
+// assignedHost is one host attending a booking (from booking_hosts).
+type assignedHost struct {
+	UserID    string
+	Name      string
+	Email     string
+	IsPrimary bool
+}
+
+// assignedHosts returns every host attending a booking, primary first. Group
+// bookings have several; round-robin/Normal have one.
+func (h *Handler) assignedHosts(ctx context.Context, bookingID string) ([]assignedHost, error) {
+	rows, err := h.db.QueryContext(ctx, `
+		SELECT bh.user_id, u.name, u.email, bh.is_primary
+		FROM booking_hosts bh JOIN users u ON u.id = bh.user_id
+		WHERE bh.booking_id = ?
+		ORDER BY bh.is_primary DESC, u.name ASC`, bookingID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []assignedHost
+	for rows.Next() {
+		var a assignedHost
+		var primary int
+		if err := rows.Scan(&a.UserID, &a.Name, &a.Email, &primary); err != nil {
+			return nil, err
+		}
+		a.IsPrimary = primary != 0
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
+// primaryHost returns the primary host (the one flagged is_primary, else the
+// first). hosts must be non-empty.
+func primaryHost(hosts []assignedHost) assignedHost {
+	for _, a := range hosts {
+		if a.IsPrimary {
+			return a
+		}
+	}
+	return hosts[0]
 }
 
 // loadHostIntoData fills HostName and HostEmail in d from the users table.
