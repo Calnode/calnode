@@ -8,6 +8,8 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
+	"strings"
 	"sync"
 	"time"
 )
@@ -57,6 +59,59 @@ type responseWriter struct {
 func (rw *responseWriter) WriteHeader(status int) {
 	rw.status = status
 	rw.ResponseWriter.WriteHeader(status)
+}
+
+// SameOriginCheck is CSRF defense-in-depth layered on the session cookie's
+// SameSite=Lax: for a state-changing request that carries the admin session cookie,
+// it rejects the request when a present Origin (or, as a fallback, Referer) header
+// names a different host than the one the request was sent to.
+//
+// Scope is deliberately narrow — it only fires when the `calnode_session` cookie is
+// present, so the public booking POST, API-key clients, and manage-token actions
+// (none of which carry that cookie) are untouched, as are all GET/HEAD requests.
+// When neither Origin nor Referer is present it allows the request: SameSite=Lax is
+// the primary guard, and non-browser clients legitimately omit both. The comparison
+// is against the request Host header, so a reverse proxy must forward the original
+// Host (the common default).
+func SameOriginCheck(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if isStateChanging(r.Method) {
+			if _, err := r.Cookie("calnode_session"); err == nil {
+				if src := requestOriginHost(r); src != "" && !strings.EqualFold(src, r.Host) {
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusForbidden)
+					fmt.Fprint(w, `{"error":"cross-origin request blocked"}`)
+					return
+				}
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func isStateChanging(method string) bool {
+	switch method {
+	case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
+		return true
+	}
+	return false
+}
+
+// requestOriginHost returns the host[:port] of the request's Origin header, or its
+// Referer host as a fallback, or "" if neither is present/usable (a "null" Origin
+// from an opaque/sandboxed context counts as absent here).
+func requestOriginHost(r *http.Request) string {
+	if o := r.Header.Get("Origin"); o != "" && o != "null" {
+		if u, err := url.Parse(o); err == nil && u.Host != "" {
+			return u.Host
+		}
+	}
+	if ref := r.Header.Get("Referer"); ref != "" {
+		if u, err := url.Parse(ref); err == nil && u.Host != "" {
+			return u.Host
+		}
+	}
+	return ""
 }
 
 // RateLimit returns middleware that allows limit requests per period per remote IP.

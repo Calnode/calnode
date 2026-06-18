@@ -40,6 +40,10 @@ type eventTypeJSON struct {
 	MsgCancellation     *string  `json:"msg_cancellation"`
 	MsgReschedule       *string  `json:"msg_reschedule"`
 	MsgReminder         *string  `json:"msg_reminder"`
+	SubjConfirmation    *string  `json:"subj_confirmation"`
+	SubjCancellation    *string  `json:"subj_cancellation"`
+	SubjReschedule      *string  `json:"subj_reschedule"`
+	SubjReminder        *string  `json:"subj_reminder"`
 	Reminders           []int    `json:"reminders"` // hours_before values
 }
 
@@ -50,6 +54,7 @@ type rowScanner interface {
 func scanEventType(s rowScanner) (*eventTypeJSON, error) {
 	var et eventTypeJSON
 	var desc, locVal, msgConf, msgCancel, msgResched, msgRemind sql.NullString
+	var subjConf, subjCancel, subjResched, subjRemind sql.NullString
 	var isActive, isPublic int
 
 	err := s.Scan(
@@ -61,6 +66,7 @@ func scanEventType(s rowScanner) (*eventTypeJSON, error) {
 		&et.MinNoticeMinutes, &et.MaxFutureDays, &et.MaxActiveBookings,
 		&isActive, &isPublic, &et.CreatedAt,
 		&msgConf, &msgCancel, &msgResched, &msgRemind,
+		&subjConf, &subjCancel, &subjResched, &subjRemind,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -88,6 +94,18 @@ func scanEventType(s rowScanner) (*eventTypeJSON, error) {
 	if msgRemind.Valid {
 		et.MsgReminder = &msgRemind.String
 	}
+	if subjConf.Valid {
+		et.SubjConfirmation = &subjConf.String
+	}
+	if subjCancel.Valid {
+		et.SubjCancellation = &subjCancel.String
+	}
+	if subjResched.Valid {
+		et.SubjReschedule = &subjResched.String
+	}
+	if subjRemind.Valid {
+		et.SubjReminder = &subjRemind.String
+	}
 	et.Reminders = []int{} // initialise to non-nil so JSON encodes as [] not null
 	return &et, nil
 }
@@ -99,7 +117,8 @@ const selectETCols = `SELECT id, slug, name, description,
 	buffer_before_minutes, buffer_after_minutes,
 	min_notice_minutes, max_future_days, max_active_bookings,
 	is_active, is_public, created_at,
-	msg_confirmation, msg_cancellation, msg_reschedule, msg_reminder
+	msg_confirmation, msg_cancellation, msg_reschedule, msg_reminder,
+	subj_confirmation, subj_cancellation, subj_reschedule, subj_reminder
 FROM event_types`
 
 // loadReminders fetches the hours_before list for an event type and sets et.Reminders.
@@ -333,6 +352,10 @@ func (h *Handler) PatchEventType(w http.ResponseWriter, r *http.Request) {
 		MsgCancellation     *string  `json:"msg_cancellation"`
 		MsgReschedule       *string  `json:"msg_reschedule"`
 		MsgReminder         *string  `json:"msg_reminder"`
+		SubjConfirmation    *string  `json:"subj_confirmation"`
+		SubjCancellation    *string  `json:"subj_cancellation"`
+		SubjReschedule      *string  `json:"subj_reschedule"`
+		SubjReminder        *string  `json:"subj_reminder"`
 		Reminders           []int    `json:"reminders"` // nil = don't touch; [] = clear all
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -466,6 +489,25 @@ func (h *Handler) PatchEventType(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		set("msg_reminder", nullableString(*req.MsgReminder))
+	}
+	const maxSubjLen = 200
+	for _, s := range []struct {
+		col string
+		val *string
+	}{
+		{"subj_confirmation", req.SubjConfirmation},
+		{"subj_cancellation", req.SubjCancellation},
+		{"subj_reschedule", req.SubjReschedule},
+		{"subj_reminder", req.SubjReminder},
+	} {
+		if s.val == nil {
+			continue
+		}
+		if len(*s.val) > maxSubjLen {
+			h.writeError(w, http.StatusBadRequest, s.col+" exceeds 200 characters")
+			return
+		}
+		set(s.col, nullableString(strings.TrimSpace(*s.val)))
 	}
 
 	// Look up the event type ID (needed for reminder upsert and to verify ownership).

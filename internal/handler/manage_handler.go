@@ -209,11 +209,14 @@ func (h *Handler) RescheduleByToken(w http.ResponseWriter, r *http.Request) {
 		} else {
 			prefs = p
 		}
-		var msgNote sql.NullString
-		_ = h.db.QueryRowContext(ctx, `SELECT msg_reschedule FROM event_types WHERE id = ?`, capturedEtID).
-			Scan(&msgNote)
+		var msgNote, subjNote sql.NullString
+		_ = h.db.QueryRowContext(ctx, `SELECT msg_reschedule, subj_reschedule FROM event_types WHERE id = ?`, capturedEtID).
+			Scan(&msgNote, &subjNote)
 		if msgNote.Valid {
 			d.CustomNote = msgNote.String
+		}
+		if subjNote.Valid {
+			d.SubjectOverride = subjNote.String
 		}
 		if prefs.NotifyReschedule {
 			if err := mailer.SendRescheduleToAttendee(ctx, h.mailer, d); err != nil {

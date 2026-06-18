@@ -307,12 +307,49 @@ func (h *Handler) hostAvailability(ctx context.Context, userID, eventTypeID stri
 		return slots.HostAvailability{}, err
 	}
 
-	// Merge Google Calendar free/busy (check_conflicts connections only). Non-fatal.
+	// Calnode's own events on this host's calendar also show up in Google free/busy,
+	// but the DB query above is the source of truth for them (§6.2) — so subtract
+	// them from the free/busy result. This removes the double-count for confirmed
+	// bookings and, crucially, stops a *cancelled* booking whose Google event hasn't
+	// been deleted yet from blocking the freed slot. external_event_id is non-empty
+	// only while we believe a Google event still exists (it's cleared on a successful
+	// cancel, inline or via the reconciler), so this targets exactly our own events.
+	// Materialise fully before the free/busy call (single-connection pool).
+	var ownEvents []slots.Interval
+	ownRows, err := h.db.QueryContext(ctx, `
+		SELECT b.start_at, b.end_at FROM bookings b
+		JOIN booking_hosts bh ON bh.booking_id = b.id
+		WHERE bh.user_id = ? AND COALESCE(bh.external_event_id, '') != ''
+		  AND b.start_at >= ? AND b.start_at < ?`,
+		userID, busyFrom, busyTo)
+	if err != nil {
+		return slots.HostAvailability{}, err
+	}
+	for ownRows.Next() {
+		var startStr, endStr string
+		if err := ownRows.Scan(&startStr, &endStr); err != nil {
+			ownRows.Close()
+			return slots.HostAvailability{}, err
+		}
+		s, err1 := time.Parse(time.RFC3339Nano, startStr)
+		e, err2 := time.Parse(time.RFC3339Nano, endStr)
+		if err1 != nil || err2 != nil {
+			continue
+		}
+		ownEvents = append(ownEvents, slots.Interval{Start: s, End: e})
+	}
+	ownRows.Close()
+	if err := ownRows.Err(); err != nil {
+		return slots.HostAvailability{}, err
+	}
+
+	// Merge Google Calendar free/busy (check_conflicts connections only), minus our
+	// own events. Non-fatal.
 	if gc := h.getGCal(); gc != nil {
 		if gcalBusy, err := gc.FreeBusy(ctx, userID, dateFrom, dateTo.Add(24*time.Hour)); err != nil {
 			h.logger.ErrorContext(ctx, "slots: gcal freebusy", "error", err, "host", userID)
 		} else {
-			busy = append(busy, gcalBusy...)
+			busy = append(busy, slots.SubtractIntervals(gcalBusy, ownEvents)...)
 		}
 	}
 

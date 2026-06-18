@@ -1,10 +1,13 @@
 package handler
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 	"time"
@@ -52,51 +55,95 @@ func (h *Handler) CreateInvite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Invalidate any existing unused invite for this email so there's only one live link.
-	h.db.ExecContext(r.Context(), //nolint:errcheck
-		`DELETE FROM invite_tokens WHERE email = ? AND used_at IS NULL`, req.Email)
+	id, inviteURL, expiresAt, err := h.issueInvite(r.Context(), req.Email, admin.Name, admin.ID)
+	if err != nil {
+		h.logger.ErrorContext(r.Context(), "invite: issue", "error", err)
+		h.writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	h.writeJSON(w, http.StatusCreated, map[string]any{
+		"id":         id,
+		"email":      req.Email,
+		"invite_url": inviteURL,
+		"expires_at": expiresAt,
+		"email_sent": h.isEmailEnabled(),
+		"note":       "This link expires in 7 days and is locked to " + req.Email + ". It cannot be used by anyone else.",
+	})
+}
+
+// issueInvite invalidates any unused invite for email, mints a fresh token, emails
+// the link when SMTP is configured, and returns the invite URL + expiry. Shared by
+// CreateInvite and ResendInvite so the two never diverge.
+func (h *Handler) issueInvite(ctx context.Context, email, adminName, adminID string) (id, inviteURL, expiresAt string, err error) {
+	// Only one live link per email.
+	h.db.ExecContext(ctx, //nolint:errcheck
+		`DELETE FROM invite_tokens WHERE email = ? AND used_at IS NULL`, email)
 
 	raw := make([]byte, 32)
 	if _, err := rand.Read(raw); err != nil {
-		h.logger.ErrorContext(r.Context(), "invite: rand", "error", err)
-		h.writeError(w, http.StatusInternalServerError, "internal error")
-		return
+		return "", "", "", err
 	}
 	token := hex.EncodeToString(raw)
-	tokenHash := hashInviteToken(token)
-	id := uid.New()
-	expiresAt := time.Now().UTC().Add(inviteDuration).Format(time.RFC3339)
-
-	if _, err := h.db.ExecContext(r.Context(), `
+	id = uid.New()
+	expiresAt = time.Now().UTC().Add(inviteDuration).Format(time.RFC3339)
+	if _, err := h.db.ExecContext(ctx, `
 		INSERT INTO invite_tokens (id, email, token_hash, created_by, expires_at)
 		VALUES (?, ?, ?, ?, ?)`,
-		id, req.Email, tokenHash, admin.ID, expiresAt); err != nil {
-		h.logger.ErrorContext(r.Context(), "invite: insert", "error", err)
-		h.writeError(w, http.StatusInternalServerError, "internal error")
-		return
+		id, email, hashInviteToken(token), adminID, expiresAt); err != nil {
+		return "", "", "", err
 	}
 
-	inviteURL := h.baseURL + "/admin/invite/" + token
-
-	// If SMTP is configured, send the invite email automatically.
+	inviteURL = h.baseURL + "/admin/invite/" + token
 	if h.isEmailEnabled() {
-		_ = h.mailer.Send(r.Context(), mailer.Message{
-			To:      []string{req.Email},
+		_ = h.mailer.Send(ctx, mailer.Message{
+			To:      []string{email},
 			Subject: "You've been invited to Calnode",
-			Text: "You've been invited to join Calnode by " + admin.Name + ".\n\n" +
+			Text: "You've been invited to join Calnode by " + adminName + ".\n\n" +
 				"Click the link below to set up your account. The link expires in 7 days " +
 				"and is locked to this email address.\n\n" + inviteURL + "\n\n" +
 				"If you weren't expecting this invite, you can safely ignore this email.",
 		})
 	}
+	return id, inviteURL, expiresAt, nil
+}
 
-	h.writeJSON(w, http.StatusCreated, map[string]any{
-		"id":           id,
-		"email":        req.Email,
-		"invite_url":   inviteURL,
-		"expires_at":   expiresAt,
-		"email_sent":   h.isEmailEnabled(),
-		"note":         "This link expires in 7 days and is locked to " + req.Email + ". It cannot be used by anyone else.",
+// ResendInvite handles POST /v1/invites/{id}/resend — admin re-issues a pending
+// invite with a fresh token + expiry and re-sends the email. The original token
+// can't be recovered (only its hash is stored), so resend mints a new link.
+func (h *Handler) ResendInvite(w http.ResponseWriter, r *http.Request) {
+	admin, ok := userFromContext(r.Context())
+	if !ok || !admin.IsAdmin {
+		h.writeError(w, http.StatusForbidden, "admin access required")
+		return
+	}
+	id := r.PathValue("id")
+
+	var email string
+	err := h.db.QueryRowContext(r.Context(),
+		`SELECT email FROM invite_tokens WHERE id = ? AND used_at IS NULL`, id).Scan(&email)
+	if errors.Is(err, sql.ErrNoRows) {
+		h.writeError(w, http.StatusNotFound, "invite not found or already used")
+		return
+	}
+	if err != nil {
+		h.logger.ErrorContext(r.Context(), "resend invite: lookup", "error", err)
+		h.writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	newID, inviteURL, expiresAt, err := h.issueInvite(r.Context(), email, admin.Name, admin.ID)
+	if err != nil {
+		h.logger.ErrorContext(r.Context(), "resend invite: issue", "error", err)
+		h.writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	h.writeJSON(w, http.StatusOK, map[string]any{
+		"id":         newID,
+		"email":      email,
+		"invite_url": inviteURL,
+		"expires_at": expiresAt,
+		"email_sent": h.isEmailEnabled(),
 	})
 }
 

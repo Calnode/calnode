@@ -44,6 +44,18 @@ func subtract(windows, busy []Interval) []Interval {
 	return result
 }
 
+// SubtractIntervals returns the portions of blocks not covered by any cut
+// interval. It exposes the engine's interval-difference logic to callers outside
+// the package — specifically the slots handler, which subtracts Calnode's own
+// calendar events from a host's Google free/busy result (§6.2): the DB is the
+// source of truth for Calnode bookings, so their free/busy contribution is
+// redundant while the booking is confirmed and *stale* once it's cancelled but its
+// Google event hasn't been deleted yet — either way our own event must not gate the
+// slot. Robust to free/busy merging several adjacent events into one busy block.
+func SubtractIntervals(blocks, cuts []Interval) []Interval {
+	return subtract(blocks, cuts)
+}
+
 // cutOut removes busy from window, returning 0, 1, or 2 intervals.
 func cutOut(window, busy Interval) []Interval {
 	if !window.overlaps(busy) {

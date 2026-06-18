@@ -53,28 +53,35 @@
 	});
 
 	// ── Routing ──────────────────────────────────────────────────────────────────
-	const ROUTING_MODES = [
-		{ value: 'fixed',       label: 'Normal (just me)' },
-		{ value: 'round_robin', label: 'Round-robin (a team)' },
-		{ value: 'collective',  label: 'Group (several attend)' },
-	];
-	type RoutingMode = 'fixed' | 'round_robin' | 'collective';
-	let routingMode = $state<RoutingMode>('fixed');
+	// The editor asks two plain questions — "who can host?" and (for a team)
+	// "do they rotate or all attend?" — and derives routing_mode + host roles from
+	// the answers. The engine and DB are unchanged; this is purely how roles are
+	// authored.
 	const RR_STRATEGIES = [
 		{ value: 'even',     label: 'Even — fewest upcoming bookings' },
 		{ value: 'priority', label: 'Priority — top of the list first' },
 		{ value: 'soonest',  label: 'Soonest availability' },
 	];
-	let rrStrategy = $state<'even' | 'priority' | 'soonest'>('even');
+	type Strategy = 'even' | 'priority' | 'soonest';
+	let rrStrategy = $state<Strategy>('even');
+
 	type Host = { user_id: string; name: string; email: string };
-	// Round-robin rotation pool.
+	type TogetherHost = Host & { optional: boolean };
+
+	// Q1: just me, or specific people?  Q2 (people only): rotate, or all attend?
+	let hostScope = $state<'me' | 'people'>('me');
+	let staffing = $state<'rotate' | 'together'>('rotate');
+	// Rotation pool (each "rotation"); together = required + optional join-if-free.
 	let rotationHosts = $state<Host[]>([]);
-	// Group mode: required hosts always attend; optional hosts join only if free.
-	let groupRequired = $state<Host[]>([]);
-	let groupOptional = $state<Host[]>([]);
+	let togetherHosts = $state<TogetherHost[]>([]);
 	let hostsLoaded = $state(false);
 	let members = $state<User[]>([]);
 	let teams = $state<Team[]>([]);
+
+	// routing_mode is derived from the two answers — never set directly.
+	const routingMode = $derived(
+		hostScope === 'me' ? 'fixed' : staffing === 'rotate' ? 'round_robin' : 'collective'
+	);
 
 	async function loadHosts() {
 		try {
@@ -82,8 +89,9 @@
 			const items = res.items ?? [];
 			const toHost = (h: EventTypeHost): Host => ({ user_id: h.user_id, name: h.name, email: h.email });
 			rotationHosts = items.filter((h) => h.role === 'rotation').map(toHost);
-			groupRequired = items.filter((h) => h.role === 'required').map(toHost);
-			groupOptional = items.filter((h) => h.role === 'optional').map(toHost);
+			togetherHosts = items
+				.filter((h) => h.role === 'required' || h.role === 'optional')
+				.map((h) => ({ ...toHost(h), optional: h.role === 'optional' }));
 			hostsLoaded = true;
 		} catch (e: any) {
 			toast.error(e.message || 'Could not load hosts');
@@ -109,79 +117,69 @@
 		}
 	}
 
-	async function onRoutingModeChange(v: string | undefined) {
-		if (!v) return;
-		routingMode = (['round_robin', 'collective'].includes(v) ? v : 'fixed') as RoutingMode;
-		if (routingMode !== 'fixed') {
-			if (!hostsLoaded) await loadHosts();
+	function setScope(s: 'me' | 'people') {
+		hostScope = s;
+		if (s === 'people') {
+			if (!hostsLoaded) loadHosts();
 			loadMembers();
 			loadTeams();
-			// Group mode always needs at least one required host; seed with the owner.
-			if (routingMode === 'collective' && groupRequired.length === 0 && $currentUser) {
-				groupRequired = [{ user_id: $currentUser.id, name: $currentUser.name, email: $currentUser.email }];
-			}
 		}
 	}
 
-	// Host buckets by role. A member can sit in exactly one bucket (the backend
-	// rejects duplicate user_ids), so adding to one removes them from the others.
-	type Bucket = 'rotation' | 'required' | 'optional';
-	function readBucket(b: Bucket): Host[] {
-		return b === 'rotation' ? rotationHosts : b === 'required' ? groupRequired : groupOptional;
-	}
-	function writeBucket(b: Bucket, v: Host[]) {
-		if (b === 'rotation') rotationHosts = v;
-		else if (b === 'required') groupRequired = v;
-		else groupOptional = v;
-	}
-
-	// Members already assigned to any bucket (so the pickers don't re-offer them).
+	// Members already chosen in the *active* staffing list, so the pickers don't
+	// re-offer them. Scoped to the visible list (rotation vs together): otherwise
+	// hosts loaded for the other mode — e.g. a collective event's members still in
+	// togetherHosts after switching to Rotate — would wrongly mark everyone
+	// unavailable and make addOne skip every team member.
 	const assignedIds = $derived(
-		new Set([...rotationHosts, ...groupRequired, ...groupOptional].map((h) => h.user_id))
+		new Set((staffing === 'rotate' ? rotationHosts : togetherHosts).map((h) => h.user_id))
 	);
-	// Any active member not already assigned to a bucket — including the current
-	// user, who can be a host (rotation/fixed/optional) like anyone else.
+	// Any active member not already chosen — including the current user, who can
+	// be a host like anyone else.
 	const availableMembers = $derived(
 		members.filter((m) => !m.archived && !assignedIds.has(m.id))
 	);
 
-	function pushHost(b: Bucket, h: Host) {
-		// Move into this bucket; drop from any other to keep a member single-roled.
-		(['rotation', 'required', 'optional'] as Bucket[]).forEach((other) => {
-			if (other !== b) writeBucket(other, readBucket(other).filter((x) => x.user_id !== h.user_id));
-		});
-		if (!readBucket(b).some((x) => x.user_id === h.user_id)) writeBucket(b, [...readBucket(b), h]);
+	type Target = 'rotation' | 'together';
+	function addOne(target: Target, h: Host) {
+		// Dedup against this target's own list, not the union — a person can sit in
+		// only one staffing list, and the other list may hold stale members from a
+		// previous mode.
+		const list: { user_id: string }[] = target === 'rotation' ? rotationHosts : togetherHosts;
+		if (list.some((x) => x.user_id === h.user_id)) return;
+		if (target === 'rotation') rotationHosts = [...rotationHosts, h];
+		else togetherHosts = [...togetherHosts, { ...h, optional: false }];
 	}
-
-	function addMember(b: Bucket, userId: string | undefined) {
+	function addMember(target: Target, userId: string | undefined) {
 		if (!userId) return;
 		const m = members.find((x) => x.id === userId);
-		if (m) pushHost(b, { user_id: m.id, name: m.name, email: m.email });
+		if (m) addOne(target, { user_id: m.id, name: m.name, email: m.email });
 	}
-
-	async function addTeam(b: Bucket, teamId: string | undefined) {
+	async function addTeam(target: Target, teamId: string | undefined) {
 		if (!teamId) return;
 		try {
 			const team = await api.get<Team>(`/v1/teams/${teamId}`);
 			(team.members ?? [])
 				.filter((tm) => !tm.archived)
-				.forEach((tm) => pushHost(b, { user_id: tm.id, name: tm.name, email: tm.email }));
+				.forEach((tm) => addOne(target, { user_id: tm.id, name: tm.name, email: tm.email }));
 		} catch (e: any) {
 			toast.error(e.message || 'Could not load team members');
 		}
 	}
-
-	function removeHost(b: Bucket, userId: string) {
-		writeBucket(b, readBucket(b).filter((h) => h.user_id !== userId));
+	function removePerson(target: Target, userId: string) {
+		if (target === 'rotation') rotationHosts = rotationHosts.filter((h) => h.user_id !== userId);
+		else togetherHosts = togetherHosts.filter((h) => h.user_id !== userId);
 	}
-
-	// Reorder within a bucket (priority = list position; index 0 is highest).
-	function moveHost(b: Bucket, idx: number, dir: -1 | 1) {
-		const list = [...readBucket(b)];
+	function setOptional(userId: string, optional: boolean) {
+		togetherHosts = togetherHosts.map((h) => (h.user_id === userId ? { ...h, optional } : h));
+	}
+	// Reorder the rotation pool (priority = list position; index 0 is highest).
+	function moveRotation(idx: number, dir: -1 | 1) {
+		const list = [...rotationHosts];
 		const j = idx + dir;
 		if (j < 0 || j >= list.length) return;
 		[list[idx], list[j]] = [list[j], list[idx]];
-		writeBucket(b, list);
+		rotationHosts = list;
 	}
 
 	// Notification / messaging state
@@ -201,6 +199,11 @@
 	let msg_cancellation = $state('');
 	let msg_reschedule = $state('');
 	let msg_reminder = $state('');
+	// Optional custom subject lines (empty = built-in default subject).
+	let subj_confirmation = $state('');
+	let subj_cancellation = $state('');
+	let subj_reschedule = $state('');
+	let subj_reminder = $state('');
 	// Track which message accordions are open
 	let msgOpen = $state({ confirmation: false, cancellation: false, reschedule: false, reminder: false });
 	// Track preview toggle per accordion
@@ -232,14 +235,19 @@
 				max_active_bookings: et.max_active_bookings,
 			};
 			reminders = et.reminders ?? [];
-			routingMode = (['round_robin', 'collective'].includes(et.routing_mode ?? '')
-				? et.routing_mode : 'fixed') as RoutingMode;
+			if (et.routing_mode === 'round_robin') { hostScope = 'people'; staffing = 'rotate'; }
+			else if (et.routing_mode === 'collective') { hostScope = 'people'; staffing = 'together'; }
+			else { hostScope = 'me'; }
 			rrStrategy = (['even', 'priority', 'soonest'].includes(et.rr_strategy ?? '')
-				? et.rr_strategy : 'even') as 'even' | 'priority' | 'soonest';
+				? et.rr_strategy : 'even') as Strategy;
 			msg_confirmation = et.msg_confirmation ?? '';
 			msg_cancellation = et.msg_cancellation ?? '';
 			msg_reschedule = et.msg_reschedule ?? '';
 			msg_reminder = et.msg_reminder ?? '';
+			subj_confirmation = et.subj_confirmation ?? '';
+			subj_cancellation = et.subj_cancellation ?? '';
+			subj_reschedule = et.subj_reschedule ?? '';
+			subj_reminder = et.subj_reminder ?? '';
 		} catch (e: any) {
 			etError = e.message;
 		} finally {
@@ -252,10 +260,10 @@
 		if (form.duration_minutes < 5) { toast.error('Duration must be at least 5 minutes.'); return; }
 		if (form.max_active_bookings < 0) { toast.error('Max active bookings cannot be negative (0 = unlimited).'); return; }
 		if (routingMode === 'round_robin' && rotationHosts.length === 0) {
-			toast.error('Add at least one rotation host'); return;
+			toast.error('Add at least one person to the rotation'); return;
 		}
-		if (routingMode === 'collective' && groupRequired.length === 0) {
-			toast.error('Group events need at least one required host'); return;
+		if (routingMode === 'collective' && !togetherHosts.some((h) => !h.optional)) {
+			toast.error('Add at least one required host (someone who always attends)'); return;
 		}
 		etSaving = true;
 		try {
@@ -279,21 +287,20 @@
 				msg_cancellation: msg_cancellation.trim() || null,
 				msg_reschedule: msg_reschedule.trim() || null,
 				msg_reminder: msg_reminder.trim() || null,
+				subj_confirmation: subj_confirmation.trim() || null,
+				subj_cancellation: subj_cancellation.trim() || null,
+				subj_reschedule: subj_reschedule.trim() || null,
+				subj_reminder: subj_reminder.trim() || null,
 			});
 			if (routingMode === 'round_robin') {
 				await api.put(`/v1/event-types/${slug}/hosts`, {
-					hosts: [
-						...rotationHosts.map((hh, i) => ({ user_id: hh.user_id, role: 'rotation', priority: i })),
-						...groupRequired.map((hh, i) => ({ user_id: hh.user_id, role: 'required', priority: i })),
-						...groupOptional.map((hh, i) => ({ user_id: hh.user_id, role: 'optional', priority: i })),
-					],
+					hosts: rotationHosts.map((hh, i) => ({ user_id: hh.user_id, role: 'rotation', priority: i })),
 				});
 			} else if (routingMode === 'collective') {
 				await api.put(`/v1/event-types/${slug}/hosts`, {
-					hosts: [
-						...groupRequired.map((hh, i) => ({ user_id: hh.user_id, role: 'required', priority: i })),
-						...groupOptional.map((hh, i) => ({ user_id: hh.user_id, role: 'optional', priority: i })),
-					],
+					hosts: togetherHosts.map((hh, i) => ({
+						user_id: hh.user_id, role: hh.optional ? 'optional' : 'required', priority: i,
+					})),
 				});
 			} else {
 				await api.put(`/v1/event-types/${slug}/hosts`, {
@@ -448,7 +455,7 @@
 	onMount(async () => {
 		await loadET();
 		loadQuestions();
-		if (routingMode !== 'fixed') {
+		if (hostScope === 'people') {
 			await loadHosts();
 			loadMembers();
 			loadTeams();
@@ -466,11 +473,11 @@
 	onConfirm={doDeleteQuestion}
 />
 
-{#snippet hostPickers(bucket: Bucket, idPrefix: string)}
+{#snippet hostPickers(target: Target, idPrefix: string)}
 	<div class="grid grid-cols-2 gap-4">
 		<div class="space-y-1.5">
 			<Label for="{idPrefix}-add-member">Add member</Label>
-			<Select.Root type="single" value="" onValueChange={(v) => addMember(bucket, v)}>
+			<Select.Root type="single" value="" onValueChange={(v) => addMember(target, v)}>
 				<Select.Trigger id="{idPrefix}-add-member" class="w-full">Select a member…</Select.Trigger>
 				<Select.Content>
 					{#if availableMembers.length > 0}
@@ -485,7 +492,7 @@
 		</div>
 		<div class="space-y-1.5">
 			<Label for="{idPrefix}-add-team">Add team</Label>
-			<Select.Root type="single" value="" onValueChange={(v) => addTeam(bucket, v)}>
+			<Select.Root type="single" value="" onValueChange={(v) => addTeam(target, v)}>
 				<Select.Trigger id="{idPrefix}-add-team" class="w-full">Select a team…</Select.Trigger>
 				<Select.Content>
 					{#if teams.length > 0}
@@ -569,8 +576,15 @@
 					</Select.Root>
 				</div>
 				<div class="space-y-1.5">
-					<Label for="et-loc-val">{LOCATION_NEEDS_VALUE[form.location_type] ?? 'Details'}</Label>
-					<Input id="et-loc-val" bind:value={form.location_value} placeholder="Optional" />
+					{#if form.location_type === 'google_meet'}
+						<Label>Meeting link</Label>
+						<p class="rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+							A Google Meet link is created automatically for each booking (requires the host's Google Calendar connected).
+						</p>
+					{:else}
+						<Label for="et-loc-val">{LOCATION_NEEDS_VALUE[form.location_type] ?? 'Details'}</Label>
+						<Input id="et-loc-val" bind:value={form.location_value} placeholder="Optional" />
+					{/if}
 				</div>
 			</div>
 		</div>
@@ -607,192 +621,150 @@
 			</div>
 		</div>
 
-		<!-- Routing -->
+		<!-- Hosts -->
 		<div class="mt-6 border-t pt-5">
-			<p class="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Routing</p>
+			<p class="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Hosts</p>
+
+			<!-- Q1 — who can host -->
 			<div class="space-y-1.5">
-				<Label for="et-routing">Who gets booked</Label>
-				<Select.Root type="single" value={routingMode} onValueChange={onRoutingModeChange}>
-					<Select.Trigger id="et-routing" class="w-full">
-						{ROUTING_MODES.find((r) => r.value === routingMode)?.label ?? 'Select…'}
-					</Select.Trigger>
-					<Select.Content>
-						{#each ROUTING_MODES as r}
-							<Select.Item value={r.value} label={r.label}>{r.label}</Select.Item>
-						{/each}
-					</Select.Content>
-				</Select.Root>
+				<Label>Who can host this event?</Label>
+				<div class="inline-flex rounded-lg border bg-muted/40 p-0.5">
+					<button type="button" onclick={() => setScope('me')}
+						class="rounded-md px-3 py-1.5 text-sm font-medium transition-colors {hostScope === 'me' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground'}">
+						Just me
+					</button>
+					<button type="button" onclick={() => setScope('people')}
+						class="rounded-md px-3 py-1.5 text-sm font-medium transition-colors {hostScope === 'people' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground'}">
+						Specific people
+					</button>
+				</div>
 				<p class="text-xs text-muted-foreground">
-					{#if routingMode === 'round_robin'}
-						One available member is booked per slot.
-					{:else if routingMode === 'collective'}
-						Required hosts all attend; optional hosts join only when they're free. A
-						slot is offered only when every required host is available.
+					{#if hostScope === 'me'}
+						Every booking goes to you.
 					{:else}
-						Bookings go to you.
+						Pick who can take these bookings — add members individually or pull in a whole team.
 					{/if}
 				</p>
 			</div>
 
-			{#if routingMode === 'round_robin'}
-				<div class="mt-4 space-y-3">
-					<div class="space-y-1.5">
-						<Label for="rr-strategy">Assignment strategy</Label>
-						<Select.Root type="single" value={rrStrategy} onValueChange={(v) => { if (v) rrStrategy = v as typeof rrStrategy; }}>
-							<Select.Trigger id="rr-strategy" class="w-full">
-								{RR_STRATEGIES.find((s) => s.value === rrStrategy)?.label ?? 'Select…'}
-							</Select.Trigger>
-							<Select.Content>
-								{#each RR_STRATEGIES as s}
-									<Select.Item value={s.value} label={s.label}>{s.label}</Select.Item>
+			{#if hostScope === 'people'}
+				<!-- Q2 — how the meeting is staffed -->
+				<div class="mt-4 space-y-1.5">
+					<Label>How should the meeting be staffed?</Label>
+					<div class="inline-flex rounded-lg border bg-muted/40 p-0.5">
+						<button type="button" onclick={() => (staffing = 'rotate')}
+							class="rounded-md px-3 py-1.5 text-sm font-medium transition-colors {staffing === 'rotate' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground'}">
+							Rotate between them
+						</button>
+						<button type="button" onclick={() => (staffing = 'together')}
+							class="rounded-md px-3 py-1.5 text-sm font-medium transition-colors {staffing === 'together' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground'}">
+							Everyone attends
+						</button>
+					</div>
+					<p class="text-xs text-muted-foreground">
+						{#if staffing === 'rotate'}
+							One available person is booked per slot, spreading bookings across the group.
+						{:else}
+							Everyone joins the same meeting. A slot is offered only when all required people are free.
+						{/if}
+					</p>
+				</div>
+
+				{#if staffing === 'rotate'}
+					<div class="mt-4 space-y-3">
+						<div class="space-y-1.5">
+							<Label for="rr-strategy">Who gets picked</Label>
+							<Select.Root type="single" value={rrStrategy} onValueChange={(v) => { if (v) rrStrategy = v as Strategy; }}>
+								<Select.Trigger id="rr-strategy" class="w-full">
+									{RR_STRATEGIES.find((s) => s.value === rrStrategy)?.label ?? 'Select…'}
+								</Select.Trigger>
+								<Select.Content>
+									{#each RR_STRATEGIES as s}
+										<Select.Item value={s.value} label={s.label}>{s.label}</Select.Item>
+									{/each}
+								</Select.Content>
+							</Select.Root>
+							<p class="text-xs text-muted-foreground">
+								{#if rrStrategy === 'priority'}
+									The highest person in the list who's free is booked; fall down the list when they're busy.
+								{:else if rrStrategy === 'soonest'}
+									Offers the earliest slot anyone in the group has free.
+								{:else}
+									Spreads bookings evenly — whoever has the fewest upcoming meetings is booked.
+								{/if}
+							</p>
+						</div>
+
+						<p class="text-sm font-medium">People in the rotation</p>
+						{#if rotationHosts.length > 0}
+							<div class="space-y-2">
+								{#each rotationHosts as h, i (h.user_id)}
+									<div class="flex items-center justify-between gap-2 rounded-md border px-3 py-2">
+										<div class="flex min-w-0 items-center gap-2">
+											{#if rrStrategy === 'priority'}
+												<span class="shrink-0 rounded bg-muted px-1.5 py-0.5 text-xs font-medium text-muted-foreground tabular-nums">{i + 1}</span>
+											{/if}
+											<div class="min-w-0">
+												<div class="truncate text-sm font-medium">{h.name}</div>
+												<div class="truncate text-xs text-muted-foreground">{h.email}</div>
+											</div>
+										</div>
+										<div class="flex shrink-0 items-center gap-1">
+											{#if rrStrategy === 'priority'}
+												<Button type="button" variant="ghost" size="icon" disabled={i === 0} aria-label="Move up" onclick={() => moveRotation(i, -1)}>
+													<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
+												</Button>
+												<Button type="button" variant="ghost" size="icon" disabled={i === rotationHosts.length - 1} aria-label="Move down" onclick={() => moveRotation(i, 1)}>
+													<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+												</Button>
+											{/if}
+											<Button type="button" variant="ghost" size="sm" onclick={() => removePerson('rotation', h.user_id)}>Remove</Button>
+										</div>
+									</div>
 								{/each}
-							</Select.Content>
-						</Select.Root>
+							</div>
+						{:else}
+							<p class="text-xs text-muted-foreground">Add people or a team to the rotation.</p>
+						{/if}
+						{@render hostPickers('rotation', 'rr')}
+					</div>
+				{:else}
+					<div class="mt-4 space-y-3">
+						<p class="text-sm font-medium">Who attends</p>
+						{#if togetherHosts.length > 0}
+							<div class="space-y-2">
+								{#each togetherHosts as h (h.user_id)}
+									<div class="flex items-center justify-between gap-2 rounded-md border px-3 py-2">
+										<div class="min-w-0">
+											<div class="truncate text-sm font-medium">{h.name}</div>
+											<div class="truncate text-xs text-muted-foreground">{h.email}</div>
+										</div>
+										<div class="flex shrink-0 items-center gap-2">
+											<div class="inline-flex rounded-md border p-0.5">
+												<button type="button" onclick={() => setOptional(h.user_id, false)}
+													class="rounded px-2 py-0.5 text-xs font-medium transition-colors {!h.optional ? 'bg-secondary text-secondary-foreground' : 'text-muted-foreground hover:text-foreground'}">
+													Required
+												</button>
+												<button type="button" onclick={() => setOptional(h.user_id, true)}
+													class="rounded px-2 py-0.5 text-xs font-medium transition-colors {h.optional ? 'bg-secondary text-secondary-foreground' : 'text-muted-foreground hover:text-foreground'}">
+													Optional
+												</button>
+											</div>
+											<Button type="button" variant="ghost" size="sm" onclick={() => removePerson('together', h.user_id)}>Remove</Button>
+										</div>
+									</div>
+								{/each}
+							</div>
+						{:else}
+							<p class="text-xs text-muted-foreground">Add the people who attend this meeting.</p>
+						{/if}
 						<p class="text-xs text-muted-foreground">
-							{#if rrStrategy === 'priority'}
-								The highest member in the list who's free is booked; fall down the list when they're busy.
-							{:else if rrStrategy === 'soonest'}
-								Offers the earliest slot any member has free.
-							{:else}
-								Spreads bookings evenly — the member with the fewest upcoming meetings is booked.
-							{/if}
+							<span class="font-medium text-foreground">Required</span> hosts always attend and must be free for a slot to open.
+							<span class="font-medium text-foreground">Optional</span> hosts join only when they're free — they never block a slot.
 						</p>
+						{@render hostPickers('together', 'grp')}
 					</div>
-
-					<p class="text-sm font-medium">Rotation hosts</p>
-					{#if rotationHosts.length > 0}
-						<div class="space-y-2">
-							{#each rotationHosts as h, i (h.user_id)}
-								<div class="flex items-center justify-between gap-2 rounded-md border px-3 py-2">
-									<div class="flex min-w-0 items-center gap-2">
-										{#if rrStrategy === 'priority'}
-											<span class="shrink-0 rounded bg-muted px-1.5 py-0.5 text-xs font-medium text-muted-foreground tabular-nums">{i + 1}</span>
-										{/if}
-										<div class="min-w-0">
-											<div class="truncate text-sm font-medium">{h.name}</div>
-											<div class="truncate text-xs text-muted-foreground">{h.email}</div>
-										</div>
-									</div>
-									<div class="flex shrink-0 items-center gap-1">
-										{#if rrStrategy === 'priority'}
-											<Button type="button" variant="ghost" size="icon" disabled={i === 0} aria-label="Move up" onclick={() => moveHost('rotation', i, -1)}>
-												<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
-											</Button>
-											<Button type="button" variant="ghost" size="icon" disabled={i === rotationHosts.length - 1} aria-label="Move down" onclick={() => moveHost('rotation', i, 1)}>
-												<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-											</Button>
-										{/if}
-										<Button type="button" variant="ghost" size="sm" onclick={() => removeHost('rotation', h.user_id)}>
-											Remove
-										</Button>
-									</div>
-								</div>
-							{/each}
-						</div>
-					{:else}
-						<p class="text-xs text-muted-foreground">Add members or a team to the rotation.</p>
-					{/if}
-
-					{@render hostPickers('rotation', 'rr')}
-
-					<!-- Fixed hosts: always attend, alongside the rotation pick -->
-					<div class="space-y-3 border-t pt-4">
-						<div>
-							<p class="text-sm font-medium">Fixed hosts <span class="font-normal text-muted-foreground">(optional)</span></p>
-							<p class="text-xs text-muted-foreground">Always attend alongside the rotating member — and must be free for a slot to be offered. E.g. a manager who joins every call.</p>
-						</div>
-						{#if groupRequired.length > 0}
-							<div class="space-y-2">
-								{#each groupRequired as h (h.user_id)}
-									<div class="flex items-center justify-between rounded-md border px-3 py-2">
-										<div class="min-w-0">
-											<div class="truncate text-sm font-medium">{h.name}</div>
-											<div class="truncate text-xs text-muted-foreground">{h.email}</div>
-										</div>
-										<Button type="button" variant="ghost" size="sm" onclick={() => removeHost('required', h.user_id)}>Remove</Button>
-									</div>
-								{/each}
-							</div>
-						{/if}
-						{@render hostPickers('required', 'rr-fixed')}
-					</div>
-
-					<!-- Optional hosts: join if free -->
-					<div class="space-y-3 border-t pt-4">
-						<div>
-							<p class="text-sm font-medium">Optional hosts <span class="font-normal text-muted-foreground">(optional)</span></p>
-							<p class="text-xs text-muted-foreground">Join only when they happen to be free. They never block a slot.</p>
-						</div>
-						{#if groupOptional.length > 0}
-							<div class="space-y-2">
-								{#each groupOptional as h (h.user_id)}
-									<div class="flex items-center justify-between rounded-md border px-3 py-2">
-										<div class="min-w-0">
-											<div class="truncate text-sm font-medium">{h.name}</div>
-											<div class="truncate text-xs text-muted-foreground">{h.email}</div>
-										</div>
-										<Button type="button" variant="ghost" size="sm" onclick={() => removeHost('optional', h.user_id)}>Remove</Button>
-									</div>
-								{/each}
-							</div>
-						{/if}
-						{@render hostPickers('optional', 'rr-opt')}
-					</div>
-				</div>
-			{:else if routingMode === 'collective'}
-				<div class="mt-4 space-y-5">
-					<!-- Required hosts -->
-					<div class="space-y-3">
-						<div>
-							<p class="text-sm font-medium">Required hosts</p>
-							<p class="text-xs text-muted-foreground">Always attend. The slot is only bookable when all of them are free.</p>
-						</div>
-						{#if groupRequired.length > 0}
-							<div class="space-y-2">
-								{#each groupRequired as h (h.user_id)}
-									<div class="flex items-center justify-between rounded-md border px-3 py-2">
-										<div class="min-w-0">
-											<div class="truncate text-sm font-medium">{h.name}</div>
-											<div class="truncate text-xs text-muted-foreground">{h.email}</div>
-										</div>
-										<Button type="button" variant="ghost" size="sm" onclick={() => removeHost('required', h.user_id)}>
-											Remove
-										</Button>
-									</div>
-								{/each}
-							</div>
-						{:else}
-							<p class="text-xs text-muted-foreground">Add at least one required host.</p>
-						{/if}
-						{@render hostPickers('required', 'grp-req')}
-					</div>
-
-					<!-- Optional hosts -->
-					<div class="space-y-3 border-t pt-4">
-						<div>
-							<p class="text-sm font-medium">Optional hosts</p>
-							<p class="text-xs text-muted-foreground">Join the meeting only when they happen to be free. They never block a slot.</p>
-						</div>
-						{#if groupOptional.length > 0}
-							<div class="space-y-2">
-								{#each groupOptional as h (h.user_id)}
-									<div class="flex items-center justify-between rounded-md border px-3 py-2">
-										<div class="min-w-0">
-											<div class="truncate text-sm font-medium">{h.name}</div>
-											<div class="truncate text-xs text-muted-foreground">{h.email}</div>
-										</div>
-										<Button type="button" variant="ghost" size="sm" onclick={() => removeHost('optional', h.user_id)}>
-											Remove
-										</Button>
-									</div>
-								{/each}
-							</div>
-						{:else}
-							<p class="text-xs text-muted-foreground">Optional — add members who attend only when available.</p>
-						{/if}
-						{@render hostPickers('optional', 'grp-opt')}
-					</div>
-				</div>
+				{/if}
 			{/if}
 		</div>
 
@@ -889,6 +861,18 @@
 								: item.key === 'reschedule'   ? msg_reschedule
 								: msg_reminder}
 							<div class="border-t px-4 pb-4 pt-3 space-y-3">
+								<div class="space-y-1.5">
+									<Label class="text-xs text-muted-foreground">Subject line <span class="font-normal">(optional — blank uses the default)</span></Label>
+									{#if item.key === 'confirmation'}
+										<Input bind:value={subj_confirmation} placeholder={`Booking confirmed: ${form.name}`} />
+									{:else if item.key === 'cancellation'}
+										<Input bind:value={subj_cancellation} placeholder={`Booking cancelled: ${form.name}`} />
+									{:else if item.key === 'reschedule'}
+										<Input bind:value={subj_reschedule} placeholder={`Booking rescheduled: ${form.name}`} />
+									{:else if item.key === 'reminder'}
+										<Input bind:value={subj_reminder} placeholder={`Reminder: ${form.name} is coming up`} />
+									{/if}
+								</div>
 								{#if item.key === 'confirmation'}
 									<Textarea bind:value={msg_confirmation} rows={3} placeholder="Add a custom note for attendees…" />
 								{:else if item.key === 'cancellation'}

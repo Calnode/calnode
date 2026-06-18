@@ -22,7 +22,13 @@ func mockCreateEventServer(t *testing.T, returnEventID string, returnStatus int)
 			json.NewDecoder(r.Body).Decode(gotReq) //nolint:errcheck
 			w.WriteHeader(returnStatus)
 			if returnStatus == http.StatusOK {
-				json.NewEncoder(w).Encode(calEventResp{ID: returnEventID}) //nolint:errcheck
+				resp := calEventResp{ID: returnEventID}
+				// Echo a Meet link when the request asked for a conference, mirroring
+				// Google's behaviour.
+				if gotReq.ConferenceData != nil {
+					resp.HangoutLink = "https://meet.google.com/test-abc-def"
+				}
+				json.NewEncoder(w).Encode(resp) //nolint:errcheck
 			}
 		} else if r.Method == http.MethodDelete {
 			w.WriteHeader(returnStatus)
@@ -52,7 +58,7 @@ func TestCreateEvent_returnsEventID(t *testing.T) {
 	c.apiBase = srv.URL
 	saveDestinationConnection(t, c, "user-1", "primary")
 
-	eventID, err := c.CreateEvent(context.Background(), "user-1", CreateEventParams{
+	eventID, _, err := c.CreateEvent(context.Background(), "user-1", CreateEventParams{
 		Summary:        "30-Minute Call with Bob",
 		Description:    "Booking ID: abc123",
 		Start:          time.Date(2026, 6, 15, 9, 0, 0, 0, time.UTC),
@@ -65,6 +71,62 @@ func TestCreateEvent_returnsEventID(t *testing.T) {
 	}
 	if eventID != "gcal-event-id-123" {
 		t.Errorf("eventID = %q; want gcal-event-id-123", eventID)
+	}
+}
+
+func TestCreateEvent_withMeet_requestsConferenceAndReturnsLink(t *testing.T) {
+	srv, gotReq := mockCreateEventServer(t, "ev-meet", http.StatusOK)
+
+	c := newTestClient(t)
+	c.apiBase = srv.URL
+	saveDestinationConnection(t, c, "user-1", "primary")
+
+	eventID, meetURL, err := c.CreateEvent(context.Background(), "user-1", CreateEventParams{
+		Summary: "Meet Call",
+		Start:   time.Date(2026, 6, 15, 9, 0, 0, 0, time.UTC),
+		End:     time.Date(2026, 6, 15, 9, 30, 0, 0, time.UTC),
+		AddMeet: true,
+	})
+	if err != nil {
+		t.Fatalf("CreateEvent: %v", err)
+	}
+	if eventID != "ev-meet" {
+		t.Errorf("eventID = %q; want ev-meet", eventID)
+	}
+	if gotReq.ConferenceData == nil || gotReq.ConferenceData.CreateRequest == nil {
+		t.Fatal("request did not include conferenceData.createRequest")
+	}
+	if got := gotReq.ConferenceData.CreateRequest.ConferenceSolutionKey.Type; got != "hangoutsMeet" {
+		t.Errorf("conferenceSolutionKey.type = %q; want hangoutsMeet", got)
+	}
+	if gotReq.ConferenceData.CreateRequest.RequestID == "" {
+		t.Error("createRequest.requestId must be set (Google dedupes on it)")
+	}
+	if meetURL != "https://meet.google.com/test-abc-def" {
+		t.Errorf("meetURL = %q; want the echoed hangoutLink", meetURL)
+	}
+}
+
+func TestCreateEvent_withoutMeet_noConferenceRequested(t *testing.T) {
+	srv, gotReq := mockCreateEventServer(t, "ev1", http.StatusOK)
+
+	c := newTestClient(t)
+	c.apiBase = srv.URL
+	saveDestinationConnection(t, c, "user-1", "primary")
+
+	_, meetURL, err := c.CreateEvent(context.Background(), "user-1", CreateEventParams{
+		Summary: "Plain Call",
+		Start:   time.Date(2026, 6, 15, 9, 0, 0, 0, time.UTC),
+		End:     time.Date(2026, 6, 15, 9, 30, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("CreateEvent: %v", err)
+	}
+	if gotReq.ConferenceData != nil {
+		t.Error("conferenceData must be omitted when AddMeet is false")
+	}
+	if meetURL != "" {
+		t.Errorf("meetURL = %q; want empty without a conference", meetURL)
 	}
 }
 
@@ -101,7 +163,7 @@ func TestCreateEvent_sendsCorrectFields(t *testing.T) {
 
 func TestCreateEvent_notConnected_returnsEmpty(t *testing.T) {
 	c := newTestClient(t)
-	eventID, err := c.CreateEvent(context.Background(), "user-no-connection", CreateEventParams{
+	eventID, _, err := c.CreateEvent(context.Background(), "user-no-connection", CreateEventParams{
 		Summary: "Test",
 		Start:   time.Now(),
 		End:     time.Now().Add(time.Hour),
@@ -121,7 +183,7 @@ func TestCreateEvent_nonOK_returnsError(t *testing.T) {
 	c.apiBase = srv.URL
 	saveDestinationConnection(t, c, "user-1", "primary")
 
-	_, err := c.CreateEvent(context.Background(), "user-1", CreateEventParams{
+	_, _, err := c.CreateEvent(context.Background(), "user-1", CreateEventParams{
 		Start: time.Now(),
 		End:   time.Now().Add(time.Hour),
 	})
@@ -139,7 +201,7 @@ func TestCreateEvent_onlyDestinationConnections(t *testing.T) {
 	c.db.ExecContext(context.Background(),                       //nolint:errcheck
 		`UPDATE calendar_connections SET is_destination = 0 WHERE user_id = ?`, "user-1")
 
-	eventID, err := c.CreateEvent(context.Background(), "user-1", CreateEventParams{
+	eventID, _, err := c.CreateEvent(context.Background(), "user-1", CreateEventParams{
 		Start: time.Now(), End: time.Now().Add(time.Hour),
 	})
 	if err != nil {

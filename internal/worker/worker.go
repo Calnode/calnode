@@ -122,6 +122,13 @@ func (w *Worker) Poll(ctx context.Context) {
 		`DELETE FROM sessions WHERE expires_at < ?`, now); err != nil {
 		w.logger.Error("worker: purge expired sessions", "error", err)
 	}
+	// Idempotency keys are only useful for the retry window of the original
+	// request; purge them 24h after creation so the table stays small.
+	idemCutoff := time.Now().UTC().Add(-24 * time.Hour).Format(time.RFC3339)
+	if _, err := w.db.ExecContext(ctx,
+		`DELETE FROM idempotency_keys WHERE created_at < ?`, idemCutoff); err != nil {
+		w.logger.Error("worker: purge idempotency keys", "error", err)
+	}
 
 	// Reaper: handle running jobs whose lock has expired (process crashed mid-job).
 	// Jobs with retries remaining are reset to pending with a 1-minute delay so
@@ -230,18 +237,18 @@ func (w *Worker) sendReminder(ctx context.Context, payload string) error {
 	var d mailer.BookingData
 	d.BookingID = p.BookingID
 	var startAt, endAt, status string
-	var locVal, msgReminder sql.NullString
+	var locVal, msgReminder, subjReminder sql.NullString
 	var notifyReminder int
 	err := w.db.QueryRowContext(ctx, `
 		SELECT b.status, b.start_at, b.end_at, b.location_value,
-		       et.name, et.slug, et.msg_reminder,
+		       et.name, et.slug, et.msg_reminder, et.subj_reminder,
 		       u.name, u.email, COALESCE(u.notify_reminder, 1)
 		FROM bookings b
 		JOIN event_types et ON et.id = b.event_type_id
 		JOIN users u ON u.id = et.user_id
 		WHERE b.id = ?`, p.BookingID).
 		Scan(&status, &startAt, &endAt, &locVal,
-			&d.EventTypeName, &d.EventTypeSlug, &msgReminder,
+			&d.EventTypeName, &d.EventTypeSlug, &msgReminder, &subjReminder,
 			&d.HostName, &d.HostEmail, &notifyReminder)
 	if err == sql.ErrNoRows {
 		return nil // booking deleted; skip silently
@@ -268,6 +275,9 @@ func (w *Worker) sendReminder(ctx context.Context, payload string) error {
 	}
 	if msgReminder.Valid {
 		d.CustomNote = msgReminder.String
+	}
+	if subjReminder.Valid {
+		d.SubjectOverride = subjReminder.String
 	}
 
 	// Load organizer attendee.

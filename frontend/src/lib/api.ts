@@ -35,6 +35,10 @@ export type EventType = {
 	max_future_days: number;
 	max_active_bookings: number;
 	created_at: string;
+	subj_confirmation?: string;
+	subj_cancellation?: string;
+	subj_reschedule?: string;
+	subj_reminder?: string;
 	msg_confirmation?: string;
 	msg_cancellation?: string;
 	msg_reschedule?: string;

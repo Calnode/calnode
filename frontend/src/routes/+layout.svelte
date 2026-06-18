@@ -129,13 +129,18 @@
 		<aside class="flex w-56 shrink-0 flex-col border-r border-sidebar-border bg-sidebar">
 			<!-- User section -->
 			<a href="{base}/settings/profile" class="flex items-center gap-3 border-b border-sidebar-border px-4 py-3 hover:bg-sidebar-accent/60 transition-colors">
-				{#if $currentUser?.avatar_url}
-					<img src={$currentUser.avatar_url} alt={$currentUser.name} class="h-7 w-7 shrink-0 rounded-full object-cover" />
-				{:else}
-					<div class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
+				<!-- Fixed-size clip container: the image fills it and is clipped by the
+				     parent's overflow-hidden (not its own border-radius). A rounded,
+				     object-cover image on its own composited layer gets mis-painted by
+				     Chrome — a smeared tile over the sidebar — when the main panel
+				     repaints on scroll; clipping via the parent box prevents that. -->
+				<span class="flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary text-xs font-semibold text-primary-foreground">
+					{#if $currentUser?.avatar_url}
+						<img src={$currentUser.avatar_url} alt={$currentUser.name} class="h-full w-full object-cover" />
+					{:else}
 						{initials($currentUser?.name ?? 'U')}
-					</div>
-				{/if}
+					{/if}
+				</span>
 				<div class="min-w-0 flex-1">
 					<p class="truncate text-sm font-medium text-sidebar-foreground">{$currentUser?.name ?? ''}</p>
 				</div>

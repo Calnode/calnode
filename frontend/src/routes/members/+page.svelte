@@ -111,6 +111,30 @@
 		});
 	}
 
+	// Re-issue a pending invite: mints a fresh link + new 7-day expiry and re-emails
+	// it (the old link stops working). The original token can't be recovered.
+	async function resendInvite(id: string) {
+		try {
+			const res = await api.post<{ email: string; invite_url: string; email_sent: boolean }>(
+				`/v1/invites/${id}/resend`, {}
+			);
+			await load();
+			if (res.email_sent) {
+				toast.success(`Invite re-sent to ${res.email}`);
+			} else {
+				// No SMTP configured — surface the fresh link so the admin can send it manually.
+				showInvite = true;
+				inviteResult = {
+					invite_url: res.invite_url, email: res.email, email_sent: false,
+					note: 'Email is not configured — copy this link and send it manually.'
+				};
+				toast.success(`New link generated for ${res.email}`);
+			}
+		} catch (e: any) {
+			toast.error(e.message || 'Could not resend invite');
+		}
+	}
+
 	// --- Role management (owner only) ---
 	async function setRole(m: TeamMember, role: 'admin' | 'member') {
 		try {
@@ -531,7 +555,10 @@
 									{fmtDate(inv.expires_at)}
 									<span class="ml-1 text-xs">({daysLeft(inv.expires_at)}d left)</span>
 								</td>
-								<td class="px-4 py-3 text-right">
+								<td class="px-4 py-3 text-right whitespace-nowrap">
+									<Button size="sm" variant="ghost" class="h-7 text-xs" onclick={() => resendInvite(inv.id)}>
+										Resend
+									</Button>
 									<Button size="sm" variant="ghost" class="h-7 text-xs text-destructive hover:text-destructive" onclick={() => revokeInvite(inv.id)}>
 										Revoke
 									</Button>
@@ -542,7 +569,7 @@
 				</table>
 			</div>
 			<p class="mt-2 text-xs text-muted-foreground">
-				To resend an invite, generate a new one for the same email — the existing link will be replaced.
+				Resend mints a fresh link, resets the 7-day expiry, and re-emails it — the previous link stops working.
 			</p>
 		</div>
 	{/if}

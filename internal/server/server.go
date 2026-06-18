@@ -139,6 +139,7 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	mux.HandleFunc("POST /v1/invites", inviteRL(h.RequireAuth(h.CreateInvite)))
 	mux.HandleFunc("GET /v1/invites", h.RequireAuth(h.ListInvites))
 	mux.HandleFunc("DELETE /v1/invites/{id}", h.RequireAuth(h.RevokeInvite))
+	mux.HandleFunc("POST /v1/invites/{id}/resend", inviteRL(h.RequireAuth(h.ResendInvite)))
 	mux.HandleFunc("GET /v1/invites/{token}", h.GetInvite)
 	mux.HandleFunc("POST /v1/invites/{token}/claim", inviteRL(h.ClaimInvite))
 
@@ -198,8 +199,11 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	mux.HandleFunc("PATCH /v1/availability-overrides/{id}", h.RequireAuth(h.UpdateAvailabilityOverride))
 	mux.HandleFunc("DELETE /v1/availability-overrides/{id}", h.RequireAuth(h.DeleteAvailabilityOverride))
 
-	// Slots — public
-	mux.HandleFunc("GET /v1/event-types/{slug}/slots", h.GetSlots)
+	// Slots — public, rate-limited per IP. Browsed more than booked (so a higher cap
+	// than booking), but each call fans out Google free/busy per host, so leaving it
+	// unthrottled is a CPU + API-quota abuse vector on an openly-public page.
+	slotsRL := RateLimit(60, time.Minute)
+	mux.HandleFunc("GET /v1/event-types/{slug}/slots", slotsRL(h.GetSlots))
 
 	// Intake questions
 	mux.HandleFunc("GET /v1/event-types/{slug}/questions", h.ListQuestions)
@@ -256,7 +260,7 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	mux.Handle("GET /admin", http.RedirectHandler("/admin/", http.StatusMovedPermanently))
 	mux.Handle("/admin/", http.StripPrefix("/admin", adminSPA))
 
-	return RequestID(Logging(logger, mux)), drain
+	return RequestID(Logging(logger, SameOriginCheck(mux))), drain
 }
 
 // seedSMTPToDB writes env-var SMTP settings into the DB on first boot so they

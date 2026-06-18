@@ -2,6 +2,7 @@ package mailer
 
 import (
 	"context"
+	"net/url"
 	"strings"
 	"sync"
 	"testing"
@@ -161,6 +162,77 @@ func TestSendCancellation_noReason_omitsReasonLine(t *testing.T) {
 	org := cap.all()[0]
 	if strings.Contains(org.Text, "Reason:") {
 		t.Errorf("organizer cancellation body should not contain Reason: when reason is empty")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Add-to-calendar links
+// ---------------------------------------------------------------------------
+
+func TestGoogleCalURL_encodesEventTimesAndLocation(t *testing.T) {
+	d := testBookingData()
+	u := d.GoogleCalURL()
+	if !strings.Contains(u, "calendar.google.com/calendar/render") {
+		t.Errorf("not a Google render link: %s", u)
+	}
+	if !strings.Contains(u, "action=TEMPLATE") {
+		t.Errorf("missing action=TEMPLATE: %s", u)
+	}
+	if !strings.Contains(u, "20260615T090000Z") || !strings.Contains(u, "20260615T093000Z") {
+		t.Errorf("missing UTC basic start/end: %s", u)
+	}
+	if !strings.Contains(u, "30-Minute+Call") {
+		t.Errorf("event name not URL-encoded: %s", u)
+	}
+	if !strings.Contains(u, url.QueryEscape(d.LocationValue)) {
+		t.Errorf("location not carried/encoded: %s", u)
+	}
+}
+
+func TestCalendarLinks_inAttendeeBodies(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		send func(context.Context, Mailer, BookingData) error
+	}{
+		{"confirmation", SendConfirmationToAttendee},
+		{"reschedule", SendRescheduleToAttendee},
+		{"reminder", SendReminder},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cap := &captureMailer{}
+			if err := tc.send(context.Background(), cap, testBookingData()); err != nil {
+				t.Fatalf("send: %v", err)
+			}
+			body := cap.all()[0].Text
+			if !strings.Contains(body, "calendar.google.com/calendar/render") {
+				t.Error("attendee body missing Google calendar link")
+			}
+			if !strings.Contains(body, "outlook.office.com/calendar") {
+				t.Error("attendee body missing Outlook calendar link")
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Custom subjects
+// ---------------------------------------------------------------------------
+
+func TestSubjectOverride_usedWhenSet(t *testing.T) {
+	cap := &captureMailer{}
+	d := testBookingData()
+	d.SubjectOverride = "Your strategy call is locked in"
+	SendConfirmationToAttendee(context.Background(), cap, d) //nolint:errcheck
+	if got := cap.all()[0].Subject; got != d.SubjectOverride {
+		t.Errorf("subject = %q; want override %q", got, d.SubjectOverride)
+	}
+}
+
+func TestSubjectOverride_defaultWhenEmpty(t *testing.T) {
+	cap := &captureMailer{}
+	SendConfirmationToAttendee(context.Background(), cap, testBookingData()) //nolint:errcheck
+	if got := cap.all()[0].Subject; !strings.Contains(got, "Booking confirmed") {
+		t.Errorf("subject = %q; want the default 'Booking confirmed: …'", got)
 	}
 }
 

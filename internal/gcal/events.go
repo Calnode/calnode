@@ -8,15 +8,19 @@ import (
 	"net/http"
 	"net/url"
 	"time"
+
+	"github.com/calnode/calnode/internal/uid"
 )
 
 // CreateEventParams holds the data needed to create a calendar event.
 type CreateEventParams struct {
 	Summary        string
 	Description    string
+	Location       string // optional event location; e.g. the Meet link on secondary hosts' events
 	Start, End     time.Time
 	OrganizerName  string
 	OrganizerEmail string
+	AddMeet        bool // request a Google Meet conference (conferenceData + hangoutLink)
 }
 
 type calEventDateTime struct {
@@ -29,24 +33,64 @@ type calEventAttendee struct {
 	DisplayName string `json:"displayName,omitempty"`
 }
 
+// conferenceData create-request: asks Google to allocate a Meet link for the event.
+type calConferenceSolutionKey struct {
+	Type string `json:"type"`
+}
+type calCreateConferenceRequest struct {
+	RequestID             string                   `json:"requestId"`
+	ConferenceSolutionKey calConferenceSolutionKey `json:"conferenceSolutionKey"`
+}
+type calConferenceData struct {
+	CreateRequest *calCreateConferenceRequest `json:"createRequest,omitempty"`
+}
+
 type calEventReq struct {
-	Summary     string             `json:"summary"`
-	Description string             `json:"description,omitempty"`
-	Start       calEventDateTime   `json:"start"`
-	End         calEventDateTime   `json:"end"`
-	Attendees   []calEventAttendee `json:"attendees"`
+	Summary        string             `json:"summary"`
+	Description    string             `json:"description,omitempty"`
+	Location       string             `json:"location,omitempty"`
+	Start          calEventDateTime   `json:"start"`
+	End            calEventDateTime   `json:"end"`
+	Attendees      []calEventAttendee `json:"attendees"`
+	ConferenceData *calConferenceData `json:"conferenceData,omitempty"`
+}
+
+type calEntryPoint struct {
+	EntryPointType string `json:"entryPointType"`
+	URI            string `json:"uri"`
 }
 
 type calEventResp struct {
-	ID string `json:"id"`
+	ID             string `json:"id"`
+	HangoutLink    string `json:"hangoutLink"`
+	ConferenceData *struct {
+		EntryPoints []calEntryPoint `json:"entryPoints"`
+	} `json:"conferenceData"`
 }
 
-// CreateEvent creates a Google Calendar event and returns the event ID.
-// Returns ("", nil) if the user has no is_destination connection.
-func (c *Client) CreateEvent(ctx context.Context, userID string, p CreateEventParams) (string, error) {
+// meetLink extracts the Google Meet URL from a created event, preferring the
+// top-level hangoutLink and falling back to the video conference entry point.
+func (r calEventResp) meetLink() string {
+	if r.HangoutLink != "" {
+		return r.HangoutLink
+	}
+	if r.ConferenceData != nil {
+		for _, ep := range r.ConferenceData.EntryPoints {
+			if ep.EntryPointType == "video" && ep.URI != "" {
+				return ep.URI
+			}
+		}
+	}
+	return ""
+}
+
+// CreateEvent creates a Google Calendar event and returns its event ID and, when
+// p.AddMeet is set, the generated Google Meet URL. Returns ("", "", nil) if the
+// user has no is_destination connection.
+func (c *Client) CreateEvent(ctx context.Context, userID string, p CreateEventParams) (string, string, error) {
 	hc, calID, err := c.DestinationClient(ctx, userID)
 	if err != nil || hc == nil {
-		return "", err
+		return "", "", err
 	}
 
 	attendees := []calEventAttendee{}
@@ -57,39 +101,53 @@ func (c *Client) CreateEvent(ctx context.Context, userID string, p CreateEventPa
 		})
 	}
 
-	body, err := json.Marshal(calEventReq{
+	reqBody := calEventReq{
 		Summary:     p.Summary,
 		Description: p.Description,
+		Location:    p.Location,
 		Start:       calEventDateTime{DateTime: p.Start.UTC().Format(time.RFC3339), TimeZone: "UTC"},
 		End:         calEventDateTime{DateTime: p.End.UTC().Format(time.RFC3339), TimeZone: "UTC"},
 		Attendees:   attendees,
-	})
+	}
+	if p.AddMeet {
+		reqBody.ConferenceData = &calConferenceData{
+			CreateRequest: &calCreateConferenceRequest{
+				RequestID:             uid.New(), // unique per request; Google dedupes conference creation on it
+				ConferenceSolutionKey: calConferenceSolutionKey{Type: "hangoutsMeet"},
+			},
+		}
+	}
+
+	body, err := json.Marshal(reqBody)
 	if err != nil {
-		return "", fmt.Errorf("gcal: create event marshal: %w", err)
+		return "", "", fmt.Errorf("gcal: create event marshal: %w", err)
 	}
 
 	apiURL := c.apiBase + "/calendars/" + url.PathEscape(calID) + "/events?sendUpdates=all"
+	if p.AddMeet {
+		apiURL += "&conferenceDataVersion=1" // required for conferenceData.createRequest to take effect
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewReader(body))
 	if err != nil {
-		return "", fmt.Errorf("gcal: create event request: %w", err)
+		return "", "", fmt.Errorf("gcal: create event request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := hc.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("gcal: create event call: %w", err)
+		return "", "", fmt.Errorf("gcal: create event call: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("gcal: create event status %d", resp.StatusCode)
+		return "", "", fmt.Errorf("gcal: create event status %d", resp.StatusCode)
 	}
 
 	var evResp calEventResp
 	if err := json.NewDecoder(resp.Body).Decode(&evResp); err != nil {
-		return "", fmt.Errorf("gcal: create event decode: %w", err)
+		return "", "", fmt.Errorf("gcal: create event decode: %w", err)
 	}
-	return evResp.ID, nil
+	return evResp.ID, evResp.meetLink(), nil
 }
 
 // UpdateEvent moves an existing event to a new start/end (used on reschedule).

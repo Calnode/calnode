@@ -361,6 +361,11 @@ body {
       </button>
       <p class="slot-label" id="form-slot-label"></p>
       <form id="booking-form" novalidate>
+        <!-- Honeypot: hidden from humans (off-screen, not tabbable); a bot that fills
+             "company" is rejected server-side. Real submissions leave it empty. -->
+        <div aria-hidden="true" style="position:absolute;left:-5000px;height:0;width:0;overflow:hidden;">
+          <label>Company<input id="f-company" name="company" type="text" tabindex="-1" autocomplete="off"></label>
+        </div>
         <div class="field">
           <label for="f-name">Name</label>
           <input id="f-name" name="name" type="text" required autocomplete="name" placeholder="Your full name">
@@ -692,6 +697,7 @@ body {
           name: form.name.value.trim(),
           email: form.email.value.trim(),
           timezone: TZ,
+          company: form.company.value,
           answers,
         }),
       });

@@ -4,12 +4,15 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"encoding/base64"
 	"fmt"
 	"mime"
 	"net"
 	"net/mail"
 	"net/smtp"
 	"strings"
+
+	"github.com/calnode/calnode/internal/uid"
 )
 
 // SMTP sends email via an SMTP server.
@@ -143,8 +146,50 @@ func (s *SMTP) buildRaw(msg Message) []byte {
 	fmt.Fprintf(&buf, "To: %s\r\n", strings.Join(toFormatted, ", "))
 	fmt.Fprintf(&buf, "Subject: %s\r\n", subject)
 	fmt.Fprintf(&buf, "MIME-Version: 1.0\r\n")
-	fmt.Fprintf(&buf, "Content-Type: text/plain; charset=utf-8\r\n")
+
+	// Simple single-part message (the common case) — unchanged.
+	if len(msg.Attachments) == 0 {
+		fmt.Fprintf(&buf, "Content-Type: text/plain; charset=utf-8\r\n")
+		buf.WriteString("\r\n")
+		buf.WriteString(msg.Text)
+		return buf.Bytes()
+	}
+
+	// multipart/mixed: text body + each attachment. The boundary is random so it
+	// can't collide with body/attachment content.
+	boundary := "calnode-" + uid.New()
+	fmt.Fprintf(&buf, "Content-Type: multipart/mixed; boundary=%q\r\n", boundary)
+	buf.WriteString("\r\n")
+
+	fmt.Fprintf(&buf, "--%s\r\n", boundary)
+	buf.WriteString("Content-Type: text/plain; charset=utf-8\r\n")
+	buf.WriteString("Content-Transfer-Encoding: 8bit\r\n")
 	buf.WriteString("\r\n")
 	buf.WriteString(msg.Text)
+	buf.WriteString("\r\n")
+
+	for _, a := range msg.Attachments {
+		fmt.Fprintf(&buf, "--%s\r\n", boundary)
+		fmt.Fprintf(&buf, "Content-Type: %s\r\n", a.ContentType)
+		buf.WriteString("Content-Transfer-Encoding: base64\r\n")
+		fmt.Fprintf(&buf, "Content-Disposition: attachment; filename=%q\r\n", a.Filename)
+		buf.WriteString("\r\n")
+		buf.WriteString(base64Wrap(a.Content))
+		buf.WriteString("\r\n")
+	}
+	fmt.Fprintf(&buf, "--%s--\r\n", boundary)
 	return buf.Bytes()
+}
+
+// base64Wrap base64-encodes b and wraps it at 76 characters per line (RFC 2045).
+func base64Wrap(b []byte) string {
+	enc := base64.StdEncoding.EncodeToString(b)
+	var sb strings.Builder
+	for len(enc) > 76 {
+		sb.WriteString(enc[:76])
+		sb.WriteString("\r\n")
+		enc = enc[76:]
+	}
+	sb.WriteString(enc)
+	return sb.String()
 }

@@ -162,9 +162,10 @@ func (h *Handler) ReassignBooking(w http.ResponseWriter, r *http.Request) {
 					h.logger.Error("reassign: delete old calendar event", "error", err, "booking_id", bCopy.ID)
 				}
 			}
-			newEventID, err := gc.CreateEvent(ctx, newHostID, gcal.CreateEventParams{
+			newEventID, _, err := gc.CreateEvent(ctx, newHostID, gcal.CreateEventParams{
 				Summary:        etName + " with " + orgName,
 				Description:    "Booking ID: " + bCopy.ID,
+				Location:       bCopy.LocationValue, // keep the existing Meet link (don't mint a new one)
 				Start:          bCopy.StartAt,
 				End:            bCopy.EndAt,
 				OrganizerName:  orgName,

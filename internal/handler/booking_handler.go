@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -16,6 +17,11 @@ import (
 	"github.com/calnode/calnode/internal/uid"
 	"github.com/calnode/calnode/internal/webhook"
 )
+
+// maxBookingsPerEmailPerHour caps how many bookings one email address can create
+// across the workspace in a rolling hour — a per-identity backstop to the per-IP
+// rate limit, for the openly-public booking page.
+const maxBookingsPerEmailPerHour = 10
 
 type attendeeJSON struct {
 	Name  string `json:"name"`
@@ -61,6 +67,32 @@ func toBookingJSON(b *booking.Booking) bookingJSON {
 	}
 }
 
+// noGoogleDestination reports whether the given host has no Google destination
+// calendar — the gate for attaching Calnode's own iCalendar invite to an email.
+// When the host *has* a Google destination, Google already delivers a native
+// invite (the booker is added as an attendee; the host owns the event), so our
+// .ics would duplicate it. gc==nil (calendar feature off) ⇒ no destination ⇒ attach.
+// On a lookup error we report false (don't attach): a missing .ics — recipients
+// still have the add-to-calendar links — beats risking a duplicate invite.
+//
+// This is the single gate for the whole .ics feature. It is Google-specific today;
+// when a provider that also auto-invites attendees is added (e.g. Microsoft Graph),
+// this must return false for *its* destinations too, or those users get duplicate
+// invites. Plain CalDAV (no iTIP scheduling) does NOT auto-invite, so an .ics is
+// still wanted there — i.e. the right future shape is "no destination whose provider
+// auto-delivers invites", not just "no Google".
+func (h *Handler) noGoogleDestination(ctx context.Context, hostID string) bool {
+	gc := h.getGCal()
+	if gc == nil {
+		return true
+	}
+	has, err := gc.HasDestination(ctx, hostID)
+	if err != nil {
+		return false
+	}
+	return !has
+}
+
 // CreateBooking handles POST /v1/bookings (public — no auth required).
 // The caller provides the event type slug and a start time selected from /slots.
 // end_at is computed from event_type.duration_minutes.
@@ -70,21 +102,81 @@ func toBookingJSON(b *booking.Booking) bookingJSON {
 func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 32<<10)
 
+	rawBody, err := io.ReadAll(r.Body)
+	if err != nil {
+		h.writeError(w, http.StatusBadRequest, "could not read request body")
+		return
+	}
+
 	var req struct {
 		EventTypeSlug string `json:"event_type_slug"`
 		StartAt       string `json:"start_at"`
 		Name          string `json:"name"`
 		Email         string `json:"email"`
 		Timezone      string `json:"timezone"`
+		Company       string `json:"company"` // honeypot: a hidden form field; must stay empty
 		Answers       []struct {
 			QuestionID string `json:"question_id"`
 			Value      string `json:"value"`
 		} `json:"answers"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := json.Unmarshal(rawBody, &req); err != nil {
 		h.writeError(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
+
+	// Honeypot: a field hidden from humans on the booking form. A non-empty value
+	// means an automated submission — reject with a generic error.
+	if strings.TrimSpace(req.Company) != "" {
+		h.logger.InfoContext(r.Context(), "booking rejected: honeypot filled")
+		h.writeError(w, http.StatusBadRequest, "invalid submission")
+		return
+	}
+
+	// Idempotency-Key (optional): a client — e.g. an automation agent retrying a
+	// timed-out request — may resend a booking POST with the same key. We reserve
+	// the key now; the original response is replayed on a repeat, and the key is
+	// released on any failure path (via the deferred cleanup below) so a retry
+	// after an error can still proceed. The public booking page does not send a
+	// key, so this path is inert for normal bookings.
+	idemKey := strings.TrimSpace(r.Header.Get("Idempotency-Key"))
+	idemDone := false
+	if idemKey != "" {
+		if len(idemKey) > 255 {
+			h.writeError(w, http.StatusBadRequest, "Idempotency-Key must be at most 255 characters")
+			return
+		}
+		reqHash := idemHash(rawBody)
+		rec, replay, err := h.claimIdempotencyKey(r.Context(), idemKey, reqHash)
+		if err != nil {
+			h.logger.ErrorContext(r.Context(), "create booking: claim idempotency key", "error", err)
+			h.writeError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		if replay {
+			if rec.StatusCode == 0 {
+				h.writeError(w, http.StatusConflict, "a request with this Idempotency-Key is still being processed")
+				return
+			}
+			if rec.RequestHash != reqHash {
+				h.writeError(w, http.StatusUnprocessableEntity, "Idempotency-Key was already used with a different request body")
+				return
+			}
+			w.Header().Set("Idempotency-Replayed", "true")
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(rec.StatusCode)
+			_, _ = w.Write([]byte(rec.ResponseBody))
+			return
+		}
+		// We own the key now. Release it on any non-success exit so the caller can
+		// retry; the success path sets idemDone after storing the response.
+		defer func() {
+			if !idemDone {
+				h.releaseIdempotencyKey(context.Background(), idemKey)
+			}
+		}()
+	}
+
 	if req.EventTypeSlug == "" || req.StartAt == "" || req.Name == "" || req.Email == "" {
 		h.writeError(w, http.StatusBadRequest, "event_type_slug, start_at, name, and email are required")
 		return
@@ -105,6 +197,7 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 		UserID            string
 		Name              string
 		DurationMinutes   int
+		LocationType      string
 		LocationValue     *string
 		RoutingMode       string
 		RRStrategy        string
@@ -112,9 +205,9 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 		MaxActiveBookings int
 	}
 	err = h.db.QueryRowContext(r.Context(), `
-		SELECT id, user_id, name, duration_minutes, location_value, routing_mode, rr_strategy, is_active, max_active_bookings
+		SELECT id, user_id, name, duration_minutes, location_type, location_value, routing_mode, rr_strategy, is_active, max_active_bookings
 		FROM event_types WHERE slug = ?`, req.EventTypeSlug).
-		Scan(&et.ID, &et.UserID, &et.Name, &et.DurationMinutes, &et.LocationValue, &et.RoutingMode, &et.RRStrategy, &et.IsActive, &et.MaxActiveBookings)
+		Scan(&et.ID, &et.UserID, &et.Name, &et.DurationMinutes, &et.LocationType, &et.LocationValue, &et.RoutingMode, &et.RRStrategy, &et.IsActive, &et.MaxActiveBookings)
 	if err != nil {
 		h.writeError(w, http.StatusNotFound, "event type not found")
 		return
@@ -122,6 +215,27 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 	if et.IsActive == 0 {
 		h.writeError(w, http.StatusNotFound, "event type not found")
 		return
+	}
+
+	// Per-email throttle: cap how many bookings one email can create across the
+	// workspace in a rolling hour, independent of IP — backstops the per-IP rate
+	// limit against a single identity spamming via rotating IPs. Counts cancelled
+	// bookings too, so book/cancel/rebook churn is bounded. A query error is logged,
+	// not fatal (don't block a legit booking on a transient read failure).
+	{
+		windowStart := time.Now().UTC().Add(-time.Hour).Format(time.RFC3339Nano)
+		var recent int
+		if err := h.db.QueryRowContext(r.Context(), `
+			SELECT COUNT(*) FROM bookings b
+			JOIN booking_attendees a ON a.booking_id = b.id AND a.is_organizer = 1
+			WHERE a.email = ? COLLATE NOCASE AND b.created_at > ?`,
+			req.Email, windowStart).Scan(&recent); err != nil {
+			h.logger.ErrorContext(r.Context(), "create booking: per-email throttle", "error", err)
+		} else if recent >= maxBookingsPerEmailPerHour {
+			h.writeError(w, http.StatusTooManyRequests,
+				"Too many bookings from this email address recently. Please try again later.")
+			return
+		}
 	}
 
 	// Validate intake question answers.
@@ -219,7 +333,25 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 	for _, hd := range h.displayHostsForBooking(r.Context(), b.ID) {
 		bj.Hosts = append(bj.Hosts, hostBrief{ID: hd.ID, Name: hd.Name, AvatarURL: hd.AvatarURL})
 	}
-	h.writeJSON(w, http.StatusCreated, bj)
+	respBody, err := json.Marshal(bj)
+	if err != nil {
+		h.logger.ErrorContext(r.Context(), "create booking: marshal response", "error", err)
+		h.writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	if idemKey != "" {
+		// Persist the response so a retry with this key replays it verbatim. The
+		// booking is already committed; a failure storing the key must not change
+		// the outcome, so we mark it done either way (a stale pending row, if the
+		// UPDATE failed, is purged by the worker's TTL sweep).
+		if err := h.finishIdempotencyKey(r.Context(), idemKey, http.StatusCreated, respBody, b.ID); err != nil {
+			h.logger.ErrorContext(r.Context(), "create booking: store idempotency response", "error", err)
+		}
+		idemDone = true
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	_, _ = w.Write(respBody)
 
 	// Send confirmation emails in the background — the booking is committed; a
 	// mail failure must not roll it back or change the HTTP response.
@@ -253,27 +385,37 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 		} else {
 			bData.ManageURL = h.publicURL() + "/manage/" + tok
 		}
-		var msgNote sql.NullString
-		_ = h.db.QueryRowContext(ctx, `SELECT msg_confirmation FROM event_types WHERE id = ?`, b.EventTypeID).
-			Scan(&msgNote)
+		var msgNote, subjNote sql.NullString
+		_ = h.db.QueryRowContext(ctx, `SELECT msg_confirmation, subj_confirmation FROM event_types WHERE id = ?`, b.EventTypeID).
+			Scan(&msgNote, &subjNote)
 		if msgNote.Valid {
 			bData.CustomNote = msgNote.String
 		}
+		if subjNote.Valid {
+			bData.SubjectOverride = subjNote.String
+		}
 
 		gc := h.getGCal()
+		// For google_meet event types, the primary host's event creates the Meet
+		// conference; the returned link is captured, stored on the booking, surfaced
+		// in emails, and passed to any secondary hosts' events as their location.
+		wantMeet := et.LocationType == "google_meet"
+		meetURL := ""
 		var primaryPrefs hostPrefs = allOnPrefs
 		for _, host := range hosts {
 			// Create a calendar event on each host's connected calendar and record
 			// the per-host event ID so it can be cancelled later. The primary's id
 			// also lives on the booking row for back-compat.
 			if gc != nil {
-				eventID, err := gc.CreateEvent(ctx, host.UserID, gcal.CreateEventParams{
+				eventID, link, err := gc.CreateEvent(ctx, host.UserID, gcal.CreateEventParams{
 					Summary:        et.Name + " with " + req.Name,
 					Description:    "Booking ID: " + b.ID,
+					Location:       meetURL, // empty until the primary creates it; secondary hosts get the link
 					Start:          b.StartAt,
 					End:            b.EndAt,
 					OrganizerName:  req.Name,
 					OrganizerEmail: req.Email,
+					AddMeet:        wantMeet && host.IsPrimary,
 				})
 				if err != nil {
 					h.logger.Error("create gcal event", "error", err, "booking_id", b.ID, "host", host.UserID)
@@ -288,6 +430,17 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 						if _, err := h.db.ExecContext(ctx,
 							`UPDATE bookings SET external_event_id = ? WHERE id = ?`, eventID, b.ID); err != nil {
 							h.logger.Error("save gcal event id", "error", err, "booking_id", b.ID)
+						}
+						// Persist the generated Meet link so the confirmation emails (sent
+						// below), the booking record, and the manage page show it. bData
+						// feeds the emails; updating it here reaches every send that follows.
+						if link != "" {
+							meetURL = link
+							bData.LocationValue = link
+							if _, err := h.db.ExecContext(ctx,
+								`UPDATE bookings SET location_value = ? WHERE id = ?`, link, b.ID); err != nil {
+								h.logger.Error("save meet link", "error", err, "booking_id", b.ID)
+							}
 						}
 					}
 				}
@@ -305,6 +458,8 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 			if prefs.NotifyHostBooking {
 				hd := bData
 				hd.HostName, hd.HostEmail = host.Name, host.Email
+				hd.AttachICS = h.noGoogleDestination(ctx, host.UserID) // per-host: their own calendar
+				hd.ICSSequence = int(b.UpdatedAt.Unix())
 				if err := mailer.SendConfirmationToHost(ctx, h.mailer, hd); err != nil {
 					h.logger.Error("booking confirmation email (host)", "error", err, "booking_id", b.ID, "host", host.UserID)
 				}
@@ -314,6 +469,8 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 		// Attendee confirmation, once. "With:" names the primary host; gated on the
 		// primary host's notification preference (matches prior behaviour).
 		bData.HostName, bData.HostEmail = primaryHost(hosts).Name, primaryHost(hosts).Email
+		bData.AttachICS = h.noGoogleDestination(ctx, b.HostID)
+		bData.ICSSequence = int(b.UpdatedAt.Unix())
 		if primaryPrefs.NotifyConfirmation {
 			if err := mailer.SendConfirmationToAttendee(ctx, h.mailer, bData); err != nil {
 				h.logger.Error("booking confirmation email (attendee)", "error", err, "booking_id", b.ID)
@@ -533,11 +690,14 @@ func (h *Handler) cancelSideEffects(b booking.Booking) {
 		return
 	}
 	d.BaseURL = h.publicURL()
-	var msgNote sql.NullString
-	_ = h.db.QueryRowContext(ctx, `SELECT msg_cancellation FROM event_types WHERE id = ?`, b.EventTypeID).
-		Scan(&msgNote)
+	var msgNote, subjNote sql.NullString
+	_ = h.db.QueryRowContext(ctx, `SELECT msg_cancellation, subj_cancellation FROM event_types WHERE id = ?`, b.EventTypeID).
+		Scan(&msgNote, &subjNote)
 	if msgNote.Valid {
 		d.CustomNote = msgNote.String
+	}
+	if subjNote.Valid {
+		d.SubjectOverride = subjNote.String
 	}
 
 	// Cancel each assigned host's calendar event and notify each host. Group
@@ -555,6 +715,21 @@ func (h *Handler) cancelSideEffects(b booking.Booking) {
 			if err := gc.CancelEvent(ctx, host.UserID, host.ExternalEventID); err != nil {
 				h.logger.Error("cancel gcal event", "error", err, "booking_id", b.ID, "host", host.UserID)
 				h.nudgeCalendarReconcile() // event still on the calendar — heal on a later sweep
+			} else {
+				// Event removed — clear the id (matching the reconciler) so it isn't
+				// re-processed and so own-event exclusion, which keys on a non-empty
+				// external_event_id, stops treating this slot as ours.
+				if _, err := h.db.ExecContext(ctx,
+					`UPDATE booking_hosts SET external_event_id = NULL WHERE booking_id = ? AND user_id = ?`,
+					b.ID, host.UserID); err != nil {
+					h.logger.Error("clear cancelled event id", "error", err, "booking_id", b.ID, "host", host.UserID)
+				}
+				if host.IsPrimary {
+					if _, err := h.db.ExecContext(ctx,
+						`UPDATE bookings SET external_event_id = NULL WHERE id = ?`, b.ID); err != nil {
+						h.logger.Error("clear cancelled booking event id", "error", err, "booking_id", b.ID)
+					}
+				}
 			}
 		}
 		prefs := allOnPrefs
@@ -568,11 +743,15 @@ func (h *Handler) cancelSideEffects(b booking.Booking) {
 		if prefs.NotifyHostCancel {
 			hd := d
 			hd.HostName, hd.HostEmail = host.Name, host.Email
+			hd.AttachICS = h.noGoogleDestination(ctx, host.UserID) // per-host: their own calendar
+			hd.ICSSequence = int(b.UpdatedAt.Unix())
 			if err := mailer.SendCancellationToHost(ctx, h.mailer, hd); err != nil {
 				h.logger.Error("booking cancellation email (host)", "error", err, "booking_id", b.ID, "host", host.UserID)
 			}
 		}
 	}
+	d.AttachICS = h.noGoogleDestination(ctx, b.HostID)
+	d.ICSSequence = int(b.UpdatedAt.Unix())
 	if primaryPrefs.NotifyCancellation {
 		if err := mailer.SendCancellationToAttendee(ctx, h.mailer, d); err != nil {
 			h.logger.Error("booking cancellation email (attendee)", "error", err, "booking_id", b.ID)
@@ -611,8 +790,29 @@ func (h *Handler) moveCalendarEvents(ctx context.Context, bookingID string, star
 			continue
 		}
 		if err := gc.UpdateEvent(ctx, host.UserID, host.ExternalEventID, start, end); err != nil {
+			// The event is now at the wrong time — flag it so the reconciler re-applies
+			// the move on a later sweep (drift can't be inferred from booking state).
 			h.logger.Error("reschedule: move gcal event", "error", err, "booking_id", bookingID, "host", host.UserID)
+			h.setNeedsSync(ctx, bookingID, host.UserID, true)
+			h.nudgeCalendarReconcile()
+		} else {
+			// Succeeded — clear any flag a previous failed move may have left.
+			h.setNeedsSync(ctx, bookingID, host.UserID, false)
 		}
+	}
+}
+
+// setNeedsSync marks (or clears) a host's calendar event as out-of-sync with the
+// booking's time. Best-effort; a failure here just delays self-healing.
+func (h *Handler) setNeedsSync(ctx context.Context, bookingID, userID string, dirty bool) {
+	v := 0
+	if dirty {
+		v = 1
+	}
+	if _, err := h.db.ExecContext(ctx,
+		`UPDATE booking_hosts SET needs_sync = ? WHERE booking_id = ? AND user_id = ?`,
+		v, bookingID, userID); err != nil {
+		h.logger.Error("set needs_sync", "error", err, "booking_id", bookingID, "host", userID)
 	}
 }
 

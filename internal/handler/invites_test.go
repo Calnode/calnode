@@ -243,3 +243,58 @@ func TestRevokeInvite_success(t *testing.T) {
 		t.Errorf("invite list has %d items; want 0 after revoke", len(list))
 	}
 }
+
+// ---------------------------------------------------------------------------
+// POST /v1/invites/{id}/resend
+// ---------------------------------------------------------------------------
+
+func TestResendInvite_reissuesFreshLink(t *testing.T) {
+	h, _, key, _ := setupWorkspaceWithDB(t)
+
+	rec := httptest.NewRecorder()
+	h.RequireAuth(h.CreateInvite)(rec, createInviteReq("bob@example.com", key))
+	var created map[string]any
+	json.Unmarshal(rec.Body.Bytes(), &created)
+	origID := created["id"].(string)
+	origURL := created["invite_url"].(string)
+
+	req := authReq(http.MethodPost, "/v1/invites/"+origID+"/resend", "", key)
+	req.SetPathValue("id", origID)
+	rec2 := httptest.NewRecorder()
+	h.RequireAuth(h.ResendInvite)(rec2, req)
+	if rec2.Code != http.StatusOK {
+		t.Fatalf("resend: got %d; want 200 — %s", rec2.Code, rec2.Body.String())
+	}
+	var resent map[string]any
+	json.Unmarshal(rec2.Body.Bytes(), &resent)
+	if resent["email"] != "bob@example.com" {
+		t.Errorf("resend email = %v; want bob@example.com", resent["email"])
+	}
+	if resent["invite_url"] == "" || resent["invite_url"] == origURL {
+		t.Errorf("resend must mint a NEW link; got %v (orig %v)", resent["invite_url"], origURL)
+	}
+	if resent["id"] == origID {
+		t.Error("resend must create a new invite id (the old one is invalidated)")
+	}
+
+	// Exactly one pending invite remains — the fresh one; the old token is gone.
+	listReq := authReq(http.MethodGet, "/v1/invites", "", key)
+	rec3 := httptest.NewRecorder()
+	h.RequireAuth(h.ListInvites)(rec3, listReq)
+	var list []map[string]any
+	json.Unmarshal(rec3.Body.Bytes(), &list)
+	if len(list) != 1 {
+		t.Errorf("pending invites = %d; want 1 after resend", len(list))
+	}
+}
+
+func TestResendInvite_notFound(t *testing.T) {
+	h, _, key, _ := setupWorkspaceWithDB(t)
+	req := authReq(http.MethodPost, "/v1/invites/nope/resend", "", key)
+	req.SetPathValue("id", "nope")
+	rec := httptest.NewRecorder()
+	h.RequireAuth(h.ResendInvite)(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("resend nonexistent: got %d; want 404", rec.Code)
+	}
+}

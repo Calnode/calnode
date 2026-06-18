@@ -38,13 +38,16 @@ func (h *Handler) SendTestEmail(w http.ResponseWriter, r *http.Request) {
 	var etName string
 	var durationMinutes int
 	var locVal, msgConf, msgCancel, msgResched, msgRemind sql.NullString
+	var subjConf, subjCancel, subjResched, subjRemind sql.NullString
 	err := h.db.QueryRowContext(r.Context(), `
 		SELECT name, duration_minutes, location_value,
-		       msg_confirmation, msg_cancellation, msg_reschedule, msg_reminder
+		       msg_confirmation, msg_cancellation, msg_reschedule, msg_reminder,
+		       subj_confirmation, subj_cancellation, subj_reschedule, subj_reminder
 		FROM event_types
 		WHERE slug = ? AND user_id = ?`, slug, user.ID).
 		Scan(&etName, &durationMinutes, &locVal,
-			&msgConf, &msgCancel, &msgResched, &msgRemind)
+			&msgConf, &msgCancel, &msgResched, &msgRemind,
+			&subjConf, &subjCancel, &subjResched, &subjRemind)
 	if err == sql.ErrNoRows {
 		h.writeError(w, http.StatusNotFound, "event type not found")
 		return
@@ -61,25 +64,18 @@ func (h *Handler) SendTestEmail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Pick the custom note for the requested email type.
-	var customNote string
+	// Pick the custom note + subject for the requested email type. NullString.String
+	// is "" when unset, which is exactly the "use the default" sentinel.
+	var customNote, customSubject string
 	switch req.Type {
 	case "confirmation":
-		if msgConf.Valid {
-			customNote = msgConf.String
-		}
+		customNote, customSubject = msgConf.String, subjConf.String
 	case "cancellation":
-		if msgCancel.Valid {
-			customNote = msgCancel.String
-		}
+		customNote, customSubject = msgCancel.String, subjCancel.String
 	case "reschedule":
-		if msgResched.Valid {
-			customNote = msgResched.String
-		}
+		customNote, customSubject = msgResched.String, subjResched.String
 	case "reminder":
-		if msgRemind.Valid {
-			customNote = msgRemind.String
-		}
+		customNote, customSubject = msgRemind.String, subjRemind.String
 	}
 
 	// Build placeholder booking data. The sample date is tomorrow at 14:00 UTC.
@@ -105,6 +101,7 @@ func (h *Handler) SendTestEmail(w http.ResponseWriter, r *http.Request) {
 		LocationValue:    locVal.String,
 		BaseURL:          h.publicURL(),
 		CustomNote:       customNote,
+		SubjectOverride:  customSubject,
 	}
 
 	subject, body, _ := mailer.RenderBody(req.Type, d)

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"net/url"
 	"text/template"
 	"time"
 )
@@ -27,6 +28,13 @@ type BookingData struct {
 	ManageURL          string // manage link (reschedule/cancel), set at booking creation
 	BaseURL            string
 	CustomNote         string // optional host-configured note appended to the email body
+	SubjectOverride    string // optional per-event-type custom subject; falls back to the default when empty
+	// AttachICS attaches an iCalendar invite to the attendee's email — set by the
+	// handler only when the host has no Google destination calendar (so Google
+	// isn't already inviting the attendee, which would duplicate). ICSSequence must
+	// be non-decreasing across a booking's confirm→reschedule→cancel lifecycle.
+	AttachICS   bool
+	ICSSequence int
 }
 
 // StartFmt returns StartAt formatted in the organizer's timezone.
@@ -41,6 +49,14 @@ func (d BookingData) PreviousStartFmt() string { return inTZ(d.PreviousStartAt, 
 // PreviousEndFmt returns PreviousEndAt formatted in the organizer's timezone.
 func (d BookingData) PreviousEndFmt() string { return inTZ(d.PreviousEndAt, d.OrganizerTimezone) }
 
+// subjectOr returns the custom subject override when set, else the default.
+func (d BookingData) subjectOr(def string) string {
+	if d.SubjectOverride != "" {
+		return d.SubjectOverride
+	}
+	return def
+}
+
 func inTZ(t time.Time, tz string) string {
 	loc, err := time.LoadLocation(tz)
 	if err != nil {
@@ -49,13 +65,56 @@ func inTZ(t time.Time, tz string) string {
 	return t.In(loc).Format("Mon 2 Jan 2006, 3:04 PM MST")
 }
 
+// calDetails is the shared "add to calendar" description for the link builders.
+func (d BookingData) calDetails() string {
+	s := "Booking with " + d.HostName
+	if d.ManageURL != "" {
+		s += "\nManage this booking: " + d.ManageURL
+	}
+	return s
+}
+
+// GoogleCalURL builds an "Add to Google Calendar" template link for the booking.
+// It pre-fills a new event in the recipient's own calendar — pull-based, so it
+// never duplicates a Google invite the host's calendar may have already sent.
+func (d BookingData) GoogleCalURL() string {
+	q := url.Values{}
+	q.Set("action", "TEMPLATE")
+	q.Set("text", d.EventTypeName)
+	q.Set("dates", d.StartAt.UTC().Format("20060102T150405Z")+"/"+d.EndAt.UTC().Format("20060102T150405Z"))
+	q.Set("details", d.calDetails())
+	if d.LocationValue != "" {
+		q.Set("location", d.LocationValue)
+	}
+	return "https://calendar.google.com/calendar/render?" + q.Encode()
+}
+
+// OutlookCalURL builds an "Add to Outlook (web) calendar" deep link for the booking.
+func (d BookingData) OutlookCalURL() string {
+	q := url.Values{}
+	q.Set("path", "/calendar/action/compose")
+	q.Set("rru", "addevent")
+	q.Set("subject", d.EventTypeName)
+	q.Set("startdt", d.StartAt.UTC().Format(time.RFC3339))
+	q.Set("enddt", d.EndAt.UTC().Format(time.RFC3339))
+	q.Set("body", d.calDetails())
+	if d.LocationValue != "" {
+		q.Set("location", d.LocationValue)
+	}
+	return "https://outlook.office.com/calendar/0/deeplink/compose?" + q.Encode()
+}
+
 // SendConfirmationToAttendee sends a booking confirmation email to the organizer/attendee.
 func SendConfirmationToAttendee(ctx context.Context, m Mailer, d BookingData) error {
-	if err := m.Send(ctx, Message{
+	msg := Message{
 		To:      []string{d.OrganizerEmail},
-		Subject: "Booking confirmed: " + d.EventTypeName,
+		Subject: d.subjectOr("Booking confirmed: " + d.EventTypeName),
 		Text:    render(confirmOrgTmpl, d),
-	}); err != nil {
+	}
+	if d.AttachICS {
+		msg.Attachments = []Attachment{icsAttachment(d, "REQUEST")}
+	}
+	if err := m.Send(ctx, msg); err != nil {
 		return fmt.Errorf("mailer: confirmation (attendee): %w", err)
 	}
 	return nil
@@ -66,11 +125,15 @@ func SendConfirmationToHost(ctx context.Context, m Mailer, d BookingData) error 
 	if d.HostEmail == "" {
 		return nil
 	}
-	if err := m.Send(ctx, Message{
+	msg := Message{
 		To:      []string{d.HostEmail},
 		Subject: "New booking: " + d.EventTypeName + " with " + d.OrganizerName,
 		Text:    render(confirmHostTmpl, d),
-	}); err != nil {
+	}
+	if d.AttachICS {
+		msg.Attachments = []Attachment{icsAttachment(d, "REQUEST")}
+	}
+	if err := m.Send(ctx, msg); err != nil {
 		return fmt.Errorf("mailer: confirmation (host): %w", err)
 	}
 	return nil
@@ -98,11 +161,15 @@ func SendCancellationToAttendee(ctx context.Context, m Mailer, d BookingData) er
 	if d.OrganizerEmail == "" {
 		return nil
 	}
-	if err := m.Send(ctx, Message{
+	msg := Message{
 		To:      []string{d.OrganizerEmail},
-		Subject: "Booking cancelled: " + d.EventTypeName,
+		Subject: d.subjectOr("Booking cancelled: " + d.EventTypeName),
 		Text:    render(cancelOrgTmpl, d),
-	}); err != nil {
+	}
+	if d.AttachICS {
+		msg.Attachments = []Attachment{icsAttachment(d, "CANCEL")}
+	}
+	if err := m.Send(ctx, msg); err != nil {
 		return fmt.Errorf("mailer: cancellation (attendee): %w", err)
 	}
 	return nil
@@ -113,11 +180,15 @@ func SendCancellationToHost(ctx context.Context, m Mailer, d BookingData) error 
 	if d.HostEmail == "" {
 		return nil
 	}
-	if err := m.Send(ctx, Message{
+	msg := Message{
 		To:      []string{d.HostEmail},
 		Subject: "Booking cancelled: " + d.EventTypeName + " with " + d.OrganizerName,
 		Text:    render(cancelHostTmpl, d),
-	}); err != nil {
+	}
+	if d.AttachICS {
+		msg.Attachments = []Attachment{icsAttachment(d, "CANCEL")}
+	}
+	if err := m.Send(ctx, msg); err != nil {
 		return fmt.Errorf("mailer: cancellation (host): %w", err)
 	}
 	return nil
@@ -143,11 +214,15 @@ func SendCancellation(ctx context.Context, m Mailer, d BookingData) error {
 // SendRescheduleToAttendee sends a reschedule notification to the organizer/attendee.
 // d.PreviousStartAt / PreviousEndAt must be set to the old times.
 func SendRescheduleToAttendee(ctx context.Context, m Mailer, d BookingData) error {
-	if err := m.Send(ctx, Message{
+	msg := Message{
 		To:      []string{d.OrganizerEmail},
-		Subject: "Booking rescheduled: " + d.EventTypeName,
+		Subject: d.subjectOr("Booking rescheduled: " + d.EventTypeName),
 		Text:    render(rescheduleOrgTmpl, d),
-	}); err != nil {
+	}
+	if d.AttachICS {
+		msg.Attachments = []Attachment{icsAttachment(d, "REQUEST")}
+	}
+	if err := m.Send(ctx, msg); err != nil {
 		return fmt.Errorf("mailer: reschedule (attendee): %w", err)
 	}
 	return nil
@@ -158,11 +233,15 @@ func SendRescheduleToHost(ctx context.Context, m Mailer, d BookingData) error {
 	if d.HostEmail == "" {
 		return nil
 	}
-	if err := m.Send(ctx, Message{
+	msg := Message{
 		To:      []string{d.HostEmail},
 		Subject: "Booking rescheduled: " + d.EventTypeName + " with " + d.OrganizerName,
 		Text:    render(rescheduleHostTmpl, d),
-	}); err != nil {
+	}
+	if d.AttachICS {
+		msg.Attachments = []Attachment{icsAttachment(d, "REQUEST")}
+	}
+	if err := m.Send(ctx, msg); err != nil {
 		return fmt.Errorf("mailer: reschedule (host): %w", err)
 	}
 	return nil
@@ -189,7 +268,7 @@ func SendReschedule(ctx context.Context, m Mailer, d BookingData) error {
 func SendReminder(ctx context.Context, m Mailer, d BookingData) error {
 	if err := m.Send(ctx, Message{
 		To:      []string{d.OrganizerEmail},
-		Subject: "Reminder: " + d.EventTypeName + " is coming up",
+		Subject: d.subjectOr("Reminder: " + d.EventTypeName + " is coming up"),
 		Text:    render(reminderOrgTmpl, d),
 	}); err != nil {
 		return fmt.Errorf("mailer: reminder: %w", err)
@@ -203,13 +282,13 @@ func SendReminder(ctx context.Context, m Mailer, d BookingData) error {
 func RenderBody(emailType string, d BookingData) (subject, body string, ok bool) {
 	switch emailType {
 	case "confirmation":
-		return "Booking confirmed: " + d.EventTypeName, render(confirmOrgTmpl, d), true
+		return d.subjectOr("Booking confirmed: " + d.EventTypeName), render(confirmOrgTmpl, d), true
 	case "cancellation":
-		return "Booking cancelled: " + d.EventTypeName, render(cancelOrgTmpl, d), true
+		return d.subjectOr("Booking cancelled: " + d.EventTypeName), render(cancelOrgTmpl, d), true
 	case "reschedule":
-		return "Booking rescheduled: " + d.EventTypeName, render(rescheduleOrgTmpl, d), true
+		return d.subjectOr("Booking rescheduled: " + d.EventTypeName), render(rescheduleOrgTmpl, d), true
 	case "reminder":
-		return "Reminder: " + d.EventTypeName + " is coming up", render(reminderOrgTmpl, d), true
+		return d.subjectOr("Reminder: " + d.EventTypeName + " is coming up"), render(reminderOrgTmpl, d), true
 	}
 	return "", "", false
 }
@@ -232,6 +311,10 @@ With:     {{.HostName}}
 Start:    {{.StartFmt}}
 End:      {{.EndFmt}}{{if .LocationValue}}
 Location: {{.LocationValue}}{{end}}
+
+Add to your calendar:
+  Google:  {{.GoogleCalURL}}
+  Outlook: {{.OutlookCalURL}}
 
 Booking reference: {{.BookingID}}
 {{if .ManageURL}}
@@ -311,6 +394,10 @@ Now:      {{.StartFmt}}
 End:      {{.EndFmt}}{{if .LocationValue}}
 Location: {{.LocationValue}}{{end}}
 
+Add to your calendar (updated time):
+  Google:  {{.GoogleCalURL}}
+  Outlook: {{.OutlookCalURL}}
+
 Booking reference: {{.BookingID}}
 {{if .ManageURL}}
 To reschedule or cancel again, visit:
@@ -349,6 +436,10 @@ With:     {{.HostName}}
 Start:    {{.StartFmt}}
 End:      {{.EndFmt}}{{if .LocationValue}}
 Location: {{.LocationValue}}{{end}}
+
+Add to your calendar:
+  Google:  {{.GoogleCalURL}}
+  Outlook: {{.OutlookCalURL}}
 
 Booking reference: {{.BookingID}}
 {{if .ManageURL}}
