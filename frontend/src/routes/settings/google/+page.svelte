@@ -151,6 +151,23 @@
 				</div>
 			</div>
 
+			{#if googleSettings?.configured}
+				<div class="mt-5 border-t pt-4">
+					<p class="text-xs font-medium text-muted-foreground">Authorised redirect URIs</p>
+					<p class="mt-0.5 text-xs text-muted-foreground">
+						These must be registered on your OAuth client in Google Cloud (Credentials → your client → Authorised redirect URIs).
+					</p>
+					<code class="mt-2 block rounded bg-muted px-2 py-1 text-xs font-mono break-all">{redirectBase}/v1/calendar/callback</code>
+					<code class="mt-1 block rounded bg-muted px-2 py-1 text-xs font-mono break-all">{redirectBase}/v1/auth/callback</code>
+					{#if !isLocal}
+						<p class="mt-1.5 text-xs text-muted-foreground">
+							If you also run Calnode locally, add the
+							<code class="rounded bg-muted px-1">http://localhost:3000/…</code> variants too.
+						</p>
+					{/if}
+				</div>
+			{/if}
+
 			<div class="mt-5">
 				<Button onclick={save} disabled={saving}>
 					{saving ? 'Saving…' : 'Save'}
