@@ -103,8 +103,9 @@ func (h *Handler) SendTestEmail(w http.ResponseWriter, r *http.Request) {
 		CustomNote:       customNote,
 		SubjectOverride:  customSubject,
 	}
+	h.applyBranding(r.Context(), &d)
 
-	subject, body, _ := mailer.RenderBody(req.Type, d)
+	subject, body, html, _ := mailer.RenderBody(req.Type, d)
 	if strings.HasPrefix(body, "(template render error:") {
 		h.logger.ErrorContext(r.Context(), "test email: template render failed", "body", body)
 		h.writeError(w, http.StatusInternalServerError, "internal error")
@@ -114,6 +115,7 @@ func (h *Handler) SendTestEmail(w http.ResponseWriter, r *http.Request) {
 		To:      []string{user.Email},
 		Subject: "[TEST] " + subject,
 		Text:    body,
+		HTML:    html,
 	}); err != nil {
 		h.logger.ErrorContext(r.Context(), "test email: send", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "failed to send test email")

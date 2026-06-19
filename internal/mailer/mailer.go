@@ -13,7 +13,8 @@ type Attachment struct {
 type Message struct {
 	To          []string
 	Subject     string
-	Text        string // plain-text body
+	Text        string // plain-text body (always set; used as the fallback alternative)
+	HTML        string // optional HTML body; when set the message is multipart/alternative
 	Attachments []Attachment
 }
 

@@ -309,6 +309,12 @@ body {
 </head>
 <body>
 
+{{if or .LogoURL .BusinessName}}
+<header style="text-align:center;padding:24px 16px 4px;">
+  {{if .LogoURL}}<img src="{{.LogoURL}}" alt="{{.BusinessName}}" style="height:30px;max-height:30px;display:inline-block;border:0;">{{else}}<span style="font-size:.9375rem;font-weight:600;color:#111827;">{{.BusinessName}}</span>{{end}}
+</header>
+{{end}}
+
 <div class="card">
 
   <!-- Info panel -->

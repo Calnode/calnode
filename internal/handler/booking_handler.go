@@ -370,6 +370,7 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
+		h.applyBranding(ctx, &bData)
 		// Every assigned host attends (Group books several; round-robin/Normal one).
 		hosts, err := h.assignedHosts(ctx, b.ID)
 		if err != nil || len(hosts) == 0 {
@@ -690,6 +691,7 @@ func (h *Handler) cancelSideEffects(b booking.Booking) {
 		return
 	}
 	d.BaseURL = h.publicURL()
+	h.applyBranding(ctx, &d)
 	var msgNote, subjNote sql.NullString
 	_ = h.db.QueryRowContext(ctx, `SELECT msg_cancellation, subj_cancellation FROM event_types WHERE id = ?`, b.EventTypeID).
 		Scan(&msgNote, &subjNote)

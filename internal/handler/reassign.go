@@ -194,6 +194,7 @@ func (h *Handler) ReassignBooking(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		d.BaseURL = h.publicURL()
+		h.applyBranding(ctx, &d)
 		if err := h.loadHostIntoData(ctx, newHostID, &d); err != nil {
 			h.logger.Error("reassign: load new host", "error", err, "booking_id", bCopy.ID)
 		}

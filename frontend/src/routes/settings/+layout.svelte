@@ -9,6 +9,7 @@
 	const navItems = [
 		{ href: `${base}/settings/profile`, label: 'Profile' },
 		{ href: `${base}/settings/notifications`, label: 'Notifications' },
+		{ href: `${base}/settings/branding`, label: 'Branding', adminOnly: true },
 		{ href: `${base}/settings/email`, label: 'Email', adminOnly: true },
 		{ href: `${base}/settings/google`, label: 'Google OAuth', adminOnly: true },
 		{ href: `${base}/settings/tracking`, label: 'Tracking', adminOnly: true },

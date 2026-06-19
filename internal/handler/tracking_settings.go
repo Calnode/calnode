@@ -9,7 +9,10 @@ import (
 
 // strictPublicCSP is the secure default applied to public pages when no code
 // injection is configured: inline scripts/styles only, no external origins.
-const strictPublicCSP = "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'"
+// img-src allows https:/data: so an operator's external brand logo (and any
+// remote avatar) loads; images are inert, so this is a safe relaxation even on
+// the otherwise-strict default policy.
+const strictPublicCSP = "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self'; frame-ancestors 'none'"
 
 // dataLayerFields is the set of keys an operator may push into window.dataLayer.
 // Labels live in the admin UI; the backend only validates keys.

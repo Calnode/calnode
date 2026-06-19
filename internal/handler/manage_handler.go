@@ -40,6 +40,9 @@ type managePageData struct {
 	HeadHTML         template.HTML
 	DataLayerEnabled bool
 	DataLayerFields  template.JS
+	// Branding
+	BusinessName string
+	LogoURL      string
 }
 
 // ManagePage renders the attendee manage page for a booking (reschedule / cancel).
@@ -116,6 +119,9 @@ func (h *Handler) renderManage(w http.ResponseWriter, r *http.Request, data mana
 	data.HeadHTML = template.HTML(track.HeadHTML)
 	data.DataLayerEnabled = track.DataLayerEnabled
 	data.DataLayerFields = template.JS(dlFields)
+	brand := h.loadBranding(r.Context())
+	data.BusinessName = brand.BusinessName
+	data.LogoURL = brand.LogoURL
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Content-Security-Policy", publicCSP(track))
@@ -204,6 +210,7 @@ func (h *Handler) RescheduleByToken(w http.ResponseWriter, r *http.Request) {
 		d.BaseURL = h.publicURL()
 		d.PreviousStartAt = previousStart
 		d.PreviousEndAt = previousEnd
+		h.applyBranding(ctx, &d)
 
 		// Move the calendar event(s) to the new time (all hosts, for Group bookings).
 		h.moveCalendarEvents(ctx, bCopy.ID, bCopy.StartAt, bCopy.EndAt)

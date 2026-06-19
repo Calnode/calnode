@@ -147,29 +147,58 @@ func (s *SMTP) buildRaw(msg Message) []byte {
 	fmt.Fprintf(&buf, "Subject: %s\r\n", subject)
 	fmt.Fprintf(&buf, "MIME-Version: 1.0\r\n")
 
-	// Simple single-part message (the common case) — unchanged.
-	if len(msg.Attachments) == 0 {
-		fmt.Fprintf(&buf, "Content-Type: text/plain; charset=utf-8\r\n")
-		buf.WriteString("\r\n")
+	hasHTML := msg.HTML != ""
+	hasAtt := len(msg.Attachments) > 0
+
+	// Simplest case: plain text, no attachments — a single text/plain message.
+	if !hasHTML && !hasAtt {
+		buf.WriteString("Content-Type: text/plain; charset=utf-8\r\n\r\n")
 		buf.WriteString(msg.Text)
 		return buf.Bytes()
 	}
 
-	// multipart/mixed: text body + each attachment. The boundary is random so it
-	// can't collide with body/attachment content.
-	boundary := "calnode-" + uid.New()
-	fmt.Fprintf(&buf, "Content-Type: multipart/mixed; boundary=%q\r\n", boundary)
-	buf.WriteString("\r\n")
+	// writeBody emits the message body at the current MIME level: either a single
+	// text/plain part, or — when an HTML alternative exists — a multipart/alternative
+	// container holding the text fallback first and the HTML second (clients pick the
+	// richest they support, which is the last). Boundaries are random to avoid
+	// colliding with body content.
+	writeBody := func(b *bytes.Buffer) {
+		if !hasHTML {
+			b.WriteString("Content-Type: text/plain; charset=utf-8\r\n")
+			b.WriteString("Content-Transfer-Encoding: 8bit\r\n\r\n")
+			b.WriteString(msg.Text)
+			return
+		}
+		alt := "alt-" + uid.New()
+		fmt.Fprintf(b, "Content-Type: multipart/alternative; boundary=%q\r\n\r\n", alt)
+		fmt.Fprintf(b, "--%s\r\n", alt)
+		b.WriteString("Content-Type: text/plain; charset=utf-8\r\n")
+		b.WriteString("Content-Transfer-Encoding: 8bit\r\n\r\n")
+		b.WriteString(msg.Text)
+		b.WriteString("\r\n")
+		fmt.Fprintf(b, "--%s\r\n", alt)
+		b.WriteString("Content-Type: text/html; charset=utf-8\r\n")
+		b.WriteString("Content-Transfer-Encoding: 8bit\r\n\r\n")
+		b.WriteString(msg.HTML)
+		b.WriteString("\r\n")
+		fmt.Fprintf(b, "--%s--\r\n", alt)
+	}
 
-	fmt.Fprintf(&buf, "--%s\r\n", boundary)
-	buf.WriteString("Content-Type: text/plain; charset=utf-8\r\n")
-	buf.WriteString("Content-Transfer-Encoding: 8bit\r\n")
-	buf.WriteString("\r\n")
-	buf.WriteString(msg.Text)
-	buf.WriteString("\r\n")
+	// No attachments: the body is the whole message.
+	if !hasAtt {
+		writeBody(&buf)
+		return buf.Bytes()
+	}
 
+	// multipart/mixed: the body part (text or multipart/alternative) followed by
+	// each attachment.
+	mixed := "mixed-" + uid.New()
+	fmt.Fprintf(&buf, "Content-Type: multipart/mixed; boundary=%q\r\n\r\n", mixed)
+	fmt.Fprintf(&buf, "--%s\r\n", mixed)
+	writeBody(&buf)
+	buf.WriteString("\r\n")
 	for _, a := range msg.Attachments {
-		fmt.Fprintf(&buf, "--%s\r\n", boundary)
+		fmt.Fprintf(&buf, "--%s\r\n", mixed)
 		fmt.Fprintf(&buf, "Content-Type: %s\r\n", a.ContentType)
 		buf.WriteString("Content-Transfer-Encoding: base64\r\n")
 		fmt.Fprintf(&buf, "Content-Disposition: attachment; filename=%q\r\n", a.Filename)
@@ -177,7 +206,7 @@ func (s *SMTP) buildRaw(msg Message) []byte {
 		buf.WriteString(base64Wrap(a.Content))
 		buf.WriteString("\r\n")
 	}
-	fmt.Fprintf(&buf, "--%s--\r\n", boundary)
+	fmt.Fprintf(&buf, "--%s--\r\n", mixed)
 	return buf.Bytes()
 }
 

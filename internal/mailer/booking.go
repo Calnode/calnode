@@ -35,6 +35,33 @@ type BookingData struct {
 	// be non-decreasing across a booking's confirm→reschedule→cancel lifecycle.
 	AttachICS   bool
 	ICSSequence int
+	// Branding — instance-wide, threaded in by the handler. BrandName is the
+	// wordmark/footer name (falls back to "Calnode" when empty); LogoURL is an
+	// optional absolute https image shown in the HTML email header.
+	BrandName string
+	LogoURL   string
+	// HideManageLink suppresses the "reschedule or cancel" footer link in HTML
+	// emails. Set for host notifications — the manage token is the attendee's
+	// self-serve link, not something the host should action from email.
+	HideManageLink bool
+}
+
+// Brand is the display name for the email wordmark/footer.
+func (d BookingData) Brand() string {
+	if d.BrandName != "" {
+		return d.BrandName
+	}
+	return "Calnode"
+}
+
+// WhenFmt renders the booking time as a single human line in the organizer's
+// timezone, e.g. "Mon 22 Jun 2026, 9:00 AM – 9:20 AM NZST".
+func (d BookingData) WhenFmt() string {
+	loc, err := time.LoadLocation(d.OrganizerTimezone)
+	if err != nil {
+		loc = time.UTC
+	}
+	return d.StartAt.In(loc).Format("Mon 2 Jan 2006, 3:04 PM") + " – " + d.EndAt.In(loc).Format("3:04 PM MST")
 }
 
 // StartFmt returns StartAt formatted in the organizer's timezone.
@@ -110,6 +137,7 @@ func SendConfirmationToAttendee(ctx context.Context, m Mailer, d BookingData) er
 		To:      []string{d.OrganizerEmail},
 		Subject: d.subjectOr("Booking confirmed: " + d.EventTypeName),
 		Text:    render(confirmOrgTmpl, d),
+		HTML:    renderHTML(htmlConfirmOrg, d),
 	}
 	if d.AttachICS {
 		msg.Attachments = []Attachment{icsAttachment(d, "REQUEST")}
@@ -125,10 +153,12 @@ func SendConfirmationToHost(ctx context.Context, m Mailer, d BookingData) error 
 	if d.HostEmail == "" {
 		return nil
 	}
+	d.HideManageLink = true
 	msg := Message{
 		To:      []string{d.HostEmail},
 		Subject: "New booking: " + d.EventTypeName + " with " + d.OrganizerName,
 		Text:    render(confirmHostTmpl, d),
+		HTML:    renderHTML(htmlConfirmHost, d),
 	}
 	if d.AttachICS {
 		msg.Attachments = []Attachment{icsAttachment(d, "REQUEST")}
@@ -165,6 +195,7 @@ func SendCancellationToAttendee(ctx context.Context, m Mailer, d BookingData) er
 		To:      []string{d.OrganizerEmail},
 		Subject: d.subjectOr("Booking cancelled: " + d.EventTypeName),
 		Text:    render(cancelOrgTmpl, d),
+		HTML:    renderHTML(htmlCancelOrg, d),
 	}
 	if d.AttachICS {
 		msg.Attachments = []Attachment{icsAttachment(d, "CANCEL")}
@@ -180,10 +211,12 @@ func SendCancellationToHost(ctx context.Context, m Mailer, d BookingData) error 
 	if d.HostEmail == "" {
 		return nil
 	}
+	d.HideManageLink = true
 	msg := Message{
 		To:      []string{d.HostEmail},
 		Subject: "Booking cancelled: " + d.EventTypeName + " with " + d.OrganizerName,
 		Text:    render(cancelHostTmpl, d),
+		HTML:    renderHTML(htmlCancelHost, d),
 	}
 	if d.AttachICS {
 		msg.Attachments = []Attachment{icsAttachment(d, "CANCEL")}
@@ -218,6 +251,7 @@ func SendRescheduleToAttendee(ctx context.Context, m Mailer, d BookingData) erro
 		To:      []string{d.OrganizerEmail},
 		Subject: d.subjectOr("Booking rescheduled: " + d.EventTypeName),
 		Text:    render(rescheduleOrgTmpl, d),
+		HTML:    renderHTML(htmlRescheduleOrg, d),
 	}
 	if d.AttachICS {
 		msg.Attachments = []Attachment{icsAttachment(d, "REQUEST")}
@@ -233,10 +267,12 @@ func SendRescheduleToHost(ctx context.Context, m Mailer, d BookingData) error {
 	if d.HostEmail == "" {
 		return nil
 	}
+	d.HideManageLink = true
 	msg := Message{
 		To:      []string{d.HostEmail},
 		Subject: "Booking rescheduled: " + d.EventTypeName + " with " + d.OrganizerName,
 		Text:    render(rescheduleHostTmpl, d),
+		HTML:    renderHTML(htmlRescheduleHost, d),
 	}
 	if d.AttachICS {
 		msg.Attachments = []Attachment{icsAttachment(d, "REQUEST")}
@@ -270,6 +306,7 @@ func SendReminder(ctx context.Context, m Mailer, d BookingData) error {
 		To:      []string{d.OrganizerEmail},
 		Subject: d.subjectOr("Reminder: " + d.EventTypeName + " is coming up"),
 		Text:    render(reminderOrgTmpl, d),
+		HTML:    renderHTML(htmlReminderOrg, d),
 	}); err != nil {
 		return fmt.Errorf("mailer: reminder: %w", err)
 	}
@@ -277,20 +314,25 @@ func SendReminder(ctx context.Context, m Mailer, d BookingData) error {
 }
 
 // RenderBody renders the attendee-facing email for emailType and returns the
-// subject and plain-text body. Returns ok=false for unrecognised emailType values.
-// Valid types: "confirmation", "cancellation", "reschedule", "reminder".
-func RenderBody(emailType string, d BookingData) (subject, body string, ok bool) {
+// subject, plain-text body, and HTML body. Returns ok=false for unrecognised
+// emailType values. Valid types: "confirmation", "cancellation", "reschedule",
+// "reminder".
+func RenderBody(emailType string, d BookingData) (subject, body, html string, ok bool) {
+	var def string
+	var textTmpl *template.Template
 	switch emailType {
 	case "confirmation":
-		return d.subjectOr("Booking confirmed: " + d.EventTypeName), render(confirmOrgTmpl, d), true
+		def, textTmpl = "Booking confirmed: "+d.EventTypeName, confirmOrgTmpl
 	case "cancellation":
-		return d.subjectOr("Booking cancelled: " + d.EventTypeName), render(cancelOrgTmpl, d), true
+		def, textTmpl = "Booking cancelled: "+d.EventTypeName, cancelOrgTmpl
 	case "reschedule":
-		return d.subjectOr("Booking rescheduled: " + d.EventTypeName), render(rescheduleOrgTmpl, d), true
+		def, textTmpl = "Booking rescheduled: "+d.EventTypeName, rescheduleOrgTmpl
 	case "reminder":
-		return d.subjectOr("Reminder: " + d.EventTypeName + " is coming up"), render(reminderOrgTmpl, d), true
+		def, textTmpl = "Reminder: "+d.EventTypeName+" is coming up", reminderOrgTmpl
+	default:
+		return "", "", "", false
 	}
-	return "", "", false
+	return d.subjectOr(def), render(textTmpl, d), renderHTML(htmlByType(emailType), d), true
 }
 
 func render(t *template.Template, d BookingData) string {

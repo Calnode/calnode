@@ -47,6 +47,9 @@ type bookPageData struct {
 	DataLayerEnabled bool
 	DataLayerFields  template.JS // JSON array of enabled dataLayer field keys
 	QuestionsJSON    template.JS // {questionID: label} map for labelling answers in dataLayer
+	// Branding
+	BusinessName string
+	LogoURL      string
 }
 
 // hostDisplay is one host's identity for the public booking page.
@@ -256,6 +259,7 @@ func (h *Handler) BookPage(w http.ResponseWriter, r *http.Request) {
 		hosts[i].Z = (len(hosts) - i) * 10
 	}
 	track := h.loadTrackingSettings(r.Context())
+	brand := h.loadBranding(r.Context())
 	dlFields, _ := json.Marshal(track.DataLayerFields)
 	qmap := make(map[string]string, len(questions))
 	for _, q := range questions {
@@ -281,6 +285,9 @@ func (h *Handler) BookPage(w http.ResponseWriter, r *http.Request) {
 		DataLayerEnabled: track.DataLayerEnabled,
 		DataLayerFields:  template.JS(dlFields),
 		QuestionsJSON:    template.JS(qjson),
+
+		BusinessName: brand.BusinessName,
+		LogoURL:      brand.LogoURL,
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")

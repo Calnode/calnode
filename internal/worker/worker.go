@@ -292,6 +292,11 @@ func (w *Worker) sendReminder(ctx context.Context, payload string) error {
 		return fmt.Errorf("worker: reminder: load organizer: %w", orgErr)
 	}
 
+	// Brand the reminder email with the instance wordmark/logo.
+	_ = w.db.QueryRowContext(ctx, `
+		SELECT COALESCE(business_name,''), COALESCE(logo_url,'')
+		FROM server_settings WHERE id = 1`).Scan(&d.BrandName, &d.LogoURL)
+
 	if err := mailer.SendReminder(ctx, w.mailer, d); err != nil {
 		return fmt.Errorf("worker: reminder: send: %w", err)
 	}
