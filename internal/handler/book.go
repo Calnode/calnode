@@ -51,6 +51,7 @@ type bookPageData struct {
 	BusinessName string
 	LogoURL      string
 	LogoHeight   int
+	LogoOpacity  string // CSS opacity value, e.g. "1" or "0.6"
 }
 
 // hostDisplay is one host's identity for the public booking page.
@@ -290,6 +291,7 @@ func (h *Handler) BookPage(w http.ResponseWriter, r *http.Request) {
 		BusinessName: brand.BusinessName,
 		LogoURL:      brand.LogoURL,
 		LogoHeight:   pageLogoHeight(brand.LogoHeight),
+		LogoOpacity:  opacityCSS(brand.LogoOpacity),
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")

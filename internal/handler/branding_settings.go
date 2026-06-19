@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -30,16 +31,21 @@ type brandingSettings struct {
 	BusinessName string
 	LogoURL      string // served path (relative), e.g. "/branding/logo?v=123"; empty = no logo
 	LogoHeight   int    // email logo height in px (pages scale up); see pageLogoHeight
+	LogoOpacity  int    // 20–100; CSS opacity for a subtle logo. 100 = fully opaque
 }
 
 // loadBranding reads the brand identity from the singleton settings row.
 func (h *Handler) loadBranding(ctx context.Context) brandingSettings {
 	var b brandingSettings
 	_ = h.db.QueryRowContext(ctx, `
-		SELECT COALESCE(business_name,''), COALESCE(logo_url,''), COALESCE(logo_height,28)
-		FROM server_settings WHERE id = 1`).Scan(&b.BusinessName, &b.LogoURL, &b.LogoHeight)
+		SELECT COALESCE(business_name,''), COALESCE(logo_url,''),
+		       COALESCE(logo_height,28), COALESCE(logo_opacity,100)
+		FROM server_settings WHERE id = 1`).Scan(&b.BusinessName, &b.LogoURL, &b.LogoHeight, &b.LogoOpacity)
 	if b.LogoHeight <= 0 {
 		b.LogoHeight = 28
+	}
+	if b.LogoOpacity <= 0 || b.LogoOpacity > 100 {
+		b.LogoOpacity = 100
 	}
 	return b
 }
@@ -53,6 +59,14 @@ func pageLogoHeight(emailPx int) int {
 	return (emailPx*13 + 5) / 10
 }
 
+// opacityCSS turns a 20–100 percentage into a CSS opacity value ("1", "0.6", …).
+func opacityCSS(pct int) string {
+	if pct <= 0 || pct > 100 {
+		pct = 100
+	}
+	return strconv.FormatFloat(float64(pct)/100, 'f', -1, 64)
+}
+
 // applyBranding stamps the instance brand identity onto booking email data so
 // every outbound email carries the configured wordmark/logo. The logo is stored
 // as a relative path; emails need an absolute URL, so it's prefixed with the
@@ -61,6 +75,7 @@ func (h *Handler) applyBranding(ctx context.Context, d *mailer.BookingData) {
 	b := h.loadBranding(ctx)
 	d.BrandName = b.BusinessName
 	d.LogoHeight = b.LogoHeight
+	d.LogoOpacity = b.LogoOpacity
 	if strings.HasPrefix(b.LogoURL, "/") {
 		d.LogoURL = h.publicURL() + b.LogoURL
 	} else {
@@ -80,6 +95,7 @@ func (h *Handler) GetBranding(w http.ResponseWriter, r *http.Request) {
 		"business_name": b.BusinessName,
 		"logo_url":      b.LogoURL,
 		"logo_height":   b.LogoHeight,
+		"logo_opacity":  b.LogoOpacity,
 	})
 }
 
@@ -95,6 +111,7 @@ func (h *Handler) PatchBranding(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		BusinessName string `json:"business_name"`
 		LogoHeight   int    `json:"logo_height"`
+		LogoOpacity  int    `json:"logo_opacity"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.writeError(w, http.StatusBadRequest, "invalid JSON")
@@ -115,9 +132,19 @@ func (h *Handler) PatchBranding(w http.ResponseWriter, r *http.Request) {
 	if req.LogoHeight > 64 {
 		req.LogoHeight = 64
 	}
+	// Clamp opacity to 20–100; 0/omitted falls back to fully opaque.
+	if req.LogoOpacity <= 0 {
+		req.LogoOpacity = 100
+	}
+	if req.LogoOpacity < 20 {
+		req.LogoOpacity = 20
+	}
+	if req.LogoOpacity > 100 {
+		req.LogoOpacity = 100
+	}
 	if _, err := h.db.ExecContext(r.Context(), `
-		UPDATE server_settings SET business_name = ?, logo_height = ?, updated_at = datetime('now')
-		WHERE id = 1`, req.BusinessName, req.LogoHeight); err != nil {
+		UPDATE server_settings SET business_name = ?, logo_height = ?, logo_opacity = ?, updated_at = datetime('now')
+		WHERE id = 1`, req.BusinessName, req.LogoHeight, req.LogoOpacity); err != nil {
 		h.logger.ErrorContext(r.Context(), "branding settings: update", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal error")
 		return

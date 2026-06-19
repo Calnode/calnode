@@ -10,7 +10,7 @@
 	import { saveOnCmdS } from '$lib/save-shortcut';
 	import type CropperType from 'cropperjs';
 
-	type Branding = { business_name: string; logo_url: string; logo_height: number };
+	type Branding = { business_name: string; logo_url: string; logo_height: number; logo_opacity: number };
 
 	let loading = $state(true);
 	let saving = $state(false);
@@ -18,6 +18,7 @@
 	let businessName = $state('');
 	let logoUrl = $state('');
 	let logoHeight = $state(28);
+	let logoOpacity = $state(100);
 	let fileInput: HTMLInputElement | undefined = $state();
 
 	// Crop dialog — Cropper is lazy-loaded client-side only to avoid SSR failures.
@@ -51,6 +52,7 @@
 			businessName = b.business_name ?? '';
 			logoUrl = b.logo_url ?? '';
 			logoHeight = b.logo_height || 28;
+			logoOpacity = b.logo_opacity || 100;
 		} catch (e: any) {
 			toast.error(e.message || 'Could not load branding settings');
 		} finally {
@@ -120,10 +122,12 @@
 		try {
 			const b = await api.patch<Branding>('/v1/settings/branding', {
 				business_name: businessName,
-				logo_height: logoHeight
+				logo_height: logoHeight,
+				logo_opacity: logoOpacity
 			});
 			businessName = b.business_name ?? '';
 			logoHeight = b.logo_height || 28;
+			logoOpacity = b.logo_opacity || 100;
 			toast.success('Branding saved');
 		} catch (e: any) {
 			toast.error(e.message || 'Could not save branding settings');
@@ -165,7 +169,7 @@
 					class="group relative flex min-h-[88px] w-full max-w-md cursor-pointer items-center justify-center overflow-hidden rounded-md border bg-white px-4 py-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-wait"
 				>
 					{#if logoUrl}
-						<img src={logoUrl} alt="Logo" style="height:{logoHeight}px;width:auto;" />
+						<img src={logoUrl} alt="Logo" style="height:{logoHeight}px;width:auto;opacity:{logoOpacity / 100};" />
 					{:else}
 						<span class="text-sm text-muted-foreground">Click to upload a logo</span>
 					{/if}
@@ -175,19 +179,24 @@
 				</button>
 
 				{#if logoUrl}
-					<div class="flex max-w-md items-center gap-4">
-						<div class="flex flex-1 items-center gap-3">
-							<span class="w-8 text-xs font-medium text-muted-foreground">Size</span>
+					<div class="max-w-md space-y-3">
+						<div class="flex items-center gap-3">
+							<span class="w-14 text-xs font-medium text-muted-foreground">Size</span>
 							<input type="range" min="16" max="64" step="1" bind:value={logoHeight} class="flex-1 accent-primary" />
 							<span class="w-10 text-right text-xs tabular-nums text-muted-foreground">{logoHeight}px</span>
 						</div>
-						<Button type="button" variant="ghost" size="sm" onclick={removeLogo} class="text-destructive hover:text-destructive">Remove</Button>
+						<div class="flex items-center gap-3">
+							<span class="w-14 text-xs font-medium text-muted-foreground">Opacity</span>
+							<input type="range" min="20" max="100" step="1" bind:value={logoOpacity} class="flex-1 accent-primary" />
+							<span class="w-10 text-right text-xs tabular-nums text-muted-foreground">{logoOpacity}%</span>
+						</div>
+						<Button type="button" variant="ghost" size="sm" onclick={removeLogo} class="text-destructive hover:text-destructive">Remove logo</Button>
 					</div>
 				{/if}
 
 				<p class="text-xs text-muted-foreground">
 					Click the box to upload. PNG with a transparent background works best, on a light background. Any
-					shape — you can crop it next. Max 5 MB. Drag the size slider (preview updates live), then Save.
+					shape — you can crop it next. Max 5 MB. Adjust size and opacity (preview updates live), then Save.
 				</p>
 			</div>
 		</div>

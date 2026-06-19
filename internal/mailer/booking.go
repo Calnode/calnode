@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"strconv"
 	"text/template"
 	"time"
 )
@@ -38,9 +39,10 @@ type BookingData struct {
 	// Branding — instance-wide, threaded in by the handler. BrandName is the
 	// wordmark/footer name (falls back to "Calnode" when empty); LogoURL is an
 	// optional absolute https image shown in the HTML email header.
-	BrandName  string
-	LogoURL    string
-	LogoHeight int // email logo height in px; falls back to 28 (LogoPx)
+	BrandName   string
+	LogoURL     string
+	LogoHeight  int // email logo height in px; falls back to 28 (LogoPx)
+	LogoOpacity int // 20–100; CSS opacity for a subtle logo. 0/unset = 100 (opaque)
 	// HideManageLink suppresses the "reschedule or cancel" footer link in HTML
 	// emails. Set for host notifications — the manage token is the attendee's
 	// self-serve link, not something the host should action from email.
@@ -61,6 +63,16 @@ func (d BookingData) LogoPx() int {
 		return d.LogoHeight
 	}
 	return 28
+}
+
+// LogoOpacityCSS returns the logo opacity as a CSS value ("1", "0.6", …),
+// defaulting to fully opaque when unset.
+func (d BookingData) LogoOpacityCSS() string {
+	o := d.LogoOpacity
+	if o <= 0 || o > 100 {
+		o = 100
+	}
+	return strconv.FormatFloat(float64(o)/100, 'f', -1, 64)
 }
 
 // WhenFmt renders the booking time as a single human line in the organizer's
