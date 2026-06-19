@@ -263,6 +263,13 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	mux.Handle("GET /admin", http.RedirectHandler("/admin/", http.StatusMovedPermanently))
 	mux.Handle("/admin/", http.StripPrefix("/admin", adminSPA))
 
+	// Bare root → admin. The `{$}` anchor matches ONLY the exact path "/", so it
+	// stays a no-op for every other unmatched path (those still 404). Public
+	// visitors always arrive via a full /book/{slug} link, so this only affects
+	// an operator landing on the domain root. 302 (not 301) so it isn't cached
+	// permanently if a marketing landing page is ever added here.
+	mux.Handle("GET /{$}", http.RedirectHandler("/admin/", http.StatusFound))
+
 	return RequestID(Logging(logger, SameOriginCheck(mux))), drain
 }
 
