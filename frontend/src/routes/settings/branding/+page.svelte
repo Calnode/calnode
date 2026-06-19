@@ -12,18 +12,12 @@
 
 	type Branding = { business_name: string; logo_url: string; logo_height: number };
 
-	const SIZES = [
-		{ label: 'Small', px: 22 },
-		{ label: 'Medium', px: 30 },
-		{ label: 'Large', px: 40 }
-	];
-
 	let loading = $state(true);
 	let saving = $state(false);
 	let uploading = $state(false);
 	let businessName = $state('');
 	let logoUrl = $state('');
-	let logoHeight = $state(22);
+	let logoHeight = $state(28);
 	let fileInput: HTMLInputElement | undefined = $state();
 
 	// Crop dialog — Cropper is lazy-loaded client-side only to avoid SSR failures.
@@ -56,7 +50,7 @@
 			const b = await api.get<Branding>('/v1/settings/branding');
 			businessName = b.business_name ?? '';
 			logoUrl = b.logo_url ?? '';
-			logoHeight = b.logo_height || 22;
+			logoHeight = b.logo_height || 28;
 		} catch (e: any) {
 			toast.error(e.message || 'Could not load branding settings');
 		} finally {
@@ -129,7 +123,7 @@
 				logo_height: logoHeight
 			});
 			businessName = b.business_name ?? '';
-			logoHeight = b.logo_height || 22;
+			logoHeight = b.logo_height || 28;
 			toast.success('Branding saved');
 		} catch (e: any) {
 			toast.error(e.message || 'Could not save branding settings');
@@ -160,48 +154,40 @@
 				<p class="text-xs text-muted-foreground">Used where there's no logo. Falls back to “Calnode” if left blank.</p>
 			</div>
 
-			<div class="mt-5 space-y-2">
+			<div class="mt-5 space-y-3">
 				<Label>Logo</Label>
-				<div class="flex items-center gap-4">
-					<input bind:this={fileInput} type="file" accept="image/jpeg,image/png,image/gif,image/webp" class="hidden" onchange={onFileChange} />
-					<button
-						type="button"
-						onclick={() => fileInput?.click()}
-						disabled={uploading}
-						title={logoUrl ? 'Replace logo' : 'Upload logo'}
-						class="group relative flex h-16 w-44 cursor-pointer items-center justify-center overflow-hidden rounded-md border bg-white px-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-wait"
-					>
-						{#if logoUrl}
-							<img src={logoUrl} alt="Logo" style="height:{logoHeight}px;max-width:100%;" />
-						{:else}
-							<span class="text-xs text-muted-foreground">Click to upload</span>
-						{/if}
-						<div class="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
-							<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
-						</div>
-					</button>
+				<input bind:this={fileInput} type="file" accept="image/jpeg,image/png,image/gif,image/webp" class="hidden" onchange={onFileChange} />
+				<button
+					type="button"
+					onclick={() => fileInput?.click()}
+					disabled={uploading}
+					title={logoUrl ? 'Replace logo' : 'Upload logo'}
+					class="group relative flex min-h-[88px] w-full max-w-md cursor-pointer items-center justify-center overflow-hidden rounded-md border bg-white px-4 py-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-wait"
+				>
 					{#if logoUrl}
-						<Button type="button" variant="ghost" size="sm" onclick={removeLogo} class="text-destructive hover:text-destructive">Remove</Button>
+						<img src={logoUrl} alt="Logo" style="height:{logoHeight}px;width:auto;" />
+					{:else}
+						<span class="text-sm text-muted-foreground">Click to upload a logo</span>
 					{/if}
-				</div>
+					<div class="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
+						<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+					</div>
+				</button>
 
 				{#if logoUrl}
-					<div class="pt-1">
-						<p class="mb-1.5 text-xs font-medium text-muted-foreground">Size <span class="font-normal">(preview above updates live)</span></p>
-						<div class="inline-flex gap-1">
-							{#each SIZES as s}
-								<button type="button" onclick={() => (logoHeight = s.px)}
-									class="rounded-md border px-3 py-1 text-xs transition-colors {logoHeight === s.px ? 'border-primary bg-primary/10 font-medium text-foreground' : 'text-muted-foreground hover:bg-muted'}">
-									{s.label}
-								</button>
-							{/each}
+					<div class="flex max-w-md items-center gap-4">
+						<div class="flex flex-1 items-center gap-3">
+							<span class="w-8 text-xs font-medium text-muted-foreground">Size</span>
+							<input type="range" min="16" max="64" step="1" bind:value={logoHeight} class="flex-1 accent-primary" />
+							<span class="w-10 text-right text-xs tabular-nums text-muted-foreground">{logoHeight}px</span>
 						</div>
+						<Button type="button" variant="ghost" size="sm" onclick={removeLogo} class="text-destructive hover:text-destructive">Remove</Button>
 					</div>
 				{/if}
 
 				<p class="text-xs text-muted-foreground">
 					Click the box to upload. PNG with a transparent background works best, on a light background. Any
-					shape — you can crop it next. Max 5 MB. Pick a display size, then Save.
+					shape — you can crop it next. Max 5 MB. Drag the size slider (preview updates live), then Save.
 				</p>
 			</div>
 		</div>

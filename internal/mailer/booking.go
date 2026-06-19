@@ -40,7 +40,7 @@ type BookingData struct {
 	// optional absolute https image shown in the HTML email header.
 	BrandName  string
 	LogoURL    string
-	LogoHeight int // email logo height in px; falls back to 22 (LogoPx)
+	LogoHeight int // email logo height in px; falls back to 28 (LogoPx)
 	// HideManageLink suppresses the "reschedule or cancel" footer link in HTML
 	// emails. Set for host notifications — the manage token is the attendee's
 	// self-serve link, not something the host should action from email.
@@ -55,12 +55,12 @@ func (d BookingData) Brand() string {
 	return "Calnode"
 }
 
-// LogoPx is the email logo height in px, defaulting to 22 (small) when unset.
+// LogoPx is the email logo height in px, defaulting to 28 when unset.
 func (d BookingData) LogoPx() int {
 	if d.LogoHeight > 0 {
 		return d.LogoHeight
 	}
-	return 22
+	return 28
 }
 
 // WhenFmt renders the booking time as a single human line in the organizer's

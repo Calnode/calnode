@@ -36,10 +36,10 @@ type brandingSettings struct {
 func (h *Handler) loadBranding(ctx context.Context) brandingSettings {
 	var b brandingSettings
 	_ = h.db.QueryRowContext(ctx, `
-		SELECT COALESCE(business_name,''), COALESCE(logo_url,''), COALESCE(logo_height,22)
+		SELECT COALESCE(business_name,''), COALESCE(logo_url,''), COALESCE(logo_height,28)
 		FROM server_settings WHERE id = 1`).Scan(&b.BusinessName, &b.LogoURL, &b.LogoHeight)
 	if b.LogoHeight <= 0 {
-		b.LogoHeight = 22
+		b.LogoHeight = 28
 	}
 	return b
 }
@@ -48,7 +48,7 @@ func (h *Handler) loadBranding(ctx context.Context) brandingSettings {
 // booking/manage page headers.
 func pageLogoHeight(emailPx int) int {
 	if emailPx <= 0 {
-		emailPx = 22
+		emailPx = 28
 	}
 	return (emailPx*13 + 5) / 10
 }
@@ -107,7 +107,7 @@ func (h *Handler) PatchBranding(w http.ResponseWriter, r *http.Request) {
 	}
 	// Clamp logo height to a sane range; 0/omitted falls back to the small default.
 	if req.LogoHeight <= 0 {
-		req.LogoHeight = 22
+		req.LogoHeight = 28
 	}
 	if req.LogoHeight < 16 {
 		req.LogoHeight = 16

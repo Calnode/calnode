@@ -18,7 +18,7 @@ const htmlLayout = `{{define "layout"}}<!doctype html>
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;"><tr><td align="center" style="padding:24px 12px;">
 <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;max-width:480px;background:#ffffff;border:1px solid #e4e4e7;border-radius:8px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
 {{if .LogoURL}}<tr><td align="center" style="padding:18px 24px;border-bottom:1px solid #e4e4e7;text-align:center;">
-<img src="{{.LogoURL}}" alt="{{.Brand}}" height="{{.LogoPx}}" style="height:{{.LogoPx}}px;max-height:{{.LogoPx}}px;max-width:80%;display:inline-block;border:0;">
+<img src="{{.LogoURL}}" alt="{{.Brand}}" height="{{.LogoPx}}" style="height:{{.LogoPx}}px;width:auto;max-width:100%;display:inline-block;border:0;">
 </td></tr>{{end}}
 <tr><td style="padding:24px;color:#18181b;font-size:15px;line-height:1.6;">
 {{template "content" .}}

@@ -311,7 +311,7 @@ body {
 
 {{if or .LogoURL .BusinessName}}
 <header style="text-align:center;padding:24px 16px 4px;">
-  {{if .LogoURL}}<img src="{{.LogoURL}}" alt="{{.BusinessName}}" style="height:{{.LogoHeight}}px;max-height:{{.LogoHeight}}px;display:inline-block;border:0;">{{else}}<span style="font-size:.9375rem;font-weight:600;color:#111827;">{{.BusinessName}}</span>{{end}}
+  {{if .LogoURL}}<img src="{{.LogoURL}}" alt="{{.BusinessName}}" style="height:{{.LogoHeight}}px;width:auto;max-width:100%;display:inline-block;border:0;">{{else}}<span style="font-size:.9375rem;font-weight:600;color:#111827;">{{.BusinessName}}</span>{{end}}
 </header>
 {{end}}
 
