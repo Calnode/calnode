@@ -154,7 +154,12 @@
 				{#each items as et}
 					<tr class="transition-colors hover:bg-muted/30">
 						<td class="px-4 py-3">
-							<div class="font-medium">{et.name}</div>
+							<div class="flex items-center gap-2">
+								<span class="font-medium">{et.name}</span>
+								{#if et.owned === false}
+									<Badge variant="secondary" class="text-[10px]">You host</Badge>
+								{/if}
+							</div>
 							<div class="text-xs text-muted-foreground">{et.slug}</div>
 						</td>
 						<td class="px-4 py-3 text-muted-foreground">{et.duration_minutes} min</td>
@@ -173,7 +178,7 @@
 							</Tooltip.Provider>
 						</td>
 						<td class="px-4 py-3">
-							<Switch bind:checked={et.is_active} onCheckedChange={(v) => saveActive(et, v)} />
+							<Switch bind:checked={et.is_active} onCheckedChange={(v) => saveActive(et, v)} disabled={et.owned === false} />
 						</td>
 						<td class="px-4 py-3">
 							<Tooltip.Provider>
@@ -189,16 +194,18 @@
 										<Tooltip.Content>Settings</Tooltip.Content>
 									</Tooltip.Root>
 
-									<Tooltip.Root>
-										<Tooltip.Trigger
-											class={buttonVariants({ variant: 'ghost', size: 'icon' })}
-											onclick={() => del(et.slug)}
-										>
-											<!-- Trash icon -->
-											<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
-										</Tooltip.Trigger>
-										<Tooltip.Content>Delete</Tooltip.Content>
-									</Tooltip.Root>
+									{#if et.owned !== false}
+										<Tooltip.Root>
+											<Tooltip.Trigger
+												class={buttonVariants({ variant: 'ghost', size: 'icon' })}
+												onclick={() => del(et.slug)}
+											>
+												<!-- Trash icon -->
+												<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+											</Tooltip.Trigger>
+											<Tooltip.Content>Delete</Tooltip.Content>
+										</Tooltip.Root>
+									{/if}
 								</div>
 							</Tooltip.Provider>
 						</td>

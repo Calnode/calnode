@@ -454,6 +454,8 @@
 
 	onMount(async () => {
 		await loadET();
+		// Editor-only data (owner-scoped endpoints) — skip for read-only hosts.
+		if (et?.owned === false) return;
 		loadQuestions();
 		if (hostScope === 'people') {
 			await loadHosts();
@@ -523,6 +525,25 @@
 	<p class="py-8 text-sm text-muted-foreground">Loading…</p>
 {:else if etError}
 	<p class="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{etError}</p>
+{:else if et && et.owned === false}
+
+<!-- Read-only: the user hosts this event type but doesn't own it -->
+<div class="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+	You're a <span class="font-medium">host</span> on this event type. Only its owner can change it —
+	message them to request edits.
+</div>
+<div class="rounded-lg border bg-card p-6">
+	<dl class="grid grid-cols-[140px_1fr] gap-x-4 gap-y-3 text-sm">
+		<dt class="text-muted-foreground">Name</dt><dd class="font-medium">{et.name}</dd>
+		{#if et.description}<dt class="text-muted-foreground">Description</dt><dd class="whitespace-pre-line">{et.description}</dd>{/if}
+		<dt class="text-muted-foreground">Duration</dt><dd>{et.duration_minutes} min</dd>
+		<dt class="text-muted-foreground">Location</dt><dd>{LOCATION_TYPES.find((l) => l.value === et?.location_type)?.label ?? et.location_type}{#if et.location_value} · {et.location_value}{/if}</dd>
+		<dt class="text-muted-foreground">Routing</dt><dd class="capitalize">{et.routing_mode.replace('_', ' ')}</dd>
+		<dt class="text-muted-foreground">Status</dt><dd>{et.is_active ? 'Active' : 'Inactive'} · {et.is_public ? 'Listed' : 'Unlisted (link only)'}</dd>
+		<dt class="text-muted-foreground">Booking page</dt><dd><a href="/book/{et.slug}" target="_blank" rel="noopener" class="text-primary underline">/book/{et.slug}</a></dd>
+	</dl>
+</div>
+
 {:else}
 
 <!-- General Settings -->

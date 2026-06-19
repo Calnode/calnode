@@ -46,6 +46,8 @@ export type EventType = {
 	reminders: number[]; // hours_before values
 	routing_mode: 'fixed' | 'round_robin' | 'collective';
 	rr_strategy: 'even' | 'soonest' | 'priority';
+	/** True if the current user owns this event type; false if they only host it (read-only). */
+	owned?: boolean;
 };
 
 export type EventTypeHost = {

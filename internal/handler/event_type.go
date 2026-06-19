@@ -45,6 +45,9 @@ type eventTypeJSON struct {
 	SubjReschedule      *string  `json:"subj_reschedule"`
 	SubjReminder        *string  `json:"subj_reminder"`
 	Reminders           []int    `json:"reminders"` // hours_before values
+	// Owned is true when the requesting user owns this event type; false when they
+	// only see it as an assigned host (read-only — only the owner can edit).
+	Owned bool `json:"owned"`
 }
 
 type rowScanner interface {
@@ -52,12 +55,18 @@ type rowScanner interface {
 }
 
 func scanEventType(s rowScanner) (*eventTypeJSON, error) {
+	return scanEventTypeRow(s)
+}
+
+// scanEventTypeRow scans the base event-type columns, plus any `trailing` dest
+// pointers (e.g. the computed `owned` column from the list/get queries).
+func scanEventTypeRow(s rowScanner, trailing ...any) (*eventTypeJSON, error) {
 	var et eventTypeJSON
 	var desc, locVal, msgConf, msgCancel, msgResched, msgRemind sql.NullString
 	var subjConf, subjCancel, subjResched, subjRemind sql.NullString
 	var isActive, isPublic int
 
-	err := s.Scan(
+	dests := []any{
 		&et.ID, &et.Slug, &et.Name, &desc,
 		&et.DurationMinutes, &et.SlotIntervalMinutes,
 		&et.LocationType, &locVal,
@@ -67,7 +76,9 @@ func scanEventType(s rowScanner) (*eventTypeJSON, error) {
 		&isActive, &isPublic, &et.CreatedAt,
 		&msgConf, &msgCancel, &msgResched, &msgRemind,
 		&subjConf, &subjCancel, &subjResched, &subjRemind,
-	)
+	}
+	dests = append(dests, trailing...)
+	err := s.Scan(dests...)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -110,7 +121,7 @@ func scanEventType(s rowScanner) (*eventTypeJSON, error) {
 	return &et, nil
 }
 
-const selectETCols = `SELECT id, slug, name, description,
+const etColumns = `id, slug, name, description,
 	duration_minutes, slot_interval_minutes,
 	location_type, location_value,
 	routing_mode, rr_strategy,
@@ -118,8 +129,25 @@ const selectETCols = `SELECT id, slug, name, description,
 	min_notice_minutes, max_future_days, max_active_bookings,
 	is_active, is_public, created_at,
 	msg_confirmation, msg_cancellation, msg_reschedule, msg_reminder,
-	subj_confirmation, subj_cancellation, subj_reschedule, subj_reminder
-FROM event_types`
+	subj_confirmation, subj_cancellation, subj_reschedule, subj_reminder`
+
+// selectETCols fetches a single owner-scoped event type (no `owned` column).
+const selectETCols = "SELECT " + etColumns + " FROM event_types"
+
+// listEventTypesQuery returns every event type the user owns OR is an assigned
+// host on, with an `owned` flag (the owner is also seeded into event_type_hosts,
+// so ownership is keyed on event_types.user_id, not host membership).
+const listEventTypesQuery = "SELECT " + etColumns + `, (user_id = ?) AS owned
+FROM event_types
+WHERE user_id = ?
+   OR id IN (SELECT event_type_id FROM event_type_hosts WHERE user_id = ?)
+ORDER BY created_at`
+
+// getEventTypeQuery fetches one event type by slug if the user owns it or hosts
+// it, with the `owned` flag so the UI can render non-owners read-only.
+const getEventTypeQuery = "SELECT " + etColumns + `, (user_id = ?) AS owned
+FROM event_types
+WHERE slug = ? AND (user_id = ? OR id IN (SELECT event_type_id FROM event_type_hosts WHERE user_id = ?))`
 
 // loadReminders fetches the hours_before list for an event type and sets et.Reminders.
 func (h *Handler) loadReminders(ctx context.Context, etID string, et *eventTypeJSON) error {
@@ -267,6 +295,7 @@ func (h *Handler) CreateEventType(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+	et.Owned = true // the creator owns it
 	h.writeJSON(w, http.StatusCreated, et)
 }
 
@@ -274,8 +303,7 @@ func (h *Handler) CreateEventType(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) ListEventTypes(w http.ResponseWriter, r *http.Request) {
 	user, _ := userFromContext(r.Context())
 
-	rows, err := h.db.QueryContext(r.Context(),
-		selectETCols+" WHERE user_id = ? ORDER BY created_at", user.ID)
+	rows, err := h.db.QueryContext(r.Context(), listEventTypesQuery, user.ID, user.ID, user.ID)
 	if err != nil {
 		h.logger.ErrorContext(r.Context(), "list event types", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal error")
@@ -285,12 +313,14 @@ func (h *Handler) ListEventTypes(w http.ResponseWriter, r *http.Request) {
 
 	items := make([]eventTypeJSON, 0)
 	for rows.Next() {
-		et, err := scanEventType(rows)
+		var owned int
+		et, err := scanEventTypeRow(rows, &owned)
 		if err != nil {
 			h.logger.ErrorContext(r.Context(), "scan event type", "error", err)
 			h.writeError(w, http.StatusInternalServerError, "internal error")
 			return
 		}
+		et.Owned = owned != 0
 		items = append(items, *et)
 	}
 	if err := rows.Err(); err != nil {
@@ -306,9 +336,9 @@ func (h *Handler) GetEventType(w http.ResponseWriter, r *http.Request) {
 	user, _ := userFromContext(r.Context())
 	slug := r.PathValue("slug")
 
-	row := h.db.QueryRowContext(r.Context(),
-		selectETCols+" WHERE slug = ? AND user_id = ?", slug, user.ID)
-	et, err := scanEventType(row)
+	var owned int
+	row := h.db.QueryRowContext(r.Context(), getEventTypeQuery, user.ID, slug, user.ID, user.ID)
+	et, err := scanEventTypeRow(row, &owned)
 	if err != nil {
 		h.logger.ErrorContext(r.Context(), "get event type", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal error")
@@ -318,6 +348,7 @@ func (h *Handler) GetEventType(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusNotFound, "event type not found")
 		return
 	}
+	et.Owned = owned != 0
 	if err := h.loadReminders(r.Context(), et.ID, et); err != nil {
 		h.logger.ErrorContext(r.Context(), "get event type: load reminders", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal error")
@@ -568,6 +599,7 @@ func (h *Handler) PatchEventType(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+	et.Owned = true // only the owner can patch
 	h.writeJSON(w, http.StatusOK, et)
 }
 
