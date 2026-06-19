@@ -29,15 +29,28 @@ const logoServePath = "/branding/logo"
 type brandingSettings struct {
 	BusinessName string
 	LogoURL      string // served path (relative), e.g. "/branding/logo?v=123"; empty = no logo
+	LogoHeight   int    // email logo height in px (pages scale up); see pageLogoHeight
 }
 
 // loadBranding reads the brand identity from the singleton settings row.
 func (h *Handler) loadBranding(ctx context.Context) brandingSettings {
 	var b brandingSettings
 	_ = h.db.QueryRowContext(ctx, `
-		SELECT COALESCE(business_name,''), COALESCE(logo_url,'')
-		FROM server_settings WHERE id = 1`).Scan(&b.BusinessName, &b.LogoURL)
+		SELECT COALESCE(business_name,''), COALESCE(logo_url,''), COALESCE(logo_height,22)
+		FROM server_settings WHERE id = 1`).Scan(&b.BusinessName, &b.LogoURL, &b.LogoHeight)
+	if b.LogoHeight <= 0 {
+		b.LogoHeight = 22
+	}
 	return b
+}
+
+// pageLogoHeight scales the email logo height up ~1.3× for the roomier public
+// booking/manage page headers.
+func pageLogoHeight(emailPx int) int {
+	if emailPx <= 0 {
+		emailPx = 22
+	}
+	return (emailPx*13 + 5) / 10
 }
 
 // applyBranding stamps the instance brand identity onto booking email data so
@@ -47,6 +60,7 @@ func (h *Handler) loadBranding(ctx context.Context) brandingSettings {
 func (h *Handler) applyBranding(ctx context.Context, d *mailer.BookingData) {
 	b := h.loadBranding(ctx)
 	d.BrandName = b.BusinessName
+	d.LogoHeight = b.LogoHeight
 	if strings.HasPrefix(b.LogoURL, "/") {
 		d.LogoURL = h.publicURL() + b.LogoURL
 	} else {
@@ -65,6 +79,7 @@ func (h *Handler) GetBranding(w http.ResponseWriter, r *http.Request) {
 	h.writeJSON(w, http.StatusOK, map[string]any{
 		"business_name": b.BusinessName,
 		"logo_url":      b.LogoURL,
+		"logo_height":   b.LogoHeight,
 	})
 }
 
@@ -79,6 +94,7 @@ func (h *Handler) PatchBranding(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 8<<10)
 	var req struct {
 		BusinessName string `json:"business_name"`
+		LogoHeight   int    `json:"logo_height"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.writeError(w, http.StatusBadRequest, "invalid JSON")
@@ -89,9 +105,19 @@ func (h *Handler) PatchBranding(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusBadRequest, "business name is too long")
 		return
 	}
+	// Clamp logo height to a sane range; 0/omitted falls back to the small default.
+	if req.LogoHeight <= 0 {
+		req.LogoHeight = 22
+	}
+	if req.LogoHeight < 16 {
+		req.LogoHeight = 16
+	}
+	if req.LogoHeight > 64 {
+		req.LogoHeight = 64
+	}
 	if _, err := h.db.ExecContext(r.Context(), `
-		UPDATE server_settings SET business_name = ?, updated_at = datetime('now')
-		WHERE id = 1`, req.BusinessName); err != nil {
+		UPDATE server_settings SET business_name = ?, logo_height = ?, updated_at = datetime('now')
+		WHERE id = 1`, req.BusinessName, req.LogoHeight); err != nil {
 		h.logger.ErrorContext(r.Context(), "branding settings: update", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal error")
 		return

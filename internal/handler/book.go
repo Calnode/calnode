@@ -50,6 +50,7 @@ type bookPageData struct {
 	// Branding
 	BusinessName string
 	LogoURL      string
+	LogoHeight   int
 }
 
 // hostDisplay is one host's identity for the public booking page.
@@ -288,6 +289,7 @@ func (h *Handler) BookPage(w http.ResponseWriter, r *http.Request) {
 
 		BusinessName: brand.BusinessName,
 		LogoURL:      brand.LogoURL,
+		LogoHeight:   pageLogoHeight(brand.LogoHeight),
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")

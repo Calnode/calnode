@@ -43,6 +43,7 @@ type managePageData struct {
 	// Branding
 	BusinessName string
 	LogoURL      string
+	LogoHeight   int
 }
 
 // ManagePage renders the attendee manage page for a booking (reschedule / cancel).
@@ -122,6 +123,7 @@ func (h *Handler) renderManage(w http.ResponseWriter, r *http.Request, data mana
 	brand := h.loadBranding(r.Context())
 	data.BusinessName = brand.BusinessName
 	data.LogoURL = brand.LogoURL
+	data.LogoHeight = pageLogoHeight(brand.LogoHeight)
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Content-Security-Policy", publicCSP(track))

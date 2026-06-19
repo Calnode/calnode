@@ -10,13 +10,20 @@
 	import { saveOnCmdS } from '$lib/save-shortcut';
 	import type CropperType from 'cropperjs';
 
-	type Branding = { business_name: string; logo_url: string };
+	type Branding = { business_name: string; logo_url: string; logo_height: number };
+
+	const SIZES = [
+		{ label: 'Small', px: 22 },
+		{ label: 'Medium', px: 30 },
+		{ label: 'Large', px: 40 }
+	];
 
 	let loading = $state(true);
 	let saving = $state(false);
 	let uploading = $state(false);
 	let businessName = $state('');
 	let logoUrl = $state('');
+	let logoHeight = $state(22);
 	let fileInput: HTMLInputElement | undefined = $state();
 
 	// Crop dialog — Cropper is lazy-loaded client-side only to avoid SSR failures.
@@ -49,6 +56,7 @@
 			const b = await api.get<Branding>('/v1/settings/branding');
 			businessName = b.business_name ?? '';
 			logoUrl = b.logo_url ?? '';
+			logoHeight = b.logo_height || 22;
 		} catch (e: any) {
 			toast.error(e.message || 'Could not load branding settings');
 		} finally {
@@ -116,8 +124,12 @@
 	async function save() {
 		saving = true;
 		try {
-			const b = await api.patch<Branding>('/v1/settings/branding', { business_name: businessName });
+			const b = await api.patch<Branding>('/v1/settings/branding', {
+				business_name: businessName,
+				logo_height: logoHeight
+			});
 			businessName = b.business_name ?? '';
+			logoHeight = b.logo_height || 22;
 			toast.success('Branding saved');
 		} catch (e: any) {
 			toast.error(e.message || 'Could not save branding settings');
@@ -160,7 +172,7 @@
 						class="group relative flex h-16 w-44 cursor-pointer items-center justify-center overflow-hidden rounded-md border bg-white px-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-wait"
 					>
 						{#if logoUrl}
-							<img src={logoUrl} alt="Logo" class="max-h-[40px] max-w-full" />
+							<img src={logoUrl} alt="Logo" style="height:{logoHeight}px;max-width:100%;" />
 						{:else}
 							<span class="text-xs text-muted-foreground">Click to upload</span>
 						{/if}
@@ -172,9 +184,24 @@
 						<Button type="button" variant="ghost" size="sm" onclick={removeLogo} class="text-destructive hover:text-destructive">Remove</Button>
 					{/if}
 				</div>
+
+				{#if logoUrl}
+					<div class="pt-1">
+						<p class="mb-1.5 text-xs font-medium text-muted-foreground">Size <span class="font-normal">(preview above updates live)</span></p>
+						<div class="inline-flex gap-1">
+							{#each SIZES as s}
+								<button type="button" onclick={() => (logoHeight = s.px)}
+									class="rounded-md border px-3 py-1 text-xs transition-colors {logoHeight === s.px ? 'border-primary bg-primary/10 font-medium text-foreground' : 'text-muted-foreground hover:bg-muted'}">
+									{s.label}
+								</button>
+							{/each}
+						</div>
+					</div>
+				{/if}
+
 				<p class="text-xs text-muted-foreground">
 					Click the box to upload. PNG with a transparent background works best, on a light background. Any
-					shape — you can crop it next. Max 5 MB, displayed ~30px tall.
+					shape — you can crop it next. Max 5 MB. Pick a display size, then Save.
 				</p>
 			</div>
 		</div>
