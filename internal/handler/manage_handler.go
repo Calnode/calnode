@@ -36,6 +36,10 @@ type managePageData struct {
 	OrganizerTZ     string
 	Status          string // "confirmed" or "cancelled"
 	TokenInvalid    bool   // token not found or expired
+	// Tracking
+	HeadHTML         template.HTML
+	DataLayerEnabled bool
+	DataLayerFields  template.JS
 }
 
 // ManagePage renders the attendee manage page for a booking (reschedule / cancel).
@@ -107,8 +111,14 @@ func (h *Handler) ManagePage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) renderManage(w http.ResponseWriter, r *http.Request, data managePageData) {
+	track := h.loadTrackingSettings(r.Context())
+	dlFields, _ := json.Marshal(track.DataLayerFields)
+	data.HeadHTML = template.HTML(track.HeadHTML)
+	data.DataLayerEnabled = track.DataLayerEnabled
+	data.DataLayerFields = template.JS(dlFields)
+
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'")
+	w.Header().Set("Content-Security-Policy", publicCSP(track))
 	w.Header().Set("X-Frame-Options", "DENY")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	if err := manageTmpl.Execute(w, data); err != nil {

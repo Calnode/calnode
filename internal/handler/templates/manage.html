@@ -5,6 +5,22 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <title>Manage booking — {{.EventTypeName}}</title>
+{{.HeadHTML}}
+{{if .DataLayerEnabled}}
+<script>
+  window.dataLayer = window.dataLayer || [];
+  window.__CALNODE_DL = { fields: {{.DataLayerFields}} };
+  function calnodePush(eventName, data) {
+    if (!window.__CALNODE_DL) return;
+    var out = { event: eventName };
+    (window.__CALNODE_DL.fields || []).forEach(function (k) {
+      var v = data[k];
+      if (v !== undefined && v !== null && v !== '') out[k] = v;
+    });
+    (window.dataLayer = window.dataLayer || []).push(out);
+  }
+</script>
+{{end}}
 <style>
 /* Shared look with the public booking page (book.html). Keep in sync. */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -564,6 +580,17 @@ body {
       }
       $('success-new-time').textContent = fmtDate(pickedDate) + ' · ' + fmtTime(pickedSlot.start);
       showView('success-reschedule-view');
+      if (window.__CALNODE_DL && typeof calnodePush === 'function') {
+        calnodePush('calnode_booking_rescheduled', {
+          booking_id: {{.BookingID}},
+          event_type_slug: SLUG,
+          event_type_name: {{.EventTypeName}},
+          status: 'confirmed',
+          start_at: pickedSlot.start,
+          host_name: {{.HostName}},
+          attendee_timezone: TZ,
+        });
+      }
     } catch {
       errEl.textContent = 'Network error. Please check your connection and try again.';
       btn.disabled = false; btn.textContent = 'Confirm reschedule';
@@ -589,6 +616,17 @@ body {
         btn.disabled = false; btn.textContent = 'Yes, cancel booking'; return;
       }
       showView('success-cancel-view');
+      if (window.__CALNODE_DL && typeof calnodePush === 'function') {
+        calnodePush('calnode_booking_cancelled', {
+          booking_id: {{.BookingID}},
+          event_type_slug: SLUG,
+          event_type_name: {{.EventTypeName}},
+          status: 'cancelled',
+          start_at: {{.CurrentStartISO}},
+          host_name: {{.HostName}},
+          attendee_timezone: TZ,
+        });
+      }
     } catch {
       errEl.textContent = 'Network error. Please check your connection and try again.';
       btn.disabled = false; btn.textContent = 'Yes, cancel booking';

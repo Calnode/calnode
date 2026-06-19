@@ -5,6 +5,22 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <title>{{.Name}}</title>
+{{.HeadHTML}}
+{{if .DataLayerEnabled}}
+<script>
+  window.dataLayer = window.dataLayer || [];
+  window.__CALNODE_DL = { fields: {{.DataLayerFields}}, questions: {{.QuestionsJSON}} };
+  function calnodePush(eventName, data) {
+    if (!window.__CALNODE_DL) return;
+    var out = { event: eventName };
+    (window.__CALNODE_DL.fields || []).forEach(function (k) {
+      var v = data[k];
+      if (v !== undefined && v !== null && v !== '') out[k] = v;
+    });
+    (window.dataLayer = window.dataLayer || []).push(out);
+  }
+</script>
+{{end}}
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -728,6 +744,28 @@ body {
 
       $('confirm-time').textContent = `${fmtDate(pickedDate)} · ${fmtTime(pickedSlot.start)}`;
       showView('confirm-view');
+
+      if (window.__CALNODE_DL && typeof calnodePush === 'function') {
+        var dlAnswers = {};
+        (answers || []).forEach(function (a) {
+          var label = (window.__CALNODE_DL.questions || {})[a.question_id] || a.question_id;
+          dlAnswers[label] = a.value;
+        });
+        calnodePush('calnode_booking_confirmed', {
+          booking_id: booked && booked.id,
+          event_type_slug: SLUG,
+          event_type_name: {{.Name}},
+          start_at: pickedSlot.start,
+          end_at: pickedSlot.end,
+          status: 'confirmed',
+          location: (booked && booked.location_value) || '',
+          host_name: (booked && Array.isArray(booked.hosts)) ? booked.hosts.map(function (h) { return h.name; }).join(', ') : '',
+          attendee_name: form.name.value.trim(),
+          attendee_email: form.email.value.trim(),
+          attendee_timezone: TZ,
+          answers: dlAnswers,
+        });
+      }
 
       // Booking succeeded. Re-enable the button so a second booking attempt in the
       // same session (before the page is refreshed) isn't silently blocked by a

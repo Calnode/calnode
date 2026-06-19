@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/calnode/calnode/internal/uid"
@@ -26,8 +27,69 @@ type Webhook struct {
 	UserID    string
 	URL       string
 	Events    []string
+	Fields    []string // payload field keys; nil means the default set
 	IsActive  bool
 	CreatedAt time.Time
+}
+
+// Payload field keys (the JSON keys in a delivery's "data" object).
+const (
+	FieldID              = "id"
+	FieldStatus          = "status"
+	FieldStartAt         = "start_at"
+	FieldEndAt           = "end_at"
+	FieldCreatedAt       = "created_at"
+	FieldLocation        = "location_value"
+	FieldCancelReason    = "cancellation_reason"
+	FieldPreviousStartAt = "previous_start_at"
+	FieldPreviousEndAt   = "previous_end_at"
+	FieldEventTypeSlug   = "event_type_slug"
+	FieldEventTypeName   = "event_type_name"
+	FieldHostID          = "host_id"
+	FieldHostName        = "host_name"
+	FieldHostEmail       = "host_email"
+	FieldAttendeeName    = "attendee_name"
+	FieldAttendeeEmail   = "attendee_email"
+	FieldAttendeeTZ      = "attendee_timezone"
+	FieldAnswers         = "answers"
+)
+
+// AllFields is every selectable field, in payload order. Used to validate config
+// and (UI) to render the checkbox list.
+var AllFields = []string{
+	FieldID, FieldStatus, FieldStartAt, FieldEndAt, FieldCreatedAt,
+	FieldLocation, FieldCancelReason, FieldPreviousStartAt, FieldPreviousEndAt,
+	FieldEventTypeSlug, FieldEventTypeName,
+	FieldHostID, FieldHostName, FieldHostEmail,
+	FieldAttendeeName, FieldAttendeeEmail, FieldAttendeeTZ, FieldAnswers,
+}
+
+// defaultFields reproduces the original payload exactly (no PII, no answers) so a
+// webhook with no field config (fields IS NULL) keeps its historical shape.
+var defaultFields = []string{
+	FieldID, FieldEventTypeSlug, FieldHostID, FieldStartAt, FieldEndAt,
+	FieldStatus, FieldLocation, FieldCancelReason, FieldCreatedAt,
+	FieldPreviousStartAt, FieldPreviousEndAt,
+}
+
+var validField = func() map[string]bool {
+	m := make(map[string]bool, len(AllFields))
+	for _, f := range AllFields {
+		m[f] = true
+	}
+	return m
+}()
+
+// ValidFields filters fields to known keys, preserving order. Used to sanitise
+// caller-supplied config.
+func ValidFields(fields []string) []string {
+	out := make([]string, 0, len(fields))
+	for _, f := range fields {
+		if validField[f] {
+			out = append(out, f)
+		}
+	}
+	return out
 }
 
 type Delivery struct {
@@ -81,6 +143,8 @@ func New(db *sql.DB, encKeyHex string) (*Service, error) {
 
 // Create registers a new webhook and returns the Webhook plus the plain-text
 // signing secret (shown only once; stored encrypted).
+// Create registers a webhook (fields default to the unset/original-payload set;
+// callers set field selection via Update).
 func (s *Service) Create(ctx context.Context, userID, url string, events []string) (*Webhook, string, error) {
 	rawSecret := make([]byte, 32)
 	if _, err := io.ReadFull(rand.Reader, rawSecret); err != nil {
@@ -118,10 +182,40 @@ func (s *Service) Create(ctx context.Context, userID, url string, events []strin
 	return wh, plainSecret, nil
 }
 
+// Update applies partial changes to a webhook owned by userID. Nil pointers are
+// left unchanged. Returns ErrNotFound if no such webhook exists for the user.
+func (s *Service) Update(ctx context.Context, userID, id string, events, fields *[]string) error {
+	var set []string
+	var args []any
+	if events != nil {
+		eb, _ := json.Marshal(*events)
+		set = append(set, "events = ?")
+		args = append(args, string(eb))
+	}
+	if fields != nil {
+		fb, _ := json.Marshal(ValidFields(*fields))
+		set = append(set, "fields = ?")
+		args = append(args, string(fb))
+	}
+	if len(set) == 0 {
+		return nil
+	}
+	args = append(args, id, userID)
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE webhooks SET `+strings.Join(set, ", ")+` WHERE id = ? AND user_id = ?`, args...)
+	if err != nil {
+		return fmt.Errorf("webhook: update: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // List returns all webhooks for a user, most recent first.
 func (s *Service) List(ctx context.Context, userID string) ([]Webhook, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, url, events, is_active, created_at
+		SELECT id, url, events, fields, is_active, created_at
 		FROM webhooks WHERE user_id = ? ORDER BY created_at DESC`, userID)
 	if err != nil {
 		return nil, fmt.Errorf("webhook: list: %w", err)
@@ -132,14 +226,20 @@ func (s *Service) List(ctx context.Context, userID string) ([]Webhook, error) {
 	for rows.Next() {
 		var wh Webhook
 		var eventsJSON string
+		var fieldsJSON sql.NullString
 		var isActive int
 		var createdAt string
-		if err := rows.Scan(&wh.ID, &wh.URL, &eventsJSON, &isActive, &createdAt); err != nil {
+		if err := rows.Scan(&wh.ID, &wh.URL, &eventsJSON, &fieldsJSON, &isActive, &createdAt); err != nil {
 			return nil, fmt.Errorf("webhook: scan: %w", err)
 		}
 		wh.UserID = userID
 		wh.IsActive = isActive == 1
 		_ = json.Unmarshal([]byte(eventsJSON), &wh.Events)
+		if fieldsJSON.Valid && fieldsJSON.String != "" {
+			_ = json.Unmarshal([]byte(fieldsJSON.String), &wh.Fields)
+		} else {
+			wh.Fields = defaultFields // surface the effective set for unconfigured webhooks
+		}
 		if t, err := time.Parse(time.RFC3339Nano, createdAt); err == nil {
 			wh.CreatedAt = t
 		}
@@ -161,12 +261,98 @@ func (s *Service) Delete(ctx context.Context, userID, id string) error {
 	return nil
 }
 
+// enrichedBooking is the full set of values available to a webhook payload,
+// gathered once per Enqueue and then filtered per-webhook by its field list.
+type enrichedBooking struct {
+	core                                     BookingPayload
+	eventTypeName                            string
+	hostName, hostEmail                      string
+	attendeeName, attendeeEmail, attendeeTZ  string
+	answers                                  []map[string]string
+}
+
+// enrich loads the data not carried in BookingPayload (host name/email, event-type
+// name, attendee identity, intake answers) from the booking row. Best-effort: any
+// query failure simply leaves those fields empty. Queries are drained sequentially,
+// safe on the single-connection pool, and run before Enqueue opens its tx.
+func (s *Service) enrich(ctx context.Context, p BookingPayload) enrichedBooking {
+	bd := enrichedBooking{core: p, answers: []map[string]string{}}
+	if p.ID == "" {
+		return bd
+	}
+	_ = s.db.QueryRowContext(ctx, `
+		SELECT COALESCE(et.name,''), COALESCE(u.name,''), COALESCE(u.email,'')
+		FROM bookings b
+		JOIN event_types et ON et.id = b.event_type_id
+		JOIN users u ON u.id = b.host_id
+		WHERE b.id = ?`, p.ID).Scan(&bd.eventTypeName, &bd.hostName, &bd.hostEmail)
+
+	_ = s.db.QueryRowContext(ctx, `
+		SELECT COALESCE(name,''), COALESCE(email,''), COALESCE(iana_timezone,'')
+		FROM booking_attendees WHERE booking_id = ? AND is_organizer = 1`, p.ID).
+		Scan(&bd.attendeeName, &bd.attendeeEmail, &bd.attendeeTZ)
+
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT q.label, ba.value
+		FROM booking_answers ba
+		JOIN event_type_questions q ON q.id = ba.question_id
+		WHERE ba.booking_id = ?
+		ORDER BY q.position`, p.ID)
+	if err == nil {
+		for rows.Next() {
+			var label, value string
+			if err := rows.Scan(&label, &value); err == nil {
+				bd.answers = append(bd.answers, map[string]string{"question": label, "answer": value})
+			}
+		}
+		rows.Close()
+	}
+	return bd
+}
+
+// buildData renders the "data" object containing only the requested field keys.
+// The four optional booking fields are omitted when empty (matching the original
+// payload's omitempty behaviour); everything else is always included when selected.
+func buildData(bd enrichedBooking, fields []string) map[string]any {
+	always := map[string]any{
+		FieldID:            bd.core.ID,
+		FieldStatus:        bd.core.Status,
+		FieldStartAt:       bd.core.StartAt,
+		FieldEndAt:         bd.core.EndAt,
+		FieldCreatedAt:     bd.core.CreatedAt,
+		FieldEventTypeSlug: bd.core.EventTypeSlug,
+		FieldEventTypeName: bd.eventTypeName,
+		FieldHostID:        bd.core.HostID,
+		FieldHostName:      bd.hostName,
+		FieldHostEmail:     bd.hostEmail,
+		FieldAttendeeName:  bd.attendeeName,
+		FieldAttendeeEmail: bd.attendeeEmail,
+		FieldAttendeeTZ:    bd.attendeeTZ,
+		FieldAnswers:       bd.answers,
+	}
+	omitEmpty := map[string]string{
+		FieldLocation:        bd.core.LocationValue,
+		FieldCancelReason:    bd.core.CancellationReason,
+		FieldPreviousStartAt: bd.core.PreviousStartAt,
+		FieldPreviousEndAt:   bd.core.PreviousEndAt,
+	}
+	out := make(map[string]any, len(fields))
+	for _, f := range fields {
+		if v, ok := always[f]; ok {
+			out[f] = v
+		} else if v, ok := omitEmpty[f]; ok && v != "" {
+			out[f] = v
+		}
+	}
+	return out
+}
+
 // Enqueue finds all active webhooks for p.HostID that subscribe to event,
 // and creates a webhook_deliveries + jobs row pair for each. Failures are
 // soft-errors (caller logs; a booking is already committed).
 func (s *Service) Enqueue(ctx context.Context, event string, p BookingPayload) error {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, events FROM webhooks
+		SELECT id, events, fields FROM webhooks
 		WHERE user_id = ? AND is_active = 1`, p.HostID)
 	if err != nil {
 		return fmt.Errorf("webhook: list for enqueue: %w", err)
@@ -174,23 +360,33 @@ func (s *Service) Enqueue(ctx context.Context, event string, p BookingPayload) e
 
 	type wrow struct {
 		id     string
-		events []string
+		fields []string // nil = default set
 	}
 	var matching []wrow
 	for rows.Next() {
-		var r wrow
-		var eventsJSON string
-		if err := rows.Scan(&r.id, &eventsJSON); err != nil {
+		var id, eventsJSON string
+		var fieldsJSON sql.NullString
+		if err := rows.Scan(&id, &eventsJSON, &fieldsJSON); err != nil {
 			rows.Close()
 			return fmt.Errorf("webhook: scan: %w", err)
 		}
-		_ = json.Unmarshal([]byte(eventsJSON), &r.events)
-		for _, e := range r.events {
+		var events []string
+		_ = json.Unmarshal([]byte(eventsJSON), &events)
+		subscribed := false
+		for _, e := range events {
 			if e == event {
-				matching = append(matching, r)
+				subscribed = true
 				break
 			}
 		}
+		if !subscribed {
+			continue
+		}
+		var fields []string
+		if fieldsJSON.Valid && fieldsJSON.String != "" {
+			_ = json.Unmarshal([]byte(fieldsJSON.String), &fields)
+		}
+		matching = append(matching, wrow{id: id, fields: fields})
 	}
 	rows.Close()
 	if err := rows.Err(); err != nil {
@@ -200,14 +396,15 @@ func (s *Service) Enqueue(ctx context.Context, event string, p BookingPayload) e
 		return nil
 	}
 
-	envelope := map[string]any{
-		"event":      event,
-		"created_at": time.Now().UTC().Format(time.RFC3339),
-		"data":       p,
-	}
-	payloadBytes, err := json.Marshal(envelope)
-	if err != nil {
-		return fmt.Errorf("webhook: marshal payload: %w", err)
+	// Gather all available data once; each webhook gets its own field-filtered copy.
+	bd := s.enrich(ctx, p)
+	createdAt := time.Now().UTC().Format(time.RFC3339)
+
+	// booking_id is a nullable FK; use NULL when empty so callers without a real
+	// bookings row don't violate the constraint.
+	var bookingIDArg interface{}
+	if p.ID != "" {
+		bookingIDArg = p.ID
 	}
 
 	now := time.Now().UTC().Format(time.RFC3339)
@@ -218,22 +415,28 @@ func (s *Service) Enqueue(ctx context.Context, event string, p BookingPayload) e
 	defer tx.Rollback() //nolint:errcheck
 
 	for _, wh := range matching {
+		fieldset := wh.fields
+		if len(fieldset) == 0 {
+			fieldset = defaultFields
+		}
+		envelope := map[string]any{
+			"event":      event,
+			"created_at": createdAt,
+			"data":       buildData(bd, fieldset),
+		}
+		payloadBytes, err := json.Marshal(envelope)
+		if err != nil {
+			return fmt.Errorf("webhook: marshal payload: %w", err)
+		}
+
 		deliveryID := uid.New()
 		jobID := uid.New()
-
-		// booking_id is a nullable FK reference; use nil (NULL) when empty
-		// so callers without a real bookings row don't violate the constraint.
-		var bookingIDArg interface{}
-		if p.ID != "" {
-			bookingIDArg = p.ID
-		}
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO webhook_deliveries (id, webhook_id, booking_id, event, payload, status)
 			VALUES (?, ?, ?, ?, ?, 'pending')`,
 			deliveryID, wh.id, bookingIDArg, event, string(payloadBytes)); err != nil {
 			return fmt.Errorf("webhook: insert delivery: %w", err)
 		}
-
 		jobPayload, _ := json.Marshal(map[string]string{"webhook_delivery_id": deliveryID})
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO jobs (id, type, payload, run_at)

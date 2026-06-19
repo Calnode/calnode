@@ -24,6 +24,7 @@ func (h *Handler) CreateWebhook(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		URL    string   `json:"url"`
 		Events []string `json:"events"`
+		Fields []string `json:"fields"` // optional payload field selection; nil = default set
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.writeError(w, http.StatusBadRequest, "invalid JSON")
@@ -59,15 +60,64 @@ func (h *Handler) CreateWebhook(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+	// Apply the field selection (if any) as a follow-up update so Create keeps its
+	// stable signature; unknown keys are filtered out.
+	if req.Fields != nil {
+		if err := h.webhookSvc.Update(r.Context(), user.ID, wh.ID, nil, &req.Fields); err != nil {
+			h.logger.ErrorContext(r.Context(), "create webhook: set fields", "error", err)
+		} else {
+			wh.Fields = webhook.ValidFields(req.Fields)
+		}
+	}
 
 	h.writeJSON(w, http.StatusCreated, map[string]any{
 		"id":         wh.ID,
 		"url":        wh.URL,
 		"events":     wh.Events,
+		"fields":     wh.Fields,
 		"secret":     secret,
 		"is_active":  wh.IsActive,
 		"created_at": wh.CreatedAt.UTC().Format(time.RFC3339),
 	})
+}
+
+// PatchWebhook handles PATCH /v1/webhooks/{id} — update events and/or the payload
+// field selection of an existing webhook.
+func (h *Handler) PatchWebhook(w http.ResponseWriter, r *http.Request) {
+	user, _ := userFromContext(r.Context())
+	id := r.PathValue("id")
+	r.Body = http.MaxBytesReader(w, r.Body, 32<<10)
+
+	var req struct {
+		Events *[]string `json:"events"`
+		Fields *[]string `json:"fields"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	if req.Events != nil {
+		if len(*req.Events) == 0 {
+			h.writeError(w, http.StatusBadRequest, "events must not be empty")
+			return
+		}
+		for _, e := range *req.Events {
+			if !slices.Contains(validWebhookEvents, e) {
+				h.writeError(w, http.StatusBadRequest, "unknown event: "+e)
+				return
+			}
+		}
+	}
+	if err := h.webhookSvc.Update(r.Context(), user.ID, id, req.Events, req.Fields); err != nil {
+		if errors.Is(err, webhook.ErrNotFound) {
+			h.writeError(w, http.StatusNotFound, "webhook not found")
+			return
+		}
+		h.logger.ErrorContext(r.Context(), "update webhook", "error", err)
+		h.writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *Handler) ListWebhooks(w http.ResponseWriter, r *http.Request) {
@@ -86,6 +136,7 @@ func (h *Handler) ListWebhooks(w http.ResponseWriter, r *http.Request) {
 			"id":         wh.ID,
 			"url":        wh.URL,
 			"events":     wh.Events,
+			"fields":     wh.Fields,
 			"is_active":  wh.IsActive,
 			"created_at": wh.CreatedAt.UTC().Format(time.RFC3339),
 		}

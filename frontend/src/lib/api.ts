@@ -90,8 +90,20 @@ export type Webhook = {
 	id: string;
 	url: string;
 	events: string[];
+	fields?: string[];
 	is_active: boolean;
 	created_at: string;
+};
+
+export type WebhookDelivery = {
+	id: string;
+	webhook_id: string;
+	event: string;
+	status: string;
+	booking_id?: string;
+	response_status?: number;
+	attempt_count: number;
+	last_attempted_at?: string;
 };
 
 export type CalendarStatus = {

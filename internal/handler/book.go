@@ -42,6 +42,11 @@ type bookPageData struct {
 	LocationLabel string
 	MaxFutureDays int
 	Questions     []bookQuestion
+	// Tracking
+	HeadHTML         template.HTML // operator-configured <head> code injection (trusted)
+	DataLayerEnabled bool
+	DataLayerFields  template.JS // JSON array of enabled dataLayer field keys
+	QuestionsJSON    template.JS // {questionID: label} map for labelling answers in dataLayer
 }
 
 // hostDisplay is one host's identity for the public booking page.
@@ -250,6 +255,14 @@ func (h *Handler) BookPage(w http.ResponseWriter, r *http.Request) {
 	for i := range hosts {
 		hosts[i].Z = (len(hosts) - i) * 10
 	}
+	track := h.loadTrackingSettings(r.Context())
+	dlFields, _ := json.Marshal(track.DataLayerFields)
+	qmap := make(map[string]string, len(questions))
+	for _, q := range questions {
+		qmap[q.ID] = q.Label
+	}
+	qjson, _ := json.Marshal(qmap)
+
 	data := bookPageData{
 		Slug:          slug,
 		Name:          name,
@@ -263,10 +276,15 @@ func (h *Handler) BookPage(w http.ResponseWriter, r *http.Request) {
 		LocationLabel: locationLabel(locType, locValue),
 		MaxFutureDays: maxDays,
 		Questions:     questions,
+
+		HeadHTML:         template.HTML(track.HeadHTML),
+		DataLayerEnabled: track.DataLayerEnabled,
+		DataLayerFields:  template.JS(dlFields),
+		QuestionsJSON:    template.JS(qjson),
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'")
+	w.Header().Set("Content-Security-Policy", publicCSP(track))
 	w.Header().Set("X-Frame-Options", "DENY")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	if err := bookTmpl.Execute(w, data); err != nil {
