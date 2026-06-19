@@ -127,7 +127,7 @@
 					<div class="grid grid-cols-2 gap-x-4 gap-y-1">
 						{#each availableFields as key}
 							<label class="flex cursor-pointer items-center gap-2 font-mono text-sm">
-								<Checkbox checked={dlFields.includes(key)} onchange={() => toggleField(key)} />
+								<Checkbox checked={dlFields.includes(key)} onCheckedChange={() => toggleField(key)} />
 								<span>{fieldLabels[key] ?? key}{#if piiFields.has(key)}<span class="ml-1 text-[10px] font-medium uppercase text-amber-600">PII</span>{/if}</span>
 							</label>
 						{/each}

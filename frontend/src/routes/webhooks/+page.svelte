@@ -185,7 +185,7 @@
 				<label class="flex cursor-pointer items-center gap-2 font-mono text-sm">
 					<Checkbox
 						checked={form.events.includes(ev)}
-						onchange={() => toggleEvent(ev)}
+						onCheckedChange={() => toggleEvent(ev)}
 					/>
 					<span>{ev}</span>
 				</label>
@@ -202,7 +202,7 @@
 					<div class="grid grid-cols-2 gap-x-4 gap-y-1">
 						{#each grp.fields as f}
 							<label class="flex cursor-pointer items-center gap-2 font-mono text-sm">
-								<Checkbox checked={form.fields.includes(f.key)} onchange={() => toggleField(f.key)} />
+								<Checkbox checked={form.fields.includes(f.key)} onCheckedChange={() => toggleField(f.key)} />
 								<span>{f.label}{#if f.pii}<span class="ml-1 text-[10px] font-medium uppercase text-amber-600">PII</span>{/if}</span>
 							</label>
 						{/each}
