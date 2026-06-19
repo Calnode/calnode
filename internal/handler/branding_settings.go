@@ -145,11 +145,14 @@ func (h *Handler) UploadBrandingLogo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Fit within 600×200, preserving aspect ratio; never upscale. Logos are not
-	// square, so we don't crop — the display height-constrains it to ~30px.
-	resized := imaging.Fit(img, 600, 200, imaging.Lanczos)
+	// Fit within 600×160, preserving aspect ratio; never upscale. Logos are not
+	// square, so we don't crop server-side (the client does any cropping) — the
+	// display height-constrains it to ~30px, and ~160px tall covers retina/larger
+	// page display while keeping the file small. BestCompression trims size further.
+	resized := imaging.Fit(img, 600, 160, imaging.Lanczos)
 	var out bytes.Buffer
-	if err := png.Encode(&out, resized); err != nil {
+	enc := png.Encoder{CompressionLevel: png.BestCompression}
+	if err := enc.Encode(&out, resized); err != nil {
 		h.logger.ErrorContext(r.Context(), "logo: encode png", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal error")
 		return
