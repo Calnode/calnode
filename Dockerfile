@@ -3,7 +3,9 @@
 # ── Frontend build stage ───────────────────────────────────────────────────────
 FROM node:22-alpine AS frontend-builder
 
-RUN corepack enable && corepack prepare pnpm@latest --activate
+# Pin pnpm to the version in package.json's `packageManager` field (not @latest)
+# so CI builds are reproducible and match the committed lockfile.
+RUN corepack enable && corepack prepare pnpm@10.32.1 --activate
 
 WORKDIR /app
 
@@ -48,7 +50,9 @@ COPY litestream.yml /etc/litestream.yml
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-VOLUME ["/data"]
+# Note: no `VOLUME` directive — persistent storage is provided by the platform's
+# managed volume mounted at /data (Railway rejects the Docker VOLUME instruction;
+# Fly mounts via fly.toml). The dir is created at runtime by entrypoint.sh.
 EXPOSE 3000
 
 ENV PORT=3000 \
