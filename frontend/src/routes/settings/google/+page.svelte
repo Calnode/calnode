@@ -15,6 +15,14 @@
 	let clientID = $state('');
 	let clientSecret = $state('');
 
+	// Host the server builds its OAuth redirect URIs from. Prefer the server's
+	// configured base_url so the displayed URIs match exactly what we send to
+	// Google; fall back to the current origin if it's somehow blank.
+	const redirectBase = $derived(
+		googleSettings?.base_url || (typeof window !== 'undefined' ? window.location.origin : '')
+	);
+	const isLocal = $derived(redirectBase.includes('localhost') || redirectBase.includes('127.0.0.1'));
+
 	onMount(async () => {
 		try {
 			googleSettings = await api.get<GoogleSettings>('/v1/settings/google');
@@ -94,9 +102,15 @@
 					<span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">5</span>
 					<div>
 						Under <span class="font-medium">Authorised redirect URIs</span>, add both:
-						<code class="mt-1 block rounded bg-muted px-2 py-1 text-xs font-mono">http://localhost:3000/v1/calendar/callback</code>
-						<code class="mt-1 block rounded bg-muted px-2 py-1 text-xs font-mono">http://localhost:3000/v1/auth/callback</code>
+						<code class="mt-1 block rounded bg-muted px-2 py-1 text-xs font-mono break-all">{redirectBase}/v1/calendar/callback</code>
+						<code class="mt-1 block rounded bg-muted px-2 py-1 text-xs font-mono break-all">{redirectBase}/v1/auth/callback</code>
 						Click <span class="font-medium">Create</span>. Copy the Client ID and Client Secret shown.
+						{#if !isLocal}
+							<p class="mt-1.5 text-xs text-muted-foreground">
+								If you also run Calnode locally, add the
+								<code class="rounded bg-muted px-1">http://localhost:3000/…</code> variants of both URIs too.
+							</p>
+						{/if}
 					</div>
 				</li>
 				<li class="flex gap-3">

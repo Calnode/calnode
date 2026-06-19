@@ -63,6 +63,10 @@ func (h *Handler) GetGoogleSettings(w http.ResponseWriter, r *http.Request) {
 		"client_id":         clientID,
 		"client_secret_set": secretEnc != "",
 		"configured":        clientID != "",
+		// base_url is the identity host the server builds OAuth redirect URIs
+		// from (see PatchGoogleSettings); the setup UI renders the exact URIs to
+		// register in Google Cloud so they always match what we send.
+		"base_url": h.baseURL,
 	})
 }
 

@@ -129,6 +129,8 @@ export type GoogleSettings = {
 	client_id: string;
 	client_secret_set: boolean;
 	configured: boolean;
+	/** Identity host the server builds OAuth redirect URIs from. */
+	base_url: string;
 };
 
 export type TeamMember = {
