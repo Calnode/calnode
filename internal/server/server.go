@@ -167,6 +167,7 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	mux.HandleFunc("POST /v1/users/me/avatar", avatarRL(h.RequireAuth(h.UploadAvatar)))
 	mux.HandleFunc("DELETE /v1/users/me/avatar", avatarRL(h.RequireAuth(h.DeleteAvatar)))
 	mux.HandleFunc("GET /avatars/{userID}", h.ServeAvatar)
+	mux.HandleFunc("GET /branding/logo", h.ServeBrandingLogo)
 
 	// Server settings — email (SMTP) and Google OAuth
 	settingsRL := RateLimit(20, time.Minute)
@@ -179,6 +180,8 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	mux.HandleFunc("PATCH /v1/settings/tracking", settingsRL(h.RequireAuth(h.PatchTrackingSettings)))
 	mux.HandleFunc("GET /v1/settings/branding", h.RequireAuth(h.GetBranding))
 	mux.HandleFunc("PATCH /v1/settings/branding", settingsRL(h.RequireAuth(h.PatchBranding)))
+	mux.HandleFunc("POST /v1/settings/branding/logo", settingsRL(h.RequireAuth(h.UploadBrandingLogo)))
+	mux.HandleFunc("DELETE /v1/settings/branding/logo", h.RequireAuth(h.DeleteBrandingLogo))
 
 	// Event types
 	mux.HandleFunc("POST /v1/event-types", h.RequireAuth(h.CreateEventType))

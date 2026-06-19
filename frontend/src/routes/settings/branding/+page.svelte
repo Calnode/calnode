@@ -12,10 +12,10 @@
 
 	let loading = $state(true);
 	let saving = $state(false);
+	let uploading = $state(false);
 	let businessName = $state('');
 	let logoUrl = $state('');
-
-	const logoValid = $derived(logoUrl === '' || logoUrl.startsWith('https://'));
+	let fileInput: HTMLInputElement | undefined = $state();
 
 	onMount(async () => {
 		try {
@@ -30,23 +30,44 @@
 	});
 
 	async function save() {
-		if (!logoValid) {
-			toast.error('Logo URL must be an absolute https:// URL');
-			return;
-		}
 		saving = true;
 		try {
-			const b = await api.patch<Branding>('/v1/settings/branding', {
-				business_name: businessName,
-				logo_url: logoUrl
-			});
+			const b = await api.patch<Branding>('/v1/settings/branding', { business_name: businessName });
 			businessName = b.business_name ?? '';
-			logoUrl = b.logo_url ?? '';
 			toast.success('Branding saved');
 		} catch (e: any) {
 			toast.error(e.message || 'Could not save branding settings');
 		} finally {
 			saving = false;
+		}
+	}
+
+	async function onLogoSelected(e: Event) {
+		const input = e.target as HTMLInputElement;
+		const file = input.files?.[0];
+		if (!file) return;
+		uploading = true;
+		try {
+			const data = new FormData();
+			data.append('logo', file, file.name);
+			const res = await api.postForm<{ logo_url: string }>('/v1/settings/branding/logo', data);
+			logoUrl = res.logo_url;
+			toast.success('Logo uploaded');
+		} catch (err: any) {
+			toast.error(err.message || 'Could not upload logo');
+		} finally {
+			uploading = false;
+			if (fileInput) fileInput.value = '';
+		}
+	}
+
+	async function removeLogo() {
+		try {
+			await api.del('/v1/settings/branding/logo');
+			logoUrl = '';
+			toast.success('Logo removed');
+		} catch (e: any) {
+			toast.error(e.message || 'Could not remove logo');
 		}
 	}
 </script>
@@ -62,8 +83,8 @@
 		<div class="rounded-lg border bg-card p-6">
 			<h2 class="text-sm font-semibold">Branding</h2>
 			<p class="mt-0.5 text-xs text-muted-foreground">
-				Your business name and logo appear in confirmation/reschedule/cancellation emails and at the top of
-				your public booking and manage pages.
+				Your logo appears at the top of booking confirmation emails and on your public booking and manage
+				pages. The business name is used where there's no logo, and as the email sender name's companion.
 			</p>
 
 			<div class="mt-4 space-y-1.5">
@@ -72,31 +93,32 @@
 				<p class="text-xs text-muted-foreground">Shown as the wordmark when no logo is set. Falls back to “Calnode” if left blank.</p>
 			</div>
 
-			<div class="mt-4 space-y-1.5">
-				<Label for="logo-url">Logo URL <span class="font-normal text-muted-foreground">(optional)</span></Label>
-				<Input id="logo-url" bind:value={logoUrl} placeholder="https://cdn.example.com/logo.png" />
-				{#if !logoValid}
-					<p class="text-xs text-destructive">Must be an absolute <code class="rounded bg-muted px-1">https://</code> URL.</p>
-				{:else}
-					<p class="text-xs text-muted-foreground">
-						Must be a hosted <code class="rounded bg-muted px-1">https://</code> image (email clients can’t load local files). Displayed ~30px tall.
-					</p>
-				{/if}
+			<div class="mt-5 space-y-2">
+				<Label>Logo</Label>
+				<div class="flex items-center gap-4">
+					<div class="flex h-16 w-40 items-center justify-center overflow-hidden rounded-md border bg-white px-3">
+						{#if logoUrl}
+							<img src={logoUrl} alt="Logo" class="max-h-[40px] max-w-full" />
+						{:else}
+							<span class="text-xs text-muted-foreground">No logo</span>
+						{/if}
+					</div>
+					<div class="flex flex-col gap-2">
+						<Button variant="outline" size="sm" disabled={uploading} onclick={() => fileInput?.click()}>
+							{uploading ? 'Uploading…' : logoUrl ? 'Replace logo' : 'Upload logo'}
+						</Button>
+						{#if logoUrl}
+							<Button variant="ghost" size="sm" onclick={removeLogo}>Remove</Button>
+						{/if}
+					</div>
+				</div>
+				<input bind:this={fileInput} type="file" accept="image/png,image/jpeg,image/gif,image/webp" class="hidden" onchange={onLogoSelected} />
+				<p class="text-xs text-muted-foreground">
+					PNG with a transparent background works best, on a light background. Any width; aim for at least ~120px tall. Max 5 MB. Displayed ~30px tall.
+				</p>
 			</div>
 		</div>
 
-		<!-- Live preview of the email/page header wordmark -->
-		<div class="rounded-lg border bg-card p-6">
-			<p class="text-xs font-medium text-muted-foreground">Header preview</p>
-			<div class="mt-3 flex items-center rounded-md border bg-white p-4">
-				{#if logoUrl && logoValid}
-					<img src={logoUrl} alt={businessName || 'logo'} class="h-[30px] max-h-[30px]" />
-				{:else}
-					<span class="text-[15px] font-semibold text-zinc-900">{businessName || 'Calnode'}</span>
-				{/if}
-			</div>
-		</div>
-
-		<Button onclick={save} disabled={saving || !logoValid}>{saving ? 'Saving…' : 'Save'}</Button>
+		<Button onclick={save} disabled={saving}>{saving ? 'Saving…' : 'Save'}</Button>
 	</div>
 {/if}

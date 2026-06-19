@@ -45,11 +45,12 @@ func TestRenderHTML_allTemplates(t *testing.T) {
 			t.Errorf("%s: rendered empty HTML (template error)", name)
 			continue
 		}
-		if !strings.Contains(out, "Orchestratr") {
-			t.Errorf("%s: missing brand wordmark", name)
-		}
 		if !strings.Contains(out, "20-minute call") {
 			t.Errorf("%s: missing event name", name)
+		}
+		// No logo set → no logo header bar, and no repeated brand wordmark in body.
+		if strings.Contains(out, "<img") {
+			t.Errorf("%s: rendered a logo <img> with no LogoURL set", name)
 		}
 	}
 
@@ -61,10 +62,15 @@ func TestRenderHTML_allTemplates(t *testing.T) {
 	if !strings.Contains(conf, "/manage/tok") {
 		t.Error("confirm-org: missing manage link")
 	}
-	// Brand fallback when unset.
-	d.BrandName = ""
-	if !strings.Contains(renderHTML(htmlConfirmOrg, d), "Calnode") {
-		t.Error("confirm-org: brand should fall back to Calnode when unset")
+
+	// With a logo, the header renders the image with the brand as alt text.
+	d.LogoURL = "https://cdn.example.com/logo.png"
+	withLogo := renderHTML(htmlConfirmOrg, d)
+	if !strings.Contains(withLogo, `src="https://cdn.example.com/logo.png"`) {
+		t.Error("confirm-org: logo image not rendered when LogoURL set")
+	}
+	if !strings.Contains(withLogo, `alt="Orchestratr"`) {
+		t.Error("confirm-org: logo alt should be the brand name")
 	}
 }
 
