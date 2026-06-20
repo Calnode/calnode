@@ -197,8 +197,9 @@ func (h *Handler) reconcileCreations(ctx context.Context, gc *calendar.Service) 
 		if err1 != nil || err2 != nil {
 			continue
 		}
-		// google_meet: the primary's healed event creates the conference (unless the
-		// booking already has a link); secondary/healed events carry the existing link.
+		// Online meeting (Meet/Teams): the primary's healed event mints the link
+		// (unless the booking already has one); secondary/healed events carry the
+		// existing link via Location.
 		eventID, link, err := gc.CreateEvent(ctx, m.userID, calendar.CreateEventParams{
 			Summary:        m.etName + " with " + m.orgName,
 			Description:    "Booking ID: " + m.bookingID,
@@ -207,7 +208,7 @@ func (h *Handler) reconcileCreations(ctx context.Context, gc *calendar.Service) 
 			End:            end,
 			OrganizerName:  m.orgName,
 			OrganizerEmail: m.orgEmail,
-			AddMeet:        m.isPrimary && m.locationType == "google_meet" && m.bookingLoc == "",
+			AddMeet:        m.isPrimary && onlineMeetingLocation(m.locationType) && m.bookingLoc == "",
 		})
 		if err != nil {
 			h.logger.Error("reconcile: create missing event", "error", err, "booking_id", m.bookingID, "host", m.userID)

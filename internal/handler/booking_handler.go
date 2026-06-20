@@ -23,6 +23,13 @@ import (
 // rate limit, for the openly-public booking page.
 const maxBookingsPerEmailPerHour = 10
 
+// onlineMeetingLocation reports whether an event-type location wants the calendar
+// provider to auto-create a native online meeting. The connected provider mints
+// whatever it supports — Google Meet for Google, Microsoft Teams for Microsoft.
+func onlineMeetingLocation(locType string) bool {
+	return locType == "google_meet" || locType == "teams"
+}
+
 type attendeeJSON struct {
 	Name  string `json:"name"`
 	Email string `json:"email"`
@@ -397,10 +404,11 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 		}
 
 		gc := h.getCal()
-		// For google_meet event types, the primary host's event creates the Meet
-		// conference; the returned link is captured, stored on the booking, surfaced
-		// in emails, and passed to any secondary hosts' events as their location.
-		wantMeet := et.LocationType == "google_meet"
+		// For online-meeting event types (Google Meet / Teams), the primary host's
+		// event mints the meeting link via their connected provider; the link is
+		// captured, stored on the booking, surfaced in emails, and passed to any
+		// secondary hosts' events as their location.
+		wantMeet := onlineMeetingLocation(et.LocationType)
 		meetURL := ""
 		var primaryPrefs hostPrefs = allOnPrefs
 		for _, host := range hosts {
