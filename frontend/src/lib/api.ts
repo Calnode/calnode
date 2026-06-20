@@ -115,7 +115,8 @@ export type CalendarStatus = {
 	connected: boolean;
 	configured?: boolean;
 	calendar_id?: string;
-	provider?: string;
+	provider?: string;    // connected provider name, when connected
+	providers?: string[]; // configured providers available to connect
 };
 
 export type EmailSettings = {

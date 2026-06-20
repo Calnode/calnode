@@ -108,7 +108,11 @@ func (h *Handler) CalendarStatus(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	resp := map[string]any{"connected": connected, "configured": true}
+	resp := map[string]any{
+		"connected":  connected,
+		"configured": true,
+		"providers":  svc.ProviderNames(), // which backends are available to connect
+	}
 	if connected {
 		resp["provider"] = provider
 	}

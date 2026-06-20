@@ -7,6 +7,7 @@ package calendar
 import (
 	"context"
 	"database/sql"
+	"sort"
 	"time"
 
 	"github.com/calnode/calnode/internal/slots"
@@ -78,6 +79,17 @@ func (s *Service) Primary() Provider { return s.providers[s.primary] }
 
 // Provider returns the named provider, or nil.
 func (s *Service) Provider(name string) Provider { return s.providers[name] }
+
+// ProviderNames returns the configured provider names, sorted, so the UI can
+// offer the right connect options.
+func (s *Service) ProviderNames() []string {
+	names := make([]string, 0, len(s.providers))
+	for n := range s.providers {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	return names
+}
 
 // providerForUser resolves the provider a user has connected (nil if none).
 func (s *Service) providerForUser(ctx context.Context, userID string) Provider {
