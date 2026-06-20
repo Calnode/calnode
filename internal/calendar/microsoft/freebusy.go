@@ -1,0 +1,85 @@
+package microsoft
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/url"
+	"time"
+
+	"github.com/calnode/calnode/internal/slots"
+)
+
+// graphDateTime is Graph's start/end shape: an ISO-8601 wall-clock string plus a
+// timezone name. With the Prefer: outlook.timezone="UTC" header, values come back
+// in UTC without an offset, e.g. "2026-06-22T21:00:00.0000000".
+type graphDateTime struct {
+	DateTime string `json:"dateTime"`
+	TimeZone string `json:"timeZone"`
+}
+
+// parse interprets the (offset-less, UTC) Graph dateTime.
+func (g graphDateTime) parse() (time.Time, error) {
+	return time.Parse("2006-01-02T15:04:05.999999999", g.DateTime)
+}
+
+type calendarViewResp struct {
+	Value []struct {
+		Start graphDateTime `json:"start"`
+		End   graphDateTime `json:"end"`
+	} `json:"value"`
+	NextLink string `json:"@odata.nextLink"`
+}
+
+// FreeBusy returns busy intervals for userID in [from, to) by reading the user's
+// calendar view (every event in the window counts as busy). Returns (nil, nil) if
+// the user has no check_conflicts connection.
+func (c *Client) FreeBusy(ctx context.Context, userID string, from, to time.Time) ([]slots.Interval, error) {
+	hc, err := c.httpClient(ctx, userID, 1, -1)
+	if err != nil || hc == nil {
+		return nil, err
+	}
+
+	q := url.Values{}
+	q.Set("startDateTime", from.UTC().Format(time.RFC3339))
+	q.Set("endDateTime", to.UTC().Format(time.RFC3339))
+	q.Set("$select", "start,end")
+	q.Set("$top", "200")
+	next := c.apiBase + "/me/calendarView?" + q.Encode()
+
+	var out []slots.Interval
+	for next != "" {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, next, nil)
+		if err != nil {
+			return nil, fmt.Errorf("microsoft: calendarView request: %w", err)
+		}
+		req.Header.Set("Prefer", `outlook.timezone="UTC"`)
+
+		resp, err := hc.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("microsoft: calendarView call: %w", err)
+		}
+		var cv calendarViewResp
+		if resp.StatusCode != http.StatusOK {
+			resp.Body.Close()
+			return nil, fmt.Errorf("microsoft: calendarView status %d", resp.StatusCode)
+		}
+		derr := json.NewDecoder(resp.Body).Decode(&cv)
+		resp.Body.Close()
+		if derr != nil {
+			return nil, fmt.Errorf("microsoft: calendarView decode: %w", derr)
+		}
+		for _, ev := range cv.Value {
+			s, err1 := ev.Start.parse()
+			e, err2 := ev.End.parse()
+			if err1 != nil || err2 != nil {
+				c.logger.Warn("microsoft: skipping unparseable busy interval", "start", ev.Start.DateTime, "end", ev.End.DateTime)
+				continue
+			}
+			out = append(out, slots.Interval{Start: s.UTC(), End: e.UTC()})
+		}
+		next = cv.NextLink
+	}
+	return out, nil
+}

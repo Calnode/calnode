@@ -9,6 +9,7 @@ import (
 
 	"github.com/calnode/calnode/frontend"
 	"github.com/calnode/calnode/internal/calendar"
+	"github.com/calnode/calnode/internal/calendar/microsoft"
 	"github.com/calnode/calnode/internal/config"
 	"github.com/calnode/calnode/internal/gcal"
 	"github.com/calnode/calnode/internal/handler"
@@ -88,24 +89,39 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 		logger.Info("Google OAuth: credentials loaded from database")
 	}
 
+	// Build one calendar Service and register every configured provider into it.
+	calSvc := calendar.NewService(db)
+	calRedirect := cfg.BaseURL + "/v1/calendar/callback"
+
 	if googleClientID != "" {
 		authRedirect := cfg.BaseURL + "/v1/auth/callback"
 		h.SetGoogleAuth(googleClientID, googleClientSecret, authRedirect, cfg.CookieSecure)
 		logger.Info("Google OAuth login configured", "redirect_url", authRedirect)
 
-		calRedirect := cfg.BaseURL + "/v1/calendar/callback"
 		gc, err := gcal.New(db, googleClientID, googleClientSecret, calRedirect, cfg.EncryptionKey)
 		if err != nil {
 			logger.Error("gcal: init failed", "error", err)
 		} else {
-			svc := calendar.NewService(db)
-			svc.Register(gc)
-			h.SetCalendar(svc)
-			h.StartCalendarReconciler(ctx)
+			calSvc.Register(gc)
 			logger.Info("Google Calendar configured", "redirect_url", calRedirect)
 		}
 	} else {
 		logger.Info("Google OAuth not configured — add credentials in Settings or set GOOGLE_CLIENT_ID")
+	}
+
+	if cfg.MicrosoftClientID != "" && cfg.MicrosoftClientSecret != "" {
+		mc, err := microsoft.New(db, cfg.MicrosoftClientID, cfg.MicrosoftClientSecret, cfg.MicrosoftTenant, calRedirect, cfg.EncryptionKey)
+		if err != nil {
+			logger.Error("microsoft: init failed", "error", err)
+		} else {
+			calSvc.Register(mc)
+			logger.Info("Microsoft 365 calendar configured", "tenant", cfg.MicrosoftTenant)
+		}
+	}
+
+	if calSvc.Any() {
+		h.SetCalendar(calSvc)
+		h.StartCalendarReconciler(ctx)
 	}
 
 	// Ops

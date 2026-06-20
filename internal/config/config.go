@@ -30,6 +30,11 @@ type Config struct {
 	GoogleClientID     string
 	GoogleClientSecret string
 
+	// Microsoft 365 / Outlook (calendar) — env-only; tenant defaults to "common".
+	MicrosoftClientID     string
+	MicrosoftClientSecret string
+	MicrosoftTenant       string
+
 	// CookieSecure sets the Secure flag on session cookies. Defaults to true
 	// when BASE_URL starts with https://, but can be overridden explicitly via
 	// COOKIE_SECURE=false for HTTPS-terminated-at-proxy setups where the binary
@@ -54,6 +59,10 @@ func Load() *Config {
 
 		GoogleClientID:     getEnv("GOOGLE_CLIENT_ID", ""),
 		GoogleClientSecret: getEnv("GOOGLE_CLIENT_SECRET", ""),
+
+		MicrosoftClientID:     getEnv("MICROSOFT_CLIENT_ID", ""),
+		MicrosoftClientSecret: getEnv("MICROSOFT_CLIENT_SECRET", ""),
+		MicrosoftTenant:       getEnv("MICROSOFT_TENANT", "common"),
 	}
 
 	cfg.EncryptionKey = os.Getenv("CALNODE_ENCRYPTION_KEY")

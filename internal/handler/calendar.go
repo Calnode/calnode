@@ -2,7 +2,12 @@ package handler
 
 import (
 	"net/http"
+	"strings"
 )
+
+// stateSep separates the provider name from the userID inside the (encrypted)
+// OAuth state, so the shared callback can route to the right provider.
+const stateSep = "\x1f"
 
 // ConnectCalendar handles GET /v1/calendar/connect (auth required).
 // Redirects the browser to the chosen provider's OAuth consent page.
@@ -23,7 +28,8 @@ func (h *Handler) ConnectCalendar(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	user, _ := userFromContext(r.Context())
-	state, err := p.EncryptState(user.ID)
+	// Encode the provider in the state so the shared callback routes correctly.
+	state, err := p.EncryptState(p.Name() + stateSep + user.ID)
 	if err != nil {
 		h.logger.ErrorContext(r.Context(), "calendar connect: encrypt state", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal error")
@@ -43,16 +49,28 @@ func (h *Handler) CalendarCallback(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusNotImplemented, "Calendar integration not configured")
 		return
 	}
-	p := svc.Primary()
 
 	if errParam := r.URL.Query().Get("error"); errParam != "" {
 		h.writeError(w, http.StatusBadRequest, "OAuth error: "+errParam)
 		return
 	}
 
-	state := r.URL.Query().Get("state")
-	userID, err := p.DecryptState(state)
-	if err != nil || userID == "" {
+	// All providers share the encryption key, so any provider's DecryptState
+	// recovers the state; we then resolve the provider it encodes.
+	raw, err := svc.Primary().DecryptState(r.URL.Query().Get("state"))
+	if err != nil || raw == "" {
+		h.writeError(w, http.StatusBadRequest, "invalid or missing state")
+		return
+	}
+	p := svc.Primary()
+	userID := raw
+	if i := strings.Index(raw, stateSep); i >= 0 {
+		if pr := svc.Provider(raw[:i]); pr != nil {
+			p = pr
+		}
+		userID = raw[i+1:]
+	}
+	if userID == "" {
 		h.writeError(w, http.StatusBadRequest, "invalid or missing state")
 		return
 	}
