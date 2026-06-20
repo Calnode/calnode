@@ -167,13 +167,34 @@ and you'll see `InvalidAccessKeyId` (403) in the logs (your R2 key sent to Amazo
 > by the envelope-encryption key even inside the backup.
 
 ### Verifying / restoring
-Restore is automatic on an empty volume. To test it manually into a scratch file
-(with the same env vars set):
+Recovery is automatic: if the volume comes up empty, `entrypoint.sh` restores the
+latest replica from object storage before starting the app. To **prove the
+round-trip without touching the live DB**, restore to a scratch path (never
+`/data/calnode.db`) and confirm it's a valid SQLite file.
 
+**Non-destructive drill, in the container (zero setup — litestream + creds + config are already there):**
 ```bash
-litestream restore -o /tmp/check.db s3://<bucket>/calnode
-sqlite3 /tmp/check.db "PRAGMA integrity_check;"   # expect: ok
+railway ssh --service calnode sh -lc '
+  rm -f /tmp/check.db
+  litestream restore -config /etc/litestream.yml -o /tmp/check.db /data/calnode.db
+  ls -l /tmp/check.db          # non-zero, ~ the live DB size
+  head -c 16 /tmp/check.db; echo   # "SQLite format 3" = valid, replayed from the replica
+  rm -f /tmp/check.db
+'
 ```
+It writes only to `/tmp` (ephemeral) and reads from the replica, so the running
+app and the `/data` volume are untouched. (The runtime image has no `sqlite3` CLI,
+hence the header check; for a full `PRAGMA integrity_check`, restore locally below.)
+
+**Locally (full integrity check):** install the `litestream` binary, export the five
+`LITESTREAM_*` vars, then:
+```bash
+litestream restore -config litestream.yml -o ./check.db /data/calnode.db
+sqlite3 ./check.db "PRAGMA integrity_check;"   # expect: ok
+```
+
+Run a drill after first enabling backups, and periodically thereafter — an
+unverified backup isn't a backup.
 
 ---
 
