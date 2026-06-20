@@ -10,8 +10,10 @@ import (
 )
 
 type etVisItem struct {
-	Slug  string `json:"slug"`
-	Owned bool   `json:"owned"`
+	Slug       string `json:"slug"`
+	Owned      bool   `json:"owned"`
+	OwnerName  string `json:"owner_name"`
+	OwnerEmail string `json:"owner_email"`
 }
 
 // A member added as a host on someone else's event type can SEE it (read-only,
@@ -49,6 +51,10 @@ func TestEventTypes_assignedHostSeesReadOnly(t *testing.T) {
 		json.Unmarshal(rec.Body.Bytes(), &et)
 		if et.Owned {
 			t.Error("u2 get: owned=true; want false (host, not owner)")
+		}
+		// The owner's identity is surfaced so the host knows who to contact.
+		if et.OwnerEmail == "" {
+			t.Error("u2 get: owner_email empty; want the owner's email for the read-only banner")
 		}
 	}
 

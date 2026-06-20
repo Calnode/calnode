@@ -48,6 +48,9 @@ export type EventType = {
 	rr_strategy: 'even' | 'soonest' | 'priority';
 	/** True if the current user owns this event type; false if they only host it (read-only). */
 	owned?: boolean;
+	/** Owner identity, returned only when the viewer is a read-only host. */
+	owner_name?: string;
+	owner_email?: string;
 };
 
 export type EventTypeHost = {

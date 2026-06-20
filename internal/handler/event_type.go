@@ -48,6 +48,10 @@ type eventTypeJSON struct {
 	// Owned is true when the requesting user owns this event type; false when they
 	// only see it as an assigned host (read-only — only the owner can edit).
 	Owned bool `json:"owned"`
+	// OwnerName/OwnerEmail identify the owner so a read-only host knows who to
+	// contact for changes. Populated only for the host (read-only) GET case.
+	OwnerName  string `json:"owner_name,omitempty"`
+	OwnerEmail string `json:"owner_email,omitempty"`
 }
 
 type rowScanner interface {
@@ -144,8 +148,11 @@ WHERE user_id = ?
 ORDER BY created_at`
 
 // getEventTypeQuery fetches one event type by slug if the user owns it or hosts
-// it, with the `owned` flag so the UI can render non-owners read-only.
-const getEventTypeQuery = "SELECT " + etColumns + `, (user_id = ?) AS owned
+// it, with the `owned` flag and the owner's name/email (so a read-only host knows
+// who to contact for changes).
+const getEventTypeQuery = "SELECT " + etColumns + `, (user_id = ?) AS owned,
+	(SELECT name FROM users WHERE id = event_types.user_id) AS owner_name,
+	(SELECT email FROM users WHERE id = event_types.user_id) AS owner_email
 FROM event_types
 WHERE slug = ? AND (user_id = ? OR id IN (SELECT event_type_id FROM event_type_hosts WHERE user_id = ?))`
 
@@ -337,8 +344,9 @@ func (h *Handler) GetEventType(w http.ResponseWriter, r *http.Request) {
 	slug := r.PathValue("slug")
 
 	var owned int
+	var ownerName, ownerEmail string
 	row := h.db.QueryRowContext(r.Context(), getEventTypeQuery, user.ID, slug, user.ID, user.ID)
-	et, err := scanEventTypeRow(row, &owned)
+	et, err := scanEventTypeRow(row, &owned, &ownerName, &ownerEmail)
 	if err != nil {
 		h.logger.ErrorContext(r.Context(), "get event type", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal error")
@@ -349,6 +357,10 @@ func (h *Handler) GetEventType(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	et.Owned = owned != 0
+	if !et.Owned { // read-only host: surface who to contact for changes
+		et.OwnerName = ownerName
+		et.OwnerEmail = ownerEmail
+	}
 	if err := h.loadReminders(r.Context(), et.ID, et); err != nil {
 		h.logger.ErrorContext(r.Context(), "get event type: load reminders", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal error")

@@ -529,8 +529,14 @@
 
 <!-- Read-only: the user hosts this event type but doesn't own it -->
 <div class="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-	You're a <span class="font-medium">host</span> on this event type. Only its owner can change it —
-	message them to request edits.
+	{#if et.owner_email}
+		<span class="font-medium">{et.owner_name || et.owner_email}</span> created this event type.
+		<a href="mailto:{et.owner_email}?subject={encodeURIComponent('Change request: ' + et.name)}" class="font-medium underline">Message them</a> to request changes.
+	{:else if et.owner_name}
+		<span class="font-medium">{et.owner_name}</span> created this event type. Message them to request changes.
+	{:else}
+		This event type is managed by its owner. Contact them to request changes.
+	{/if}
 </div>
 <div class="rounded-lg border bg-card p-6">
 	<dl class="grid grid-cols-[140px_1fr] gap-x-4 gap-y-3 text-sm">
