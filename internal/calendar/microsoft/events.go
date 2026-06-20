@@ -5,8 +5,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/calnode/calnode/internal/calendar"
@@ -14,6 +16,14 @@ import (
 
 // graphTZ is the UTC wall-clock format Graph expects for event start/end.
 const graphTZ = "2006-01-02T15:04:05"
+
+// graphErrBody reads a short snippet of a Graph error response so the HTTP status
+// can be logged alongside Graph's own error code (e.g. "MailboxNotEnabledForRESTAPI"
+// when the account has no Exchange Online mailbox). Caller still closes resp.Body.
+func graphErrBody(resp *http.Response) string {
+	b, _ := io.ReadAll(io.LimitReader(resp.Body, 600))
+	return strings.TrimSpace(string(b))
+}
 
 type graphAttendee struct {
 	EmailAddress struct {
@@ -97,7 +107,7 @@ func (c *Client) CreateEvent(ctx context.Context, userID string, p calendar.Crea
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
-		return "", "", fmt.Errorf("microsoft: create event status %d", resp.StatusCode)
+		return "", "", fmt.Errorf("microsoft: create event status %d: %s", resp.StatusCode, graphErrBody(resp))
 	}
 
 	var evResp graphEventResp

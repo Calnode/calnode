@@ -62,8 +62,9 @@ func (c *Client) FreeBusy(ctx context.Context, userID string, from, to time.Time
 		}
 		var cv calendarViewResp
 		if resp.StatusCode != http.StatusOK {
+			msg := graphErrBody(resp)
 			resp.Body.Close()
-			return nil, fmt.Errorf("microsoft: calendarView status %d", resp.StatusCode)
+			return nil, fmt.Errorf("microsoft: calendarView status %d: %s", resp.StatusCode, msg)
 		}
 		derr := json.NewDecoder(resp.Body).Decode(&cv)
 		resp.Body.Close()
