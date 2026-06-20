@@ -345,7 +345,7 @@ func (h *Handler) hostAvailability(ctx context.Context, userID, eventTypeID stri
 
 	// Merge Google Calendar free/busy (check_conflicts connections only), minus our
 	// own events. Non-fatal.
-	if gc := h.getGCal(); gc != nil {
+	if gc := h.getCal(); gc != nil {
 		if gcalBusy, err := gc.FreeBusy(ctx, userID, dateFrom, dateTo.Add(24*time.Hour)); err != nil {
 			h.logger.ErrorContext(ctx, "slots: gcal freebusy", "error", err, "host", userID)
 		} else {

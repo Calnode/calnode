@@ -9,19 +9,9 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/calnode/calnode/internal/calendar"
 	"github.com/calnode/calnode/internal/uid"
 )
-
-// CreateEventParams holds the data needed to create a calendar event.
-type CreateEventParams struct {
-	Summary        string
-	Description    string
-	Location       string // optional event location; e.g. the Meet link on secondary hosts' events
-	Start, End     time.Time
-	OrganizerName  string
-	OrganizerEmail string
-	AddMeet        bool // request a Google Meet conference (conferenceData + hangoutLink)
-}
 
 type calEventDateTime struct {
 	DateTime string `json:"dateTime"`
@@ -87,7 +77,7 @@ func (r calEventResp) meetLink() string {
 // CreateEvent creates a Google Calendar event and returns its event ID and, when
 // p.AddMeet is set, the generated Google Meet URL. Returns ("", "", nil) if the
 // user has no is_destination connection.
-func (c *Client) CreateEvent(ctx context.Context, userID string, p CreateEventParams) (string, string, error) {
+func (c *Client) CreateEvent(ctx context.Context, userID string, p calendar.CreateEventParams) (string, string, error) {
 	hc, calID, err := c.DestinationClient(ctx, userID)
 	if err != nil || hc == nil {
 		return "", "", err

@@ -17,8 +17,19 @@ import (
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 
+	"github.com/calnode/calnode/internal/calendar"
 	"github.com/calnode/calnode/internal/uid"
 )
+
+// Client implements calendar.Provider for Google Calendar.
+var _ calendar.Provider = (*Client)(nil)
+
+// Name identifies this provider in the calendar_connections table.
+func (c *Client) Name() string { return "google" }
+
+// InvitesGuests is true: Google emails guests its own invite (sendUpdates=all),
+// so Calnode must not also attach an .ics (it would duplicate).
+func (c *Client) InvitesGuests() bool { return true }
 
 // Client manages Google Calendar OAuth tokens and API access.
 type Client struct {

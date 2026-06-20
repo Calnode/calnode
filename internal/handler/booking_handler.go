@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/calnode/calnode/internal/booking"
-	"github.com/calnode/calnode/internal/gcal"
+	"github.com/calnode/calnode/internal/calendar"
 	"github.com/calnode/calnode/internal/mailer"
 	"github.com/calnode/calnode/internal/uid"
 	"github.com/calnode/calnode/internal/webhook"
@@ -82,7 +82,7 @@ func toBookingJSON(b *booking.Booking) bookingJSON {
 // still wanted there — i.e. the right future shape is "no destination whose provider
 // auto-delivers invites", not just "no Google".
 func (h *Handler) noGoogleDestination(ctx context.Context, hostID string) bool {
-	gc := h.getGCal()
+	gc := h.getCal()
 	if gc == nil {
 		return true
 	}
@@ -396,7 +396,7 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 			bData.SubjectOverride = subjNote.String
 		}
 
-		gc := h.getGCal()
+		gc := h.getCal()
 		// For google_meet event types, the primary host's event creates the Meet
 		// conference; the returned link is captured, stored on the booking, surfaced
 		// in emails, and passed to any secondary hosts' events as their location.
@@ -408,7 +408,7 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 			// the per-host event ID so it can be cancelled later. The primary's id
 			// also lives on the booking row for back-compat.
 			if gc != nil {
-				eventID, link, err := gc.CreateEvent(ctx, host.UserID, gcal.CreateEventParams{
+				eventID, link, err := gc.CreateEvent(ctx, host.UserID, calendar.CreateEventParams{
 					Summary:        et.Name + " with " + req.Name,
 					Description:    "Booking ID: " + b.ID,
 					Location:       meetURL, // empty until the primary creates it; secondary hosts get the link
@@ -706,7 +706,7 @@ func (h *Handler) cancelSideEffects(b booking.Booking) {
 	// bookings put the meeting on several calendars; remove them all. Read the
 	// host list fully first — the inner CancelEvent/loadHostPrefs queries can't run
 	// while a cursor holds the single DB connection (would deadlock).
-	gc := h.getGCal()
+	gc := h.getCal()
 	var primaryPrefs = allOnPrefs
 	hosts, hErr := h.assignedHosts(ctx, b.ID)
 	if hErr != nil {
@@ -778,7 +778,7 @@ func (h *Handler) cancelSideEffects(b booking.Booking) {
 // start/end after a reschedule. Best-effort; a failure leaves that host's event
 // at the old time (logged). Group bookings move all hosts' events.
 func (h *Handler) moveCalendarEvents(ctx context.Context, bookingID string, start, end time.Time) {
-	gc := h.getGCal()
+	gc := h.getCal()
 	if gc == nil {
 		return
 	}

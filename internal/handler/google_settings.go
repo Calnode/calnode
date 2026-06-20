@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/calnode/calnode/internal/calendar"
 	"github.com/calnode/calnode/internal/gcal"
 	"github.com/calnode/calnode/internal/secret"
 )
@@ -169,7 +170,9 @@ func (h *Handler) PatchGoogleSettings(w http.ResponseWriter, r *http.Request) {
 			h.writeError(w, http.StatusInternalServerError, "failed to initialize calendar client")
 			return
 		}
-		h.SetCalendar(gc)
+		svc := calendar.NewService(h.db)
+		svc.Register(gc)
+		h.SetCalendar(svc)
 		h.SetGoogleAuth(req.ClientID, resolvedSecret, h.baseURL+"/v1/auth/callback", h.secureCookie)
 		h.logger.Info("google settings: credentials updated and gcal hot-reloaded")
 	}

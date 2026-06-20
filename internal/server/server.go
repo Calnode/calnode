@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/calnode/calnode/frontend"
+	"github.com/calnode/calnode/internal/calendar"
 	"github.com/calnode/calnode/internal/config"
 	"github.com/calnode/calnode/internal/gcal"
 	"github.com/calnode/calnode/internal/handler"
@@ -97,7 +98,9 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 		if err != nil {
 			logger.Error("gcal: init failed", "error", err)
 		} else {
-			h.SetCalendar(gc)
+			svc := calendar.NewService(db)
+			svc.Register(gc)
+			h.SetCalendar(svc)
 			h.StartCalendarReconciler(ctx)
 			logger.Info("Google Calendar configured", "redirect_url", calRedirect)
 		}

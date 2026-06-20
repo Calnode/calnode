@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/calnode/calnode/internal/calendar"
 	"github.com/calnode/calnode/internal/db"
 	"github.com/calnode/calnode/internal/gcal"
 	"github.com/calnode/calnode/internal/handler"
@@ -36,7 +37,9 @@ func newHandlerWithGCal(t *testing.T) (*handler.Handler, *gcal.Client, string, s
 	if err != nil {
 		t.Fatalf("gcal.New: %v", err)
 	}
-	h.SetCalendar(gc)
+	svc := calendar.NewService(database)
+	svc.Register(gc)
+	h.SetCalendar(svc)
 	// baseURL is used in the success redirect; leave default ("") since no
 	// test here reaches the success path of CalendarCallback.
 

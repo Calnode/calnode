@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/calnode/calnode/internal/gcal"
+	"github.com/calnode/calnode/internal/calendar"
 )
 
 // calReconcileInterval is how often the reconciler sweeps for divergence between
@@ -46,7 +46,7 @@ func (h *Handler) nudgeCalendarReconcile() {
 }
 
 func (h *Handler) reconcileCalendar() {
-	gc := h.getGCal()
+	gc := h.getCal()
 	if gc == nil {
 		return // calendar not configured — nothing to reconcile
 	}
@@ -62,7 +62,7 @@ func (h *Handler) reconcileCalendar() {
 // stranded at the old time. This is the time-drift counterpart to the presence/
 // absence passes: drift can't be inferred from booking state, so it's signalled by
 // the flag. Idempotent — re-applying the same time is a no-op on Google.
-func (h *Handler) reconcileReschedules(ctx context.Context, gc *gcal.Client) {
+func (h *Handler) reconcileReschedules(ctx context.Context, gc *calendar.Service) {
 	now := time.Now().UTC().Format(time.RFC3339)
 	type drift struct {
 		bookingID, userID, eventID, startStr, endStr string
@@ -109,7 +109,7 @@ func (h *Handler) reconcileReschedules(ctx context.Context, gc *gcal.Client) {
 // reconcileCancellations deletes calendar events still attached to cancelled
 // bookings (the inline cancel never reached Google). On success the per-host
 // event id is cleared so the row drops out of the next sweep.
-func (h *Handler) reconcileCancellations(ctx context.Context, gc *gcal.Client) {
+func (h *Handler) reconcileCancellations(ctx context.Context, gc *calendar.Service) {
 	type orphan struct{ bookingID, userID, eventID string }
 	// Read fully before acting — the single DB connection can't serve the inner
 	// CancelEvent/UPDATE queries while a cursor is open (would deadlock).
@@ -146,7 +146,7 @@ func (h *Handler) reconcileCancellations(ctx context.Context, gc *gcal.Client) {
 // reconcileCreations creates calendar events missing from upcoming confirmed
 // bookings — hosts who should have an event but don't (the inline create failed).
 // Hosts without a destination calendar are skipped so we don't retry forever.
-func (h *Handler) reconcileCreations(ctx context.Context, gc *gcal.Client) {
+func (h *Handler) reconcileCreations(ctx context.Context, gc *calendar.Service) {
 	nowT := time.Now().UTC()
 	now := nowT.Format(time.RFC3339)
 	// Grace period: skip very recent bookings so we don't race (and duplicate) an
@@ -199,7 +199,7 @@ func (h *Handler) reconcileCreations(ctx context.Context, gc *gcal.Client) {
 		}
 		// google_meet: the primary's healed event creates the conference (unless the
 		// booking already has a link); secondary/healed events carry the existing link.
-		eventID, link, err := gc.CreateEvent(ctx, m.userID, gcal.CreateEventParams{
+		eventID, link, err := gc.CreateEvent(ctx, m.userID, calendar.CreateEventParams{
 			Summary:        m.etName + " with " + m.orgName,
 			Description:    "Booking ID: " + m.bookingID,
 			Location:       m.bookingLoc,

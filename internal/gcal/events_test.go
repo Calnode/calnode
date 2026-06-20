@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"golang.org/x/oauth2"
+
+	"github.com/calnode/calnode/internal/calendar"
 )
 
 // mockCreateEventServer returns a server that records event requests and returns
@@ -58,7 +60,7 @@ func TestCreateEvent_returnsEventID(t *testing.T) {
 	c.apiBase = srv.URL
 	saveDestinationConnection(t, c, "user-1", "primary")
 
-	eventID, _, err := c.CreateEvent(context.Background(), "user-1", CreateEventParams{
+	eventID, _, err := c.CreateEvent(context.Background(), "user-1", calendar.CreateEventParams{
 		Summary:        "30-Minute Call with Bob",
 		Description:    "Booking ID: abc123",
 		Start:          time.Date(2026, 6, 15, 9, 0, 0, 0, time.UTC),
@@ -81,7 +83,7 @@ func TestCreateEvent_withMeet_requestsConferenceAndReturnsLink(t *testing.T) {
 	c.apiBase = srv.URL
 	saveDestinationConnection(t, c, "user-1", "primary")
 
-	eventID, meetURL, err := c.CreateEvent(context.Background(), "user-1", CreateEventParams{
+	eventID, meetURL, err := c.CreateEvent(context.Background(), "user-1", calendar.CreateEventParams{
 		Summary: "Meet Call",
 		Start:   time.Date(2026, 6, 15, 9, 0, 0, 0, time.UTC),
 		End:     time.Date(2026, 6, 15, 9, 30, 0, 0, time.UTC),
@@ -114,7 +116,7 @@ func TestCreateEvent_withoutMeet_noConferenceRequested(t *testing.T) {
 	c.apiBase = srv.URL
 	saveDestinationConnection(t, c, "user-1", "primary")
 
-	_, meetURL, err := c.CreateEvent(context.Background(), "user-1", CreateEventParams{
+	_, meetURL, err := c.CreateEvent(context.Background(), "user-1", calendar.CreateEventParams{
 		Summary: "Plain Call",
 		Start:   time.Date(2026, 6, 15, 9, 0, 0, 0, time.UTC),
 		End:     time.Date(2026, 6, 15, 9, 30, 0, 0, time.UTC),
@@ -137,7 +139,7 @@ func TestCreateEvent_sendsCorrectFields(t *testing.T) {
 	c.apiBase = srv.URL
 	saveDestinationConnection(t, c, "user-1", "primary")
 
-	p := CreateEventParams{
+	p := calendar.CreateEventParams{
 		Summary:        "Team Sync with Alice",
 		Description:    "Booking ID: xyz",
 		Start:          time.Date(2026, 6, 20, 14, 0, 0, 0, time.UTC),
@@ -163,7 +165,7 @@ func TestCreateEvent_sendsCorrectFields(t *testing.T) {
 
 func TestCreateEvent_notConnected_returnsEmpty(t *testing.T) {
 	c := newTestClient(t)
-	eventID, _, err := c.CreateEvent(context.Background(), "user-no-connection", CreateEventParams{
+	eventID, _, err := c.CreateEvent(context.Background(), "user-no-connection", calendar.CreateEventParams{
 		Summary: "Test",
 		Start:   time.Now(),
 		End:     time.Now().Add(time.Hour),
@@ -183,7 +185,7 @@ func TestCreateEvent_nonOK_returnsError(t *testing.T) {
 	c.apiBase = srv.URL
 	saveDestinationConnection(t, c, "user-1", "primary")
 
-	_, _, err := c.CreateEvent(context.Background(), "user-1", CreateEventParams{
+	_, _, err := c.CreateEvent(context.Background(), "user-1", calendar.CreateEventParams{
 		Start: time.Now(),
 		End:   time.Now().Add(time.Hour),
 	})
@@ -201,7 +203,7 @@ func TestCreateEvent_onlyDestinationConnections(t *testing.T) {
 	c.db.ExecContext(context.Background(),                       //nolint:errcheck
 		`UPDATE calendar_connections SET is_destination = 0 WHERE user_id = ?`, "user-1")
 
-	eventID, _, err := c.CreateEvent(context.Background(), "user-1", CreateEventParams{
+	eventID, _, err := c.CreateEvent(context.Background(), "user-1", calendar.CreateEventParams{
 		Start: time.Now(), End: time.Now().Add(time.Hour),
 	})
 	if err != nil {

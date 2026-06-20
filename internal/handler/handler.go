@@ -10,7 +10,7 @@ import (
 	"golang.org/x/oauth2"
 
 	"github.com/calnode/calnode/internal/booking"
-	"github.com/calnode/calnode/internal/gcal"
+	"github.com/calnode/calnode/internal/calendar"
 	"github.com/calnode/calnode/internal/mailer"
 	"github.com/calnode/calnode/internal/webhook"
 )
@@ -23,7 +23,7 @@ type Handler struct {
 	live         *mailer.Live // non-nil in production; nil in tests using a direct stub
 	encKey       [32]byte     // AES-256 key for encrypting secrets stored in the DB
 	calMu        sync.RWMutex
-	gcal         *gcal.Client
+	cal          *calendar.Service
 	calNudge     chan struct{} // buffered(1): wakes the calendar reconciler after a failed inline op
 	webhookSvc   *webhook.Service
 	baseURL       string
@@ -90,18 +90,18 @@ func (h *Handler) SetDataDir(dir string) {
 	h.dataDir = dir
 }
 
-// SetCalendar configures the Google Calendar client.
-func (h *Handler) SetCalendar(c *gcal.Client) {
+// SetCalendar configures the multi-provider calendar service.
+func (h *Handler) SetCalendar(c *calendar.Service) {
 	h.calMu.Lock()
-	h.gcal = c
+	h.cal = c
 	h.calMu.Unlock()
 }
 
-// getGCal returns the current calendar client under a read lock.
-func (h *Handler) getGCal() *gcal.Client {
+// getCal returns the current calendar service under a read lock (nil if unconfigured).
+func (h *Handler) getCal() *calendar.Service {
 	h.calMu.RLock()
 	defer h.calMu.RUnlock()
-	return h.gcal
+	return h.cal
 }
 
 // getGoogleAuth returns the current Google OAuth config under a read lock.

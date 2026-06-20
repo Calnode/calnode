@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/calnode/calnode/internal/booking"
-	"github.com/calnode/calnode/internal/gcal"
+	"github.com/calnode/calnode/internal/calendar"
 	"github.com/calnode/calnode/internal/mailer"
 	"github.com/calnode/calnode/internal/webhook"
 )
@@ -156,13 +156,13 @@ func (h *Handler) ReassignBooking(w http.ResponseWriter, r *http.Request) {
 		// Move the Google Calendar event: remove from the old host, recreate on
 		// the new host, and persist the new event ID (clearing it if recreation
 		// produced nothing, e.g. the new host has no destination calendar).
-		if gc := h.getGCal(); gc != nil {
+		if gc := h.getCal(); gc != nil {
 			if extEventID != "" {
 				if err := gc.CancelEvent(ctx, oldHostID, extEventID); err != nil {
 					h.logger.Error("reassign: delete old calendar event", "error", err, "booking_id", bCopy.ID)
 				}
 			}
-			newEventID, _, err := gc.CreateEvent(ctx, newHostID, gcal.CreateEventParams{
+			newEventID, _, err := gc.CreateEvent(ctx, newHostID, calendar.CreateEventParams{
 				Summary:        etName + " with " + orgName,
 				Description:    "Booking ID: " + bCopy.ID,
 				Location:       bCopy.LocationValue, // keep the existing Meet link (don't mint a new one)
