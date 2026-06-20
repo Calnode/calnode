@@ -109,6 +109,15 @@ func (s *Service) Disconnect(ctx context.Context, userID string) error {
 	return err
 }
 
+// RetainOnly removes the user's connections for every provider except keep —
+// enforcing one connected calendar per user when they switch providers (so
+// connecting Microsoft replaces a prior Google connection, and vice versa).
+func (s *Service) RetainOnly(ctx context.Context, userID, keep string) error {
+	_, err := s.db.ExecContext(ctx,
+		`DELETE FROM calendar_connections WHERE user_id = ? AND provider != ?`, userID, keep)
+	return err
+}
+
 // HasDestination reports whether the user's connected provider has somewhere to
 // write events. Used to gate the email .ics fallback and skip pointless retries.
 func (s *Service) HasDestination(ctx context.Context, userID string) (bool, error) {

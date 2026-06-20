@@ -86,6 +86,10 @@ func (h *Handler) CalendarCallback(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+	// One calendar per user: drop any prior connection on a different provider.
+	if err := svc.RetainOnly(r.Context(), userID, p.Name()); err != nil {
+		h.logger.WarnContext(r.Context(), "calendar callback: retain-only cleanup", "error", err, "user_id", userID)
+	}
 
 	http.Redirect(w, r, h.baseURL+"/admin/calendar?connected=true", http.StatusFound)
 }
