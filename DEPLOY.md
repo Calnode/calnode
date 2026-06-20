@@ -146,6 +146,16 @@ Per-provider values (everything else is identical):
 | **AWS S3** | *(unset)* | e.g. `us-east-1` |
 | **MinIO / self-host** | `https://minio.example.com` | `us-east-1` |
 
+**Two easy mistakes:**
+1. `LITESTREAM_ENDPOINT` is the **account** endpoint — do **not** append the bucket
+   name. Litestream takes the bucket from `LITESTREAM_REPLICA_URL`; a bucket in both
+   places fails. (R2 shows the S3 API URL *with* the bucket — drop the last path segment.)
+2. For R2, `LITESTREAM_REGION` is always **`auto`**, not the bucket's physical
+   location (WNAM/ENAM/etc.). A real region string makes R2 reject the signature.
+
+If the endpoint/region are empty or wrong, Litestream silently falls back to **AWS**
+and you'll see `InvalidAccessKeyId` (403) in the logs (your R2 key sent to Amazon).
+
 ### Enabling it
 1. Create a **private** bucket and a **bucket-scoped** access key (read + write — read is needed for restore).
 2. Set the five variables on the service (Railway → Variables, or your platform's equivalent).
@@ -187,3 +197,4 @@ first event type + availability.
 | OAuth `redirect_uri_mismatch` | Registered URI doesn't match `BASE_URL` + `/v1/...callback` exactly. |
 | Email `550 domain not verified` | From address domain isn't verified with your email provider. |
 | Logo broken in email when testing locally | Gmail's image proxy can't reach `localhost` — only loads from a public URL. |
+| Litestream `InvalidAccessKeyId` / 403, log shows `endpoint=""` | `LITESTREAM_ENDPOINT` unset (or the running build predates the endpoint/region config) → Litestream defaults to AWS. Set the **account** endpoint (no bucket) + `region=auto` for R2, and redeploy so the config is live. |
