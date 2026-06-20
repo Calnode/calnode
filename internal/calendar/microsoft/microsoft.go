@@ -77,8 +77,12 @@ func (c *Client) Name() string { return providerName }
 func (c *Client) InvitesGuests() bool { return true }
 
 // AuthURL returns the Microsoft consent page URL with the given state value.
+// prompt=select_account forces the account chooser so a cached single-sign-on
+// session can't silently reconnect the wrong account (e.g. a mailbox-less admin
+// account instead of the user's real Exchange Online mailbox).
 func (c *Client) AuthURL(state string) string {
-	return c.config.AuthCodeURL(state, oauth2.AccessTypeOffline)
+	return c.config.AuthCodeURL(state, oauth2.AccessTypeOffline,
+		oauth2.SetAuthURLParam("prompt", "select_account"))
 }
 
 // EncryptState encrypts userID into an opaque, URL-safe OAuth state value.
