@@ -115,17 +115,55 @@ sensitive scope, so submit the app for verification before wide public use
 
 ## 6. Backups (Litestream)
 
-Set `LITESTREAM_REPLICA_URL` to stream the SQLite DB continuously to S3-compatible
-storage (S3, Cloudflare R2, Backblaze B2). The entrypoint then **restores on boot**
-if the local DB is missing and replicates while running. Example:
+[Litestream](https://litestream.io) streams the SQLite DB continuously to
+**S3-compatible** object storage (≈1-second RPO) and **restores it automatically on
+boot** if the volume comes up empty (lost/replaced). It's built into the image and
+supervises the app (`entrypoint.sh` runs `litestream replicate -exec /calnode`).
 
-```
-LITESTREAM_REPLICA_URL=s3://my-bucket/calnode
-# plus the provider's credentials, e.g. AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY
-```
+**Backups are OFF until you set the env vars below** — until then the container
+just runs the app directly. A single volume with no replica is the biggest
+data-loss risk, so enable this before real bookings exist.
 
-A single volume with no replica is the biggest data-loss risk — configure this
-before real bookings exist.
+### Universal config (one set of vars, any provider)
+
+Because R2, B2, MinIO, Spaces, Wasabi, and AWS all speak the S3 API, the same five
+variables cover every provider — only the endpoint/region change:
+
+| Variable | Purpose |
+|---|---|
+| `LITESTREAM_REPLICA_URL` | `s3://<bucket>/calnode` — the bucket + path. Setting this turns backups ON. |
+| `LITESTREAM_ENDPOINT` | Provider S3 endpoint. **Leave unset for AWS.** |
+| `LITESTREAM_REGION` | Bucket region (`auto` for R2). |
+| `LITESTREAM_ACCESS_KEY_ID` | Access key (use a bucket-scoped key, not a root credential). |
+| `LITESTREAM_SECRET_ACCESS_KEY` | Secret key. |
+
+Per-provider values (everything else is identical):
+
+| Provider | `LITESTREAM_ENDPOINT` | `LITESTREAM_REGION` |
+|---|---|---|
+| **Cloudflare R2** | `https://<account-id>.r2.cloudflarestorage.com` | `auto` |
+| **Backblaze B2** | `https://s3.<region>.backblazeb2.com` | `<region>` (e.g. `us-west-004`) |
+| **AWS S3** | *(unset)* | e.g. `us-east-1` |
+| **MinIO / self-host** | `https://minio.example.com` | `us-east-1` |
+
+### Enabling it
+1. Create a **private** bucket and a **bucket-scoped** access key (read + write — read is needed for restore).
+2. Set the five variables on the service (Railway → Variables, or your platform's equivalent).
+3. Redeploy. On boot Litestream initialises and the first snapshot uploads within ~10s.
+4. **Verify the round-trip** before relying on it (below).
+
+> The backup contains booking PII (names, emails, intake answers) in plaintext —
+> keep the bucket **private**. Calnode's encrypted secrets (SMTP/OAuth) stay sealed
+> by the envelope-encryption key even inside the backup.
+
+### Verifying / restoring
+Restore is automatic on an empty volume. To test it manually into a scratch file
+(with the same env vars set):
+
+```bash
+litestream restore -o /tmp/check.db s3://<bucket>/calnode
+sqlite3 /tmp/check.db "PRAGMA integrity_check;"   # expect: ok
+```
 
 ---
 

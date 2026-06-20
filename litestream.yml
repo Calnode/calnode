@@ -1,4 +1,14 @@
 dbs:
   - path: /data/calnode.db
     replicas:
+      # S3-compatible replica. Works with ANY provider — AWS S3, Cloudflare R2,
+      # Backblaze B2, MinIO, DigitalOcean Spaces, Wasabi — only the endpoint and
+      # region differ. Credentials come from LITESTREAM_ACCESS_KEY_ID /
+      # LITESTREAM_SECRET_ACCESS_KEY (read automatically by Litestream).
+      #
+      # Backups are OFF unless LITESTREAM_REPLICA_URL is set — entrypoint.sh skips
+      # Litestream entirely when it's empty, so this file is only ever parsed when
+      # a replica is configured. For AWS S3, leave LITESTREAM_ENDPOINT unset.
       - url: ${LITESTREAM_REPLICA_URL}
+        endpoint: ${LITESTREAM_ENDPOINT}
+        region: ${LITESTREAM_REGION}
