@@ -197,9 +197,16 @@ func (h *Handler) reconcileCreations(ctx context.Context, gc *calendar.Service) 
 		if err1 != nil || err2 != nil {
 			continue
 		}
-		// Online meeting (Meet/Teams): the primary's healed event mints the link
-		// (unless the booking already has one); secondary/healed events carry the
-		// existing link via Location.
+		// Online meeting (Meet/Teams): the primary's healed event mints the link only
+		// when its connected provider natively matches the platform (Meet↔Google,
+		// Teams↔Microsoft) and the booking has no link yet; otherwise keep the
+		// existing/manual link via Location and never fabricate the wrong kind.
+		autoGenMeet := false
+		if m.isPrimary && m.bookingLoc == "" && onlineMeetingLocation(m.locationType) {
+			if _, provider, perr := gc.Connected(ctx, m.userID); perr == nil {
+				autoGenMeet = providerMintsPlatform(m.locationType, provider)
+			}
+		}
 		eventID, link, err := gc.CreateEvent(ctx, m.userID, calendar.CreateEventParams{
 			Summary:        m.etName + " with " + m.orgName,
 			Description:    "Booking ID: " + m.bookingID,
@@ -208,7 +215,7 @@ func (h *Handler) reconcileCreations(ctx context.Context, gc *calendar.Service) 
 			End:            end,
 			OrganizerName:  m.orgName,
 			OrganizerEmail: m.orgEmail,
-			AddMeet:        m.isPrimary && onlineMeetingLocation(m.locationType) && m.bookingLoc == "",
+			AddMeet:        autoGenMeet,
 		})
 		if err != nil {
 			h.logger.Error("reconcile: create missing event", "error", err, "booking_id", m.bookingID, "host", m.userID)

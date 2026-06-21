@@ -27,3 +27,25 @@ func TestHostsLabel(t *testing.T) {
 		}
 	}
 }
+
+func TestProviderMintsPlatform(t *testing.T) {
+	cases := []struct {
+		locType  string
+		provider string
+		want     bool
+	}{
+		{"google_meet", "google", true},     // Meet auto-generates on Google
+		{"google_meet", "microsoft", false},  // never fabricate Meet on Microsoft
+		{"teams", "microsoft", true},          // Teams auto-generates on Microsoft (work accts)
+		{"teams", "google", false},            // never fabricate Teams on Google (the reported bug)
+		{"google_meet", "", false},            // no connection → use manual link
+		{"teams", "", false},                  // no connection → use manual link
+		{"phone", "google", false},            // non-online type never auto-generates
+		{"in_person", "microsoft", false},
+	}
+	for _, tc := range cases {
+		if got := providerMintsPlatform(tc.locType, tc.provider); got != tc.want {
+			t.Errorf("providerMintsPlatform(%q,%q)=%v; want %v", tc.locType, tc.provider, got, tc.want)
+		}
+	}
+}

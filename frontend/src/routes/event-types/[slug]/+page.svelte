@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { page } from '$app/stores';
 	import { base } from '$app/paths';
-	import { api, type EventType, type EventTypeHost, type Question, type User, type Team } from '$lib/api';
+	import { api, type EventType, type EventTypeHost, type Question, type User, type Team, type CalendarStatus } from '$lib/api';
 	import { currentUser } from '$lib/stores';
 	import { Button, buttonVariants } from '$lib/components/ui/button';
 	import { ConfirmDialog } from '$lib/components/ui/confirm-dialog';
@@ -43,6 +43,12 @@
 	let etError = $state('');
 	let etSaving = $state(false);
 
+	// Connected calendar (the owner's) — drives the meeting-link auto-generation hint.
+	let calStatus = $state<CalendarStatus | null>(null);
+	// Which connected provider can natively mint each online platform's link.
+	const PLATFORM_PROVIDER: Record<string, string> = { google_meet: 'google', teams: 'microsoft' };
+	const isOnlineMeeting = (t: string) => t === 'google_meet' || t === 'teams';
+
 	let form = $state({
 		name: '', description: '', duration_minutes: 30,
 		is_active: true, is_public: true,
@@ -51,6 +57,13 @@
 		min_notice_minutes: 0, max_future_days: 60,
 		max_active_bookings: 1,
 	});
+
+	// True when the connected calendar will auto-generate the chosen platform's link.
+	const meetAutoGen = $derived(
+		isOnlineMeeting(form.location_type) &&
+			!!calStatus?.connected &&
+			calStatus?.provider === PLATFORM_PROVIDER[form.location_type]
+	);
 
 	// ── Routing ──────────────────────────────────────────────────────────────────
 	// The editor asks two plain questions — "who can host?" and (for a team)
@@ -456,6 +469,8 @@
 		await loadET();
 		// Editor-only data (owner-scoped endpoints) — skip for read-only hosts.
 		if (et?.owned === false) return;
+		// Connected calendar — best-effort; drives the meeting-link hint only.
+		api.get<CalendarStatus>('/v1/calendar/status').then((s) => (calStatus = s)).catch(() => {});
 		loadQuestions();
 		if (hostScope === 'people') {
 			await loadHosts();
@@ -603,11 +618,22 @@
 					</Select.Root>
 				</div>
 				<div class="space-y-1.5">
-					{#if form.location_type === 'google_meet'}
-						<Label>Meeting link</Label>
-						<p class="rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
-							A Google Meet link is created automatically for each booking (requires the host's Google Calendar connected).
-						</p>
+					{#if isOnlineMeeting(form.location_type)}
+						{@const platform = form.location_type === 'teams' ? 'Microsoft Teams' : 'Google Meet'}
+						<Label for="et-loc-val">{platform} link</Label>
+						{#if meetAutoGen}
+							<p class="rounded-md border border-green-600/20 bg-green-50 px-3 py-2 text-sm text-green-700">
+								A {platform} link is generated automatically for each booking from your connected calendar.{#if form.location_type === 'teams'} Personal Microsoft accounts can't generate Teams links — add one below as a fallback.{/if}
+							</p>
+						{:else}
+							<p class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+								{calStatus?.connected
+									? `Your connected calendar is ${calStatus.provider === 'google' ? 'Google' : 'Microsoft'}, so a ${platform} link won't be generated automatically.`
+									: `No calendar is connected, so a ${platform} link can't be generated automatically.`}
+								Paste a link below and it'll be used for every booking.
+							</p>
+						{/if}
+						<Input id="et-loc-val" bind:value={form.location_value} placeholder={meetAutoGen ? 'Optional fallback link' : `Paste a ${platform} link`} />
 					{:else}
 						<Label for="et-loc-val">{LOCATION_NEEDS_VALUE[form.location_type] ?? 'Details'}</Label>
 						<Input id="et-loc-val" bind:value={form.location_value} placeholder="Optional" />

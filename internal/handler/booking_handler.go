@@ -23,11 +23,28 @@ import (
 // rate limit, for the openly-public booking page.
 const maxBookingsPerEmailPerHour = 10
 
-// onlineMeetingLocation reports whether an event-type location wants the calendar
-// provider to auto-create a native online meeting. The connected provider mints
-// whatever it supports — Google Meet for Google, Microsoft Teams for Microsoft.
+// onlineMeetingLocation reports whether an event-type location is a native online
+// meeting type (Google Meet or Microsoft Teams) that may be auto-generated.
 func onlineMeetingLocation(locType string) bool {
 	return locType == "google_meet" || locType == "teams"
+}
+
+// providerMintsPlatform reports whether a connected calendar provider can natively
+// auto-generate the meeting link for the given online location type: Google Meet
+// only from a Google calendar, Microsoft Teams only from a Microsoft calendar. When
+// the chosen platform doesn't match the host's connected provider we must NOT
+// fabricate a link of the wrong kind — the organizer's manually-entered link is
+// used instead. (Personal Microsoft accounts can't mint Teams-for-Business links;
+// that surfaces at runtime as an empty link, which falls back the same way.)
+func providerMintsPlatform(locType, provider string) bool {
+	switch locType {
+	case "google_meet":
+		return provider == "google"
+	case "teams":
+		return provider == "microsoft"
+	default:
+		return false
+	}
 }
 
 type attendeeJSON struct {
@@ -404,12 +421,33 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 		}
 
 		gc := h.getCal()
-		// For online-meeting event types (Google Meet / Teams), the primary host's
-		// event mints the meeting link via their connected provider; the link is
-		// captured, stored on the booking, surfaced in emails, and passed to any
-		// secondary hosts' events as their location.
-		wantMeet := onlineMeetingLocation(et.LocationType)
+		// For online-meeting event types (Google Meet / Teams) we auto-generate the
+		// link ONLY when the primary host's connected calendar natively matches the
+		// chosen platform (Meet↔Google, Teams↔Microsoft). Otherwise we never fabricate
+		// a link of the wrong kind — the organizer's manually-entered link is used as
+		// the location instead. The generated link (if any) is captured, stored on the
+		// booking, surfaced in emails, and passed to secondary hosts' events.
+		autoGenMeet := false
+		if gc != nil && onlineMeetingLocation(et.LocationType) {
+			primaryHostID := b.HostID
+			for _, host := range hosts {
+				if host.IsPrimary {
+					primaryHostID = host.UserID
+					break
+				}
+			}
+			if _, primaryProvider, perr := gc.Connected(ctx, primaryHostID); perr == nil {
+				autoGenMeet = providerMintsPlatform(et.LocationType, primaryProvider)
+			} else {
+				h.logger.Error("booking confirmation: primary host provider lookup", "error", perr, "booking_id", b.ID)
+			}
+		}
+		// Seed the propagated location with the organizer's manual link when we won't
+		// auto-generate, so the calendar events and emails still carry a join link.
 		meetURL := ""
+		if onlineMeetingLocation(et.LocationType) && !autoGenMeet {
+			meetURL = b.LocationValue
+		}
 		var primaryPrefs hostPrefs = allOnPrefs
 		for _, host := range hosts {
 			// Create a calendar event on each host's connected calendar and record
@@ -424,7 +462,7 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 					End:            b.EndAt,
 					OrganizerName:  req.Name,
 					OrganizerEmail: req.Email,
-					AddMeet:        wantMeet && host.IsPrimary,
+					AddMeet:        autoGenMeet && host.IsPrimary,
 				})
 				if err != nil {
 					h.logger.Error("create gcal event", "error", err, "booking_id", b.ID, "host", host.UserID)
