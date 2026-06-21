@@ -139,9 +139,11 @@
 
     render(inner) {
       this.body.innerHTML = '';
-      this.body.appendChild(this.header());
+      // The header/footer are built from fetched info; loading + error states
+      // render before that's available, so guard on it.
+      if (this.info) this.body.appendChild(this.header());
       this.body.appendChild(inner);
-      this.body.appendChild(el('div', { class: 'powered', html: 'Powered by <b>' + (this.info && this.info.business_name ? esc(this.info.business_name) : 'Calnode') + '</b>' }));
+      if (this.info) this.body.appendChild(el('div', { class: 'powered', html: 'Powered by <b>' + (this.info.business_name ? esc(this.info.business_name) : 'Calnode') + '</b>' }));
     }
 
     async loadMonth() {
