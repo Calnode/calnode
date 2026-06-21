@@ -3,6 +3,7 @@ package microsoft
 import (
 	"context"
 	"database/sql"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -141,5 +142,82 @@ func TestCreateEvent_noConnection(t *testing.T) {
 	id, join, err := c.CreateEvent(context.Background(), "u2", calendar.CreateEventParams{Summary: "x"})
 	if err != nil || id != "" || join != "" {
 		t.Errorf("want no-op (\"\",\"\",nil); got %q,%q,%v", id, join, err)
+	}
+}
+
+func TestUpdateEvent_patchesNewTime(t *testing.T) {
+	c := newTestClient(t)
+	connect(t, c, "u1")
+
+	var gotMethod, gotPath, gotBody string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod, gotPath = r.Method, r.URL.Path
+		b, _ := io.ReadAll(r.Body)
+		gotBody = string(b)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"id":"evt-1"}`))
+	}))
+	defer srv.Close()
+	c.apiBase = srv.URL
+
+	start := time.Date(2026, 6, 22, 21, 0, 0, 0, time.UTC)
+	if err := c.UpdateEvent(context.Background(), "u1", "evt-1", start, start.Add(30*time.Minute)); err != nil {
+		t.Fatalf("UpdateEvent: %v", err)
+	}
+	if gotMethod != http.MethodPatch {
+		t.Errorf("method=%s; want PATCH", gotMethod)
+	}
+	if !strings.HasSuffix(gotPath, "/me/events/evt-1") {
+		t.Errorf("path=%s; want .../me/events/evt-1", gotPath)
+	}
+	if !strings.Contains(gotBody, "2026-06-22T21:00:00") || !strings.Contains(gotBody, "2026-06-22T21:30:00") {
+		t.Errorf("body missing new start/end: %s", gotBody)
+	}
+}
+
+func TestUpdateEvent_emptyIDNoOp(t *testing.T) {
+	c := newTestClient(t)
+	connect(t, c, "u1")
+	// No server set; an empty eventID must short-circuit before any HTTP call.
+	if err := c.UpdateEvent(context.Background(), "u1", "", time.Now(), time.Now()); err != nil {
+		t.Errorf("UpdateEvent(emptyID): %v; want nil no-op", err)
+	}
+}
+
+func TestCancelEvent_deletes(t *testing.T) {
+	c := newTestClient(t)
+	connect(t, c, "u1")
+
+	var gotMethod, gotPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod, gotPath = r.Method, r.URL.Path
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+	c.apiBase = srv.URL
+
+	if err := c.CancelEvent(context.Background(), "u1", "evt-1"); err != nil {
+		t.Fatalf("CancelEvent: %v", err)
+	}
+	if gotMethod != http.MethodDelete {
+		t.Errorf("method=%s; want DELETE", gotMethod)
+	}
+	if !strings.HasSuffix(gotPath, "/me/events/evt-1") {
+		t.Errorf("path=%s; want .../me/events/evt-1", gotPath)
+	}
+}
+
+func TestCancelEvent_alreadyGoneIsOK(t *testing.T) {
+	c := newTestClient(t)
+	connect(t, c, "u1")
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound) // event already deleted on Graph's side
+	}))
+	defer srv.Close()
+	c.apiBase = srv.URL
+
+	if err := c.CancelEvent(context.Background(), "u1", "evt-1"); err != nil {
+		t.Errorf("CancelEvent(404): %v; want nil (already gone is fine)", err)
 	}
 }
