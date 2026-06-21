@@ -233,20 +233,20 @@ func toBookingJSON(b *booking.Booking) bookingJSON {
 	}
 }
 
-// noGoogleDestination reports whether the given host has no Google destination
+// noGoogleDestination reports whether the given host has no connected destination
 // calendar — the gate for attaching Calnode's own iCalendar invite to an email.
-// When the host *has* a Google destination, Google already delivers a native
-// invite (the booker is added as an attendee; the host owns the event), so our
+// When the host *has* a destination on a provider that auto-invites attendees
+// (Google, Microsoft Graph), that provider already delivers a native invite, so our
 // .ics would duplicate it. gc==nil (calendar feature off) ⇒ no destination ⇒ attach.
 // On a lookup error we report false (don't attach): a missing .ics — recipients
 // still have the add-to-calendar links — beats risking a duplicate invite.
 //
-// This is the single gate for the whole .ics feature. It is Google-specific today;
-// when a provider that also auto-invites attendees is added (e.g. Microsoft Graph),
-// this must return false for *its* destinations too, or those users get duplicate
-// invites. Plain CalDAV (no iTIP scheduling) does NOT auto-invite, so an .ics is
-// still wanted there — i.e. the right future shape is "no destination whose provider
-// auto-delivers invites", not just "no Google".
+// This is the single gate for the whole .ics feature. It is now provider-agnostic via
+// Service.HasDestination, which counts Google AND Microsoft destinations (both
+// auto-invite). The name is historical (it predates the Microsoft provider). A future
+// provider that does NOT auto-invite — e.g. plain CalDAV without iTIP scheduling —
+// would want the .ics, so the gate would then need to key on whether the host's
+// provider auto-delivers invites, not merely on having a destination.
 func (h *Handler) noGoogleDestination(ctx context.Context, hostID string) bool {
 	gc := h.getCal()
 	if gc == nil {

@@ -103,7 +103,7 @@ the owner account, connect a calendar, add an event type). Put a TLS-terminating
 proxy in front that forwards the original `Host` header.
 
 **Full guide → [DEPLOY.md](DEPLOY.md)** (env vars, Railway step-by-step, custom
-domains, Resend email, Google OAuth, Litestream backups, troubleshooting).
+domains, Resend email, Google & Microsoft OAuth, Litestream backups, troubleshooting).
 
 ---
 
@@ -113,7 +113,10 @@ domains, Resend email, Google OAuth, Litestream backups, troubleshooting).
 - Event types with per-type duration, location, custom questions, custom email copy
 - DST-correct availability (working hours, day-of-week rules, date overrides)
 - Team routing: **fixed · round-robin · collective · priority**
-- Google Calendar — native free/busy conflict checks + auto Google Meet links
+- **Google Calendar & Microsoft 365 / Outlook** — native free/busy conflict checks
+  behind one provider abstraction; auto **Google Meet / Teams** links, minted only
+  when the host's connected calendar matches the platform (else a manual link is used)
+- **Sign in with Google or Microsoft** (OAuth) or email + password
 - Public booking + self-serve **reschedule/cancel** via signed manage links
 - HTML branded email (logo, business name, size/opacity) with add-to-calendar links
 - REST API (86 endpoints) + API keys; **HMAC webhooks** with per-webhook payloads + delivery log
@@ -123,8 +126,8 @@ domains, Resend email, Google OAuth, Litestream backups, troubleshooting).
 - Optional analytics: `<head>` code injection + `window.dataLayer` events (GTM/GA4)
 
 **On the roadmap**
-- Native **MCP** server · Microsoft Graph / Apple / CalDAV calendars · embeddable
-  widget · magic-link auth · optional bring-your-own-LLM natural-language layer
+- Native **MCP** server · Apple / CalDAV calendars · Zoom OAuth (auto links) ·
+  embeddable widget · magic-link auth · optional bring-your-own-LLM natural-language layer
 
 ---
 
