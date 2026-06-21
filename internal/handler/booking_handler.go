@@ -233,7 +233,7 @@ func toBookingJSON(b *booking.Booking) bookingJSON {
 	}
 }
 
-// noGoogleDestination reports whether the given host has no connected destination
+// noConnectedDestination reports whether the given host has no connected destination
 // calendar — the gate for attaching Calnode's own iCalendar invite to an email.
 // When the host *has* a destination on a provider that auto-invites attendees
 // (Google, Microsoft Graph), that provider already delivers a native invite, so our
@@ -241,13 +241,13 @@ func toBookingJSON(b *booking.Booking) bookingJSON {
 // On a lookup error we report false (don't attach): a missing .ics — recipients
 // still have the add-to-calendar links — beats risking a duplicate invite.
 //
-// This is the single gate for the whole .ics feature. It is now provider-agnostic via
+// This is the single gate for the whole .ics feature. It is provider-agnostic via
 // Service.HasDestination, which counts Google AND Microsoft destinations (both
-// auto-invite). The name is historical (it predates the Microsoft provider). A future
-// provider that does NOT auto-invite — e.g. plain CalDAV without iTIP scheduling —
-// would want the .ics, so the gate would then need to key on whether the host's
-// provider auto-delivers invites, not merely on having a destination.
-func (h *Handler) noGoogleDestination(ctx context.Context, hostID string) bool {
+// auto-invite). A future provider that does NOT auto-invite — e.g. plain CalDAV
+// without iTIP scheduling — would want the .ics, so the gate would then need to key
+// on whether the host's provider auto-delivers invites, not merely on having a
+// destination.
+func (h *Handler) noConnectedDestination(ctx context.Context, hostID string) bool {
 	gc := h.getCal()
 	if gc == nil {
 		return true
@@ -647,7 +647,7 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 			if prefs.NotifyHostBooking {
 				hd := bData
 				hd.HostName, hd.HostEmail = host.Name, host.Email
-				hd.AttachICS = h.noGoogleDestination(ctx, host.UserID) // per-host: their own calendar
+				hd.AttachICS = h.noConnectedDestination(ctx, host.UserID) // per-host: their own calendar
 				hd.ICSSequence = int(b.UpdatedAt.Unix())
 				if err := mailer.SendConfirmationToHost(ctx, h.mailer, hd); err != nil {
 					h.logger.Error("booking confirmation email (host)", "error", err, "booking_id", b.ID, "host", host.UserID)
@@ -658,7 +658,7 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 		// Attendee confirmation, once. "With:" names the primary host; gated on the
 		// primary host's notification preference (matches prior behaviour).
 		bData.HostName, bData.HostEmail = primaryHost(hosts).Name, primaryHost(hosts).Email
-		bData.AttachICS = h.noGoogleDestination(ctx, b.HostID)
+		bData.AttachICS = h.noConnectedDestination(ctx, b.HostID)
 		bData.ICSSequence = int(b.UpdatedAt.Unix())
 		if primaryPrefs.NotifyConfirmation {
 			if err := mailer.SendConfirmationToAttendee(ctx, h.mailer, bData); err != nil {
@@ -933,14 +933,14 @@ func (h *Handler) cancelSideEffects(b booking.Booking) {
 		if prefs.NotifyHostCancel {
 			hd := d
 			hd.HostName, hd.HostEmail = host.Name, host.Email
-			hd.AttachICS = h.noGoogleDestination(ctx, host.UserID) // per-host: their own calendar
+			hd.AttachICS = h.noConnectedDestination(ctx, host.UserID) // per-host: their own calendar
 			hd.ICSSequence = int(b.UpdatedAt.Unix())
 			if err := mailer.SendCancellationToHost(ctx, h.mailer, hd); err != nil {
 				h.logger.Error("booking cancellation email (host)", "error", err, "booking_id", b.ID, "host", host.UserID)
 			}
 		}
 	}
-	d.AttachICS = h.noGoogleDestination(ctx, b.HostID)
+	d.AttachICS = h.noConnectedDestination(ctx, b.HostID)
 	d.ICSSequence = int(b.UpdatedAt.Unix())
 	if primaryPrefs.NotifyCancellation {
 		if err := mailer.SendCancellationToAttendee(ctx, h.mailer, d); err != nil {

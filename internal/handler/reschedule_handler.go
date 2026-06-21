@@ -147,7 +147,7 @@ func (h *Handler) RescheduleBooking(w http.ResponseWriter, r *http.Request) {
 		if subjNote.Valid {
 			d.SubjectOverride = subjNote.String
 		}
-		d.AttachICS = h.noGoogleDestination(ctx, bCopy.HostID)
+		d.AttachICS = h.noConnectedDestination(ctx, bCopy.HostID)
 		d.ICSSequence = int(bCopy.UpdatedAt.Unix())
 		if prefs.NotifyReschedule {
 			if err := mailer.SendRescheduleToAttendee(ctx, h.mailer, d); err != nil {
