@@ -18,7 +18,7 @@ agents do the booking. Self-host the whole thing on a $5 box; nothing is paywall
 
 - **One binary, one file.** Pure-Go SQLite (no CGO) compiles to a fully static
   binary. `docker run` it, or drop it on a VPS. No external services to orchestrate.
-- **API-first, agent-ready.** A full REST API (86 endpoints) with API keys and
+- **API-first, agent-ready.** A full REST API (88 endpoints) with API keys and
   **HMAC-signed webhooks configured *via API*** — script every booking action from
   Claude, ChatGPT, n8n, or curl. A native **MCP server** built into the binary is
   the next milestone (design locked on the official Go SDK).
@@ -119,7 +119,7 @@ domains, Resend email, Google & Microsoft OAuth, Litestream backups, troubleshoo
 - **Sign in with Google or Microsoft** (OAuth) or email + password
 - Public booking + self-serve **reschedule/cancel** via signed manage links
 - HTML branded email (logo, business name, size/opacity) with add-to-calendar links
-- REST API (86 endpoints) + API keys; **HMAC webhooks** with per-webhook payloads + delivery log
+- REST API (88 endpoints) + API keys; **HMAC webhooks** with per-webhook payloads + delivery log
 - Members, roles (owner/admin/member), email-token invitations
 - `Idempotency-Key` on booking creation; transactional double-booking guard
 - Envelope encryption at rest (secrets sealed with a KEK; recovery escrow)
