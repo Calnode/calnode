@@ -82,41 +82,111 @@ func validMeetingLink(locType, v string) bool {
 	}
 }
 
-// validateOnlineMeetingLocation enforces that an online-meeting event type (Teams /
-// Google Meet) is either auto-generatable by the owner's connected calendar or
-// carries a valid manual join link, so bookings never end up linkless. Returns a
-// user-facing error (nil = ok). Non-online types pass unconditionally.
-func (h *Handler) validateOnlineMeetingLocation(ctx context.Context, ownerID, locType string, locValue *string) error {
-	if !onlineMeetingLocation(locType) {
-		return nil
+// validVideoURL validates a manual video-meeting URL: any https URL for the generic
+// "link"/"custom_video" types, restricted to the Zoom host family for "zoom" so an
+// obviously-wrong link (e.g. a Google Meet URL) pasted into the Zoom field is caught.
+func validVideoURL(locType, v string) bool {
+	u, err := url.Parse(strings.TrimSpace(v))
+	if err != nil || u.Scheme != "https" || u.Host == "" {
+		return false
 	}
+	if locType == "zoom" {
+		host := strings.ToLower(u.Host)
+		return host == "zoom.us" || strings.HasSuffix(host, ".zoom.us") ||
+			host == "zoomgov.com" || strings.HasSuffix(host, ".zoomgov.com")
+	}
+	return true
+}
+
+// validPhone is a lenient phone-number check: at least 6 digits, and only
+// phone-ish characters (digits, +, spaces, and - ( ) . plus an x/X extension
+// marker). Deliberately not strict E.164 so local formats and extensions pass.
+func validPhone(v string) bool {
+	v = strings.TrimSpace(v)
+	digits := 0
+	for _, r := range v {
+		switch {
+		case r >= '0' && r <= '9':
+			digits++
+		case r == '+' || r == '-' || r == ' ' || r == '(' || r == ')' || r == '.' || r == 'x' || r == 'X':
+			// allowed separator / extension marker
+		default:
+			return false
+		}
+	}
+	return digits >= 6
+}
+
+// validateLocation enforces that an event type's location carries usable join info:
+// Teams/Meet need an auto-capable connected calendar or a valid manual link;
+// Zoom/Video link need a valid https URL; Phone needs a phone number. In-person and
+// any other type impose no value requirement. Returns a user-facing error (nil = ok).
+func (h *Handler) validateLocation(ctx context.Context, ownerID, locType string, locValue *string) error {
 	link := ""
 	if locValue != nil {
 		link = strings.TrimSpace(*locValue)
 	}
-	if link != "" {
-		if !validMeetingLink(locType, link) {
-			return fmt.Errorf("enter a valid %s link", platformLabel(locType))
-		}
-		return nil // a valid manual link always satisfies
-	}
-	// No link — only allowed when the owner's calendar can auto-generate it.
-	if cal := h.getCal(); cal != nil {
-		ok, err := cal.CanAutoGenerate(ctx, ownerID, locType)
-		if err != nil {
-			h.logger.ErrorContext(ctx, "validate meeting location: capability lookup", "error", err, "owner", ownerID)
-			return nil // don't block on a transient lookup error; booking-time fallback covers it
-		}
-		if ok {
-			return nil
-		}
-	}
 	switch locType {
-	case "teams":
-		return fmt.Errorf("connect a Microsoft 365 work account to auto-generate Teams links, or enter a Teams link")
-	default:
+	case "teams", "google_meet":
+		if link != "" {
+			if !validMeetingLink(locType, link) {
+				return fmt.Errorf("enter a valid %s link", platformLabel(locType))
+			}
+			return nil // a valid manual link always satisfies
+		}
+		// No link — only allowed when the owner's calendar can auto-generate it.
+		if cal := h.getCal(); cal != nil {
+			ok, err := cal.CanAutoGenerate(ctx, ownerID, locType)
+			if err != nil {
+				h.logger.ErrorContext(ctx, "validate location: capability lookup", "error", err, "owner", ownerID)
+				return nil // don't block on a transient lookup error; booking-time fallback covers it
+			}
+			if ok {
+				return nil
+			}
+		}
+		if locType == "teams" {
+			return fmt.Errorf("connect a Microsoft 365 work account to auto-generate Teams links, or enter a Teams link")
+		}
 		return fmt.Errorf("connect a Google calendar to auto-generate Meet links, or enter a Google Meet link")
+	case "zoom":
+		if !validVideoURL(locType, link) {
+			return fmt.Errorf("enter a valid Zoom link (https://…zoom.us/…)")
+		}
+		return nil
+	case "link", "custom_video":
+		if !validVideoURL(locType, link) {
+			return fmt.Errorf("enter a valid meeting URL (https://…)")
+		}
+		return nil
+	case "phone":
+		if !validPhone(link) {
+			return fmt.Errorf("enter a valid phone number")
+		}
+		return nil
+	default: // in_person and anything else: no value requirement
+		return nil
 	}
+}
+
+// smartDefaultLocation picks the default location type for a new event type based on
+// the owner's connected calendar: Google Meet for Google, Teams for a work Microsoft
+// account (both auto-generate, so the event type is bookable with no manual link),
+// falling back to Zoom (top of the picker) when nothing auto-capable is connected.
+func (h *Handler) smartDefaultLocation(ctx context.Context, ownerID string) string {
+	if cal := h.getCal(); cal != nil {
+		if connected, provider, err := cal.Connected(ctx, ownerID); err == nil && connected {
+			switch provider {
+			case "google":
+				return "google_meet"
+			case "microsoft":
+				if ok, _ := cal.CanAutoGenerate(ctx, ownerID, "teams"); ok {
+					return "teams"
+				}
+			}
+		}
+	}
+	return "zoom"
 }
 
 type attendeeJSON struct {

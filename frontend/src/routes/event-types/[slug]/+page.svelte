@@ -16,14 +16,15 @@
 	import { toast } from 'svelte-sonner';
 	import { saveOnCmdS } from '$lib/save-shortcut';
 
+	// Ordered by expected usage. 'custom_video' is retired from the picker but the
+	// backend still renders any legacy event types that use it.
 	const LOCATION_TYPES = [
-		{ value: 'link',         label: 'Video link (custom)' },
 		{ value: 'zoom',         label: 'Zoom' },
-		{ value: 'google_meet',  label: 'Google Meet' },
 		{ value: 'teams',        label: 'Microsoft Teams' },
+		{ value: 'google_meet',  label: 'Google Meet' },
 		{ value: 'phone',        label: 'Phone call' },
+		{ value: 'link',         label: 'Video link' },
 		{ value: 'in_person',    label: 'In person' },
-		{ value: 'custom_video', label: 'Other video' },
 	];
 
 	const QUESTION_TYPES = [
@@ -35,6 +36,11 @@
 	const LOCATION_NEEDS_VALUE: Record<string, string> = {
 		link: 'Meeting URL', zoom: 'Zoom link', google_meet: 'Meet link',
 		teams: 'Teams link', phone: 'Phone number', in_person: 'Address', custom_video: 'Meeting URL',
+	};
+	// Placeholder hint per type — in-person is the only optional value.
+	const LOCATION_PLACEHOLDER: Record<string, string> = {
+		zoom: 'https://…zoom.us/j/… (required)', link: 'https://… (required)',
+		phone: '+1 555 123 4567 (required)', in_person: 'Address (optional)',
 	};
 
 	// ── Event type ───────────────────────────────────────────────────────────────
@@ -636,7 +642,7 @@
 						<Input id="et-loc-val" bind:value={form.location_value} placeholder={meetAutoGen ? 'Optional fallback link' : `Paste a ${platform} link`} />
 					{:else}
 						<Label for="et-loc-val">{LOCATION_NEEDS_VALUE[form.location_type] ?? 'Details'}</Label>
-						<Input id="et-loc-val" bind:value={form.location_value} placeholder="Optional" />
+						<Input id="et-loc-val" bind:value={form.location_value} placeholder={LOCATION_PLACEHOLDER[form.location_type] ?? 'Optional'} />
 					{/if}
 				</div>
 			</div>

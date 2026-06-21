@@ -72,3 +72,46 @@ func TestValidMeetingLink(t *testing.T) {
 		}
 	}
 }
+
+func TestValidVideoURL(t *testing.T) {
+	cases := []struct {
+		locType, v string
+		want       bool
+	}{
+		{"zoom", "https://zoom.us/j/123", true},
+		{"zoom", "https://us02web.zoom.us/j/123", true},
+		{"zoom", "https://acme.zoomgov.com/j/1", true},
+		{"zoom", "https://meet.google.com/x", false}, // wrong host in zoom field
+		{"zoom", "https://example.com/room", false},
+		{"link", "https://example.com/room", true},   // any https host
+		{"link", "http://example.com/room", false},   // not https
+		{"custom_video", "https://whereby.com/x", true},
+		{"link", "not-a-url", false},
+	}
+	for _, tc := range cases {
+		if got := validVideoURL(tc.locType, tc.v); got != tc.want {
+			t.Errorf("validVideoURL(%q,%q)=%v; want %v", tc.locType, tc.v, got, tc.want)
+		}
+	}
+}
+
+func TestValidPhone(t *testing.T) {
+	cases := []struct {
+		v    string
+		want bool
+	}{
+		{"+1 (415) 555-1234", true},
+		{"021 555 1234", true},
+		{"555-1234 x123", true},
+		{"+64211234567", true},
+		{"12345", false},          // too few digits
+		{"", false},
+		{"call me maybe", false},  // letters
+		{"https://x.com", false},
+	}
+	for _, tc := range cases {
+		if got := validPhone(tc.v); got != tc.want {
+			t.Errorf("validPhone(%q)=%v; want %v", tc.v, got, tc.want)
+		}
+	}
+}

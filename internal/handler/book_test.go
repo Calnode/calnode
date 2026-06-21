@@ -140,16 +140,16 @@ func TestBookPage_locationLabels(t *testing.T) {
 		locValue string
 		want     string
 	}{
-		{"zoom", "", "Zoom"},
-		// Meet/Teams require either a connected calendar (none here) or a manual
-		// link, so these fixtures supply a valid platform link.
+		// Online/video/phone types now require a usable value (no calendar connected
+		// in this test), so these fixtures supply a valid one.
+		{"zoom", "https://zoom.us/j/123456789", "Zoom"},
 		{"google_meet", "https://meet.google.com/abc-defg-hij", "Google Meet"},
 		{"teams", "https://teams.microsoft.com/l/meetup-join/x", "Microsoft Teams"},
-		{"phone", "", "Phone Call"},
+		{"phone", "+1 555 123 4567", "Phone Call"},
 		{"in_person", "123 Main St", "123 Main St"},
-		{"in_person", "", "In Person"},
-		{"custom_video", "", "Video Call"},
-		{"link", "", "Video Call"},
+		{"in_person", "", "In Person"}, // in-person value stays optional
+		{"custom_video", "https://example.com/room", "Video Call"},
+		{"link", "https://example.com/room", "Video Call"},
 	}
 
 	for _, tc := range cases {

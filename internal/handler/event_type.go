@@ -218,13 +218,19 @@ func (h *Handler) CreateEventType(w http.ResponseWriter, r *http.Request) {
 	if req.SlotIntervalMinutes != nil {
 		slotInterval = *req.SlotIntervalMinutes
 	}
-	locType := "link"
+	// Location is usually omitted at create (the quick-create form only sets
+	// slug/name/duration) and configured later in the editor. When omitted, pick a
+	// smart default from the owner's connected calendar; only validate the location
+	// when the caller explicitly set it.
+	var locType string
 	if req.LocationType != nil {
 		locType = *req.LocationType
-	}
-	if err := h.validateOnlineMeetingLocation(r.Context(), user.ID, locType, req.LocationValue); err != nil {
-		h.writeError(w, http.StatusBadRequest, err.Error())
-		return
+		if err := h.validateLocation(r.Context(), user.ID, locType, req.LocationValue); err != nil {
+			h.writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	} else {
+		locType = h.smartDefaultLocation(r.Context(), user.ID)
 	}
 	routingMode := "fixed"
 	if req.RoutingMode != nil {
@@ -572,19 +578,23 @@ func (h *Handler) PatchEventType(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate the location that WILL be in effect after this patch (existing value
-	// when the field isn't being changed) before applying any update.
-	effLocType := curLocType
-	if req.LocationType != nil {
-		effLocType = *req.LocationType
-	}
-	effLocVal := curLocVal
-	if req.LocationValue != nil {
-		effLocVal = *req.LocationValue
-	}
-	if err := h.validateOnlineMeetingLocation(r.Context(), user.ID, effLocType, &effLocVal); err != nil {
-		h.writeError(w, http.StatusBadRequest, err.Error())
-		return
+	// Validate the location only when this patch actually touches it (so editing an
+	// unrelated field on a legacy event type can't trip a newer rule). When it does,
+	// validate the value that WILL be in effect (existing value for the field that
+	// isn't changing).
+	if req.LocationType != nil || req.LocationValue != nil {
+		effLocType := curLocType
+		if req.LocationType != nil {
+			effLocType = *req.LocationType
+		}
+		effLocVal := curLocVal
+		if req.LocationValue != nil {
+			effLocVal = *req.LocationValue
+		}
+		if err := h.validateLocation(r.Context(), user.ID, effLocType, &effLocVal); err != nil {
+			h.writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
 	}
 
 	// Apply the event_types UPDATE if there are scalar fields to change.
