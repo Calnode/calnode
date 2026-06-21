@@ -118,6 +118,42 @@ func requestOriginHost(r *http.Request) string {
 // Exceeding the limit returns 429 with a Retry-After header. The IP is taken
 // from X-Real-IP or X-Forwarded-For when present (set by a trusted reverse
 // proxy), falling back to the TCP remote address.
+// PublicCORS wraps a public, unauthenticated endpoint to allow cross-origin browser
+// access (for the embeddable booking widget). allowedOrigins empty ⇒ any origin
+// (`*`); otherwise only a request whose Origin is in the list gets an
+// Access-Control-Allow-Origin header (others are blocked browser-side). Credentials
+// are never permitted — these endpoints carry no session — so a malicious page can't
+// ride a logged-in admin's cookie. Note CORS only constrains browsers; it is not an
+// access-control boundary (the routes are rate-limited regardless). Handles the
+// OPTIONS preflight itself (returns 204).
+func PublicCORS(allowedOrigins []string) func(http.HandlerFunc) http.HandlerFunc {
+	allowAny := len(allowedOrigins) == 0
+	allowed := make(map[string]bool, len(allowedOrigins))
+	for _, o := range allowedOrigins {
+		allowed[strings.ToLower(strings.TrimRight(o, "/"))] = true
+	}
+	return func(next http.HandlerFunc) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			if origin := r.Header.Get("Origin"); origin != "" {
+				if allowAny {
+					w.Header().Set("Access-Control-Allow-Origin", "*")
+				} else if allowed[strings.ToLower(strings.TrimRight(origin, "/"))] {
+					w.Header().Set("Access-Control-Allow-Origin", origin)
+					w.Header().Add("Vary", "Origin")
+				}
+			}
+			if r.Method == http.MethodOptions {
+				w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+				w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Idempotency-Key")
+				w.Header().Set("Access-Control-Max-Age", "600")
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+			next(w, r)
+		}
+	}
+}
+
 func RateLimit(limit int, period time.Duration) func(http.HandlerFunc) http.HandlerFunc {
 	rl := &rateLimiter{
 		windows: make(map[string]*rlWindow),

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
+	"strings"
 
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/extension"
@@ -186,6 +187,71 @@ func locationLabel(locType, locValue string) string {
 	default:
 		return "Video Call"
 	}
+}
+
+// PublicEventType handles GET /v1/event-types/{slug}/public — the public display
+// info a booking client (e.g. the embeddable widget) needs before rendering the
+// form: name, duration, location label, host faces, and brand. No PII, no auth;
+// only active + public event types. Slots, intake questions, and booking creation
+// are separate public endpoints the client calls next.
+func (h *Handler) PublicEventType(w http.ResponseWriter, r *http.Request) {
+	slug := r.PathValue("slug")
+	var (
+		etID, name, description, locType, locValue string
+		hostName, avatarURL, routingMode           string
+		durMins, maxDays                           int
+	)
+	err := h.db.QueryRowContext(r.Context(), `
+		SELECT et.id, et.name, COALESCE(et.description, ''),
+		       et.duration_minutes, et.location_type, COALESCE(et.location_value, ''),
+		       et.max_future_days, et.routing_mode, u.name, COALESCE(u.avatar_url, '')
+		FROM event_types et
+		JOIN users u ON u.id = et.user_id
+		WHERE et.slug = ? AND et.is_active = 1 AND et.is_public = 1`,
+		slug).Scan(&etID, &name, &description, &durMins, &locType, &locValue, &maxDays, &routingMode, &hostName, &avatarURL)
+	if errors.Is(err, sql.ErrNoRows) {
+		h.writeError(w, http.StatusNotFound, "event type not found")
+		return
+	}
+	if err != nil {
+		h.logger.ErrorContext(r.Context(), "public event type: db query", "error", err)
+		h.writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	hosts := h.displayHosts(r.Context(), etID, routingMode)
+	if len(hosts) == 0 {
+		hosts = []hostDisplay{{Name: hostName, AvatarURL: avatarURL}}
+	}
+	// Absolutise relative asset paths so they resolve from a remote embedding page.
+	abs := func(p string) string {
+		if p != "" && strings.HasPrefix(p, "/") {
+			return h.publicURL() + p
+		}
+		return p
+	}
+	type pubHost struct {
+		Name      string `json:"name"`
+		AvatarURL string `json:"avatar_url,omitempty"`
+	}
+	outHosts := make([]pubHost, 0, len(hosts))
+	for _, hd := range hosts {
+		outHosts = append(outHosts, pubHost{Name: hd.Name, AvatarURL: abs(hd.AvatarURL)})
+	}
+
+	brand := h.loadBranding(r.Context())
+	h.writeJSON(w, http.StatusOK, map[string]any{
+		"slug":             slug,
+		"name":             name,
+		"description":      description,
+		"duration_minutes": durMins,
+		"location_type":    locType,
+		"location_label":   locationLabel(locType, locValue),
+		"max_future_days":  maxDays,
+		"hosts":            outHosts,
+		"business_name":    brand.BusinessName,
+		"logo_url":         abs(brand.LogoURL),
+	})
 }
 
 // BookPage renders the public booking page for a given event type slug.

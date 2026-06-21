@@ -233,12 +233,20 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 
 	// Slots — public, rate-limited per IP. Browsed more than booked (so a higher cap
 	// than booking), but each call fans out Google free/busy per host, so leaving it
+	// cors wraps the public booking endpoints so the embeddable widget can call them
+	// cross-origin from a customer's site. Scoped to these unauthenticated routes
+	// only — admin/auth routes never get CORS. Default (empty allowlist) = any origin.
+	cors := PublicCORS(cfg.EmbedAllowedOrigins)
+
+	// Public event-type display info for the widget (name/duration/location/brand).
+	mux.HandleFunc("GET /v1/event-types/{slug}/public", cors(h.PublicEventType))
+
 	// unthrottled is a CPU + API-quota abuse vector on an openly-public page.
 	slotsRL := RateLimit(60, time.Minute)
-	mux.HandleFunc("GET /v1/event-types/{slug}/slots", slotsRL(h.GetSlots))
+	mux.HandleFunc("GET /v1/event-types/{slug}/slots", cors(slotsRL(h.GetSlots)))
 
 	// Intake questions
-	mux.HandleFunc("GET /v1/event-types/{slug}/questions", h.ListQuestions)
+	mux.HandleFunc("GET /v1/event-types/{slug}/questions", cors(h.ListQuestions))
 	mux.HandleFunc("GET /v1/event-types/{slug}/questions/admin", h.RequireAuth(h.ListQuestionsAdmin))
 	mux.HandleFunc("POST /v1/event-types/{slug}/questions", h.RequireAuth(h.CreateQuestion))
 	mux.HandleFunc("PATCH /v1/event-types/{slug}/questions/{id}", h.RequireAuth(h.UpdateQuestion))
@@ -247,8 +255,10 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	bookingRL := RateLimit(20, time.Minute)
 	manageRL := RateLimit(30, time.Minute)
 
-	// Bookings
-	mux.HandleFunc("POST /v1/bookings", bookingRL(h.CreateBooking))
+	// Bookings — public create is CORS-enabled for the widget; the JSON body makes it
+	// a non-simple request, so the OPTIONS preflight is handled too.
+	mux.HandleFunc("POST /v1/bookings", cors(bookingRL(h.CreateBooking)))
+	mux.HandleFunc("OPTIONS /v1/bookings", cors(func(http.ResponseWriter, *http.Request) {}))
 	mux.HandleFunc("GET /v1/bookings/{id}", h.GetBooking)
 	mux.HandleFunc("GET /v1/bookings", h.RequireAuth(h.ListBookings))
 	mux.HandleFunc("POST /v1/bookings/{id}/cancel", h.RequireAuth(h.CancelBooking))

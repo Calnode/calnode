@@ -40,6 +40,12 @@ type Config struct {
 	// COOKIE_SECURE=false for HTTPS-terminated-at-proxy setups where the binary
 	// itself listens on plain HTTP and BASE_URL is set correctly.
 	CookieSecure bool
+
+	// EmbedAllowedOrigins lists the origins permitted to call the public booking
+	// endpoints cross-origin (for the embeddable widget). Empty ⇒ allow any origin
+	// (`*`). CORS only constrains browsers; it is not an access-control boundary —
+	// the public endpoints are rate-limited regardless. Comma-separated.
+	EmbedAllowedOrigins []string
 }
 
 func Load() *Config {
@@ -63,6 +69,8 @@ func Load() *Config {
 		MicrosoftClientID:     getEnv("MICROSOFT_CLIENT_ID", ""),
 		MicrosoftClientSecret: getEnv("MICROSOFT_CLIENT_SECRET", ""),
 		MicrosoftTenant:       getEnv("MICROSOFT_TENANT", "common"),
+
+		EmbedAllowedOrigins: splitCSV(getEnv("EMBED_ALLOWED_ORIGINS", "")),
 	}
 
 	cfg.EncryptionKey = os.Getenv("CALNODE_ENCRYPTION_KEY")
@@ -95,6 +103,22 @@ func getEnv(key, def string) string {
 		return v
 	}
 	return def
+}
+
+// splitCSV parses a comma-separated value into trimmed, non-empty entries.
+// Returns nil for an empty string.
+func splitCSV(v string) []string {
+	if strings.TrimSpace(v) == "" {
+		return nil
+	}
+	parts := strings.Split(v, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 func getBool(key string, def bool) bool {
