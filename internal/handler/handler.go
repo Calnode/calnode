@@ -29,9 +29,10 @@ type Handler struct {
 	baseURL       string
 	publicBaseURL string
 	dataDir       string
-	authMu       sync.RWMutex
-	googleAuth   *oauth2.Config
-	secureCookie bool
+	authMu        sync.RWMutex
+	googleAuth    *oauth2.Config
+	microsoftAuth *oauth2.Config
+	secureCookie  bool
 }
 
 func New(db *sql.DB, logger *slog.Logger) *Handler {
@@ -109,6 +110,13 @@ func (h *Handler) getGoogleAuth() *oauth2.Config {
 	h.authMu.RLock()
 	defer h.authMu.RUnlock()
 	return h.googleAuth
+}
+
+// getMicrosoftAuth returns the current Microsoft OAuth config under a read lock.
+func (h *Handler) getMicrosoftAuth() *oauth2.Config {
+	h.authMu.RLock()
+	defer h.authMu.RUnlock()
+	return h.microsoftAuth
 }
 
 // SetWebhookSvc replaces the default ephemeral-key webhook service with one

@@ -110,6 +110,10 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	}
 
 	if cfg.MicrosoftClientID != "" && cfg.MicrosoftClientSecret != "" {
+		msAuthRedirect := cfg.BaseURL + "/v1/auth/microsoft/callback"
+		h.SetMicrosoftAuth(cfg.MicrosoftClientID, cfg.MicrosoftClientSecret, cfg.MicrosoftTenant, msAuthRedirect, cfg.CookieSecure)
+		logger.Info("Microsoft OAuth login configured", "redirect_url", msAuthRedirect)
+
 		mc, err := microsoft.New(db, cfg.MicrosoftClientID, cfg.MicrosoftClientSecret, cfg.MicrosoftTenant, calRedirect, cfg.EncryptionKey)
 		if err != nil {
 			logger.Error("microsoft: init failed", "error", err)
@@ -143,10 +147,12 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	loginRL := RateLimit(10, time.Minute)
 	mux.HandleFunc("POST /v1/auth/login/email", loginRL(h.LoginEmail))
 
-	// Google OAuth login (browser sessions for admin UI).
+	// OAuth login (browser sessions for admin UI).
 	authRL := RateLimit(10, time.Minute)
 	mux.HandleFunc("GET /v1/auth/login", authRL(h.LoginGoogle))
 	mux.HandleFunc("GET /v1/auth/callback", authRL(h.CallbackGoogle))
+	mux.HandleFunc("GET /v1/auth/microsoft/login", authRL(h.LoginMicrosoft))
+	mux.HandleFunc("GET /v1/auth/microsoft/callback", authRL(h.CallbackMicrosoft))
 	mux.HandleFunc("POST /v1/auth/logout", h.Logout)
 
 	// Password management.

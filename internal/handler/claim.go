@@ -27,6 +27,9 @@ func (h *Handler) AuthStatus(w http.ResponseWriter, r *http.Request) {
 	if h.getGoogleAuth() != nil {
 		providers = append(providers, "google")
 	}
+	if h.getMicrosoftAuth() != nil {
+		providers = append(providers, "microsoft")
+	}
 
 	var emailLoginCount int
 	h.db.QueryRowContext(r.Context(), //nolint:errcheck

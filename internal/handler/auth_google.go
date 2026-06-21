@@ -2,9 +2,6 @@ package handler
 
 import (
 	"context"
-	"crypto/rand"
-	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -46,22 +43,12 @@ func (h *Handler) LoginGoogle(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Google OAuth not configured — set GOOGLE_CLIENT_ID", http.StatusServiceUnavailable)
 		return
 	}
-	stateBytes := make([]byte, 16)
-	if _, err := rand.Read(stateBytes); err != nil {
+	state, err := h.newOAuthState(w)
+	if err != nil {
 		h.logger.ErrorContext(r.Context(), "auth: generate state", "error", err)
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	state := hex.EncodeToString(stateBytes)
-	http.SetCookie(w, &http.Cookie{
-		Name:     stateCookieName,
-		Value:    state,
-		Path:     "/",
-		MaxAge:   int(stateDuration.Seconds()),
-		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
-		Secure:   h.secureCookie,
-	})
 	http.Redirect(w, r, ga.AuthCodeURL(state, oauth2.AccessTypeOnline), http.StatusFound)
 }
 
@@ -74,22 +61,11 @@ func (h *Handler) CallbackGoogle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify CSRF state: the value in the cookie must match the URL param.
-	stateCookie, err := r.Cookie(stateCookieName)
-	if err != nil || stateCookie.Value == "" || r.URL.Query().Get("state") != stateCookie.Value {
+	// Verify CSRF state (cookie must match the URL param) and consume it.
+	if !h.verifyOAuthState(w, r) {
 		http.Redirect(w, r, "/admin/login?error=state", http.StatusFound)
 		return
 	}
-	// Consume the state cookie immediately.
-	http.SetCookie(w, &http.Cookie{
-		Name:     stateCookieName,
-		Value:    "",
-		Path:     "/",
-		MaxAge:   -1,
-		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
-		Secure:   h.secureCookie,
-	})
 
 	if r.URL.Query().Get("error") != "" {
 		// User denied consent.
@@ -112,25 +88,7 @@ func (h *Handler) CallbackGoogle(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Only existing users can log in — no self-registration.
-	var userID string
-	var archivedAt sql.NullString
-	if err := h.db.QueryRowContext(r.Context(),
-		`SELECT id, archived_at FROM users WHERE email = ?`, info.Email).Scan(&userID, &archivedAt); err != nil {
-		h.logger.WarnContext(r.Context(), "auth: no account for email", "email", info.Email)
-		http.Redirect(w, r, "/admin/login?error=no_account", http.StatusFound)
-		return
-	}
-	if archivedAt.Valid {
-		http.Redirect(w, r, "/admin/login?error=archived", http.StatusFound)
-		return
-	}
-
-	if err := h.createSession(r.Context(), w, userID); err != nil {
-		h.logger.ErrorContext(r.Context(), "auth: create session", "error", err)
-		http.Redirect(w, r, "/admin/login?error=session", http.StatusFound)
-		return
-	}
-	http.Redirect(w, r, "/admin", http.StatusFound)
+	h.finishOAuthLogin(w, r, info.Email)
 }
 
 // Logout deletes the session record and clears the session cookie.

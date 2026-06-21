@@ -63,9 +63,10 @@
 	}
 
 	const showGoogle = $derived(status?.providers?.includes('google') ?? false);
+	const showMicrosoft = $derived(status?.providers?.includes('microsoft') ?? false);
 	const showEmail = $derived(status?.email_login ?? false);
 	const showForgot = $derived(status?.smtp_configured ?? false);
-	const showDivider = $derived(showGoogle && showEmail);
+	const showDivider = $derived((showGoogle || showMicrosoft) && showEmail);
 </script>
 
 <svelte:head><title>Sign in — Calnode</title></svelte:head>
@@ -104,6 +105,18 @@
 				</Button>
 			{/if}
 
+			{#if showMicrosoft}
+				<Button variant="outline" class="h-11 w-full {showGoogle ? 'mt-3' : ''}" onclick={() => window.location.href = '/v1/auth/microsoft/login'}>
+					<svg width="16" height="16" viewBox="0 0 23 23" aria-hidden="true" class="mr-2">
+						<path fill="#F25022" d="M1 1h10v10H1z"/>
+						<path fill="#7FBA00" d="M12 1h10v10H12z"/>
+						<path fill="#00A4EF" d="M1 12h10v10H1z"/>
+						<path fill="#FFB900" d="M12 12h10v10H12z"/>
+					</svg>
+					Sign in with Microsoft
+				</Button>
+			{/if}
+
 			{#if showDivider}
 				<div class="my-4 flex items-center gap-3 text-xs text-muted-foreground">
 					<div class="h-px flex-1 bg-border"></div>
@@ -133,7 +146,7 @@
 				</form>
 			{/if}
 
-			{#if !showGoogle && !showEmail}
+			{#if !showGoogle && !showMicrosoft && !showEmail}
 				<p class="text-center text-sm text-muted-foreground">No login methods are configured. Contact your administrator.</p>
 			{/if}
 		{/if}
