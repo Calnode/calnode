@@ -115,6 +115,33 @@ func (s *Service) Connected(ctx context.Context, userID string) (bool, string, e
 	return true, name, nil
 }
 
+// CanAutoGenerate reports whether the user's connected calendar can natively
+// auto-generate the meeting link for an online location type: Google Meet from any
+// connected Google calendar, Microsoft Teams only from a connected work/school
+// Microsoft account (personal Microsoft accounts can't mint Teams-for-Business
+// links). An account_kind of "" (unknown — legacy rows) is treated as capable.
+// Returns false when the user has no connection or the type isn't an online type.
+func (s *Service) CanAutoGenerate(ctx context.Context, userID, locType string) (bool, error) {
+	var provider, kind string
+	err := s.db.QueryRowContext(ctx,
+		`SELECT provider, COALESCE(account_kind, '') FROM calendar_connections WHERE user_id = ? LIMIT 1`,
+		userID).Scan(&provider, &kind)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	switch locType {
+	case "google_meet":
+		return provider == "google", nil
+	case "teams":
+		return provider == "microsoft" && kind != "personal", nil
+	default:
+		return false, nil
+	}
+}
+
 // Disconnect removes all calendar connections for the user (any provider).
 func (s *Service) Disconnect(ctx context.Context, userID string) error {
 	_, err := s.db.ExecContext(ctx, `DELETE FROM calendar_connections WHERE user_id = ?`, userID)

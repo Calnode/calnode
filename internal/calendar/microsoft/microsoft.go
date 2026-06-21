@@ -14,10 +14,12 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"golang.org/x/oauth2"
@@ -59,8 +61,10 @@ func New(db *sql.DB, clientID, clientSecret, tenant, redirectURL, encKeyHex stri
 			ClientSecret: clientSecret,
 			Endpoint:     microsoft.AzureADEndpoint(tenant),
 			RedirectURL:  redirectURL,
-			// offline_access → refresh token; Calendars.ReadWrite → read free/busy + write events.
-			Scopes: []string{"offline_access", "https://graph.microsoft.com/Calendars.ReadWrite"},
+			// offline_access → refresh token; Calendars.ReadWrite → read free/busy +
+			// write events; openid → an id_token whose `tid` claim tells us whether
+			// this is a work/school or personal account (Teams links need work).
+			Scopes: []string{"openid", "offline_access", "https://graph.microsoft.com/Calendars.ReadWrite"},
 		},
 		key:     key,
 		db:      db,
@@ -107,7 +111,37 @@ func (c *Client) Exchange(ctx context.Context, userID, code, calendarID string) 
 	if calendarID == "" {
 		calendarID = "primary"
 	}
-	return c.saveToken(ctx, userID, calendarID, tok)
+	kind := accountKindFromIDToken(tok)
+	return c.saveToken(ctx, userID, calendarID, kind, tok)
+}
+
+// consumersTenantID is the fixed tenant a personal Microsoft account reports in
+// the id_token `tid` claim. Anything else is a work/school (Entra) tenant.
+const consumersTenantID = "9188040d-6c67-4c5b-b112-36a304b66dad"
+
+// accountKindFromIDToken inspects the OAuth response's id_token and returns
+// "personal" for consumer Microsoft accounts, "work" for work/school accounts, or
+// "" when it can't tell (treated as capable downstream).
+func accountKindFromIDToken(tok *oauth2.Token) string {
+	raw, _ := tok.Extra("id_token").(string)
+	parts := strings.Split(raw, ".")
+	if len(parts) != 3 {
+		return ""
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return ""
+	}
+	var claims struct {
+		TID string `json:"tid"`
+	}
+	if err := json.Unmarshal(payload, &claims); err != nil || claims.TID == "" {
+		return ""
+	}
+	if claims.TID == consumersTenantID {
+		return "personal"
+	}
+	return "work"
 }
 
 // Connected reports whether userID has an active Microsoft connection.
@@ -198,7 +232,8 @@ func (c *Client) httpClient(ctx context.Context, userID string, checkConflicts, 
 }
 
 // saveToken encrypts and upserts an OAuth token for userID (DELETE+INSERT in a tx).
-func (c *Client) saveToken(ctx context.Context, userID, calID string, tok *oauth2.Token) error {
+// kind is the account kind ("work"|"personal"|"") captured from the id_token.
+func (c *Client) saveToken(ctx context.Context, userID, calID, kind string, tok *oauth2.Token) error {
 	accessEnc, err := c.encrypt([]byte(tok.AccessToken))
 	if err != nil {
 		return err
@@ -223,6 +258,13 @@ func (c *Client) saveToken(ctx context.Context, userID, calID string, tok *oauth
 	}
 	defer tx.Rollback() //nolint:errcheck
 
+	// On refresh (kind == "") preserve the account_kind captured at connect, since
+	// this is a DELETE+INSERT and a refresh carries no id_token to re-derive it.
+	if kind == "" {
+		_ = tx.QueryRowContext(ctx,
+			`SELECT account_kind FROM calendar_connections WHERE user_id = ? AND provider = ?`,
+			userID, providerName).Scan(&kind)
+	}
 	if _, err := tx.ExecContext(ctx,
 		`DELETE FROM calendar_connections WHERE user_id = ? AND provider = ?`,
 		userID, providerName); err != nil {
@@ -231,9 +273,9 @@ func (c *Client) saveToken(ctx context.Context, userID, calID string, tok *oauth
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO calendar_connections
 		    (id, user_id, provider, access_token_enc, refresh_token_enc, calendar_id,
-		     check_conflicts, is_destination, expiry_at, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, 1, 1, ?, ?)`,
-		uid.New(), userID, providerName, accessEnc, refreshEnc, calID, expiryStr, now); err != nil {
+		     check_conflicts, is_destination, expiry_at, created_at, account_kind)
+		VALUES (?, ?, ?, ?, ?, ?, 1, 1, ?, ?, ?)`,
+		uid.New(), userID, providerName, accessEnc, refreshEnc, calID, expiryStr, now, kind); err != nil {
 		return fmt.Errorf("microsoft: save token insert: %w", err)
 	}
 	return tx.Commit()
@@ -257,7 +299,8 @@ func (s *savingTokenSource) Token() (*oauth2.Token, error) {
 		s.last = tok.AccessToken
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		if err := s.client.saveToken(ctx, s.userID, s.calID, tok); err != nil {
+		// kind="" → preserve the account_kind already stored (refresh has no id_token).
+		if err := s.client.saveToken(ctx, s.userID, s.calID, "", tok); err != nil {
 			s.client.logger.Error("microsoft: failed to persist refreshed token", "error", err, "user_id", s.userID)
 		}
 	}

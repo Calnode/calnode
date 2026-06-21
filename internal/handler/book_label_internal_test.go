@@ -49,3 +49,26 @@ func TestProviderMintsPlatform(t *testing.T) {
 		}
 	}
 }
+
+func TestValidMeetingLink(t *testing.T) {
+	cases := []struct {
+		locType, link string
+		want          bool
+	}{
+		{"teams", "https://teams.microsoft.com/l/meetup-join/abc", true},
+		{"teams", "https://teams.live.com/meet/123", true},
+		{"teams", "https://gov.teams.microsoft.us/l/x", true},
+		{"teams", "https://meet.google.com/abc-defg-hij", false}, // wrong platform
+		{"teams", "https://example.com/call", false},
+		{"teams", "http://teams.microsoft.com/x", false},          // not https
+		{"google_meet", "https://meet.google.com/abc-defg-hij", true},
+		{"google_meet", "https://teams.microsoft.com/x", false},
+		{"google_meet", "not-a-url", false},
+		{"link", "https://anything.example.com/x", true},          // non-online: not platform-checked
+	}
+	for _, tc := range cases {
+		if got := validMeetingLink(tc.locType, tc.link); got != tc.want {
+			t.Errorf("validMeetingLink(%q,%q)=%v; want %v", tc.locType, tc.link, got, tc.want)
+		}
+	}
+}

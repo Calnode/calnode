@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -44,6 +45,77 @@ func providerMintsPlatform(locType, provider string) bool {
 		return provider == "microsoft"
 	default:
 		return false
+	}
+}
+
+// platformLabel is the human name for an online location type.
+func platformLabel(locType string) string {
+	switch locType {
+	case "teams":
+		return "Microsoft Teams"
+	case "google_meet":
+		return "Google Meet"
+	default:
+		return locType
+	}
+}
+
+// validMeetingLink reports whether v is a plausible join link for an online
+// platform (host-based): Teams on teams.microsoft.com / *.teams.microsoft.com /
+// teams.live.com / *.teams.microsoft.us; Google Meet on meet.google.com. Used to
+// allow saving an online-meeting event type when the organizer can't auto-generate
+// the link and must supply one. Non-online types are not validated here.
+func validMeetingLink(locType, v string) bool {
+	u, err := url.Parse(strings.TrimSpace(v))
+	if err != nil || u.Scheme != "https" || u.Host == "" {
+		return false
+	}
+	host := strings.ToLower(u.Host)
+	switch locType {
+	case "teams":
+		return host == "teams.microsoft.com" || strings.HasSuffix(host, ".teams.microsoft.com") ||
+			host == "teams.live.com" || host == "teams.microsoft.us" || strings.HasSuffix(host, ".teams.microsoft.us")
+	case "google_meet":
+		return host == "meet.google.com"
+	default:
+		return true
+	}
+}
+
+// validateOnlineMeetingLocation enforces that an online-meeting event type (Teams /
+// Google Meet) is either auto-generatable by the owner's connected calendar or
+// carries a valid manual join link, so bookings never end up linkless. Returns a
+// user-facing error (nil = ok). Non-online types pass unconditionally.
+func (h *Handler) validateOnlineMeetingLocation(ctx context.Context, ownerID, locType string, locValue *string) error {
+	if !onlineMeetingLocation(locType) {
+		return nil
+	}
+	link := ""
+	if locValue != nil {
+		link = strings.TrimSpace(*locValue)
+	}
+	if link != "" {
+		if !validMeetingLink(locType, link) {
+			return fmt.Errorf("enter a valid %s link", platformLabel(locType))
+		}
+		return nil // a valid manual link always satisfies
+	}
+	// No link — only allowed when the owner's calendar can auto-generate it.
+	if cal := h.getCal(); cal != nil {
+		ok, err := cal.CanAutoGenerate(ctx, ownerID, locType)
+		if err != nil {
+			h.logger.ErrorContext(ctx, "validate meeting location: capability lookup", "error", err, "owner", ownerID)
+			return nil // don't block on a transient lookup error; booking-time fallback covers it
+		}
+		if ok {
+			return nil
+		}
+	}
+	switch locType {
+	case "teams":
+		return fmt.Errorf("connect a Microsoft 365 work account to auto-generate Teams links, or enter a Teams link")
+	default:
+		return fmt.Errorf("connect a Google calendar to auto-generate Meet links, or enter a Google Meet link")
 	}
 }
 

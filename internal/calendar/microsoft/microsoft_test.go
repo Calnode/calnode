@@ -3,6 +3,7 @@ package microsoft
 import (
 	"context"
 	"database/sql"
+	"encoding/base64"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -57,7 +58,7 @@ func connect(t *testing.T, c *Client, userID string) {
 	t.Helper()
 	seedUser(t, c.db, userID)
 	tok := &oauth2.Token{AccessToken: "access", RefreshToken: "refresh", Expiry: time.Now().Add(time.Hour)}
-	if err := c.saveToken(context.Background(), userID, "primary", tok); err != nil {
+	if err := c.saveToken(context.Background(), userID, "primary", "work", tok); err != nil {
 		t.Fatalf("saveToken: %v", err)
 	}
 }
@@ -219,5 +220,51 @@ func TestCancelEvent_alreadyGoneIsOK(t *testing.T) {
 
 	if err := c.CancelEvent(context.Background(), "u1", "evt-1"); err != nil {
 		t.Errorf("CancelEvent(404): %v; want nil (already gone is fine)", err)
+	}
+}
+
+func mkIDToken(tid string) string {
+	payload := base64.RawURLEncoding.EncodeToString([]byte(`{"tid":"` + tid + `"}`))
+	return "header." + payload + ".sig"
+}
+
+func TestAccountKindFromIDToken(t *testing.T) {
+	cases := []struct {
+		name, idToken, want string
+	}{
+		{"personal", mkIDToken(consumersTenantID), "personal"},
+		{"work", mkIDToken("c4bf7066-8da6-4242-8a58-cc60c1cbded5"), "work"},
+		{"empty tid", mkIDToken(""), ""},
+		{"no id_token", "", ""},
+		{"malformed", "not-a-jwt", ""},
+	}
+	for _, tc := range cases {
+		tok := &oauth2.Token{}
+		if tc.idToken != "" {
+			tok = tok.WithExtra(map[string]any{"id_token": tc.idToken})
+		}
+		if got := accountKindFromIDToken(tok); got != tc.want {
+			t.Errorf("%s: accountKindFromIDToken=%q; want %q", tc.name, got, tc.want)
+		}
+	}
+}
+
+func TestSaveToken_refreshPreservesKind(t *testing.T) {
+	c := newTestClient(t)
+	seedUser(t, c.db, "u1")
+	tok := &oauth2.Token{AccessToken: "a", RefreshToken: "r", Expiry: time.Now().Add(time.Hour)}
+	if err := c.saveToken(context.Background(), "u1", "primary", "personal", tok); err != nil {
+		t.Fatalf("saveToken: %v", err)
+	}
+	// Refresh path passes kind="" — must not wipe the stored "personal".
+	if err := c.saveToken(context.Background(), "u1", "primary", "", tok); err != nil {
+		t.Fatalf("saveToken refresh: %v", err)
+	}
+	var kind string
+	if err := c.db.QueryRow(`SELECT account_kind FROM calendar_connections WHERE user_id = ?`, "u1").Scan(&kind); err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	if kind != "personal" {
+		t.Errorf("account_kind=%q after refresh; want personal (preserved)", kind)
 	}
 }

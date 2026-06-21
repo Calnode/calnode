@@ -222,6 +222,10 @@ func (h *Handler) CreateEventType(w http.ResponseWriter, r *http.Request) {
 	if req.LocationType != nil {
 		locType = *req.LocationType
 	}
+	if err := h.validateOnlineMeetingLocation(r.Context(), user.ID, locType, req.LocationValue); err != nil {
+		h.writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	routingMode := "fixed"
 	if req.RoutingMode != nil {
 		routingMode = *req.RoutingMode
@@ -553,17 +557,33 @@ func (h *Handler) PatchEventType(w http.ResponseWriter, r *http.Request) {
 		set(s.col, nullableString(strings.TrimSpace(*s.val)))
 	}
 
-	// Look up the event type ID (needed for reminder upsert and to verify ownership).
-	var etID string
+	// Look up the event type ID + current location (needed for reminder upsert, to
+	// verify ownership, and to validate the effective online-meeting location below).
+	var etID, curLocType, curLocVal string
 	if err := h.db.QueryRowContext(r.Context(),
-		`SELECT id FROM event_types WHERE slug = ? AND user_id = ?`, slug, user.ID).
-		Scan(&etID); err != nil {
+		`SELECT id, location_type, COALESCE(location_value, '') FROM event_types WHERE slug = ? AND user_id = ?`, slug, user.ID).
+		Scan(&etID, &curLocType, &curLocVal); err != nil {
 		if err == sql.ErrNoRows {
 			h.writeError(w, http.StatusNotFound, "event type not found")
 			return
 		}
 		h.logger.ErrorContext(r.Context(), "patch event type: lookup id", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	// Validate the location that WILL be in effect after this patch (existing value
+	// when the field isn't being changed) before applying any update.
+	effLocType := curLocType
+	if req.LocationType != nil {
+		effLocType = *req.LocationType
+	}
+	effLocVal := curLocVal
+	if req.LocationValue != nil {
+		effLocVal = *req.LocationValue
+	}
+	if err := h.validateOnlineMeetingLocation(r.Context(), user.ID, effLocType, &effLocVal); err != nil {
+		h.writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 

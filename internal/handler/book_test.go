@@ -141,8 +141,10 @@ func TestBookPage_locationLabels(t *testing.T) {
 		want     string
 	}{
 		{"zoom", "", "Zoom"},
-		{"google_meet", "", "Google Meet"},
-		{"teams", "", "Microsoft Teams"},
+		// Meet/Teams require either a connected calendar (none here) or a manual
+		// link, so these fixtures supply a valid platform link.
+		{"google_meet", "https://meet.google.com/abc-defg-hij", "Google Meet"},
+		{"teams", "https://teams.microsoft.com/l/meetup-join/x", "Microsoft Teams"},
 		{"phone", "", "Phone Call"},
 		{"in_person", "123 Main St", "123 Main St"},
 		{"in_person", "", "In Person"},
