@@ -2,8 +2,11 @@
 /calnode
 /calnode.exe
 
-# Project docs (kept local)
-/docs
+# Project docs: internal/strategy docs stay local; the architecture overview is
+# published for contributors. (A parent dir can't be re-included, so ignore the
+# contents and un-ignore the one file.)
+/docs/*
+!/docs/ARCHITECTURE.md
 *.exe
 *.exe~
 
