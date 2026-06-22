@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -433,18 +434,49 @@ func scanQuestion(s questionScanner) (*questionJSON, error) {
 // questions have answers, validates select-option values, and rejects answers for
 // questions that don't belong to this event type. Returns the []booking.Answer
 // slice ready for bookingSvc.Create, or writes an error response and returns an error.
+// answerError is a client-fault validation failure from validateAnswersCore (unknown
+// or duplicate question, missing required field, invalid select option). The REST
+// wrapper maps it to 400; other errors (DB failures) map to 500. The MCP tool surfaces
+// its message directly.
+type answerError struct{ msg string }
+
+func (e *answerError) Error() string { return e.msg }
+
+// validateAnswers is the HTTP wrapper: it runs validateAnswersCore and translates the
+// result into a status code (400 for client-fault answer errors, 500 otherwise).
 func (h *Handler) validateAnswers(w http.ResponseWriter, r *http.Request, eventTypeID string, rawAnswers []struct {
 	QuestionID string `json:"question_id"`
 	Value      string `json:"value"`
 }) ([]booking.Answer, error) {
+	in := make([]booking.Answer, len(rawAnswers))
+	for i, a := range rawAnswers {
+		in[i] = booking.Answer{QuestionID: a.QuestionID, Value: a.Value}
+	}
+	out, err := h.validateAnswersCore(r.Context(), eventTypeID, in)
+	if err != nil {
+		var ae *answerError
+		if errors.As(err, &ae) {
+			h.writeError(w, http.StatusBadRequest, ae.msg)
+		} else {
+			h.logger.ErrorContext(r.Context(), "validate answers", "error", err)
+			h.writeError(w, http.StatusInternalServerError, "internal error")
+		}
+		return nil, err
+	}
+	return out, nil
+}
+
+// validateAnswersCore validates submitted intake answers against an event type's
+// questions and returns the canonical answer slice. Shared by the REST booking handler
+// and the MCP create_booking tool — no HTTP coupling. Client-fault problems are
+// returned as *answerError; DB failures as plain wrapped errors.
+func (h *Handler) validateAnswersCore(ctx context.Context, eventTypeID string, rawAnswers []booking.Answer) ([]booking.Answer, error) {
 	// Load all questions for this event type (label included for error messages).
-	rows, err := h.db.QueryContext(r.Context(), `
+	rows, err := h.db.QueryContext(ctx, `
 		SELECT id, label, type, options, required
 		FROM event_type_questions WHERE event_type_id = ?`, eventTypeID)
 	if err != nil {
-		h.logger.ErrorContext(r.Context(), "validate answers: load questions", "error", err)
-		h.writeError(w, http.StatusInternalServerError, "internal error")
-		return nil, err
+		return nil, fmt.Errorf("validate answers: load questions: %w", err)
 	}
 	defer rows.Close()
 
@@ -461,9 +493,7 @@ func (h *Handler) validateAnswers(w http.ResponseWriter, r *http.Request, eventT
 		var optRaw sql.NullString
 		var reqInt int
 		if err := rows.Scan(&q.id, &q.label, &q.qtype, &optRaw, &reqInt); err != nil {
-			h.logger.ErrorContext(r.Context(), "validate answers: scan", "error", err)
-			h.writeError(w, http.StatusInternalServerError, "internal error")
-			return nil, err
+			return nil, fmt.Errorf("validate answers: scan: %w", err)
 		}
 		q.required = reqInt != 0
 		if optRaw.Valid && optRaw.String != "" {
@@ -472,23 +502,17 @@ func (h *Handler) validateAnswers(w http.ResponseWriter, r *http.Request, eventT
 		questions[q.id] = q
 	}
 	if err := rows.Err(); err != nil {
-		h.logger.ErrorContext(r.Context(), "validate answers: rows", "error", err)
-		h.writeError(w, http.StatusInternalServerError, "internal error")
-		return nil, err
+		return nil, fmt.Errorf("validate answers: rows: %w", err)
 	}
 
 	// Index submitted answers by question_id; reject duplicates and unknown IDs.
 	submitted := map[string]string{}
 	for _, a := range rawAnswers {
 		if _, ok := questions[a.QuestionID]; !ok {
-			err := fmt.Errorf("unknown question_id %q", a.QuestionID)
-			h.writeError(w, http.StatusBadRequest, err.Error())
-			return nil, err
+			return nil, &answerError{fmt.Sprintf("unknown question_id %q", a.QuestionID)}
 		}
 		if _, dup := submitted[a.QuestionID]; dup {
-			err := fmt.Errorf("duplicate answer for question_id %q", a.QuestionID)
-			h.writeError(w, http.StatusBadRequest, err.Error())
-			return nil, err
+			return nil, &answerError{fmt.Sprintf("duplicate answer for question_id %q", a.QuestionID)}
 		}
 		submitted[a.QuestionID] = a.Value
 	}
@@ -498,9 +522,7 @@ func (h *Handler) validateAnswers(w http.ResponseWriter, r *http.Request, eventT
 	for _, q := range questions {
 		val, answered := submitted[q.id]
 		if q.required && (!answered || strings.TrimSpace(val) == "") {
-			err := fmt.Errorf("required field %q is missing", q.label)
-			h.writeError(w, http.StatusBadRequest, err.Error())
-			return nil, err
+			return nil, &answerError{fmt.Sprintf("required field %q is missing", q.label)}
 		}
 		if q.qtype == "select" && answered && val != "" {
 			valid := false
@@ -511,9 +533,7 @@ func (h *Handler) validateAnswers(w http.ResponseWriter, r *http.Request, eventT
 				}
 			}
 			if !valid {
-				err := fmt.Errorf("invalid option for %q: %q is not an allowed choice", q.label, val)
-				h.writeError(w, http.StatusBadRequest, err.Error())
-				return nil, err
+				return nil, &answerError{fmt.Sprintf("invalid option for %q: %q is not an allowed choice", q.label, val)}
 			}
 		}
 		if answered {

@@ -44,6 +44,21 @@ func (h *Handler) MCPServer() *mcp.Server {
 		Description: "List bookings in this workspace, newest first, with optional filters (status, date range, event type, host). Times are RFC3339 in UTC.",
 	}, h.mcpListBookings)
 
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "create_booking",
+		Description: "Book a slot on an event type. slot_start must be an exact start from get_available_slots. Answers the event type's required intake questions if any. Returns the created booking (with its id and assigned host).",
+	}, h.mcpCreateBooking)
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "reschedule_booking",
+		Description: "Move an existing booking to a new start time (RFC3339). The duration is preserved. Fails if the new slot is taken or the booking is cancelled.",
+	}, h.mcpRescheduleBooking)
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "cancel_booking",
+		Description: "Cancel a booking by id, with an optional reason. Removes the calendar event(s) and notifies attendee and hosts.",
+	}, h.mcpCancelBooking)
+
 	return s
 }
 
@@ -222,4 +237,198 @@ func (h *Handler) slugForEventTypeID(ctx context.Context, id string) string {
 	var slug string
 	_ = h.db.QueryRowContext(ctx, `SELECT slug FROM event_types WHERE id = ?`, id).Scan(&slug)
 	return slug
+}
+
+// ── create_booking ───────────────────────────────────────────────────────────
+
+type mcpAnswer struct {
+	QuestionID string `json:"question_id"`
+	Value      string `json:"value"`
+}
+
+type createBookingIn struct {
+	EventTypeID   string      `json:"event_type_id" jsonschema:"the event type slug (from list_event_types)"`
+	SlotStart     string      `json:"slot_start" jsonschema:"the slot's exact start as RFC3339, taken from get_available_slots"`
+	AttendeeName  string      `json:"attendee_name"`
+	AttendeeEmail string      `json:"attendee_email"`
+	Timezone      string      `json:"timezone,omitempty" jsonschema:"attendee IANA timezone; defaults to UTC"`
+	Answers       []mcpAnswer `json:"answers,omitempty" jsonschema:"answers to the event type's intake questions, if any are required"`
+}
+
+func (h *Handler) mcpCreateBooking(ctx context.Context, _ *mcp.CallToolRequest, in createBookingIn) (*mcp.CallToolResult, bookingJSON, error) {
+	if in.EventTypeID == "" || in.SlotStart == "" || in.AttendeeName == "" || in.AttendeeEmail == "" {
+		return nil, bookingJSON{}, fmt.Errorf("event_type_id, slot_start, attendee_name, and attendee_email are required")
+	}
+	tz := in.Timezone
+	if tz == "" {
+		tz = "UTC"
+	}
+	startAt, err := time.Parse(time.RFC3339, in.SlotStart)
+	if err != nil {
+		return nil, bookingJSON{}, fmt.Errorf("slot_start must be RFC3339 (e.g. 2026-06-15T09:00:00Z)")
+	}
+
+	var et struct {
+		ID                string
+		Name              string
+		DurationMinutes   int
+		LocationType      string
+		LocationValue     *string
+		RoutingMode       string
+		RRStrategy        string
+		IsActive          int
+		MaxActiveBookings int
+	}
+	err = h.db.QueryRowContext(ctx, `
+		SELECT id, name, duration_minutes, location_type, location_value, routing_mode, rr_strategy, is_active, max_active_bookings
+		FROM event_types WHERE slug = ?`, in.EventTypeID).
+		Scan(&et.ID, &et.Name, &et.DurationMinutes, &et.LocationType, &et.LocationValue, &et.RoutingMode, &et.RRStrategy, &et.IsActive, &et.MaxActiveBookings)
+	if err != nil || et.IsActive == 0 {
+		return nil, bookingJSON{}, fmt.Errorf("event type not found: %s", in.EventTypeID)
+	}
+
+	raw := make([]booking.Answer, len(in.Answers))
+	for i, a := range in.Answers {
+		raw[i] = booking.Answer{QuestionID: a.QuestionID, Value: a.Value}
+	}
+	answers, err := h.validateAnswersCore(ctx, et.ID, raw)
+	if err != nil {
+		return nil, bookingJSON{}, err // *answerError messages are human-readable
+	}
+
+	endAt := startAt.UTC().Add(time.Duration(et.DurationMinutes) * time.Minute)
+	locValue := ""
+	if et.LocationValue != nil {
+		locValue = *et.LocationValue
+	}
+
+	hosts, err := h.resolveEventTypeHosts(ctx, et.ID)
+	if err != nil {
+		return nil, bookingJSON{}, fmt.Errorf("resolve event-type hosts: %w", err)
+	}
+	candidates, required, optional := resolveBookingHostPool(hosts, et.RoutingMode)
+	if len(candidates) == 0 {
+		return nil, bookingJSON{}, fmt.Errorf("this slot is no longer available: no active host can take it")
+	}
+
+	b, err := h.bookingSvc.Create(ctx, booking.CreateParams{
+		EventTypeID:         et.ID,
+		HostIDs:             candidates,
+		RoutingMode:         et.RoutingMode,
+		RRStrategy:          et.RRStrategy,
+		RequiredHosts:       required,
+		OptionalHosts:       optional,
+		StartAt:             startAt.UTC(),
+		EndAt:               endAt,
+		LocationValue:       locValue,
+		Organizer:           booking.Attendee{Name: in.AttendeeName, Email: in.AttendeeEmail, IANATimezone: tz},
+		Answers:             answers,
+		MaxActivePerInvitee: et.MaxActiveBookings,
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, booking.ErrDoubleBooked):
+			return nil, bookingJSON{}, fmt.Errorf("this slot is no longer available")
+		case errors.Is(err, booking.ErrBookingLimitReached):
+			return nil, bookingJSON{}, fmt.Errorf("the attendee already holds the maximum number of upcoming bookings for this event")
+		default:
+			return nil, bookingJSON{}, fmt.Errorf("create booking: %w", err)
+		}
+	}
+
+	out := toBookingJSON(b)
+	out.EventTypeSlug = in.EventTypeID
+	for _, hd := range h.displayHostsForBooking(ctx, b.ID) {
+		out.Hosts = append(out.Hosts, hostBrief{ID: hd.ID, Name: hd.Name, AvatarURL: hd.AvatarURL})
+	}
+	// Calendar events, confirmation emails, webhook, reminders — the same shared path
+	// the REST handler uses. The booking is committed; side-effect failures are logged.
+	go h.dispatchBookingConfirmation(b, bookingConfirmationInput{
+		EventTypeName:     et.Name,
+		EventTypeSlug:     in.EventTypeID,
+		LocationType:      et.LocationType,
+		OrganizerName:     in.AttendeeName,
+		OrganizerEmail:    in.AttendeeEmail,
+		OrganizerTimezone: tz,
+	})
+	return nil, out, nil
+}
+
+// ── reschedule_booking ───────────────────────────────────────────────────────
+
+type rescheduleBookingIn struct {
+	BookingID    string `json:"booking_id"`
+	NewSlotStart string `json:"new_slot_start" jsonschema:"the new start as RFC3339; the duration is preserved"`
+}
+
+func (h *Handler) mcpRescheduleBooking(ctx context.Context, _ *mcp.CallToolRequest, in rescheduleBookingIn) (*mcp.CallToolResult, bookingJSON, error) {
+	if in.BookingID == "" || in.NewSlotStart == "" {
+		return nil, bookingJSON{}, fmt.Errorf("booking_id and new_slot_start are required")
+	}
+	newStart, err := time.Parse(time.RFC3339, in.NewSlotStart)
+	if err != nil {
+		return nil, bookingJSON{}, fmt.Errorf("new_slot_start must be RFC3339")
+	}
+	b, err := h.bookingSvc.Get(ctx, in.BookingID)
+	if err != nil {
+		if errors.Is(err, booking.ErrNotFound) {
+			return nil, bookingJSON{}, fmt.Errorf("booking not found: %s", in.BookingID)
+		}
+		return nil, bookingJSON{}, fmt.Errorf("get booking: %w", err)
+	}
+	var durMins int
+	if err := h.db.QueryRowContext(ctx, `SELECT duration_minutes FROM event_types WHERE id = ?`, b.EventTypeID).Scan(&durMins); err != nil {
+		return nil, bookingJSON{}, fmt.Errorf("load duration: %w", err)
+	}
+	previousStart, previousEnd := b.StartAt, b.EndAt
+	updated, err := h.bookingSvc.Reschedule(ctx, b.ID, newStart, newStart.Add(time.Duration(durMins)*time.Minute))
+	if err != nil {
+		switch {
+		case errors.Is(err, booking.ErrDoubleBooked):
+			return nil, bookingJSON{}, fmt.Errorf("that time slot is no longer available")
+		case errors.Is(err, booking.ErrAlreadyCancelled):
+			return nil, bookingJSON{}, fmt.Errorf("this booking has been cancelled")
+		case errors.Is(err, booking.ErrNotFound):
+			return nil, bookingJSON{}, fmt.Errorf("booking not found: %s", in.BookingID)
+		default:
+			return nil, bookingJSON{}, fmt.Errorf("reschedule: %w", err)
+		}
+	}
+	out := toBookingJSON(updated)
+	out.EventTypeSlug = h.slugForEventTypeID(ctx, updated.EventTypeID)
+	go h.rescheduleSideEffects(*updated, b.EventTypeID, previousStart, previousEnd)
+	return nil, out, nil
+}
+
+// ── cancel_booking ───────────────────────────────────────────────────────────
+
+type cancelBookingIn struct {
+	BookingID string `json:"booking_id"`
+	Reason    string `json:"reason,omitempty"`
+}
+
+func (h *Handler) mcpCancelBooking(ctx context.Context, _ *mcp.CallToolRequest, in cancelBookingIn) (*mcp.CallToolResult, bookingJSON, error) {
+	if in.BookingID == "" {
+		return nil, bookingJSON{}, fmt.Errorf("booking_id is required")
+	}
+	// CancelByID cancels any booking in the workspace (the MCP caller acts for the
+	// whole workspace), mirroring an admin API key.
+	if err := h.bookingSvc.CancelByID(ctx, in.BookingID, in.Reason); err != nil {
+		switch {
+		case errors.Is(err, booking.ErrNotFound):
+			return nil, bookingJSON{}, fmt.Errorf("booking not found: %s", in.BookingID)
+		case errors.Is(err, booking.ErrAlreadyCancelled):
+			return nil, bookingJSON{}, fmt.Errorf("booking already cancelled")
+		default:
+			return nil, bookingJSON{}, fmt.Errorf("cancel booking: %w", err)
+		}
+	}
+	b, err := h.bookingSvc.Get(ctx, in.BookingID)
+	if err != nil {
+		return nil, bookingJSON{}, fmt.Errorf("fetch cancelled booking: %w", err)
+	}
+	out := toBookingJSON(b)
+	out.EventTypeSlug = h.slugForEventTypeID(ctx, b.EventTypeID)
+	go h.cancelSideEffects(*b)
+	return nil, out, nil
 }

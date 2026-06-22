@@ -200,75 +200,80 @@ func (h *Handler) RescheduleByToken(w http.ResponseWriter, r *http.Request) {
 
 	h.writeJSON(w, http.StatusOK, toBookingJSON(updated))
 
-	bCopy := *updated
-	capturedEtID := b.EventTypeID
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
+	go h.rescheduleSideEffects(*updated, b.EventTypeID, previousStart, previousEnd)
+}
 
-		d, err := h.loadCancellationData(ctx, &bCopy)
-		if err != nil {
-			h.logger.Error("reschedule: load email data", "error", err, "booking_id", bCopy.ID)
-			return
-		}
-		d.BaseURL = h.publicURL()
-		d.PreviousStartAt = previousStart
-		d.PreviousEndAt = previousEnd
-		h.applyBranding(ctx, &d)
+// rescheduleSideEffects moves the calendar event(s) to the new time, rotates the
+// manage token, emails attendee + host, fires the booking.rescheduled webhook, and
+// reschedules reminders. Intended to run in its own goroutine; every failure is
+// logged, never fatal. Shared by the manage-link RescheduleByToken handler and the
+// MCP reschedule_booking tool.
+func (h *Handler) rescheduleSideEffects(bCopy booking.Booking, capturedEtID string, previousStart, previousEnd time.Time) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
 
-		// Move the calendar event(s) to the new time (all hosts, for Group bookings).
-		h.moveCalendarEvents(ctx, bCopy.ID, bCopy.StartAt, bCopy.EndAt)
+	d, err := h.loadCancellationData(ctx, &bCopy)
+	if err != nil {
+		h.logger.Error("reschedule: load email data", "error", err, "booking_id", bCopy.ID)
+		return
+	}
+	d.BaseURL = h.publicURL()
+	d.PreviousStartAt = previousStart
+	d.PreviousEndAt = previousEnd
+	h.applyBranding(ctx, &d)
 
-		// Rotate the token so the original confirmation-email link is invalidated.
-		if tok, err := h.bookingSvc.RotateManageToken(ctx, bCopy.ID); err == nil {
-			d.ManageURL = h.publicURL() + "/manage/" + tok
-		}
+	// Move the calendar event(s) to the new time (all hosts, for Group bookings).
+	h.moveCalendarEvents(ctx, bCopy.ID, bCopy.StartAt, bCopy.EndAt)
 
-		prefs := allOnPrefs
-		if p, err := h.loadHostPrefs(ctx, bCopy.HostID); err != nil {
-			h.logger.Error("reschedule: load host prefs", "error", err, "booking_id", bCopy.ID)
-		} else {
-			prefs = p
-		}
-		var msgNote, subjNote sql.NullString
-		_ = h.db.QueryRowContext(ctx, `SELECT msg_reschedule, subj_reschedule FROM event_types WHERE id = ?`, capturedEtID).
-			Scan(&msgNote, &subjNote)
-		if msgNote.Valid {
-			d.CustomNote = msgNote.String
-		}
-		if subjNote.Valid {
-			d.SubjectOverride = subjNote.String
-		}
-		if prefs.NotifyReschedule {
-			if err := mailer.SendRescheduleToAttendee(ctx, h.mailer, d); err != nil {
-				h.logger.Error("reschedule email (attendee)", "error", err, "booking_id", bCopy.ID)
-			}
-		}
-		if prefs.NotifyHostReschedule {
-			if err := mailer.SendRescheduleToHost(ctx, h.mailer, d); err != nil {
-				h.logger.Error("reschedule email (host)", "error", err, "booking_id", bCopy.ID)
-			}
-		}
+	// Rotate the token so the original confirmation-email link is invalidated.
+	if tok, err := h.bookingSvc.RotateManageToken(ctx, bCopy.ID); err == nil {
+		d.ManageURL = h.publicURL() + "/manage/" + tok
+	}
 
-		if err := h.webhookSvc.Enqueue(ctx, "booking.rescheduled", webhook.BookingPayload{
-			ID:              bCopy.ID,
-			EventTypeSlug:   d.EventTypeSlug,
-			HostID:          bCopy.HostID,
-			StartAt:         bCopy.StartAt.UTC().Format(time.RFC3339),
-			EndAt:           bCopy.EndAt.UTC().Format(time.RFC3339),
-			Status:          bCopy.Status,
-			LocationValue:   bCopy.LocationValue,
-			CreatedAt:       bCopy.CreatedAt.UTC().Format(time.RFC3339),
-			PreviousStartAt: previousStart.UTC().Format(time.RFC3339),
-			PreviousEndAt:   previousEnd.UTC().Format(time.RFC3339),
-		}); err != nil {
-			h.logger.Error("enqueue booking.rescheduled webhook", "error", err, "booking_id", bCopy.ID)
+	prefs := allOnPrefs
+	if p, err := h.loadHostPrefs(ctx, bCopy.HostID); err != nil {
+		h.logger.Error("reschedule: load host prefs", "error", err, "booking_id", bCopy.ID)
+	} else {
+		prefs = p
+	}
+	var msgNote, subjNote sql.NullString
+	_ = h.db.QueryRowContext(ctx, `SELECT msg_reschedule, subj_reschedule FROM event_types WHERE id = ?`, capturedEtID).
+		Scan(&msgNote, &subjNote)
+	if msgNote.Valid {
+		d.CustomNote = msgNote.String
+	}
+	if subjNote.Valid {
+		d.SubjectOverride = subjNote.String
+	}
+	if prefs.NotifyReschedule {
+		if err := mailer.SendRescheduleToAttendee(ctx, h.mailer, d); err != nil {
+			h.logger.Error("reschedule email (attendee)", "error", err, "booking_id", bCopy.ID)
 		}
+	}
+	if prefs.NotifyHostReschedule {
+		if err := mailer.SendRescheduleToHost(ctx, h.mailer, d); err != nil {
+			h.logger.Error("reschedule email (host)", "error", err, "booking_id", bCopy.ID)
+		}
+	}
 
-		if err := h.replaceReminderJobs(ctx, bCopy.ID, capturedEtID, bCopy.StartAt); err != nil {
-			h.logger.Error("reschedule: replace reminder jobs", "error", err, "booking_id", bCopy.ID)
-		}
-	}()
+	if err := h.webhookSvc.Enqueue(ctx, "booking.rescheduled", webhook.BookingPayload{
+		ID:              bCopy.ID,
+		EventTypeSlug:   d.EventTypeSlug,
+		HostID:          bCopy.HostID,
+		StartAt:         bCopy.StartAt.UTC().Format(time.RFC3339),
+		EndAt:           bCopy.EndAt.UTC().Format(time.RFC3339),
+		Status:          bCopy.Status,
+		LocationValue:   bCopy.LocationValue,
+		CreatedAt:       bCopy.CreatedAt.UTC().Format(time.RFC3339),
+		PreviousStartAt: previousStart.UTC().Format(time.RFC3339),
+		PreviousEndAt:   previousEnd.UTC().Format(time.RFC3339),
+	}); err != nil {
+		h.logger.Error("enqueue booking.rescheduled webhook", "error", err, "booking_id", bCopy.ID)
+	}
+
+	if err := h.replaceReminderJobs(ctx, bCopy.ID, capturedEtID, bCopy.StartAt); err != nil {
+		h.logger.Error("reschedule: replace reminder jobs", "error", err, "booking_id", bCopy.ID)
+	}
 }
 
 // CancelByToken cancels a booking authenticated by a manage token.
@@ -303,4 +308,3 @@ func (h *Handler) CancelByToken(w http.ResponseWriter, r *http.Request) {
 	// event from every assigned host's calendar and notify each).
 	go h.cancelSideEffects(*b)
 }
-

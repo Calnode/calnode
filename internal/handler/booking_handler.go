@@ -189,6 +189,35 @@ func (h *Handler) smartDefaultLocation(ctx context.Context, ownerID string) stri
 	return "zoom"
 }
 
+// resolveBookingHostPool splits an event type's resolved hosts into the candidate,
+// required, and optional pools that booking.Create expects, per routing mode. For
+// round_robin: rotation hosts are candidates (one is picked), required hosts always
+// attend, optional join if free. For fixed/collective: required hosts are the
+// candidates (all must be free), optional join if free. Shared by the REST
+// CreateBooking handler and the MCP create_booking tool.
+func resolveBookingHostPool(hosts []EventHost, routingMode string) (candidates, required, optional []string) {
+	for _, hh := range hosts {
+		if routingMode == "round_robin" {
+			switch hh.Role {
+			case "rotation":
+				candidates = append(candidates, hh.UserID)
+			case "required":
+				required = append(required, hh.UserID)
+			case "optional":
+				optional = append(optional, hh.UserID)
+			}
+		} else {
+			switch hh.Role {
+			case "required":
+				candidates = append(candidates, hh.UserID)
+			case "optional":
+				optional = append(optional, hh.UserID)
+			}
+		}
+	}
+	return candidates, required, optional
+}
+
 type attendeeJSON struct {
 	Name  string `json:"name"`
 	Email string `json:"email"`
@@ -425,29 +454,7 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	var candidates, required, optional []string
-	for _, hh := range hosts {
-		if et.RoutingMode == "round_robin" {
-			// rotation = the pool one is picked from; required = fixed hosts who
-			// always attend; optional = join if free.
-			switch hh.Role {
-			case "rotation":
-				candidates = append(candidates, hh.UserID)
-			case "required":
-				required = append(required, hh.UserID)
-			case "optional":
-				optional = append(optional, hh.UserID)
-			}
-		} else {
-			// fixed + collective: required hosts must attend; optional join if free.
-			switch hh.Role {
-			case "required":
-				candidates = append(candidates, hh.UserID)
-			case "optional":
-				optional = append(optional, hh.UserID)
-			}
-		}
-	}
+	candidates, required, optional := resolveBookingHostPool(hosts, et.RoutingMode)
 	if len(candidates) == 0 {
 		// No active host can take this booking (e.g. the configured host was archived).
 		h.writeError(w, http.StatusConflict, "this slot is no longer available")
@@ -519,168 +526,194 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusCreated)
 	_, _ = w.Write(respBody)
 
-	// Send confirmation emails in the background — the booking is committed; a
-	// mail failure must not roll it back or change the HTTP response.
-	bData := mailer.BookingData{
-		BookingID:         b.ID,
+	// Run calendar/email/webhook side effects in the background — the booking is
+	// committed; a side-effect failure must not roll it back or change the response.
+	go h.dispatchBookingConfirmation(b, bookingConfirmationInput{
 		EventTypeName:     et.Name,
 		EventTypeSlug:     req.EventTypeSlug,
+		LocationType:      et.LocationType,
 		OrganizerName:     req.Name,
 		OrganizerEmail:    req.Email,
 		OrganizerTimezone: req.Timezone,
+	})
+}
+
+// bookingConfirmationInput carries the event-type and organizer details that the
+// post-create side effects need but that aren't stored on the booking row.
+type bookingConfirmationInput struct {
+	EventTypeName     string
+	EventTypeSlug     string
+	LocationType      string
+	OrganizerName     string
+	OrganizerEmail    string
+	OrganizerTimezone string
+}
+
+// dispatchBookingConfirmation runs the post-create side effects for a booking:
+// calendar events on each assigned host's connected calendar (auto-generating a
+// Meet/Teams link only when the host's provider natively matches the platform),
+// confirmation emails to attendee and hosts, the booking.created webhook, and
+// reminder scheduling. Intended to run in its own goroutine; every failure is logged,
+// never fatal. Shared by the REST CreateBooking handler and the MCP create_booking tool.
+func (h *Handler) dispatchBookingConfirmation(b *booking.Booking, in bookingConfirmationInput) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	bData := mailer.BookingData{
+		BookingID:         b.ID,
+		EventTypeName:     in.EventTypeName,
+		EventTypeSlug:     in.EventTypeSlug,
+		OrganizerName:     in.OrganizerName,
+		OrganizerEmail:    in.OrganizerEmail,
+		OrganizerTimezone: in.OrganizerTimezone,
 		StartAt:           b.StartAt,
 		EndAt:             b.EndAt,
 		LocationValue:     b.LocationValue,
 		BaseURL:           h.publicURL(),
 	}
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		h.applyBranding(ctx, &bData)
-		// Every assigned host attends (Group books several; round-robin/Normal one).
-		hosts, err := h.assignedHosts(ctx, b.ID)
-		if err != nil || len(hosts) == 0 {
-			h.logger.Error("booking confirmation: load assigned hosts", "error", err, "booking_id", b.ID)
-			// Fall back to the primary host so notifications still go out.
-			fb := assignedHost{UserID: b.HostID, IsPrimary: true}
-			_ = h.db.QueryRowContext(ctx, `SELECT name, email FROM users WHERE id = ?`, b.HostID).
-				Scan(&fb.Name, &fb.Email)
-			hosts = []assignedHost{fb}
-		}
-		if tok, err := h.bookingSvc.IssueManageToken(ctx, b.ID); err != nil {
-			h.logger.Error("issue manage token", "error", err, "booking_id", b.ID)
-		} else {
-			bData.ManageURL = h.publicURL() + "/manage/" + tok
-		}
-		var msgNote, subjNote sql.NullString
-		_ = h.db.QueryRowContext(ctx, `SELECT msg_confirmation, subj_confirmation FROM event_types WHERE id = ?`, b.EventTypeID).
-			Scan(&msgNote, &subjNote)
-		if msgNote.Valid {
-			bData.CustomNote = msgNote.String
-		}
-		if subjNote.Valid {
-			bData.SubjectOverride = subjNote.String
-		}
+	h.applyBranding(ctx, &bData)
+	// Every assigned host attends (Group books several; round-robin/Normal one).
+	hosts, err := h.assignedHosts(ctx, b.ID)
+	if err != nil || len(hosts) == 0 {
+		h.logger.Error("booking confirmation: load assigned hosts", "error", err, "booking_id", b.ID)
+		// Fall back to the primary host so notifications still go out.
+		fb := assignedHost{UserID: b.HostID, IsPrimary: true}
+		_ = h.db.QueryRowContext(ctx, `SELECT name, email FROM users WHERE id = ?`, b.HostID).
+			Scan(&fb.Name, &fb.Email)
+		hosts = []assignedHost{fb}
+	}
+	if tok, err := h.bookingSvc.IssueManageToken(ctx, b.ID); err != nil {
+		h.logger.Error("issue manage token", "error", err, "booking_id", b.ID)
+	} else {
+		bData.ManageURL = h.publicURL() + "/manage/" + tok
+	}
+	var msgNote, subjNote sql.NullString
+	_ = h.db.QueryRowContext(ctx, `SELECT msg_confirmation, subj_confirmation FROM event_types WHERE id = ?`, b.EventTypeID).
+		Scan(&msgNote, &subjNote)
+	if msgNote.Valid {
+		bData.CustomNote = msgNote.String
+	}
+	if subjNote.Valid {
+		bData.SubjectOverride = subjNote.String
+	}
 
-		gc := h.getCal()
-		// For online-meeting event types (Google Meet / Teams) we auto-generate the
-		// link ONLY when the primary host's connected calendar natively matches the
-		// chosen platform (Meet↔Google, Teams↔Microsoft). Otherwise we never fabricate
-		// a link of the wrong kind — the organizer's manually-entered link is used as
-		// the location instead. The generated link (if any) is captured, stored on the
-		// booking, surfaced in emails, and passed to secondary hosts' events.
-		autoGenMeet := false
-		if gc != nil && onlineMeetingLocation(et.LocationType) {
-			primaryHostID := b.HostID
-			for _, host := range hosts {
-				if host.IsPrimary {
-					primaryHostID = host.UserID
-					break
-				}
-			}
-			if _, primaryProvider, perr := gc.Connected(ctx, primaryHostID); perr == nil {
-				autoGenMeet = providerMintsPlatform(et.LocationType, primaryProvider)
-			} else {
-				h.logger.Error("booking confirmation: primary host provider lookup", "error", perr, "booking_id", b.ID)
-			}
-		}
-		// Seed the propagated location with the organizer's manual link when we won't
-		// auto-generate, so the calendar events and emails still carry a join link.
-		meetURL := ""
-		if onlineMeetingLocation(et.LocationType) && !autoGenMeet {
-			meetURL = b.LocationValue
-		}
-		var primaryPrefs hostPrefs = allOnPrefs
+	gc := h.getCal()
+	// For online-meeting event types (Google Meet / Teams) we auto-generate the
+	// link ONLY when the primary host's connected calendar natively matches the
+	// chosen platform (Meet↔Google, Teams↔Microsoft). Otherwise we never fabricate
+	// a link of the wrong kind — the organizer's manually-entered link is used as
+	// the location instead. The generated link (if any) is captured, stored on the
+	// booking, surfaced in emails, and passed to secondary hosts' events.
+	autoGenMeet := false
+	if gc != nil && onlineMeetingLocation(in.LocationType) {
+		primaryHostID := b.HostID
 		for _, host := range hosts {
-			// Create a calendar event on each host's connected calendar and record
-			// the per-host event ID so it can be cancelled later. The primary's id
-			// also lives on the booking row for back-compat.
-			if gc != nil {
-				eventID, link, err := gc.CreateEvent(ctx, host.UserID, calendar.CreateEventParams{
-					Summary:        et.Name + " with " + req.Name,
-					Description:    "Booking ID: " + b.ID,
-					Location:       meetURL, // empty until the primary creates it; secondary hosts get the link
-					Start:          b.StartAt,
-					End:            b.EndAt,
-					OrganizerName:  req.Name,
-					OrganizerEmail: req.Email,
-					AddMeet:        autoGenMeet && host.IsPrimary,
-				})
-				if err != nil {
-					h.logger.Error("create gcal event", "error", err, "booking_id", b.ID, "host", host.UserID)
-					h.nudgeCalendarReconcile() // heal this missing event on a later sweep
-				} else if eventID != "" {
-					if _, err := h.db.ExecContext(ctx,
-						`UPDATE booking_hosts SET external_event_id = ? WHERE booking_id = ? AND user_id = ?`,
-						eventID, b.ID, host.UserID); err != nil {
-						h.logger.Error("save host gcal event id", "error", err, "booking_id", b.ID)
-					}
-					if host.IsPrimary {
-						if _, err := h.db.ExecContext(ctx,
-							`UPDATE bookings SET external_event_id = ? WHERE id = ?`, eventID, b.ID); err != nil {
-							h.logger.Error("save gcal event id", "error", err, "booking_id", b.ID)
-						}
-						// Persist the generated Meet link so the confirmation emails (sent
-						// below), the booking record, and the manage page show it. bData
-						// feeds the emails; updating it here reaches every send that follows.
-						if link != "" {
-							meetURL = link
-							bData.LocationValue = link
-							if _, err := h.db.ExecContext(ctx,
-								`UPDATE bookings SET location_value = ? WHERE id = ?`, link, b.ID); err != nil {
-								h.logger.Error("save meet link", "error", err, "booking_id", b.ID)
-							}
-						}
-					}
-				}
-			}
-
-			prefs := allOnPrefs
-			if p, err := h.loadHostPrefs(ctx, host.UserID); err != nil {
-				h.logger.Error("booking confirmation: load host prefs", "error", err, "booking_id", b.ID, "host", host.UserID)
-			} else {
-				prefs = p
-			}
 			if host.IsPrimary {
-				primaryPrefs = prefs
+				primaryHostID = host.UserID
+				break
 			}
-			if prefs.NotifyHostBooking {
-				hd := bData
-				hd.HostName, hd.HostEmail = host.Name, host.Email
-				hd.AttachICS = h.noConnectedDestination(ctx, host.UserID) // per-host: their own calendar
-				hd.ICSSequence = int(b.UpdatedAt.Unix())
-				if err := mailer.SendConfirmationToHost(ctx, h.mailer, hd); err != nil {
-					h.logger.Error("booking confirmation email (host)", "error", err, "booking_id", b.ID, "host", host.UserID)
+		}
+		if _, primaryProvider, perr := gc.Connected(ctx, primaryHostID); perr == nil {
+			autoGenMeet = providerMintsPlatform(in.LocationType, primaryProvider)
+		} else {
+			h.logger.Error("booking confirmation: primary host provider lookup", "error", perr, "booking_id", b.ID)
+		}
+	}
+	// Seed the propagated location with the organizer's manual link when we won't
+	// auto-generate, so the calendar events and emails still carry a join link.
+	meetURL := ""
+	if onlineMeetingLocation(in.LocationType) && !autoGenMeet {
+		meetURL = b.LocationValue
+	}
+	var primaryPrefs hostPrefs = allOnPrefs
+	for _, host := range hosts {
+		// Create a calendar event on each host's connected calendar and record
+		// the per-host event ID so it can be cancelled later. The primary's id
+		// also lives on the booking row for back-compat.
+		if gc != nil {
+			eventID, link, err := gc.CreateEvent(ctx, host.UserID, calendar.CreateEventParams{
+				Summary:        in.EventTypeName + " with " + in.OrganizerName,
+				Description:    "Booking ID: " + b.ID,
+				Location:       meetURL, // empty until the primary creates it; secondary hosts get the link
+				Start:          b.StartAt,
+				End:            b.EndAt,
+				OrganizerName:  in.OrganizerName,
+				OrganizerEmail: in.OrganizerEmail,
+				AddMeet:        autoGenMeet && host.IsPrimary,
+			})
+			if err != nil {
+				h.logger.Error("create gcal event", "error", err, "booking_id", b.ID, "host", host.UserID)
+				h.nudgeCalendarReconcile() // heal this missing event on a later sweep
+			} else if eventID != "" {
+				if _, err := h.db.ExecContext(ctx,
+					`UPDATE booking_hosts SET external_event_id = ? WHERE booking_id = ? AND user_id = ?`,
+					eventID, b.ID, host.UserID); err != nil {
+					h.logger.Error("save host gcal event id", "error", err, "booking_id", b.ID)
+				}
+				if host.IsPrimary {
+					if _, err := h.db.ExecContext(ctx,
+						`UPDATE bookings SET external_event_id = ? WHERE id = ?`, eventID, b.ID); err != nil {
+						h.logger.Error("save gcal event id", "error", err, "booking_id", b.ID)
+					}
+					// Persist the generated Meet link so the confirmation emails (sent
+					// below), the booking record, and the manage page show it. bData
+					// feeds the emails; updating it here reaches every send that follows.
+					if link != "" {
+						meetURL = link
+						bData.LocationValue = link
+						if _, err := h.db.ExecContext(ctx,
+							`UPDATE bookings SET location_value = ? WHERE id = ?`, link, b.ID); err != nil {
+							h.logger.Error("save meet link", "error", err, "booking_id", b.ID)
+						}
+					}
 				}
 			}
 		}
 
-		// Attendee confirmation, once. "With:" names the primary host; gated on the
-		// primary host's notification preference (matches prior behaviour).
-		bData.HostName, bData.HostEmail = primaryHost(hosts).Name, primaryHost(hosts).Email
-		bData.AttachICS = h.noConnectedDestination(ctx, b.HostID)
-		bData.ICSSequence = int(b.UpdatedAt.Unix())
-		if primaryPrefs.NotifyConfirmation {
-			if err := mailer.SendConfirmationToAttendee(ctx, h.mailer, bData); err != nil {
-				h.logger.Error("booking confirmation email (attendee)", "error", err, "booking_id", b.ID)
+		prefs := allOnPrefs
+		if p, err := h.loadHostPrefs(ctx, host.UserID); err != nil {
+			h.logger.Error("booking confirmation: load host prefs", "error", err, "booking_id", b.ID, "host", host.UserID)
+		} else {
+			prefs = p
+		}
+		if host.IsPrimary {
+			primaryPrefs = prefs
+		}
+		if prefs.NotifyHostBooking {
+			hd := bData
+			hd.HostName, hd.HostEmail = host.Name, host.Email
+			hd.AttachICS = h.noConnectedDestination(ctx, host.UserID) // per-host: their own calendar
+			hd.ICSSequence = int(b.UpdatedAt.Unix())
+			if err := mailer.SendConfirmationToHost(ctx, h.mailer, hd); err != nil {
+				h.logger.Error("booking confirmation email (host)", "error", err, "booking_id", b.ID, "host", host.UserID)
 			}
 		}
-		if err := h.webhookSvc.Enqueue(ctx, "booking.created", webhook.BookingPayload{
-			ID:            b.ID,
-			EventTypeSlug: req.EventTypeSlug,
-			HostID:        b.HostID,
-			StartAt:       b.StartAt.UTC().Format(time.RFC3339),
-			EndAt:         b.EndAt.UTC().Format(time.RFC3339),
-			Status:        b.Status,
-			LocationValue: b.LocationValue,
-			CreatedAt:     b.CreatedAt.UTC().Format(time.RFC3339),
-		}); err != nil {
-			h.logger.Error("enqueue booking.created webhook", "error", err, "booking_id", b.ID)
+	}
+
+	// Attendee confirmation, once. "With:" names the primary host; gated on the
+	// primary host's notification preference (matches prior behaviour).
+	bData.HostName, bData.HostEmail = primaryHost(hosts).Name, primaryHost(hosts).Email
+	bData.AttachICS = h.noConnectedDestination(ctx, b.HostID)
+	bData.ICSSequence = int(b.UpdatedAt.Unix())
+	if primaryPrefs.NotifyConfirmation {
+		if err := mailer.SendConfirmationToAttendee(ctx, h.mailer, bData); err != nil {
+			h.logger.Error("booking confirmation email (attendee)", "error", err, "booking_id", b.ID)
 		}
-		if err := h.enqueueBookingReminders(ctx, b.EventTypeID, b.ID, b.StartAt); err != nil {
-			h.logger.Error("enqueue reminders", "error", err, "booking_id", b.ID)
-		}
-	}()
+	}
+	if err := h.webhookSvc.Enqueue(ctx, "booking.created", webhook.BookingPayload{
+		ID:            b.ID,
+		EventTypeSlug: in.EventTypeSlug,
+		HostID:        b.HostID,
+		StartAt:       b.StartAt.UTC().Format(time.RFC3339),
+		EndAt:         b.EndAt.UTC().Format(time.RFC3339),
+		Status:        b.Status,
+		LocationValue: b.LocationValue,
+		CreatedAt:     b.CreatedAt.UTC().Format(time.RFC3339),
+	}); err != nil {
+		h.logger.Error("enqueue booking.created webhook", "error", err, "booking_id", b.ID)
+	}
+	if err := h.enqueueBookingReminders(ctx, b.EventTypeID, b.ID, b.StartAt); err != nil {
+		h.logger.Error("enqueue reminders", "error", err, "booking_id", b.ID)
+	}
 }
 
 // GetBooking handles GET /v1/bookings/{id} (public — accessible with just the booking ID).

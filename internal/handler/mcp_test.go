@@ -103,3 +103,83 @@ func TestMCP_readTools_registeredAndBehave(t *testing.T) {
 		t.Errorf("get_booking on a missing id should error; got %+v", res2.Content)
 	}
 }
+
+// bookingResult is the subset of the booking JSON the mutation tools return that the
+// test inspects (bookingJSON itself is unexported in package handler).
+type bookingResult struct {
+	ID      string `json:"id"`
+	Status  string `json:"status"`
+	StartAt string `json:"start_at"`
+}
+
+func decodeBooking(t *testing.T, res *mcp.CallToolResult) bookingResult {
+	t.Helper()
+	blob, _ := json.Marshal(res.StructuredContent)
+	var b bookingResult
+	if err := json.Unmarshal(blob, &b); err != nil {
+		t.Fatalf("decode booking result: %v (%s)", err, blob)
+	}
+	return b
+}
+
+func TestMCP_createRescheduleCancel(t *testing.T) {
+	h, apiKey, _ := setupWorkspace(t)
+	body := `{"slug":"mcp-call","name":"MCP Call","duration_minutes":30,"location_type":"phone","location_value":"+1 555 000 1111"}`
+	rec := httptest.NewRecorder()
+	h.RequireAuth(h.CreateEventType)(rec, authReq(http.MethodPost, "/v1/event-types", body, apiKey))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create event type: %d — %s", rec.Code, rec.Body.String())
+	}
+
+	cs := connectMCP(t, h)
+	ctx := context.Background()
+
+	// create_booking
+	res, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "create_booking", Arguments: map[string]any{
+		"event_type_id":  "mcp-call",
+		"slot_start":     "2027-01-15T10:00:00Z",
+		"attendee_name":  "Pat Booker",
+		"attendee_email": "pat@example.com",
+	}})
+	if err != nil {
+		t.Fatalf("create_booking: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("create_booking errored: %+v", res.Content)
+	}
+	created := decodeBooking(t, res)
+	if created.ID == "" || created.Status != "confirmed" {
+		t.Fatalf("create_booking returned %+v; want a confirmed booking with an id", created)
+	}
+
+	// reschedule_booking
+	res, err = cs.CallTool(ctx, &mcp.CallToolParams{Name: "reschedule_booking", Arguments: map[string]any{
+		"booking_id":     created.ID,
+		"new_slot_start": "2027-01-16T11:00:00Z",
+	}})
+	if err != nil {
+		t.Fatalf("reschedule_booking: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("reschedule_booking errored: %+v", res.Content)
+	}
+	moved := decodeBooking(t, res)
+	if !strings.HasPrefix(moved.StartAt, "2027-01-16T11:00") {
+		t.Errorf("reschedule_booking start = %q; want the new 2027-01-16T11:00 time", moved.StartAt)
+	}
+
+	// cancel_booking
+	res, err = cs.CallTool(ctx, &mcp.CallToolParams{Name: "cancel_booking", Arguments: map[string]any{
+		"booking_id": created.ID,
+		"reason":     "testing",
+	}})
+	if err != nil {
+		t.Fatalf("cancel_booking: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("cancel_booking errored: %+v", res.Content)
+	}
+	if cancelled := decodeBooking(t, res); cancelled.Status != "cancelled" {
+		t.Errorf("cancel_booking status = %q; want cancelled", cancelled.Status)
+	}
+}
