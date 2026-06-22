@@ -252,6 +252,7 @@ func (h *Handler) PublicEventType(w http.ResponseWriter, r *http.Request) {
 		"location_type":    locType,
 		"location_label":   locationLabel(locType, locValue),
 		"max_future_days":  maxDays,
+		"assistant_enabled": h.getLLM() != nil,
 		"hosts":            outHosts,
 		"business_name":    brand.BusinessName,
 		"logo_url":         abs(brand.LogoURL),

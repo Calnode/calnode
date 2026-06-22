@@ -33,6 +33,8 @@
   var SVG_BACK = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>';
   var SVG_CHECK = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
   var SVG_X = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>';
+  var SVG_SPARK = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.8L18.7 9.7l-4.8 1.9L12 16.4l-1.9-4.8L5.3 9.7l4.8-1.9L12 3z"/></svg>';
+  var SVG_CHEV2 = '<svg class="asst-link-arrow" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="13 17 18 12 13 7"/><polyline points="6 17 11 12 6 7"/></svg>';
 
   function el(tag, attrs, kids) {
     var n = document.createElement(tag);
@@ -153,6 +155,7 @@
         ]);
         this.info = r[0];
         this.questions = (r[1] && r[1].items) || [];
+        this.ensureAsstDrawer();
         await this.loadMonth();
         this.render();
       } catch (e) {
@@ -194,11 +197,87 @@
         this.info.location_label ? el('li', { html: SVG_PIN + ' ' + esc(this.info.location_label) }) : null,
       ]);
       var kids = [head, meta];
+      if (this.info.assistant_enabled) {
+        var self = this;
+        var asstLink = el('button', { class: 'asst-link', type: 'button', html: SVG_SPARK + ' Book by chat ' + SVG_CHEV2 });
+        asstLink.addEventListener('click', function () { self.toggleAsst(); });
+        kids.push(asstLink);
+      }
       if (this.info.description) {
         kids.push(el('div', { class: 'description', text: this.info.description }));
         kids.push(el('button', { class: 'desc-toggle', type: 'button', text: 'Show more' }));
       }
       return el('aside', { class: 'info' }, kids);
+    }
+
+    // Conversational booking — a drawer appended to the shadow root (so it survives
+    // re-renders, which wipe .wrap), opened by the inline "Book by chat" link. No global
+    // floating button, to avoid colliding with the host site's own widgets. Uses the same
+    // assistant endpoint + shared .asst-* styles as the hosted booking page.
+    ensureAsstDrawer() {
+      if (this.asstPanel || !this.info || !this.info.assistant_enabled) return;
+      var self = this;
+      var log = el('div', { class: 'asst-log' }, [
+        el('div', { class: 'asst-msg bot', text: "Hi! Tell me roughly when you'd like to meet — e.g. \"Tuesday afternoon\" — and I'll find a time. You can always use the calendar instead." }),
+      ]);
+      var input = el('input', { class: 'asst-input', type: 'text', placeholder: "Type when you're free…", maxlength: '500', 'aria-label': 'Message the booking assistant' });
+      var sendBtn = el('button', { class: 'asst-send', type: 'submit', text: 'Send' });
+      var form = el('form', { class: 'asst-row', autocomplete: 'off' }, [input, sendBtn]);
+      var closeBtn = el('button', { class: 'asst-close', type: 'button', 'aria-label': 'Close', html: SVG_X });
+      var head = el('div', { class: 'asst-head' }, [el('span', { class: 'asst-title', html: SVG_SPARK + ' Book by chat' }), closeBtn]);
+      var panel = el('div', { class: 'asst-panel', role: 'dialog', 'aria-label': 'Book by chat' }, [head, log, form]);
+      panel.hidden = true;
+      this.root.appendChild(panel);
+      this.asstPanel = panel; this.asstLog = log; this.asstInput = input; this.asstSend = sendBtn;
+      this.asstMessages = []; this.asstBusy = false;
+      closeBtn.addEventListener('click', function () { self.toggleAsst(false); });
+      form.addEventListener('submit', function (e) { e.preventDefault(); self.asstSubmit(); });
+    }
+
+    toggleAsst(force) {
+      if (!this.asstPanel) return;
+      var show = (force === undefined) ? this.asstPanel.hidden : force;
+      this.asstPanel.hidden = !show;
+      if (show) this.asstInput.focus();
+    }
+
+    asstAdd(text, cls) {
+      var d = el('div', { class: 'asst-msg ' + cls, text: text });
+      this.asstLog.appendChild(d);
+      this.asstLog.scrollTop = this.asstLog.scrollHeight;
+      return d;
+    }
+
+    asstSubmit() {
+      var self = this;
+      var text = (this.asstInput.value || '').trim();
+      if (!text || this.asstBusy) return;
+      this.asstMessages.push({ role: 'user', content: text });
+      this.asstAdd(text, 'user');
+      this.asstInput.value = ''; this.asstBusy = true; this.asstSend.disabled = true;
+      var typing = this.asstAdd('…', 'asst-typing');
+      fetch(BASE + '/v1/event-types/' + encodeURIComponent(this.slug) + '/assistant', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: this.asstMessages, timezone: TZ }),
+      }).then(function (r) {
+        if (!r.ok) throw new Error('http ' + r.status);
+        return r.json();
+      }).then(function (data) {
+        typing.remove();
+        if (data.reply) {
+          self.asstMessages.push({ role: 'assistant', content: data.reply });
+          self.asstAdd(data.reply, data.booking ? 'ok' : 'bot');
+        } else if (data.booking) {
+          self.asstAdd('Booked — check your email for the confirmation.', 'ok');
+        }
+        if (data.fallback) self.asstAdd('Tip: you can also pick a time from the calendar.', 'note');
+        if (data.booking) self.dispatchEvent(new CustomEvent('calnode:booked', { bubbles: true, composed: true, detail: data.booking }));
+      }).catch(function () {
+        typing.remove();
+        self.asstAdd('Sorry — something went wrong. Please use the calendar.', 'note');
+      }).then(function () {
+        self.asstBusy = false; self.asstSend.disabled = false; self.asstInput.focus();
+      });
     }
 
     // syncDesc clamps the description to 2 lines (via the shared .clamp class) only
