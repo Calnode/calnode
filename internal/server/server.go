@@ -13,13 +13,14 @@ import (
 	"github.com/calnode/calnode/internal/config"
 	"github.com/calnode/calnode/internal/gcal"
 	"github.com/calnode/calnode/internal/handler"
+	"github.com/calnode/calnode/internal/llm"
 	"github.com/calnode/calnode/internal/mailer"
 	"github.com/calnode/calnode/internal/secret"
 
-	"github.com/modelcontextprotocol/go-sdk/auth"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/calnode/calnode/internal/webhook"
 	"github.com/calnode/calnode/internal/worker"
+	"github.com/modelcontextprotocol/go-sdk/auth"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 // New builds the HTTP mux and starts background services. It returns the
@@ -135,6 +136,16 @@ func BuildHandler(ctx context.Context, cfg *config.Config, db *sql.DB, logger *s
 		h.StartCalendarReconciler(ctx)
 	}
 
+	// Optional LLM layer (PRD §8.11) — off unless configured + enabled in Settings.
+	if llmCfg, err := handler.LoadLLMSettingsFromDB(db, encKey); err != nil {
+		logger.Warn("llm: could not load settings from database", "error", err)
+	} else if llmCfg != nil && llmCfg.Enabled && llmCfg.Endpoint != "" {
+		h.SetLLM(llm.New(llm.Config{Endpoint: llmCfg.Endpoint, Model: llmCfg.Model, APIKey: llmCfg.APIKey}))
+		logger.Info("LLM layer enabled", "endpoint", llmCfg.Endpoint, "model", llmCfg.Model)
+	} else {
+		logger.Info("LLM layer not enabled — configure it in Settings → AI")
+	}
+
 	return h, drain
 }
 
@@ -244,6 +255,9 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	mux.HandleFunc("PATCH /v1/settings/google", settingsRL(h.RequireAuth(h.PatchGoogleSettings)))
 	mux.HandleFunc("GET /v1/settings/tracking", h.RequireAuth(h.GetTrackingSettings))
 	mux.HandleFunc("PATCH /v1/settings/tracking", settingsRL(h.RequireAuth(h.PatchTrackingSettings)))
+	mux.HandleFunc("GET /v1/settings/llm", h.RequireAuth(h.GetLLMSettings))
+	mux.HandleFunc("PATCH /v1/settings/llm", settingsRL(h.RequireAuth(h.PatchLLMSettings)))
+	mux.HandleFunc("POST /v1/settings/llm/test", settingsRL(h.RequireAuth(h.TestLLMSettings)))
 	mux.HandleFunc("GET /v1/settings/branding", h.RequireAuth(h.GetBranding))
 	mux.HandleFunc("PATCH /v1/settings/branding", settingsRL(h.RequireAuth(h.PatchBranding)))
 	mux.HandleFunc("POST /v1/settings/branding/logo", settingsRL(h.RequireAuth(h.UploadBrandingLogo)))
@@ -361,7 +375,7 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 }
 
 // seedSMTPToDB writes env-var SMTP settings into the DB on first boot so they
-// appear in the UI. Uses WHERE smtp_host = '' to avoid a check-then-act race
+// appear in the UI. Uses WHERE smtp_host = ” to avoid a check-then-act race
 // and to never overwrite settings the user has already saved via the UI.
 func seedSMTPToDB(db *sql.DB, cfg *config.Config, encKey [32]byte, logger *slog.Logger) {
 	var passEnc string

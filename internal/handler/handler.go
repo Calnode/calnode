@@ -11,21 +11,22 @@ import (
 
 	"github.com/calnode/calnode/internal/booking"
 	"github.com/calnode/calnode/internal/calendar"
+	"github.com/calnode/calnode/internal/llm"
 	"github.com/calnode/calnode/internal/mailer"
 	"github.com/calnode/calnode/internal/webhook"
 )
 
 type Handler struct {
-	db           *sql.DB
-	logger       *slog.Logger
-	bookingSvc   *booking.Service
-	mailer       mailer.Mailer
-	live         *mailer.Live // non-nil in production; nil in tests using a direct stub
-	encKey       [32]byte     // AES-256 key for encrypting secrets stored in the DB
-	calMu        sync.RWMutex
-	cal          *calendar.Service
-	calNudge     chan struct{} // buffered(1): wakes the calendar reconciler after a failed inline op
-	webhookSvc   *webhook.Service
+	db            *sql.DB
+	logger        *slog.Logger
+	bookingSvc    *booking.Service
+	mailer        mailer.Mailer
+	live          *mailer.Live // non-nil in production; nil in tests using a direct stub
+	encKey        [32]byte     // AES-256 key for encrypting secrets stored in the DB
+	calMu         sync.RWMutex
+	cal           *calendar.Service
+	calNudge      chan struct{} // buffered(1): wakes the calendar reconciler after a failed inline op
+	webhookSvc    *webhook.Service
 	baseURL       string
 	publicBaseURL string
 	dataDir       string
@@ -33,6 +34,24 @@ type Handler struct {
 	googleAuth    *oauth2.Config
 	microsoftAuth *oauth2.Config
 	secureCookie  bool
+	llmMu         sync.RWMutex
+	llm           *llm.Client // nil when the optional LLM layer is off/unconfigured
+}
+
+// SetLLM swaps the active LLM client (nil disables AI features). Hot-reloadable from
+// the settings page.
+func (h *Handler) SetLLM(c *llm.Client) {
+	h.llmMu.Lock()
+	h.llm = c
+	h.llmMu.Unlock()
+}
+
+// getLLM returns the active LLM client, or nil when AI is off — callers MUST nil-check
+// and fall back to the deterministic path.
+func (h *Handler) getLLM() *llm.Client {
+	h.llmMu.RLock()
+	defer h.llmMu.RUnlock()
+	return h.llm
 }
 
 func New(db *sql.DB, logger *slog.Logger) *Handler {
