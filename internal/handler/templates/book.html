@@ -138,6 +138,12 @@ body {
         {{.LocationLabel}}
       </li>
     </ul>
+    {{if .AssistantEnabled}}
+    <button type="button" class="asst-link" id="asst-open-inline">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.8L18.7 9.7l-4.8 1.9L12 16.4l-1.9-4.8L5.3 9.7l4.8-1.9L12 3z"/></svg>
+      Book by chat
+    </button>
+    {{end}}
     {{if .Description}}<div class="description">{{.Description}}</div>
     <button type="button" class="desc-toggle" id="desc-toggle">Show more</button>{{end}}
   </aside>
@@ -720,6 +726,8 @@ body {
   }
   openBtn.addEventListener('click', openPanel);
   closeBtn.addEventListener('click', closePanel);
+  var inlineBtn = document.getElementById('asst-open-inline');
+  if (inlineBtn) inlineBtn.addEventListener('click', openPanel);
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !panel.hidden) closePanel(); });
 
   form.addEventListener('submit', async function (e) {
