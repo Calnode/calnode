@@ -160,6 +160,44 @@ func TestMCP_OAuthFlow(t *testing.T) {
 	}
 }
 
+func TestMCP_OAuthConnections(t *testing.T) {
+	h, database, apiKey, userID := setupWorkspaceWithDB(t)
+
+	// Seed a connected client + an access token for this user.
+	now := time.Now().UTC()
+	database.Exec(`INSERT INTO oauth_clients (client_id, client_name, redirect_uris, created_at) VALUES (?, ?, ?, ?)`,
+		"client-1", "Claude", `["https://claude.ai/cb"]`, now.Format(time.RFC3339Nano))
+	if _, err := database.Exec(`
+		INSERT INTO oauth_access_tokens (id, token_hash, refresh_hash, client_id, user_id, scope, resource, expires_at, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		"tok-1", "hash-1", "rhash-1", "client-1", userID, "mcp", "", now.Add(time.Hour).Format(time.RFC3339), now.Format(time.RFC3339Nano)); err != nil {
+		t.Fatalf("seed token: %v", err)
+	}
+
+	// List shows the connected app.
+	rec := httptest.NewRecorder()
+	h.RequireAuth(h.ListOAuthConnections)(rec, authReq(http.MethodGet, "/v1/oauth/connections", "", apiKey))
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "Claude") || !strings.Contains(rec.Body.String(), "tok-1") {
+		t.Fatalf("list connections: %d — %s", rec.Code, rec.Body.String())
+	}
+
+	// Revoke it.
+	dreq := authReq(http.MethodDelete, "/v1/oauth/connections/tok-1", "", apiKey)
+	dreq.SetPathValue("id", "tok-1")
+	drec := httptest.NewRecorder()
+	h.RequireAuth(h.RevokeOAuthConnection)(drec, dreq)
+	if drec.Code != http.StatusNoContent {
+		t.Fatalf("revoke: %d — %s", drec.Code, drec.Body.String())
+	}
+
+	// Now gone, and the token no longer authenticates.
+	rec = httptest.NewRecorder()
+	h.RequireAuth(h.ListOAuthConnections)(rec, authReq(http.MethodGet, "/v1/oauth/connections", "", apiKey))
+	if strings.Contains(rec.Body.String(), "tok-1") {
+		t.Errorf("connection still listed after revoke: %s", rec.Body.String())
+	}
+}
+
 func TestMCP_OAuthDeny(t *testing.T) {
 	h, database, _, userID := setupWorkspaceWithDB(t)
 	const sessID = "oauth-deny-session"

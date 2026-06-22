@@ -91,6 +91,14 @@ export type APIKey = {
 	last_used_at?: string;
 };
 
+export type OAuthConnection = {
+	id: string;
+	client_name: string;
+	created_at: string;
+	last_used_at?: string;
+	expires_at: string;
+};
+
 export type Webhook = {
 	id: string;
 	url: string;
