@@ -37,6 +37,24 @@
 .description p + p { margin-top: .5rem; }
 .description strong { font-weight: 600; color: #4b5563; }
 .description em { font-style: italic; }
+/* Description clamp + "Show more" toggle (applied by JS only in constrained
+   layouts that can't show the full three columns; the toggle appears only when the
+   text actually overflows the clamp). */
+.description.clamp {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.desc-toggle {
+  display: none;
+  background: none; border: none; padding: 0;
+  margin-top: .4rem;
+  font: inherit; font-size: .75rem; font-weight: 600;
+  color: #6b7280; cursor: pointer;
+}
+.desc-toggle:hover { color: #111827; }
+.desc-toggle.visible { display: inline-block; }
 
 /* ── Calendar column ─────────────────────────────── */
 .cal-col {

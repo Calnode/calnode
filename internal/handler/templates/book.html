@@ -113,7 +113,8 @@ body {
         {{.LocationLabel}}
       </li>
     </ul>
-    {{if .Description}}<div class="description">{{.Description}}</div>{{end}}
+    {{if .Description}}<div class="description">{{.Description}}</div>
+    <button type="button" class="desc-toggle" id="desc-toggle">Show more</button>{{end}}
   </aside>
 
   <!-- Calendar column -->
@@ -139,6 +140,9 @@ body {
 
   <!-- Right column -->
   <section class="right-col" aria-live="polite">
+
+    <!-- Empty state (before a day is chosen) -->
+    <p id="empty-hint" class="hint">Select a day to see available times.</p>
 
     <!-- Slots -->
     <div id="slots-view" class="hidden">
@@ -301,6 +305,33 @@ body {
   }
   setStep('cal');
 
+  // ── Description clamp + "Show more" ─────────────────────────────────────────
+  // Clamp to 2 lines only in constrained layouts (where the 3 columns can't fit);
+  // the toggle shows only when the text actually overflows the clamp.
+  const descEl = document.querySelector('.description');
+  const descToggle = $('desc-toggle');
+  let descExpanded = false;
+  function syncDesc() {
+    if (!descEl || !descToggle) return;
+    if (window.innerWidth > 700) { // full 3-column layout → no clamp
+      descEl.classList.remove('clamp');
+      descToggle.classList.remove('visible');
+      return;
+    }
+    if (descExpanded) {
+      descEl.classList.remove('clamp');
+      descToggle.textContent = 'Show less';
+      descToggle.classList.add('visible');
+      return;
+    }
+    descEl.classList.add('clamp');
+    descToggle.textContent = 'Show more';
+    descToggle.classList.toggle('visible', descEl.scrollHeight > descEl.clientHeight + 1);
+  }
+  if (descToggle) descToggle.addEventListener('click', () => { descExpanded = !descExpanded; syncDesc(); });
+  window.addEventListener('resize', syncDesc);
+  syncDesc();
+
   // ── Calendar ──────────────────────────────────────────────────────────────
   // Week starts Monday (index 1). Days: Mo Tu We Th Fr Sa Su
   const DOW_LABELS = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
@@ -416,6 +447,7 @@ body {
     pickedSlot = null;
     restoreDefaultHosts();
     renderCal();
+    $('empty-hint').classList.add('hidden');
     showView('slots-view');
     setStep('right');
     $('slots-date').textContent = fmtDate(pickedDate);

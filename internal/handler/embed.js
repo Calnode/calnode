@@ -76,9 +76,10 @@
       '.titlewrap{min-width:0;}' +
       '.info .host-name{margin-bottom:1px;}' +
       '.info .event-name{margin-bottom:0;}' +
-      // meta + description align to the pane's left edge (under the avatar).
+      // meta + description align to the pane's left edge (under the avatar). The
+      // 2-line clamp is applied by JS (the shared .clamp class) only when overflowing.
       '.info .meta{flex-direction:row;flex-wrap:wrap;gap:5px 14px;margin-top:12px;}' +
-      '.info .description{margin-top:6px;overflow-wrap:break-word;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}' +
+      '.info .description{margin-top:6px;overflow-wrap:break-word;}' +
       '.cal-col{border-right:1px solid #e5e7eb;}' +
     '}' +
     // Narrow / mobile: stack the panes; JS shows one at a time (step-flow). The info
@@ -116,18 +117,25 @@
       this._mounted = true;
       this.slug = this.getAttribute('slug');
       this.root = this.attachShadow({ mode: 'open' });
-      this.root.appendChild(el('link', { rel: 'stylesheet', href: BASE + '/booking.css' }));
+      var cssLink = el('link', { rel: 'stylesheet', href: BASE + '/booking.css' });
+      // .clamp styling arrives with the stylesheet, so re-measure the description
+      // overflow once it loads.
+      cssLink.addEventListener('load', this.syncDesc.bind(this));
+      this.root.appendChild(cssLink);
       this.root.appendChild(el('style', { text: STYLE }));
       this.wrap = el('div', { class: 'wrap' });
       this.root.appendChild(this.wrap);
       this.state = { month: startOfMonth(new Date()), slotsByDay: {}, day: null, view: 'pick', slot: null };
       this.narrow = false;
-      // Drive step-flow off the widget's own width (not the viewport).
+      this.cw = 9999;
+      this.descExpanded = false;
+      // Drive step-flow + description clamp off the widget's own width (not viewport).
       if (window.ResizeObserver) {
         this._ro = new ResizeObserver(function (entries) {
-          var w = entries[0].contentRect.width;
-          var n = w < STEP_BP;
+          this.cw = entries[0].contentRect.width;
+          var n = this.cw < STEP_BP;
           if (n !== this.narrow) { this.narrow = n; this.applyStep(); }
+          this.syncDesc();
         }.bind(this));
         this._ro.observe(this.wrap);
       }
@@ -186,8 +194,25 @@
         this.info.location_label ? el('li', { html: SVG_PIN + ' ' + esc(this.info.location_label) }) : null,
       ]);
       var kids = [head, meta];
-      if (this.info.description) kids.push(el('div', { class: 'description', text: this.info.description }));
+      if (this.info.description) {
+        kids.push(el('div', { class: 'description', text: this.info.description }));
+        kids.push(el('button', { class: 'desc-toggle', type: 'button', text: 'Show more' }));
+      }
       return el('aside', { class: 'info' }, kids);
+    }
+
+    // syncDesc clamps the description to 2 lines (via the shared .clamp class) only
+    // when the widget is too narrow for the 3-column layout; the toggle shows only
+    // when the clamped text overflows.
+    syncDesc() {
+      var d = this.card && this.card.querySelector('.description');
+      var t = this.card && this.card.querySelector('.desc-toggle');
+      if (!d || !t) return;
+      if (this.cw > 719) { d.classList.remove('clamp'); t.classList.remove('visible'); return; }
+      if (this.descExpanded) { d.classList.remove('clamp'); t.textContent = 'Show less'; t.classList.add('visible'); return; }
+      d.classList.add('clamp');
+      t.textContent = 'Show more';
+      t.classList.toggle('visible', d.scrollHeight > d.clientHeight + 1);
     }
 
     calPane() {
@@ -325,19 +350,23 @@
     }
 
     render() {
+      var self = this;
       this.wrap.innerHTML = '';
       this.card = el('div', { class: 'card' }, [this.infoPane(), this.calPane(), this.rightPane()]);
       // In step-flow, a slots/form view needs a back-to-calendar affordance.
       if (this.narrow && (this.state.view === 'pick' && this.state.day)) {
         var rc = this.card.querySelector('.right-col');
-        var self = this;
         var back = el('button', { class: 'back-btn', html: SVG_BACK + ' Back' });
         back.addEventListener('click', function () { self.state.day = null; self.render(); });
         rc.insertBefore(back, rc.firstChild);
       }
+      var toggle = this.card.querySelector('.desc-toggle');
+      if (toggle) toggle.addEventListener('click', function () { self.descExpanded = !self.descExpanded; self.syncDesc(); });
       this.wrap.appendChild(this.card);
       this.wrap.appendChild(el('div', { class: 'powered', html: 'Powered by <a href="https://calnode.com" target="_blank" rel="noopener">Calnode</a>' }));
       this.applyStep();
+      this.cw = this.wrap.getBoundingClientRect().width || this.cw;
+      requestAnimationFrame(function () { self.syncDesc(); });
     }
   }
 
