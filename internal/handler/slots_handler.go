@@ -2,6 +2,8 @@ package handler
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"sync"
@@ -16,6 +18,14 @@ type slotJSON struct {
 	HostIDs []string `json:"host_ids"`
 }
 
+// Sentinel errors from computeSlots, so non-HTTP callers (the MCP tools) can map
+// failures to their own protocol rather than to HTTP status codes.
+var (
+	errEventTypeNotFound = errors.New("event type not found")
+	errInvalidTimezone   = errors.New("invalid timezone")
+	errBadDateRange      = errors.New("from/to must be YYYY-MM-DD and from <= to")
+)
+
 // GetSlots handles GET /v1/event-types/{slug}/slots
 // Query params:
 //
@@ -24,7 +34,32 @@ type slotJSON struct {
 //	tz=IANA/Zone     (default: UTC)
 func (h *Handler) GetSlots(w http.ResponseWriter, r *http.Request) {
 	slug := r.PathValue("slug")
+	tzName := r.URL.Query().Get("tz")
+	out, hosts, err := h.computeSlots(r.Context(), slug, tzName, r.URL.Query().Get("from"), r.URL.Query().Get("to"))
+	switch {
+	case errors.Is(err, errEventTypeNotFound):
+		h.writeError(w, http.StatusNotFound, "event type not found")
+		return
+	case errors.Is(err, errInvalidTimezone):
+		h.writeError(w, http.StatusBadRequest, "invalid tz: "+tzName)
+		return
+	case errors.Is(err, errBadDateRange):
+		h.writeError(w, http.StatusBadRequest, "from/to must be YYYY-MM-DD and from <= to")
+		return
+	case err != nil:
+		h.logger.ErrorContext(r.Context(), "slots", "error", err)
+		h.writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	h.writeJSON(w, http.StatusOK, map[string]any{"slots": out, "hosts": hosts})
+}
 
+// computeSlots returns the bookable slots (and the candidate hosts' display map) for
+// an active+public event type over the given optional date range, in tzName. It's
+// the shared core behind the REST GetSlots handler and the MCP get_available_slots
+// tool. tzName "" → UTC; fromStr/toStr "" → today / the max-future cap. Returns one
+// of the sentinel errors above on bad input, or a wrapped error on internal failure.
+func (h *Handler) computeSlots(ctx context.Context, slug, tzName, fromStr, toStr string) ([]slotJSON, map[string]map[string]string, error) {
 	// Load event type (must be active and public).
 	var et struct {
 		ID                  string
@@ -39,7 +74,7 @@ func (h *Handler) GetSlots(w http.ResponseWriter, r *http.Request) {
 		IsActive            int
 		IsPublic            int
 	}
-	err := h.db.QueryRowContext(r.Context(), `
+	err := h.db.QueryRowContext(ctx, `
 		SELECT id, user_id, duration_minutes, slot_interval_minutes,
 		       routing_mode, buffer_before_minutes, buffer_after_minutes,
 		       min_notice_minutes, max_future_days, is_active, is_public
@@ -49,42 +84,30 @@ func (h *Handler) GetSlots(w http.ResponseWriter, r *http.Request) {
 			&et.RoutingMode, &et.BufferBeforeMinutes, &et.BufferAfterMinutes,
 			&et.MinNoticeMinutes, &et.MaxFutureDays,
 			&et.IsActive, &et.IsPublic)
-	if err != nil {
-		h.writeError(w, http.StatusNotFound, "event type not found")
-		return
-	}
-	if et.IsActive == 0 || et.IsPublic == 0 {
-		h.writeError(w, http.StatusNotFound, "event type not found")
-		return
+	if err != nil || et.IsActive == 0 || et.IsPublic == 0 {
+		return nil, nil, errEventTypeNotFound
 	}
 
-	// Parse timezone (booker's tz).
-	tzName := r.URL.Query().Get("tz")
 	if tzName == "" {
 		tzName = "UTC"
 	}
 	bookerTZ, err := time.LoadLocation(tzName)
 	if err != nil {
-		h.writeError(w, http.StatusBadRequest, "invalid tz: "+tzName)
-		return
+		return nil, nil, errInvalidTimezone
 	}
 
-	// Parse date range.
 	now := time.Now().UTC()
-	dateFrom, dateTo, ok := parseDateRange(r, now, et.MaxFutureDays)
+	dateFrom, dateTo, ok := parseDateRangeStr(fromStr, toStr, now, et.MaxFutureDays)
 	if !ok {
-		h.writeError(w, http.StatusBadRequest, "from/to must be YYYY-MM-DD and from <= to")
-		return
+		return nil, nil, errBadDateRange
 	}
 
 	// Resolve the host pool for this event type by routing mode. Round-robin
 	// offers a slot if any rotation host is free; fixed/collective gate on the
 	// required hosts. Archived hosts are already excluded by resolveEventTypeHosts.
-	hosts, err := h.resolveEventTypeHosts(r.Context(), et.ID)
+	hosts, err := h.resolveEventTypeHosts(ctx, et.ID)
 	if err != nil {
-		h.logger.ErrorContext(r.Context(), "slots: resolve hosts", "error", err)
-		h.writeError(w, http.StatusInternalServerError, "internal error")
-		return
+		return nil, nil, fmt.Errorf("resolve event-type hosts: %w", err)
 	}
 	// Pool the hosts that gate this event's slots, tagged with the role the engine
 	// needs. Round-robin: required (fixed, always attend) + rotation (pick one).
@@ -103,8 +126,7 @@ func (h *Handler) GetSlots(w http.ResponseWriter, r *http.Request) {
 	if len(pool) == 0 {
 		// No bookable hosts (e.g. all archived, or a round-robin with no rotation
 		// members) — offer nothing rather than erroring.
-		h.writeJSON(w, http.StatusOK, map[string]any{"slots": []slotJSON{}})
-		return
+		return []slotJSON{}, map[string]map[string]string{}, nil
 	}
 
 	// Load each host's availability concurrently. The slow part is the Google
@@ -118,7 +140,7 @@ func (h *Handler) GetSlots(w http.ResponseWriter, r *http.Request) {
 		wg.Add(1)
 		go func(i int, ph poolHost) {
 			defer wg.Done()
-			ha, err := h.hostAvailability(r.Context(), ph.id, et.ID, dateFrom, dateTo)
+			ha, err := h.hostAvailability(ctx, ph.id, et.ID, dateFrom, dateTo)
 			if err != nil {
 				errsByHost[i] = err
 				return
@@ -130,9 +152,7 @@ func (h *Handler) GetSlots(w http.ResponseWriter, r *http.Request) {
 	wg.Wait()
 	for i, err := range errsByHost {
 		if err != nil {
-			h.logger.ErrorContext(r.Context(), "slots: load host availability", "error", err, "host", pool[i].id)
-			h.writeError(w, http.StatusInternalServerError, "internal error")
-			return
+			return nil, nil, fmt.Errorf("load host availability (host %s): %w", pool[i].id, err)
 		}
 	}
 
@@ -153,9 +173,7 @@ func (h *Handler) GetSlots(w http.ResponseWriter, r *http.Request) {
 		Now:      now,
 	})
 	if err != nil {
-		h.logger.ErrorContext(r.Context(), "slots: generate", "error", err)
-		h.writeError(w, http.StatusInternalServerError, "internal error")
-		return
+		return nil, nil, fmt.Errorf("slots generate: %w", err)
 	}
 
 	out := make([]slotJSON, len(result))
@@ -173,10 +191,7 @@ func (h *Handler) GetSlots(w http.ResponseWriter, r *http.Request) {
 	for i, ph := range pool {
 		poolIDs[i] = ph.id
 	}
-	h.writeJSON(w, http.StatusOK, map[string]any{
-		"slots": out,
-		"hosts": h.hostDisplayMap(r.Context(), poolIDs),
-	})
+	return out, h.hostDisplayMap(ctx, poolIDs), nil
 }
 
 // hostDisplayMap returns id → {name, avatar_url} for the given users, for rendering
@@ -356,11 +371,11 @@ func (h *Handler) hostAvailability(ctx context.Context, userID, eventTypeID stri
 	return slots.HostAvailability{HostID: userID, Location: hostLoc, Rules: rules, Overrides: overrides, Busy: busy}, nil
 }
 
-// parseDateRange extracts from/to query params as UTC midnight times.
+// parseDateRangeStr resolves from/to date strings (either may be "") to UTC-midnight times.
 // Returns (from, to, ok). ok=false means the params were malformed.
 // maxFutureDays=0 is treated as 365 (no configured limit). The resolved
 // cap is always enforced on the to= param to prevent CPU-DoS via far-future dates.
-func parseDateRange(r *http.Request, now time.Time, maxFutureDays int) (time.Time, time.Time, bool) {
+func parseDateRangeStr(fromStr, toStr string, now time.Time, maxFutureDays int) (time.Time, time.Time, bool) {
 	today := now.UTC().Truncate(24 * time.Hour)
 
 	// Mirror generate.go: 0 means "no configured limit"; use 365 as the cap.
@@ -369,9 +384,6 @@ func parseDateRange(r *http.Request, now time.Time, maxFutureDays int) (time.Tim
 		effectiveMax = 365
 	}
 	cap := today.AddDate(0, 0, effectiveMax)
-
-	fromStr := r.URL.Query().Get("from")
-	toStr := r.URL.Query().Get("to")
 
 	var dateFrom, dateTo time.Time
 	var err error

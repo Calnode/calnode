@@ -67,3 +67,39 @@ func TestMCP_listEventTypes(t *testing.T) {
 		t.Errorf("list_event_types leaked an inactive event type: %s", s)
 	}
 }
+
+func TestMCP_readTools_registeredAndBehave(t *testing.T) {
+	h, _, _ := setupWorkspace(t)
+	cs := connectMCP(t, h)
+	ctx := context.Background()
+
+	// All read tools advertised.
+	lt, err := cs.ListTools(ctx, nil)
+	if err != nil {
+		t.Fatalf("ListTools: %v", err)
+	}
+	have := map[string]bool{}
+	for _, tool := range lt.Tools {
+		have[tool.Name] = true
+	}
+	for _, want := range []string{"list_event_types", "get_available_slots", "get_booking", "list_bookings"} {
+		if !have[want] {
+			t.Errorf("tool %q not registered (have %v)", want, have)
+		}
+	}
+
+	// list_bookings on an empty workspace returns an empty list, not an error.
+	res, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "list_bookings"})
+	if err != nil {
+		t.Fatalf("list_bookings: %v", err)
+	}
+	if res.IsError {
+		t.Errorf("list_bookings errored on empty workspace: %+v", res.Content)
+	}
+
+	// get_booking for a missing id surfaces a tool error.
+	res2, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "get_booking", Arguments: map[string]any{"booking_id": "nope"}})
+	if err == nil && !res2.IsError {
+		t.Errorf("get_booking on a missing id should error; got %+v", res2.Content)
+	}
+}
