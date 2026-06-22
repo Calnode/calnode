@@ -21,10 +21,11 @@
   }
 </script>
 {{end}}
+<link rel="stylesheet" href="/booking.css">
 <style>
-/* Shared look with the public booking page (book.html). Keep in sync. */
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
+/* Page chrome + manage-specific views (booking details, reschedule confirm, state
+   pages). Card / calendar / slots / form visual primitives come from the shared
+   /booking.css above — the same sheet book.html and the embed widget use. */
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
   background: #f3f4f6;
@@ -44,146 +45,24 @@ body {
 }
 .powered-by a:hover { opacity: .6; }
 
-/* ── Card ────────────────────────────────────────── */
-.card {
-  display: flex;
-  background: #fff;
-  border-radius: 16px;
-  box-shadow: 0 1px 3px rgba(0,0,0,.06), 0 12px 40px rgba(0,0,0,.1);
-  overflow: hidden;
-  width: 100%;
-  max-width: 860px;
-}
-
-/* ── Info panel ──────────────────────────────────── */
-.info {
-  width: 240px;
-  flex-shrink: 0;
-  padding: 2rem 1.5rem;
-  border-right: 1px solid #e5e7eb;
-}
-.avatar-img {
-  width: 56px; height: 56px;
-  border-radius: 50%; object-fit: cover;
-  margin-bottom: .75rem;
-}
-.avatar-initials {
-  width: 56px; height: 56px;
-  border-radius: 50%;
-  background: #e5e7eb; color: #374151;
-  font-size: 1.25rem; font-weight: 600;
-  display: flex; align-items: center; justify-content: center;
-  margin-bottom: .75rem;
-}
-.host-name  { font-size: .8125rem; color: #6b7280; margin-bottom: .375rem; }
-.event-name { font-size: 1.25rem; font-weight: 700; margin-bottom: 1rem; line-height: 1.3; }
-.meta       { list-style: none; display: flex; flex-direction: column; gap: .5rem; }
-.meta li    { display: flex; align-items: center; gap: .5rem; font-size: .8125rem; color: #4b5563; }
-.meta svg   { flex-shrink: 0; color: #9ca3af; }
-
-.tz-label { margin-top: 1rem; font-size: .6875rem; color: #9ca3af; }
-.tz-wrapper { display: inline-flex; align-items: center; gap: 2px; }
-.tz-wrapper select {
-  appearance: none; -webkit-appearance: none;
-  font-size: .6875rem; color: #9ca3af; font-family: inherit;
-  background: none; border: none; cursor: pointer; padding: 0; outline: none;
-  max-width: 190px;
-}
-.tz-wrapper svg { pointer-events: none; color: #9ca3af; flex-shrink: 0; }
-.tz-wrapper:hover select, .tz-wrapper:hover svg { color: #6b7280; }
-#tz-sizer { position: absolute; visibility: hidden; white-space: nowrap; font-size: .6875rem; font-family: inherit; }
-
-/* ── Calendar column ─────────────────────────────── */
-.cal-col {
-  flex: 0 0 auto;
-  padding: 2rem 1.5rem 2rem 2rem;
-  border-right: 1px solid #e5e7eb;
-}
-.cal-nav { display: flex; align-items: center; margin-bottom: 1rem; gap: .5rem; }
-.cal-nav button {
-  width: 28px; height: 28px;
-  border: 1px solid #e5e7eb; background: #fff; border-radius: 6px;
-  cursor: pointer; color: #6b7280;
-  display: flex; align-items: center; justify-content: center;
-  transition: background .12s, color .12s; flex-shrink: 0;
-}
-.cal-nav button:hover:not(:disabled) { background: #f9fafb; color: #111827; }
-.cal-nav button:disabled { opacity: .3; cursor: default; }
+/* Page-specific id hooks + tweaks layered on the shared sheet. */
 #month-label { flex: 1; font-size: .9375rem; font-weight: 600; color: #111827; }
+#tz-sizer { position: absolute; visibility: hidden; white-space: nowrap; font-size: .6875rem; font-family: inherit; }
+.tz-wrapper select { max-width: 190px; }
 
-.cal-grid { display: grid; grid-template-columns: repeat(7, 40px); gap: 2px; }
-.ch {
-  width: 40px; height: 28px; text-align: center;
-  font-size: .6875rem; font-weight: 500; color: #9ca3af;
-  display: flex; align-items: center; justify-content: center;
-}
-.cd {
-  width: 40px; height: 40px;
-  border: none; background: none; border-radius: 8px;
-  font-size: .875rem; color: #374151; cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
-  transition: background .1s, color .1s; position: relative;
-}
-.cd.available { background: #f3f4f6; }
-.cd.available:hover { background: #e5e7eb; }
-.cd.sel { background: #111827 !important; color: #fff !important; font-weight: 600; }
-.cd.today::after {
-  content: ''; position: absolute; bottom: 4px; left: 50%; transform: translateX(-50%);
-  width: 4px; height: 4px; border-radius: 50%; background: currentColor;
-}
-.cd.sel.today::after { background: #fff; }
-.cd:disabled { color: #d1d5db; cursor: default; background: none !important; }
-
-/* ── Right column ────────────────────────────────── */
-.right-col { flex: 1; min-width: 0; padding: 2rem 1.5rem; }
-.hidden { display: none !important; }
-
+/* ── Manage-specific views ──────────────────────── */
 .section-title { font-size: .9375rem; font-weight: 600; color: #111827; margin-bottom: 1rem; }
 .scheduled-label { font-size: .6875rem; font-weight: 600; letter-spacing: .03em; text-transform: uppercase; color: #9ca3af; margin-bottom: .25rem; }
 .scheduled-time { font-size: .9375rem; font-weight: 600; color: #111827; margin-bottom: 1.5rem; }
-/* Main view: center the action buttons in the (wide) right column. */
+/* Main view: center + cap the action buttons in the (wide) right column. */
 #main-view .btn-primary, #main-view .btn-secondary { margin-left: auto; margin-right: auto; }
-
-.slots-header { font-size: .9375rem; font-weight: 600; margin-bottom: 1rem; color: #111827; }
-.slots-list { display: flex; flex-direction: column; gap: .5rem; max-height: 340px; overflow-y: auto; }
-.slot-btn {
-  padding: .625rem 1rem;
-  border: 1.5px solid #e5e7eb; background: #fff; border-radius: 8px;
-  font-size: .875rem; font-weight: 500; color: #111827; cursor: pointer;
-  text-align: center; transition: border-color .12s, background .12s;
-}
-.slot-btn:hover { border-color: #111827; background: #f9fafb; }
-.hint { font-size: .8125rem; color: #9ca3af; }
-
-.back-btn {
-  display: inline-flex; align-items: center; gap: .25rem;
-  background: none; border: none; color: #6b7280;
-  cursor: pointer; font-size: .8125rem; margin-bottom: 1rem; padding: 0;
-}
-.back-btn:hover { color: #111827; }
-
-.btn-primary {
-  display: block; width: 100%; max-width: 340px; padding: .675rem 1rem;
-  background: #111827; color: #fff; border: none; border-radius: 8px;
-  font-size: .9375rem; font-weight: 600; cursor: pointer; transition: background .12s;
-}
-.btn-primary:hover:not(:disabled) { background: #1f2937; }
-.btn-primary:disabled { opacity: .5; cursor: default; }
+.btn-primary { display: block; max-width: 340px; margin-top: 0; }
 .btn-secondary {
   display: block; width: 100%; max-width: 340px; padding: .675rem 1rem; margin-top: .5rem;
   background: #fff; color: #b91c1c; border: 1.5px solid #e5e7eb; border-radius: 8px;
   font-size: .9375rem; font-weight: 600; cursor: pointer; transition: border-color .12s, background .12s;
 }
 .btn-secondary:hover { border-color: #fca5a5; background: #fef2f2; }
-
-.field { display: flex; flex-direction: column; gap: .3rem; margin-bottom: .75rem; }
-.field label { font-size: .75rem; font-weight: 500; color: #6b7280; }
-.field input {
-  padding: .55rem .75rem; border: 1.5px solid #e5e7eb; border-radius: 8px;
-  font-size: .875rem; color: #111827; outline: none; transition: border-color .12s, box-shadow .12s;
-}
-.field input:focus { border-color: #111827; box-shadow: 0 0 0 3px rgba(17,24,39,.06); }
-.form-error { font-size: .8125rem; color: #dc2626; margin-top: .375rem; min-height: 1.2em; }
 
 .confirm-times { display: flex; flex-direction: column; gap: .5rem; margin: 0 0 1.25rem; }
 .confirm-times .row { display: flex; gap: .75rem; align-items: baseline; }
