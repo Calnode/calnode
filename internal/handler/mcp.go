@@ -369,71 +369,24 @@ func (h *Handler) mcpCreateBooking(ctx context.Context, _ *mcp.CallToolRequest, 
 		return nil, bookingJSON{}, fmt.Errorf("slot_start must be RFC3339 (e.g. 2026-06-15T09:00:00Z)")
 	}
 
-	var et struct {
-		ID                string
-		Name              string
-		DurationMinutes   int
-		LocationType      string
-		LocationValue     *string
-		RoutingMode       string
-		RRStrategy        string
-		IsActive          int
-		MaxActiveBookings int
-	}
-	err = h.db.QueryRowContext(ctx, `
-		SELECT id, name, duration_minutes, location_type, location_value, routing_mode, rr_strategy, is_active, max_active_bookings
-		FROM event_types WHERE slug = ?`, in.EventTypeID).
-		Scan(&et.ID, &et.Name, &et.DurationMinutes, &et.LocationType, &et.LocationValue, &et.RoutingMode, &et.RRStrategy, &et.IsActive, &et.MaxActiveBookings)
-	if err != nil || et.IsActive == 0 {
-		return nil, bookingJSON{}, fmt.Errorf("event type not found: %s", in.EventTypeID)
-	}
-
 	raw := make([]booking.Answer, len(in.Answers))
 	for i, a := range in.Answers {
 		raw[i] = booking.Answer{QuestionID: a.QuestionID, Value: a.Value}
 	}
-	answers, err := h.validateAnswersCore(ctx, et.ID, raw)
-	if err != nil {
-		return nil, bookingJSON{}, err // *answerError messages are human-readable
-	}
 
-	endAt := startAt.UTC().Add(time.Duration(et.DurationMinutes) * time.Minute)
-	locValue := ""
-	if et.LocationValue != nil {
-		locValue = *et.LocationValue
-	}
-
-	hosts, err := h.resolveEventTypeHosts(ctx, et.ID)
-	if err != nil {
-		return nil, bookingJSON{}, fmt.Errorf("resolve event-type hosts: %w", err)
-	}
-	candidates, required, optional := resolveBookingHostPool(hosts, et.RoutingMode)
-	if len(candidates) == 0 {
-		return nil, bookingJSON{}, fmt.Errorf("this slot is no longer available: no active host can take it")
-	}
-
-	b, err := h.bookingSvc.Create(ctx, booking.CreateParams{
-		EventTypeID:         et.ID,
-		HostIDs:             candidates,
-		RoutingMode:         et.RoutingMode,
-		RRStrategy:          et.RRStrategy,
-		RequiredHosts:       required,
-		OptionalHosts:       optional,
-		StartAt:             startAt.UTC(),
-		EndAt:               endAt,
-		LocationValue:       locValue,
-		Organizer:           booking.Attendee{Name: in.AttendeeName, Email: in.AttendeeEmail, IANATimezone: tz},
-		Answers:             answers,
-		MaxActivePerInvitee: et.MaxActiveBookings,
-	})
+	// Shared creation path (also used by the conversational booking assistant + REST).
+	b, err := h.createBookingForSlug(ctx, in.EventTypeID, startAt,
+		booking.Attendee{Name: in.AttendeeName, Email: in.AttendeeEmail, IANATimezone: tz}, raw)
 	if err != nil {
 		switch {
-		case errors.Is(err, booking.ErrDoubleBooked):
+		case errors.Is(err, errEventTypeNotFound):
+			return nil, bookingJSON{}, fmt.Errorf("event type not found: %s", in.EventTypeID)
+		case errors.Is(err, booking.ErrDoubleBooked), errors.Is(err, errNoHostAvailable):
 			return nil, bookingJSON{}, fmt.Errorf("this slot is no longer available")
 		case errors.Is(err, booking.ErrBookingLimitReached):
 			return nil, bookingJSON{}, fmt.Errorf("the attendee already holds the maximum number of upcoming bookings for this event")
 		default:
-			return nil, bookingJSON{}, fmt.Errorf("create booking: %w", err)
+			return nil, bookingJSON{}, err // *answerError and others are human-readable
 		}
 	}
 
@@ -442,16 +395,6 @@ func (h *Handler) mcpCreateBooking(ctx context.Context, _ *mcp.CallToolRequest, 
 	for _, hd := range h.displayHostsForBooking(ctx, b.ID) {
 		out.Hosts = append(out.Hosts, hostBrief{ID: hd.ID, Name: hd.Name, AvatarURL: hd.AvatarURL})
 	}
-	// Calendar events, confirmation emails, webhook, reminders — the same shared path
-	// the REST handler uses. The booking is committed; side-effect failures are logged.
-	go h.dispatchBookingConfirmation(b, bookingConfirmationInput{
-		EventTypeName:     et.Name,
-		EventTypeSlug:     in.EventTypeID,
-		LocationType:      et.LocationType,
-		OrganizerName:     in.AttendeeName,
-		OrganizerEmail:    in.AttendeeEmail,
-		OrganizerTimezone: tz,
-	})
 	return nil, out, nil
 }
 

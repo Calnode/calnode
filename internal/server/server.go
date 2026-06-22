@@ -300,6 +300,11 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	slotsRL := RateLimit(60, time.Minute)
 	mux.HandleFunc("GET /v1/event-types/{slug}/slots", cors(slotsRL(h.GetSlots)))
 
+	// Conversational booking assistant (optional AI; public, anonymous → tighter limit).
+	assistantRL := RateLimit(15, time.Minute)
+	mux.HandleFunc("POST /v1/event-types/{slug}/assistant", cors(assistantRL(h.BookingAssistant)))
+	mux.HandleFunc("OPTIONS /v1/event-types/{slug}/assistant", cors(func(http.ResponseWriter, *http.Request) {}))
+
 	// Intake questions
 	mux.HandleFunc("GET /v1/event-types/{slug}/questions", cors(h.ListQuestions))
 	mux.HandleFunc("GET /v1/event-types/{slug}/questions/admin", h.RequireAuth(h.ListQuestionsAdmin))

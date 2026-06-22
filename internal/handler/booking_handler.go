@@ -218,6 +218,81 @@ func resolveBookingHostPool(hosts []EventHost, routingMode string) (candidates, 
 	return candidates, required, optional
 }
 
+// errNoHostAvailable means no active host can take a booking (e.g. the configured host
+// was archived) — surfaced to callers as "this slot is no longer available".
+var errNoHostAvailable = errors.New("no active host can take this booking")
+
+// createBookingForSlug is the shared public booking-creation path for one event-type slug:
+// look up the (active) event type, validate intake answers, resolve the host pool, persist,
+// and fire the side effects (calendar/email/webhook/reminders) in the background. Returns the
+// booking. Shared by the MCP create_booking tool and the conversational booking assistant —
+// no parallel code path. Errors are raw (errEventTypeNotFound, *answerError,
+// booking.ErrDoubleBooked, booking.ErrBookingLimitReached, errNoHostAvailable) for callers to
+// map to their own protocol.
+func (h *Handler) createBookingForSlug(ctx context.Context, slug string, startAt time.Time, organizer booking.Attendee, rawAnswers []booking.Answer) (*booking.Booking, error) {
+	var et struct {
+		ID                string
+		Name              string
+		DurationMinutes   int
+		LocationType      string
+		LocationValue     *string
+		RoutingMode       string
+		RRStrategy        string
+		IsActive          int
+		MaxActiveBookings int
+	}
+	err := h.db.QueryRowContext(ctx, `
+		SELECT id, name, duration_minutes, location_type, location_value, routing_mode, rr_strategy, is_active, max_active_bookings
+		FROM event_types WHERE slug = ?`, slug).
+		Scan(&et.ID, &et.Name, &et.DurationMinutes, &et.LocationType, &et.LocationValue, &et.RoutingMode, &et.RRStrategy, &et.IsActive, &et.MaxActiveBookings)
+	if err != nil || et.IsActive == 0 {
+		return nil, errEventTypeNotFound
+	}
+	answers, err := h.validateAnswersCore(ctx, et.ID, rawAnswers)
+	if err != nil {
+		return nil, err
+	}
+	endAt := startAt.UTC().Add(time.Duration(et.DurationMinutes) * time.Minute)
+	locValue := ""
+	if et.LocationValue != nil {
+		locValue = *et.LocationValue
+	}
+	hosts, err := h.resolveEventTypeHosts(ctx, et.ID)
+	if err != nil {
+		return nil, fmt.Errorf("resolve event-type hosts: %w", err)
+	}
+	candidates, required, optional := resolveBookingHostPool(hosts, et.RoutingMode)
+	if len(candidates) == 0 {
+		return nil, errNoHostAvailable
+	}
+	b, err := h.bookingSvc.Create(ctx, booking.CreateParams{
+		EventTypeID:         et.ID,
+		HostIDs:             candidates,
+		RoutingMode:         et.RoutingMode,
+		RRStrategy:          et.RRStrategy,
+		RequiredHosts:       required,
+		OptionalHosts:       optional,
+		StartAt:             startAt.UTC(),
+		EndAt:               endAt,
+		LocationValue:       locValue,
+		Organizer:           organizer,
+		Answers:             answers,
+		MaxActivePerInvitee: et.MaxActiveBookings,
+	})
+	if err != nil {
+		return nil, err
+	}
+	go h.dispatchBookingConfirmation(b, bookingConfirmationInput{
+		EventTypeName:     et.Name,
+		EventTypeSlug:     slug,
+		LocationType:      et.LocationType,
+		OrganizerName:     organizer.Name,
+		OrganizerEmail:    organizer.Email,
+		OrganizerTimezone: organizer.IANATimezone,
+	})
+	return b, nil
+}
+
 type attendeeJSON struct {
 	Name  string `json:"name"`
 	Email string `json:"email"`
