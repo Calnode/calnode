@@ -69,6 +69,11 @@ func TestMCP_OAuthFlow(t *testing.T) {
 	if grec.Code != http.StatusOK || !strings.Contains(grec.Body.String(), "Allow") || !strings.Contains(grec.Body.String(), "Claude") {
 		t.Fatalf("consent render: %d — %s", grec.Code, grec.Body.String())
 	}
+	// form-action CSP must allow the client's redirect origin, or the browser blocks the
+	// post-consent redirect back to the client (enforced across redirects).
+	if csp := grec.Header().Get("Content-Security-Policy"); !strings.Contains(csp, "https://claude.ai") {
+		t.Errorf("consent CSP form-action missing client origin: %q", csp)
+	}
 
 	// 2b. Consent (decision=allow) → 302 back to the client with a code.
 	getCode := func(t *testing.T) string {

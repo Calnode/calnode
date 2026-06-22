@@ -326,8 +326,15 @@ func (h *Handler) renderConsent(w http.ResponseWriter, r *http.Request, ar authR
 	if strings.TrimSpace(clientName) == "" {
 		clientName = "An application"
 	}
+	// form-action must allow the client's redirect origin: the form POSTs to
+	// /oauth/authorize (self), which then 302-redirects to the client — and browsers
+	// enforce form-action across that redirect, so 'self' alone blocks the hand-back.
+	formAction := "'self'"
+	if u, err := url.Parse(ar.RedirectURI); err == nil && u.Scheme != "" && u.Host != "" {
+		formAction += " " + u.Scheme + "://" + u.Host
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'")
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; form-action "+formAction+"; base-uri 'none'")
 	w.Header().Set("X-Frame-Options", "DENY")
 	_ = consentTmpl.Execute(w, map[string]any{
 		"Business":   business,
