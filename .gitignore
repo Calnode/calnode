@@ -13,6 +13,9 @@
 # Build output
 dist/
 
+# graphify skill output — knowledge-graph dumps; kept local for now (revisit later)
+/graphify-out/
+
 # Data (local dev DB)
 data/
 *.db
