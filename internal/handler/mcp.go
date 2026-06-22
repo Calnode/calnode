@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -28,6 +29,11 @@ func (h *Handler) MCPServer() *mcp.Server {
 		Name:        "list_event_types",
 		Description: "List the bookable event types in this workspace (active and public). Returns each type's slug (use it as event_type_id in other tools), name, duration, and location.",
 	}, h.mcpListEventTypes)
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "get_event_type",
+		Description: "Get full details for one event type by slug: duration, location, hosts, and especially its intake QUESTIONS (which are required, and any allowed options). Call this before create_booking so you can supply the required answers.",
+	}, h.mcpGetEventType)
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "get_available_slots",
@@ -97,6 +103,88 @@ func (h *Handler) mcpListEventTypes(ctx context.Context, _ *mcp.CallToolRequest,
 		out.EventTypes = append(out.EventTypes, e)
 	}
 	return nil, out, rows.Err()
+}
+
+// ── get_event_type ───────────────────────────────────────────────────────────
+
+type eventTypeQuestion struct {
+	ID       string   `json:"id"`
+	Label    string   `json:"label"`
+	Type     string   `json:"type"`
+	Options  []string `json:"options,omitempty"`
+	Required bool     `json:"required"`
+}
+
+type eventTypeHostBrief struct {
+	Name      string `json:"name"`
+	AvatarURL string `json:"avatar_url,omitempty"`
+}
+
+type getEventTypeIn struct {
+	EventTypeID string `json:"event_type_id" jsonschema:"the event type slug (from list_event_types)"`
+}
+
+type getEventTypeOut struct {
+	ID              string               `json:"id"`
+	Name            string               `json:"name"`
+	Description     string               `json:"description,omitempty"`
+	DurationMinutes int                  `json:"duration_minutes"`
+	LocationType    string               `json:"location_type"`
+	Hosts           []eventTypeHostBrief `json:"hosts,omitempty"`
+	Questions       []eventTypeQuestion  `json:"questions"`
+}
+
+func (h *Handler) mcpGetEventType(ctx context.Context, _ *mcp.CallToolRequest, in getEventTypeIn) (*mcp.CallToolResult, getEventTypeOut, error) {
+	out := getEventTypeOut{ID: in.EventTypeID, Questions: []eventTypeQuestion{}}
+	var etID string
+	var isActive int
+	err := h.db.QueryRowContext(ctx, `
+		SELECT id, name, COALESCE(description, ''), duration_minutes, location_type, is_active
+		FROM event_types WHERE slug = ?`, in.EventTypeID).
+		Scan(&etID, &out.Name, &out.Description, &out.DurationMinutes, &out.LocationType, &isActive)
+	if err != nil || isActive == 0 {
+		return nil, getEventTypeOut{}, fmt.Errorf("event type not found: %s", in.EventTypeID)
+	}
+
+	// Intake questions, in form order. Materialize fully before the host queries below
+	// — the single-connection pool can't run a second query while this cursor is open.
+	rows, err := h.db.QueryContext(ctx, `
+		SELECT id, label, type, COALESCE(options, ''), required
+		FROM event_type_questions WHERE event_type_id = ? ORDER BY position, id`, etID)
+	if err != nil {
+		return nil, getEventTypeOut{}, fmt.Errorf("load questions: %w", err)
+	}
+	func() {
+		defer rows.Close()
+		for rows.Next() {
+			var q eventTypeQuestion
+			var opts string
+			var req int
+			if err := rows.Scan(&q.ID, &q.Label, &q.Type, &opts, &req); err != nil {
+				continue
+			}
+			q.Required = req != 0
+			if opts != "" {
+				_ = json.Unmarshal([]byte(opts), &q.Options)
+			}
+			out.Questions = append(out.Questions, q)
+		}
+	}()
+
+	// Configured hosts (display names), so an agent knows who the booking is with.
+	if hosts, err := h.resolveEventTypeHosts(ctx, etID); err == nil {
+		ids := make([]string, 0, len(hosts))
+		for _, hh := range hosts {
+			ids = append(ids, hh.UserID)
+		}
+		dm := h.hostDisplayMap(ctx, ids)
+		for _, id := range ids {
+			if d, ok := dm[id]; ok {
+				out.Hosts = append(out.Hosts, eventTypeHostBrief{Name: d["name"], AvatarURL: d["avatar_url"]})
+			}
+		}
+	}
+	return nil, out, nil
 }
 
 // ── get_available_slots ──────────────────────────────────────────────────────

@@ -75,9 +75,9 @@ to n8n / Make / your own service with HMAC-signed webhooks — all configured th
 the API, not buried in a UI.
 
 **Native MCP server.** A Model Context Protocol server is compiled *into* the binary
-(official Go SDK), exposing seven first-class tools — `list_event_types`,
-`get_available_slots`, `create_booking`, `get_booking`, `reschedule_booking`,
-`cancel_booking`, `list_bookings`. The MCP tools call the same internal services as
+(official Go SDK), exposing eight first-class tools — `list_event_types`,
+`get_event_type`, `get_available_slots`, `create_booking`, `get_booking`,
+`reschedule_booking`, `cancel_booking`, `list_bookings`. The MCP tools call the same internal services as
 the REST API (no parallel code path), so booking side effects — calendar events,
 confirmation emails, webhooks, reminders — fire identically.
 
@@ -144,7 +144,7 @@ domains, Resend email, Google & Microsoft OAuth, Litestream backups, troubleshoo
 - Public booking + self-serve **reschedule/cancel** via signed manage links
 - HTML branded email (logo, business name, size/opacity) with add-to-calendar links
 - REST API (88 endpoints) + API keys; **HMAC webhooks** with per-webhook payloads + delivery log
-- **Native MCP server** (7 tools; stdio via `calnode mcp` + Streamable HTTP at `/mcp`)
+- **Native MCP server** (8 tools; stdio via `calnode mcp` + Streamable HTTP at `/mcp`)
 - Embeddable booking widget (Shadow-DOM web component; inline + popup)
 - Members, roles (owner/admin/member), email-token invitations
 - `Idempotency-Key` on booking creation; transactional double-booking guard

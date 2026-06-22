@@ -68,6 +68,39 @@ func TestMCP_listEventTypes(t *testing.T) {
 	}
 }
 
+func TestMCP_getEventType_exposesQuestions(t *testing.T) {
+	h, database, apiKey, _ := setupWorkspaceWithDB(t)
+	body := `{"slug":"mcp-q","name":"Q Call","duration_minutes":30,"location_type":"phone","location_value":"+1 555 000 1111"}`
+	rec := httptest.NewRecorder()
+	h.RequireAuth(h.CreateEventType)(rec, authReq(http.MethodPost, "/v1/event-types", body, apiKey))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create event type: %d — %s", rec.Code, rec.Body.String())
+	}
+	var etID string
+	if err := database.QueryRow(`SELECT id FROM event_types WHERE slug = 'mcp-q'`).Scan(&etID); err != nil {
+		t.Fatalf("event type id: %v", err)
+	}
+	if _, err := database.Exec(`
+		INSERT INTO event_type_questions (id, event_type_id, label, type, required, position)
+		VALUES (?, ?, ?, ?, 1, 0)`, "q1", etID, "What's the agenda?", "text"); err != nil {
+		t.Fatalf("insert question: %v", err)
+	}
+
+	cs := connectMCP(t, h)
+	res, err := cs.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "get_event_type", Arguments: map[string]any{"event_type_id": "mcp-q"}})
+	if err != nil {
+		t.Fatalf("get_event_type: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("get_event_type errored: %+v", res.Content)
+	}
+	blob, _ := json.Marshal(res.StructuredContent)
+	if s := string(blob); !strings.Contains(s, "What's the agenda?") || !strings.Contains(s, `"required":true`) {
+		t.Errorf("get_event_type didn't expose the required question: %s", s)
+	}
+}
+
 func TestMCP_readTools_registeredAndBehave(t *testing.T) {
 	h, _, _ := setupWorkspace(t)
 	cs := connectMCP(t, h)
@@ -82,7 +115,7 @@ func TestMCP_readTools_registeredAndBehave(t *testing.T) {
 	for _, tool := range lt.Tools {
 		have[tool.Name] = true
 	}
-	for _, want := range []string{"list_event_types", "get_available_slots", "get_booking", "list_bookings"} {
+	for _, want := range []string{"list_event_types", "get_event_type", "get_available_slots", "get_booking", "list_bookings"} {
 		if !have[want] {
 			t.Errorf("tool %q not registered (have %v)", want, have)
 		}

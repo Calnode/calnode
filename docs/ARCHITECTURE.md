@@ -593,10 +593,13 @@ as the desired state:
 
 A Model Context Protocol server is compiled into the binary on the official Go SDK
 (`github.com/modelcontextprotocol/go-sdk`). `Handler.MCPServer()`
-(`internal/handler/mcp.go`) builds one server instance exposing seven typed tools
-(schema generated from Go structs): `list_event_types`, `get_available_slots`,
-`create_booking`, `get_booking`, `reschedule_booking`, `cancel_booking`,
-`list_bookings`.
+(`internal/handler/mcp.go`) builds one server instance exposing eight typed tools
+(schema generated from Go structs): `list_event_types`, `get_event_type`,
+`get_available_slots`, `create_booking`, `get_booking`, `reschedule_booking`,
+`cancel_booking`, `list_bookings`. `get_event_type` returns an event type's intake
+**questions** (required flags + options) + hosts so an agent can supply valid answers
+to `create_booking` — without it the booking tools are subtly unreliable for event
+types that have required questions.
 
 - **Two transports, one server:**
   - **stdio** — the `calnode mcp` subcommand (`cmd/calnode/mcp.go`) boots the full
@@ -644,6 +647,18 @@ A Model Context Protocol server is compiled into the binary on the official Go S
     lists the grants a user authorized and revokes one (deletes the token → immediate
     loss of `/mcp` access). Per-user scoped, like API keys.
 
+**MCP surface — design decision (2026-06-22).** The MCP intentionally exposes only the
+**booking lifecycle** (discover → slots → book → view/list/reschedule/cancel), not
+Calnode's full ~88-endpoint surface. Event-type CRUD, availability rules/overrides,
+members/teams, calendar connections, webhooks, branding/email/tracking settings, and
+key/connection management are **deliberately not exposed**. Rationale: every tool we
+open is additional attack surface and agent-confusion surface, and must be kept
+role-safe across transports — so we don't open capabilities just because we can. We
+will **revisit and reassess in the near future once there's evidence of demand**; the
+likely first expansion (per the PRD's AI roadmap) is **availability** (read +
+natural-language set), then event-type creation. When we do expand, prefer narrow,
+purpose-built tools over a generic "call any endpoint" tool.
+
 **Roles & permissions — design decision (2026-06-22).** Roles are **fixed**
 (owner / admin / member) with hard-coded capabilities, enforced identically across the
 REST API, the admin UI, and the MCP tools. Configurable RBAC (a per-role permission
@@ -664,7 +679,7 @@ This doc tracks the code; when you change behaviour in an area above, update the
 matching section in the same PR. Notable rounds:
 
 - **2026-06-22 — Native MCP server + OAuth "Connect".** A Model Context Protocol
-  server compiled into the binary (official Go SDK) with 7 tools over **stdio**
+  server compiled into the binary (official Go SDK) with 8 tools over **stdio**
   (`calnode mcp`) and **Streamable HTTP** (`/mcp`); tools reuse the REST services via
   extracted shared cores (no parallel code path). Calnode is its own **OAuth 2.1 AS**
   (discovery + DCR + PKCE auth-code/refresh + consent reusing the existing SSO login;
