@@ -31,6 +31,66 @@ const (
 	mcpAuthCodeTTL    = 2 * time.Minute     // authorization-code lifetime (single use)
 )
 
+// mcpCaller is the workspace user a /mcp request is authenticated as, with whether they
+// have full-workspace (admin/owner) access. Bound to the request context by
+// MCPCallerMiddleware so the tools can scope by role.
+type mcpCaller struct {
+	UserID  string
+	IsAdmin bool // owner or admin → full workspace access
+}
+
+type mcpCallerKey struct{}
+
+func withMCPCaller(ctx context.Context, c mcpCaller) context.Context {
+	return context.WithValue(ctx, mcpCallerKey{}, c)
+}
+
+func mcpCallerFromContext(ctx context.Context) (mcpCaller, bool) {
+	c, ok := ctx.Value(mcpCallerKey{}).(mcpCaller)
+	return c, ok
+}
+
+// mcpCallerScope returns the calling user's id and whether they have full-workspace
+// access. No bound caller (the stdio transport, run by the local operator) → full
+// access; an admin/owner over HTTP → full access; a member → scoped to their own
+// bookings (fullAccess=false, userID set).
+func mcpCallerScope(ctx context.Context) (userID string, fullAccess bool) {
+	if c, ok := mcpCallerFromContext(ctx); ok {
+		return c.UserID, c.IsAdmin
+	}
+	return "", true
+}
+
+// userHostsBooking reports whether userID is a host on the booking — the primary host
+// or any assigned host (matching booking.ListByHost). Used to gate a member's read of a
+// single booking.
+func (h *Handler) userHostsBooking(ctx context.Context, userID, bookingID string) bool {
+	var n int
+	_ = h.db.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM bookings b
+		WHERE b.id = ? AND (b.host_id = ? OR EXISTS (
+			SELECT 1 FROM booking_hosts bh WHERE bh.booking_id = b.id AND bh.user_id = ?))`,
+		bookingID, userID, userID).Scan(&n)
+	return n > 0
+}
+
+// MCPCallerMiddleware resolves the bearer-authenticated user (set by RequireBearerToken)
+// into an mcpCaller with their role and binds it to the request context, so the MCP
+// tools can scope by role. Must run after RequireBearerToken. Exported for the server
+// package to wire. No token (shouldn't happen behind RequireBearerToken) → no caller
+// bound, which the tools treat as full access — so this MUST stay behind the bearer guard.
+func (h *Handler) MCPCallerMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if ti := auth.TokenInfoFromContext(r.Context()); ti != nil && ti.UserID != "" {
+			var owner, admin bool
+			_ = h.db.QueryRowContext(r.Context(),
+				`SELECT is_owner, is_admin FROM users WHERE id = ?`, ti.UserID).Scan(&owner, &admin)
+			r = r.WithContext(withMCPCaller(r.Context(), mcpCaller{UserID: ti.UserID, IsAdmin: owner || admin}))
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 // VerifyMCPBearer authenticates a /mcp request. It accepts either an OAuth access token
 // issued by this server or a cno_ API key, returning the resolved workspace user. The
 // MCP tools are workspace-scoped, so the identity is used only for audit (last_used_at),

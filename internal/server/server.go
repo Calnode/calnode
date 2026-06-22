@@ -180,7 +180,9 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	mcpAuth := auth.RequireBearerToken(h.VerifyMCPBearer, &auth.RequireBearerTokenOptions{
 		ResourceMetadataURL: cfg.BaseURL + "/.well-known/oauth-protected-resource",
 	})
-	mux.Handle("/mcp", mcpAuth(mcpHTTP))
+	// RequireBearerToken authenticates; MCPCallerMiddleware then binds the user+role so
+	// the tools scope by role (members → only their own bookings).
+	mux.Handle("/mcp", mcpAuth(h.MCPCallerMiddleware(mcpHTTP)))
 
 	// OAuth 2.1 authorization server for MCP (discovery + dynamic client registration;
 	// the interactive /oauth/authorize + /oauth/token live with the consent flow). All

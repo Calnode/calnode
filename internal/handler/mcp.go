@@ -136,6 +136,10 @@ func (h *Handler) mcpGetBooking(ctx context.Context, _ *mcp.CallToolRequest, in 
 		}
 		return nil, bookingJSON{}, fmt.Errorf("get booking: %w", err)
 	}
+	// A member may only read bookings they host; don't reveal others' bookings.
+	if userID, fullAccess := mcpCallerScope(ctx); !fullAccess && !h.userHostsBooking(ctx, userID, b.ID) {
+		return nil, bookingJSON{}, fmt.Errorf("booking not found: %s", in.BookingID)
+	}
 	out := toBookingJSON(b)
 	out.EventTypeSlug = h.slugForEventTypeID(ctx, b.EventTypeID)
 	return nil, out, nil
@@ -156,7 +160,16 @@ type listBookingsOut struct {
 }
 
 func (h *Handler) mcpListBookings(ctx context.Context, _ *mcp.CallToolRequest, in listBookingsIn) (*mcp.CallToolResult, listBookingsOut, error) {
-	all, err := h.bookingSvc.ListAll(ctx)
+	// Members see only bookings they host; admins/owner (and the local stdio operator)
+	// see the whole workspace.
+	userID, fullAccess := mcpCallerScope(ctx)
+	var all []booking.Booking
+	var err error
+	if fullAccess {
+		all, err = h.bookingSvc.ListAll(ctx)
+	} else {
+		all, err = h.bookingSvc.ListByHost(ctx, userID)
+	}
 	if err != nil {
 		return nil, listBookingsOut{}, fmt.Errorf("list bookings: %w", err)
 	}
@@ -376,6 +389,10 @@ func (h *Handler) mcpRescheduleBooking(ctx context.Context, _ *mcp.CallToolReque
 		}
 		return nil, bookingJSON{}, fmt.Errorf("get booking: %w", err)
 	}
+	// Members may reschedule only bookings they primarily host (matching cancel).
+	if userID, fullAccess := mcpCallerScope(ctx); !fullAccess && b.HostID != userID {
+		return nil, bookingJSON{}, fmt.Errorf("booking not found: %s", in.BookingID)
+	}
 	var durMins int
 	if err := h.db.QueryRowContext(ctx, `SELECT duration_minutes FROM event_types WHERE id = ?`, b.EventTypeID).Scan(&durMins); err != nil {
 		return nil, bookingJSON{}, fmt.Errorf("load duration: %w", err)
@@ -411,9 +428,17 @@ func (h *Handler) mcpCancelBooking(ctx context.Context, _ *mcp.CallToolRequest, 
 	if in.BookingID == "" {
 		return nil, bookingJSON{}, fmt.Errorf("booking_id is required")
 	}
-	// CancelByID cancels any booking in the workspace (the MCP caller acts for the
-	// whole workspace), mirroring an admin API key.
-	if err := h.bookingSvc.CancelByID(ctx, in.BookingID, in.Reason); err != nil {
+	// Admins/owner (and the local stdio operator) may cancel any booking; a member may
+	// cancel only one they primarily host (Cancel enforces host_id, returning ErrNotFound
+	// otherwise — so a member can't probe or cancel others' bookings).
+	userID, fullAccess := mcpCallerScope(ctx)
+	var cancelErr error
+	if fullAccess {
+		cancelErr = h.bookingSvc.CancelByID(ctx, in.BookingID, in.Reason)
+	} else {
+		cancelErr = h.bookingSvc.Cancel(ctx, userID, in.BookingID, in.Reason)
+	}
+	if err := cancelErr; err != nil {
 		switch {
 		case errors.Is(err, booking.ErrNotFound):
 			return nil, bookingJSON{}, fmt.Errorf("booking not found: %s", in.BookingID)
