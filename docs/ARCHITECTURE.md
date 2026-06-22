@@ -589,7 +589,39 @@ as the desired state:
 
 ---
 
-## 19. Changelog
+## 19. MCP server (agent interface)
+
+A Model Context Protocol server is compiled into the binary on the official Go SDK
+(`github.com/modelcontextprotocol/go-sdk`). `Handler.MCPServer()`
+(`internal/handler/mcp.go`) builds one server instance exposing seven typed tools
+(schema generated from Go structs): `list_event_types`, `get_available_slots`,
+`create_booking`, `get_booking`, `reschedule_booking`, `cancel_booking`,
+`list_bookings`.
+
+- **Two transports, one server:**
+  - **stdio** — the `calnode mcp` subcommand (`cmd/calnode/mcp.go`) boots the full
+    stack via `server.BuildHandler` (the service-wiring half of `server.New`, factored
+    out so both paths share it) and runs over `mcp.StdioTransport`. Logs go to
+    **stderr** — stdout is the JSON-RPC stream.
+  - **Streamable HTTP** — mounted at `POST /mcp` in `server.New` via
+    `mcp.NewStreamableHTTPHandler`, wrapped in `RequireAuth` (API-key path is the
+    intended caller; the session path stays same-origin-guarded). No SSE.
+- **No parallel code path.** Tools call the same internal services as the REST
+  handlers. The shared cores: `computeSlots` (slot generation, also behind `GetSlots`),
+  `validateAnswersCore` (intake-answer validation, behind `validateAnswers`),
+  `resolveBookingHostPool` (routing-mode host split), and the side-effect dispatchers
+  `dispatchBookingConfirmation` / `rescheduleSideEffects` / `cancelSideEffects`. So an
+  MCP booking fires calendar events, emails, webhooks, and reminders identically to a
+  web booking.
+- **Scope:** booking reads/mutations are workspace-scoped (instance-per-tenant); the
+  tools translate between the slug they expose as `event_type_id` and the internal id
+  stored on bookings. `cancel_booking` uses `CancelByID` (any booking in the
+  workspace). Gap: `create_booking` does not yet honour an `idempotency_key`
+  (REST-only).
+
+---
+
+## 20. Changelog
 
 This doc tracks the code; when you change behaviour in an area above, update the
 matching section in the same PR. Notable rounds:

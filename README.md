@@ -20,8 +20,8 @@ agents do the booking. Self-host the whole thing on a $5 box; nothing is paywall
   binary. `docker run` it, or drop it on a VPS. No external services to orchestrate.
 - **API-first, agent-ready.** A full REST API (88 endpoints) with API keys and
   **HMAC-signed webhooks configured *via API*** — script every booking action from
-  Claude, ChatGPT, n8n, or curl. A native **MCP server** built into the binary is
-  the next milestone (design locked on the official Go SDK).
+  Claude, ChatGPT, n8n, or curl. Plus a native **MCP server** built into the binary
+  (official Go SDK; stdio + Streamable HTTP) so agents get first-class booking tools.
 - **Modern, no bloat.** Go backend + a SvelteKit 5 admin app; public booking pages
   are server-rendered Go templates for instant first paint and a tiny payload.
 - **Correct by construction.** DST-safe time handling (UTC instant + IANA name),
@@ -44,7 +44,7 @@ The default open-source scheduler is a SaaS monolith. Calnode is the opposite.
 | **Runtime deps** | 4 GB+ image; needs Redis **+** Postgres **+** API server | One static binary + a SQLite file |
 | **Database** | Postgres (+ Redis) | SQLite (WAL) + Litestream point-in-time backup |
 | **Webhooks** | UI-only | **API-first**, HMAC-signed, per-webhook payloads |
-| **AI / agents** | None | REST API + webhooks today; **native MCP** next |
+| **AI / agents** | None | REST API + webhooks **+ a native MCP server** (stdio + HTTP) |
 | **Deploy** | Orchestrate several services | `docker run` one container |
 | **Isolation** | Shared multi-tenant DB (`org_id` everywhere) | Instance-per-tenant — isolation is the default |
 | **Licence** | AGPL-3.0 | **Apache-2.0**, nothing paywalled for self-host |
@@ -74,9 +74,17 @@ Wire booking lifecycle events (`booking.created` / `.rescheduled` / `.cancelled`
 to n8n / Make / your own service with HMAC-signed webhooks — all configured through
 the API, not buried in a UI.
 
-**Next milestone — native MCP.** A Model Context Protocol server compiled *into*
-the binary (official Go SDK, stdio + Streamable HTTP) so an agent gets first-class
-tools — `get_available_slots`, `create_booking`, `reschedule_booking`, … — and can do this:
+**Native MCP server.** A Model Context Protocol server is compiled *into* the binary
+(official Go SDK), exposing seven first-class tools — `list_event_types`,
+`get_available_slots`, `create_booking`, `get_booking`, `reschedule_booking`,
+`cancel_booking`, `list_bookings`. The MCP tools call the same internal services as
+the REST API (no parallel code path), so booking side effects — calendar events,
+confirmation emails, webhooks, reminders — fire identically.
+
+Two transports:
+- **stdio** for local agents — run `calnode mcp` (logs to stderr, JSON-RPC on stdout).
+- **Streamable HTTP** at `POST /mcp` for remote agents, authenticated with an API key
+  (`Authorization: Bearer <key>`).
 
 ```
 User:  "Book a 30-min call with Wynne next week — I'm in Auckland."
@@ -120,14 +128,16 @@ domains, Resend email, Google & Microsoft OAuth, Litestream backups, troubleshoo
 - Public booking + self-serve **reschedule/cancel** via signed manage links
 - HTML branded email (logo, business name, size/opacity) with add-to-calendar links
 - REST API (88 endpoints) + API keys; **HMAC webhooks** with per-webhook payloads + delivery log
+- **Native MCP server** (7 tools; stdio via `calnode mcp` + Streamable HTTP at `/mcp`)
+- Embeddable booking widget (Shadow-DOM web component; inline + popup)
 - Members, roles (owner/admin/member), email-token invitations
 - `Idempotency-Key` on booking creation; transactional double-booking guard
 - Envelope encryption at rest (secrets sealed with a KEK; recovery escrow)
 - Optional analytics: `<head>` code injection + `window.dataLayer` events (GTM/GA4)
 
 **On the roadmap**
-- Native **MCP** server · Apple / CalDAV calendars · Zoom OAuth (auto links) ·
-  embeddable widget · magic-link auth · optional bring-your-own-LLM natural-language layer
+- Apple / CalDAV calendars · Zoom OAuth (auto links) · magic-link auth ·
+  optional bring-your-own-LLM natural-language layer
 
 ---
 
