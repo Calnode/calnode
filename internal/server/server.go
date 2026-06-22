@@ -15,6 +15,8 @@ import (
 	"github.com/calnode/calnode/internal/handler"
 	"github.com/calnode/calnode/internal/mailer"
 	"github.com/calnode/calnode/internal/secret"
+
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/calnode/calnode/internal/webhook"
 	"github.com/calnode/calnode/internal/worker"
 )
@@ -154,6 +156,12 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	mux.HandleFunc("GET /v1/auth/microsoft/login", authRL(h.LoginMicrosoft))
 	mux.HandleFunc("GET /v1/auth/microsoft/callback", authRL(h.CallbackMicrosoft))
 	mux.HandleFunc("POST /v1/auth/logout", h.Logout)
+
+	// MCP server (Model Context Protocol) — Streamable HTTP transport for remote
+	// agents, API-key authenticated. One server instance reused across requests.
+	mcpSrv := h.MCPServer()
+	mcpHTTP := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return mcpSrv }, nil)
+	mux.Handle("/mcp", h.RequireAuth(mcpHTTP.ServeHTTP))
 
 	// Password management.
 	mux.HandleFunc("POST /v1/users/me/password", h.RequireAuth(h.ChangePassword))
