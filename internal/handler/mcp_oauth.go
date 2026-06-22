@@ -28,7 +28,7 @@ import (
 
 const (
 	mcpAccessTokenTTL = 30 * 24 * time.Hour // access-token lifetime
-	mcpAuthCodeTTL    = 2 * time.Minute      // authorization-code lifetime (single use)
+	mcpAuthCodeTTL    = 2 * time.Minute     // authorization-code lifetime (single use)
 )
 
 // VerifyMCPBearer authenticates a /mcp request. It accepts either an OAuth access token

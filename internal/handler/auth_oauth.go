@@ -66,5 +66,11 @@ func (h *Handler) finishOAuthLogin(w http.ResponseWriter, r *http.Request, email
 		http.Redirect(w, r, "/admin/login?error=session", http.StatusFound)
 		return
 	}
+	// If this login was initiated by an MCP "Connect" flow, return to /oauth/authorize
+	// (the consent step) rather than the admin home.
+	if dest, ok := h.consumeOAuthReturn(w, r); ok {
+		http.Redirect(w, r, dest, http.StatusFound)
+		return
+	}
 	http.Redirect(w, r, "/admin", http.StatusFound)
 }

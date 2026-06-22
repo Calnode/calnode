@@ -187,7 +187,12 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	// public — the security gate is the user login + consent at /oauth/authorize.
 	mux.HandleFunc("GET /.well-known/oauth-protected-resource", h.OAuthProtectedResourceMetadata)
 	mux.HandleFunc("GET /.well-known/oauth-authorization-server", h.OAuthAuthServerMetadata)
-	mux.HandleFunc("POST /oauth/register", h.RegisterOAuthClient)
+	oauthRegRL := RateLimit(20, time.Minute)
+	mux.HandleFunc("POST /oauth/register", oauthRegRL(h.RegisterOAuthClient))
+	mux.HandleFunc("GET /oauth/authorize", h.AuthorizeMCP)
+	mux.HandleFunc("POST /oauth/authorize", h.AuthorizeMCPDecision)
+	tokenRL := RateLimit(30, time.Minute)
+	mux.HandleFunc("POST /oauth/token", tokenRL(h.TokenMCP))
 
 	// Password management.
 	mux.HandleFunc("POST /v1/users/me/password", h.RequireAuth(h.ChangePassword))
