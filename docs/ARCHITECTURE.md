@@ -635,7 +635,10 @@ A Model Context Protocol server is compiled into the binary on the official Go S
     scripted callers keep working. The worker purges expired `oauth_auth_codes`.
   - The slick Connect UX needs the server on **HTTPS** with valid metadata (deployed
     instance); `http://localhost` works for stdio/manual testing but not the remote
-    connector UI. Deferred: an admin "Connected apps" list + server-side revoke.
+    connector UI.
+  - **Connected apps** admin page (`/connections`, `GET`/`DELETE /v1/oauth/connections`)
+    lists the grants a user authorized and revokes one (deletes the token → immediate
+    loss of `/mcp` access). Per-user scoped, like API keys.
 
 ---
 
