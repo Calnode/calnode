@@ -91,6 +91,9 @@ func (h *Handler) OAuthAuthServerMetadata(w http.ResponseWriter, r *http.Request
 		"code_challenge_methods_supported":      []string{"S256"},
 		"token_endpoint_auth_methods_supported": []string{"none"},
 		"scopes_supported":                      []string{"mcp"},
+		// RFC 9207: we return `iss` in authorization responses; advertise it so strict
+		// clients (e.g. Claude) accept the redirect and proceed to the token exchange.
+		"authorization_response_iss_parameter_supported": true,
 	})
 }
 

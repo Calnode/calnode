@@ -153,10 +153,13 @@ func (h *Handler) AuthorizeMCPDecision(w http.ResponseWriter, r *http.Request) {
 	if strings.Contains(ar.RedirectURI, "?") {
 		sep = "&"
 	}
-	dest := ar.RedirectURI + sep + "code=" + urlQueryEscape(code)
+	// iss (RFC 9207) lets the client confirm which AS issued the code.
+	dest := ar.RedirectURI + sep + "code=" + urlQueryEscape(code) + "&iss=" + urlQueryEscape(h.baseURL)
 	if ar.State != "" {
 		dest += "&state=" + urlQueryEscape(ar.State)
 	}
+	h.logger.InfoContext(r.Context(), "oauth: issued authorization code",
+		"client_id", ar.ClientID, "redirect_uri", ar.RedirectURI, "has_state", ar.State != "")
 	http.Redirect(w, r, dest, http.StatusFound)
 }
 
@@ -166,6 +169,8 @@ func (h *Handler) TokenMCP(w http.ResponseWriter, r *http.Request) {
 		writeOAuthError(w, http.StatusBadRequest, "invalid_request", "bad form")
 		return
 	}
+	h.logger.InfoContext(r.Context(), "oauth: token request",
+		"grant_type", r.PostForm.Get("grant_type"), "client_id", r.PostForm.Get("client_id"))
 	switch r.PostForm.Get("grant_type") {
 	case "authorization_code":
 		h.tokenAuthCode(w, r)
@@ -337,7 +342,7 @@ func (h *Handler) redirectAuthError(w http.ResponseWriter, r *http.Request, ar a
 	if strings.Contains(ar.RedirectURI, "?") {
 		sep = "&"
 	}
-	dest := ar.RedirectURI + sep + "error=" + urlQueryEscape(code) + "&error_description=" + urlQueryEscape(desc)
+	dest := ar.RedirectURI + sep + "error=" + urlQueryEscape(code) + "&error_description=" + urlQueryEscape(desc) + "&iss=" + urlQueryEscape(h.baseURL)
 	if ar.State != "" {
 		dest += "&state=" + urlQueryEscape(ar.State)
 	}
