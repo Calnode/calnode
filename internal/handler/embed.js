@@ -1,9 +1,13 @@
 /* Calnode embeddable booking widget.
  *
- * A dependency-free Web Component that renders a booking flow into a Shadow DOM —
- * real HTML in the host page (no iframe), with encapsulated styles so neither page
- * breaks the other. It calls the instance's public booking endpoints cross-origin
- * (CORS-enabled): /public, /slots, /questions, POST /bookings.
+ * A dependency-free Web Component that renders the booking flow into a Shadow DOM —
+ * real HTML in the host page (no iframe), styles encapsulated. It reuses the SAME
+ * stylesheet and class names as the server-rendered /book page (loaded via
+ * <link href="<base>/booking.css">) so the two never drift; only the responsive
+ * pane layout (container-query driven) and a :host reset are widget-specific.
+ *
+ * Calls the instance's public, CORS-enabled endpoints: /public, /slots, /questions,
+ * POST /bookings.
  *
  * Usage:
  *   <script src="https://booking.example.com/embed.js" async></script>
@@ -14,13 +18,21 @@
   'use strict';
   if (window.customElements && customElements.get('calnode-booking')) return;
 
-  // The API base is the origin this script was served from.
   var SELF = document.currentScript;
   var BASE = SELF ? new URL(SELF.src).origin : window.location.origin;
 
   var TZ = (Intl.DateTimeFormat().resolvedOptions().timeZone) || 'UTC';
   var MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-  var DOW = ['Su','Mo','Tu','We','Th','Fr','Sa'];
+  var DOW = ['Mo','Tu','We','Th','Fr','Sa','Su']; // Monday-first, matching /book
+  var STEP_BP = 560; // below this width → step-flow (one view at a time)
+
+  var SVG_CLOCK = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
+  var SVG_PIN = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>';
+  var SVG_PREV = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>';
+  var SVG_NEXT = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>';
+  var SVG_BACK = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>';
+  var SVG_CHECK = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+  var SVG_X = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>';
 
   function el(tag, attrs, kids) {
     var n = document.createElement(tag);
@@ -34,59 +46,62 @@
     return n;
   }
 
-  // ── timezone-aware date helpers ───────────────────────────────────────────
-  // Day key (YYYY-MM-DD) for a UTC instant, in the booker's timezone.
-  function dayKey(iso) {
-    var d = new Date(iso);
-    var p = new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
-    return p; // en-CA → YYYY-MM-DD
-  }
-  function timeLabel(iso) {
-    return new Intl.DateTimeFormat([], { timeZone: TZ, hour: 'numeric', minute: '2-digit' }).format(new Date(iso));
-  }
-  function ymd(d) {
-    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-  }
+  function dayKey(iso) { return new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(iso)); }
+  function timeLabel(iso) { return new Intl.DateTimeFormat([], { timeZone: TZ, hour: 'numeric', minute: '2-digit' }).format(new Date(iso)); }
+  function shortDay(iso) { return new Intl.DateTimeFormat([], { timeZone: TZ, weekday: 'short', month: 'short', day: 'numeric' }).format(new Date(iso)); }
+  function ymd(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+  function startOfMonth(d) { return new Date(d.getFullYear(), d.getMonth(), 1); }
+  function endOfMonth(d) { return new Date(d.getFullYear(), d.getMonth() + 1, 0); }
+  function addMonths(d, n) { return new Date(d.getFullYear(), d.getMonth() + n, 1); }
+  function mondayIndex(d) { return (d.getDay() + 6) % 7; }
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
 
+  // Widget-only layer: :host reset, container-query responsive layout (3-pane →
+  // letterbox banner → stacked), step-flow visibility, powered footer. The visual
+  // primitives all come from the shared booking.css <link>.
   var STYLE = '' +
-    ':host{all:initial;display:block;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:#0f172a;line-height:1.5;}' +
-    '*{box-sizing:border-box;}' +
-    '.card{border:1px solid #e2e8f0;border-radius:12px;background:#fff;overflow:hidden;max-width:480px;}' +
-    '.hd{padding:20px 20px 14px;border-bottom:1px solid #f1f5f9;}' +
-    '.logo{max-height:28px;width:auto;margin-bottom:10px;}' +
-    '.name{font-size:18px;font-weight:600;margin:0;}' +
-    '.meta{color:#64748b;font-size:13px;margin-top:4px;display:flex;gap:12px;flex-wrap:wrap;}' +
-    '.desc{color:#475569;font-size:13px;margin-top:8px;white-space:pre-wrap;}' +
-    '.bd{padding:16px 20px 20px;}' +
-    '.navrow{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}' +
-    '.navrow b{font-size:14px;}' +
-    '.icobtn{border:1px solid #e2e8f0;background:#fff;border-radius:8px;width:32px;height:32px;cursor:pointer;font-size:16px;color:#334155;}' +
-    '.icobtn:disabled{opacity:.4;cursor:default;}' +
-    '.grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;}' +
-    '.dow{text-align:center;font-size:11px;color:#94a3b8;padding:4px 0;}' +
-    '.day{aspect-ratio:1;border:none;background:#f8fafc;border-radius:8px;cursor:pointer;font-size:13px;color:#0f172a;}' +
-    '.day:hover:not(:disabled){background:#eef2ff;}' +
-    '.day.empty{background:transparent;cursor:default;}' +
-    '.day:disabled{color:#cbd5e1;background:transparent;cursor:default;}' +
-    '.day.sel{background:#6366f1;color:#fff;}' +
-    '.slots{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:4px;max-height:260px;overflow:auto;}' +
-    '.slot{border:1px solid #c7d2fe;background:#fff;color:#4338ca;border-radius:8px;padding:9px 4px;font-size:13px;font-weight:500;cursor:pointer;}' +
-    '.slot:hover{background:#eef2ff;}' +
-    '.back{background:none;border:none;color:#6366f1;cursor:pointer;font-size:13px;padding:0;margin-bottom:10px;}' +
-    'label{display:block;font-size:13px;font-weight:500;margin:12px 0 4px;}' +
-    'input,textarea,select{width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:9px 10px;font-size:14px;font-family:inherit;color:#0f172a;}' +
-    'input:focus,textarea:focus,select:focus{outline:2px solid #c7d2fe;border-color:#6366f1;}' +
-    '.hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden;}' +
-    '.cta{width:100%;margin-top:16px;background:#6366f1;color:#fff;border:none;border-radius:8px;padding:11px;font-size:14px;font-weight:600;cursor:pointer;}' +
-    '.cta:disabled{opacity:.6;cursor:default;}' +
-    '.muted{color:#64748b;font-size:13px;}' +
-    '.err{color:#dc2626;font-size:13px;margin-top:10px;}' +
-    '.ok{text-align:center;padding:14px 4px;}' +
-    '.okmark{width:44px;height:44px;border-radius:50%;background:#dcfce7;color:#16a34a;display:flex;align-items:center;justify-content:center;font-size:24px;margin:0 auto 12px;}' +
-    '.row{display:flex;align-items:flex-start;gap:8px;}' +
-    '.row input[type=checkbox]{width:auto;margin-top:3px;}' +
-    '.cl{font:inherit;}' +
-    '.powered{text-align:center;font-size:11px;color:#94a3b8;padding:10px;border-top:1px solid #f1f5f9;}';
+    ':host{all:initial;display:block;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:#111827;line-height:1.5;}' +
+    '.wrap{container-type:inline-size;}' +
+    '.card{box-shadow:0 1px 3px rgba(0,0,0,.06);}' +
+    // Constrained widths: info becomes a compact horizontal header bar (avatar left,
+    // host name + event + inline meta right) spanning the top; calendar + right below.
+    '@container (max-width:719px){' +
+      '.card{flex-wrap:wrap;}' +
+      // min-width:0 lets the info pane shrink to the card width so its text wraps
+      // instead of overflowing to the right.
+      '.info{width:100%;flex-basis:100%;min-width:0;border-right:none;border-bottom:1px solid #e5e7eb;}' +
+      '.info-head{display:flex;align-items:center;gap:14px;}' +
+      '.info .host-faces{margin-bottom:0;flex-shrink:0;}' +
+      '.info .avatar-img,.info .avatar-initials{width:46px;height:46px;margin-bottom:0;font-size:1.05rem;}' +
+      '.titlewrap{min-width:0;}' +
+      '.info .host-name{margin-bottom:1px;}' +
+      '.info .event-name{margin-bottom:0;}' +
+      // meta + description align to the pane's left edge (under the avatar).
+      '.info .meta{flex-direction:row;flex-wrap:wrap;gap:5px 14px;margin-top:12px;}' +
+      '.info .description{margin-top:6px;overflow-wrap:break-word;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}' +
+      '.cal-col{border-right:1px solid #e5e7eb;}' +
+    '}' +
+    // Narrow / mobile: stack the panes; JS shows one at a time (step-flow). The info
+    // header stays the horizontal bar (flex-basis reset so it sizes to content).
+    '@container (max-width:559px){' +
+      '.card{flex-direction:column;flex-wrap:nowrap;}' +
+      '.info{flex-basis:auto;}' +
+      '.cal-col{border-right:none;border-bottom:1px solid #e5e7eb;}' +
+      '.cal-grid{grid-template-columns:repeat(7,1fr);width:100%;}' +
+      '.ch,.cd{width:100%;}' +
+    '}' +
+    // Step-flow: when narrow, show one step at a time. Calendar step keeps the info
+    // banner (so you see what you are booking); the slot/form/confirm step shows just
+    // the right pane with a back button.
+    '.card.step-cal .right-col{display:none;}' +
+    '.card.step-right .cal-col{display:none;}' +
+    '.card.step-right .info{display:none;}' +
+    '.powered{text-align:center;font-size:.6875rem;color:#9ca3af;padding:10px;}' +
+    '.powered a{color:#6b7280;text-decoration:none;font-weight:600;}' +
+    '.powered a:hover{text-decoration:underline;}' +
+    '.loading{padding:48px 24px;color:#6b7280;font-size:.875rem;text-align:center;}' +
+    '.infotext{display:block;}' +
+    '@media (max-width:560px){:host([data-modal]) .card{min-height:100dvh;border-radius:0;}}';
 
   function api(path) {
     return fetch(BASE + path, { headers: { 'Accept': 'application/json' } }).then(function (r) {
@@ -95,60 +110,51 @@
     });
   }
 
-  function CalnodeBookingProto() {}
-
   class CalnodeBooking extends HTMLElement {
     connectedCallback() {
       if (this._mounted) return;
       this._mounted = true;
       this.slug = this.getAttribute('slug');
       this.root = this.attachShadow({ mode: 'open' });
+      this.root.appendChild(el('link', { rel: 'stylesheet', href: BASE + '/booking.css' }));
       this.root.appendChild(el('style', { text: STYLE }));
-      this.body = el('div', { class: 'card' });
-      this.root.appendChild(this.body);
-      this.state = { month: startOfMonth(new Date()), slotsByDay: {}, day: null };
+      this.wrap = el('div', { class: 'wrap' });
+      this.root.appendChild(this.wrap);
+      this.state = { month: startOfMonth(new Date()), slotsByDay: {}, day: null, view: 'pick', slot: null };
+      this.narrow = false;
+      // Drive step-flow off the widget's own width (not the viewport).
+      if (window.ResizeObserver) {
+        this._ro = new ResizeObserver(function (entries) {
+          var w = entries[0].contentRect.width;
+          var n = w < STEP_BP;
+          if (n !== this.narrow) { this.narrow = n; this.applyStep(); }
+        }.bind(this));
+        this._ro.observe(this.wrap);
+      }
       this.load();
     }
+    disconnectedCallback() { if (this._ro) this._ro.disconnect(); }
 
     async load() {
-      this.render(el('div', { class: 'bd muted', text: 'Loading…' }));
+      this.wrap.innerHTML = '';
+      this.wrap.appendChild(el('div', { class: 'loading', text: 'Loading…' }));
       try {
-        var r = await Promise.all([api('/v1/event-types/' + encodeURIComponent(this.slug) + '/public'),
-                                   api('/v1/event-types/' + encodeURIComponent(this.slug) + '/questions')]);
+        var r = await Promise.all([
+          api('/v1/event-types/' + encodeURIComponent(this.slug) + '/public'),
+          api('/v1/event-types/' + encodeURIComponent(this.slug) + '/questions'),
+        ]);
         this.info = r[0];
         this.questions = (r[1] && r[1].items) || [];
         await this.loadMonth();
-        this.renderCalendar();
+        this.render();
       } catch (e) {
-        this.render(el('div', { class: 'bd err', text: 'Could not load this booking page.' }));
+        this.wrap.innerHTML = '';
+        this.wrap.appendChild(el('div', { class: 'loading', text: 'Could not load this booking page.' }));
       }
     }
 
-    header() {
-      var kids = [];
-      if (this.info.logo_url) kids.push(el('img', { class: 'logo', src: this.info.logo_url, alt: this.info.business_name || '' }));
-      kids.push(el('p', { class: 'name', text: this.info.name }));
-      var meta = el('div', { class: 'meta' }, [
-        el('span', { text: '⏱ ' + this.info.duration_minutes + ' min' }),
-        this.info.location_label ? el('span', { text: '📍 ' + this.info.location_label }) : null,
-      ]);
-      kids.push(meta);
-      if (this.info.description) kids.push(el('div', { class: 'desc', text: this.info.description }));
-      return el('div', { class: 'hd' }, kids);
-    }
-
-    render(inner) {
-      this.body.innerHTML = '';
-      // The header/footer are built from fetched info; loading + error states
-      // render before that's available, so guard on it.
-      if (this.info) this.body.appendChild(this.header());
-      this.body.appendChild(inner);
-      if (this.info) this.body.appendChild(el('div', { class: 'powered', html: 'Powered by <b>' + (this.info.business_name ? esc(this.info.business_name) : 'Calnode') + '</b>' }));
-    }
-
     async loadMonth() {
-      var first = this.state.month;
-      var last = endOfMonth(first);
+      var first = this.state.month, last = endOfMonth(first);
       var today = new Date(); today.setHours(0, 0, 0, 0);
       var from = first < today ? today : first;
       try {
@@ -159,84 +165,110 @@
       } catch (e) { this.state.slotsByDay = {}; }
     }
 
-    renderCalendar() {
-      var st = this.state, self = this;
-      var first = st.month;
-      var grid = el('div', { class: 'grid' });
-      DOW.forEach(function (d) { grid.appendChild(el('div', { class: 'dow', text: d })); });
-      var lead = first.getDay();
-      for (var i = 0; i < lead; i++) grid.appendChild(el('div', { class: 'day empty' }));
-      var days = endOfMonth(first).getDate();
-      var todayKey = ymd(new Date());
+    infoPane() {
+      var host = (this.info.hosts && this.info.hosts[0]) || null;
+      var faceKids = [];
+      if (host && host.avatar_url) faceKids.push(el('span', { class: 'face' }, [el('img', { class: 'avatar-img', src: host.avatar_url, alt: host.name || '' })]));
+      else if (host && host.name) faceKids.push(el('span', { class: 'face' }, [el('span', { class: 'avatar-initials', text: (host.name[0] || '?').toUpperCase() })]));
+      // info-head = avatar + title (host name + event name). On compact widths the
+      // avatar centers against this title only; meta + description sit below, indented
+      // to line up under the title. On desktop these wrappers are plain blocks, so the
+      // vertical column is unchanged.
+      var titleKids = [];
+      if (host && host.name) titleKids.push(el('p', { class: 'host-name', text: host.name }));
+      titleKids.push(el('h1', { class: 'event-name', text: this.info.name }));
+      var head = el('div', { class: 'info-head' }, [
+        el('div', { class: 'host-faces' }, faceKids),
+        el('div', { class: 'titlewrap' }, titleKids),
+      ]);
+      var meta = el('ul', { class: 'meta' }, [
+        el('li', { html: SVG_CLOCK + ' ' + this.info.duration_minutes + ' min' }),
+        this.info.location_label ? el('li', { html: SVG_PIN + ' ' + esc(this.info.location_label) }) : null,
+      ]);
+      var kids = [head, meta];
+      if (this.info.description) kids.push(el('div', { class: 'description', text: this.info.description }));
+      return el('aside', { class: 'info' }, kids);
+    }
+
+    calPane() {
+      var self = this, st = this.state, first = st.month;
+      var grid = el('div', { class: 'cal-grid' });
+      DOW.forEach(function (d) { grid.appendChild(el('div', { class: 'ch', text: d })); });
+      for (var i = 0; i < mondayIndex(first); i++) grid.appendChild(el('div', { class: 'cd', text: '' }));
+      var days = endOfMonth(first).getDate(), todayKey = ymd(new Date());
       for (var d = 1; d <= days; d++) {
-        var dt = new Date(first.getFullYear(), first.getMonth(), d);
-        var key = ymd(dt);
-        var has = !!st.slotsByDay[key];
-        var past = key < todayKey;
-        var btn = el('button', { class: 'day' + (st.day === key ? ' sel' : ''), text: String(d) });
-        if (!has || past) { btn.disabled = true; }
-        else btn.addEventListener('click', (function (k) { return function () { self.state.day = k; self.renderSlots(); }; })(key));
+        var key = ymd(new Date(first.getFullYear(), first.getMonth(), d));
+        var has = !!st.slotsByDay[key] && key >= todayKey;
+        var cls = 'cd' + (has ? ' available' : '') + (st.day === key ? ' sel' : '') + (key === todayKey ? ' today' : '');
+        var btn = el('button', { class: cls, text: String(d) });
+        if (!has) btn.disabled = true;
+        else btn.addEventListener('click', (function (k) { return function () { self.state.day = k; self.state.view = 'pick'; self.render(); }; })(key));
         grid.appendChild(btn);
       }
-      var canPrev = startOfMonth(first) > startOfMonth(new Date());
-      var prev = el('button', { class: 'icobtn', text: '‹' });
-      prev.disabled = !canPrev;
-      prev.addEventListener('click', function () { self.state.month = addMonths(self.state.month, -1); self.state.day = null; self.loadMonth().then(function () { self.renderCalendar(); }); });
-      var next = el('button', { class: 'icobtn', text: '›' });
-      next.addEventListener('click', function () { self.state.month = addMonths(self.state.month, 1); self.state.day = null; self.loadMonth().then(function () { self.renderCalendar(); }); });
-      var nav = el('div', { class: 'navrow' }, [prev, el('b', { text: MONTH_NAMES[first.getMonth()] + ' ' + first.getFullYear() }), next]);
-      this.render(el('div', { class: 'bd' }, [nav, grid, el('div', { class: 'muted', html: '&nbsp;' }), el('div', { class: 'muted', text: 'Times shown in ' + TZ })]));
+      var prev = el('button', { 'aria-label': 'Previous month', html: SVG_PREV });
+      prev.disabled = !(startOfMonth(first) > startOfMonth(new Date()));
+      prev.addEventListener('click', function () { self.nav(-1); });
+      var next = el('button', { 'aria-label': 'Next month', html: SVG_NEXT });
+      next.addEventListener('click', function () { self.nav(1); });
+      var nav = el('div', { class: 'cal-nav' }, [
+        el('span', { class: 'month-label', text: MONTH_NAMES[first.getMonth()] + ' ' + first.getFullYear() }),
+        prev, next,
+      ]);
+      return el('section', { class: 'cal-col' }, [nav, grid, el('p', { class: 'tz-label', text: 'Times shown in ' + TZ })]);
     }
 
-    renderSlots() {
-      var self = this, list = this.state.slotsByDay[this.state.day] || [];
-      list.sort(function (a, b) { return a.start < b.start ? -1 : 1; });
-      var back = el('button', { class: 'back', text: '‹ Back to calendar' });
-      back.addEventListener('click', function () { self.state.day = null; self.renderCalendar(); });
-      var slots = el('div', { class: 'slots' });
-      list.forEach(function (s) {
-        var b = el('button', { class: 'slot', text: timeLabel(s.start) });
-        b.addEventListener('click', function () { self.renderForm(s); });
-        slots.appendChild(b);
-      });
-      var heading = new Intl.DateTimeFormat([], { timeZone: TZ, weekday: 'long', month: 'long', day: 'numeric' }).format(new Date(list[0] ? list[0].start : this.state.day));
-      this.render(el('div', { class: 'bd' }, [back, el('b', { text: heading }), slots]));
+    rightPane() {
+      var self = this, st = this.state;
+      var inner;
+      if (st.view === 'form') inner = this.formView(st.slot);
+      else if (st.view === 'confirm') inner = this.confirmView(st.slot);
+      else if (st.day) {
+        var list = (st.slotsByDay[st.day] || []).slice().sort(function (a, b) { return a.start < b.start ? -1 : 1; });
+        var listEl = el('div', { class: 'slots-list' });
+        list.forEach(function (s) {
+          var b = el('button', { class: 'slot-btn', text: timeLabel(s.start) });
+          b.addEventListener('click', function () { self.state.slot = s; self.state.view = 'form'; self.render(); });
+          listEl.appendChild(b);
+        });
+        inner = el('div', {}, [el('p', { class: 'slots-header', text: list[0] ? shortDay(list[0].start) : '' }), listEl]);
+      } else {
+        inner = el('p', { class: 'hint', text: 'Select a day to see available times.' });
+      }
+      return el('section', { class: 'right-col' }, [inner]);
     }
 
-    renderForm(slot) {
+    formView(slot) {
       var self = this;
-      var back = el('button', { class: 'back', text: '‹ Back' });
-      back.addEventListener('click', function () { self.renderSlots(); });
-      var when = new Intl.DateTimeFormat([], { timeZone: TZ, weekday: 'long', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(slot.start));
-      var form = el('form', {});
-      var name = el('input', { type: 'text', required: 'required', autocomplete: 'name', placeholder: 'Your name' });
+      var back = el('button', { class: 'back-btn', html: SVG_BACK + ' Back' });
+      back.addEventListener('click', function () { self.state.view = 'pick'; self.render(); });
+      var form = el('form', { novalidate: 'novalidate' });
+      var hp = el('input', { type: 'text', tabindex: '-1', autocomplete: 'off' });
+      form.appendChild(el('div', { 'aria-hidden': 'true', style: 'position:absolute;left:-5000px;height:0;width:0;overflow:hidden;' }, [hp]));
+      var name = el('input', { type: 'text', required: 'required', autocomplete: 'name', placeholder: 'Your full name' });
       var email = el('input', { type: 'email', required: 'required', autocomplete: 'email', placeholder: 'you@example.com' });
-      form.appendChild(el('label', { text: 'Name' })); form.appendChild(name);
-      form.appendChild(el('label', { text: 'Email' })); form.appendChild(email);
+      form.appendChild(el('div', { class: 'field' }, [el('label', { text: 'Name' }), name]));
+      form.appendChild(el('div', { class: 'field' }, [el('label', { text: 'Email' }), email]));
       var qInputs = [];
       this.questions.forEach(function (q) {
-        var inp;
+        var inp, field;
         if (q.type === 'checkbox') {
           inp = el('input', { type: 'checkbox' });
-          form.appendChild(el('div', { class: 'row' }, [inp, el('label', { class: 'cl', text: q.label + (q.required ? ' *' : '') })]));
+          field = el('div', { class: 'field' }, [el('div', { class: 'field-checkbox' }, [inp, el('label', { html: esc(q.label) + (q.required ? ' <span class="required-star">*</span>' : '') })])]);
         } else if (q.type === 'select') {
-          inp = el('select', {}, [el('option', { value: '', text: 'Select…' })].concat((q.options || []).map(function (o) { return el('option', { value: o, text: o }); })));
+          inp = el('select', {}, [el('option', { value: '', text: 'Choose an option' })].concat((q.options || []).map(function (o) { return el('option', { value: o, text: o }); })));
           if (q.required) inp.required = true;
-          form.appendChild(el('label', { text: q.label + (q.required ? ' *' : '') })); form.appendChild(inp);
+          field = el('div', { class: 'field' }, [el('label', { html: esc(q.label) + (q.required ? ' <span class="required-star">*</span>' : '') }), inp]);
         } else {
           inp = el('input', { type: 'text' });
           if (q.required) inp.required = true;
-          form.appendChild(el('label', { text: q.label + (q.required ? ' *' : '') })); form.appendChild(inp);
+          field = el('div', { class: 'field' }, [el('label', { html: esc(q.label) + (q.required ? ' <span class="required-star">*</span>' : '') }), inp]);
         }
+        form.appendChild(field);
         qInputs.push({ q: q, inp: inp });
       });
-      // honeypot
-      var hp = el('input', { type: 'text', class: 'hp', tabindex: '-1', autocomplete: 'off' });
-      var hpWrap = el('div', { class: 'hp' }, [hp]); hpWrap.setAttribute('aria-hidden', 'true');
-      form.appendChild(hpWrap);
-      var errBox = el('div', { class: 'err' });
-      var cta = el('button', { class: 'cta', type: 'submit', text: 'Confirm booking' });
-      form.appendChild(cta); form.appendChild(errBox);
+      var errBox = el('p', { class: 'form-error' });
+      var cta = el('button', { class: 'btn-primary', type: 'submit', text: 'Confirm booking' });
+      form.appendChild(errBox); form.appendChild(cta);
       form.addEventListener('submit', function (e) {
         e.preventDefault();
         errBox.textContent = '';
@@ -253,52 +285,93 @@
           return r.json().then(function (data) { return { ok: r.ok, data: data }; });
         }).then(function (res) {
           if (!res.ok) throw new Error(res.data && res.data.error ? res.data.error : 'Could not complete booking.');
-          self.renderConfirm(slot, res.data);
+          self.state.view = 'confirm'; self.render();
           self.dispatchEvent(new CustomEvent('calnode:booked', { bubbles: true, composed: true, detail: res.data }));
         }).catch(function (err) {
           errBox.textContent = err.message || 'Could not complete booking.';
           cta.disabled = false; cta.textContent = 'Confirm booking';
         });
       });
-      this.render(el('div', { class: 'bd' }, [back, el('div', { class: 'muted', text: when }), form]));
+      return el('div', {}, [back, el('p', { class: 'slot-label', text: shortDay(slot.start) + ' · ' + timeLabel(slot.start) }), form]);
     }
 
-    renderConfirm(slot, booking) {
-      var when = new Intl.DateTimeFormat([], { timeZone: TZ, weekday: 'long', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date(slot.start));
-      var loc = (booking && booking.location_value) || this.info.location_label || '';
-      this.render(el('div', { class: 'bd' }, [
-        el('div', { class: 'ok' }, [
-          el('div', { class: 'okmark', text: '✓' }),
-          el('b', { text: 'Booking confirmed' }),
-          el('div', { class: 'muted', text: this.info.name }),
-          el('div', { class: 'muted', text: when + ' (' + TZ + ')' }),
-          loc ? el('div', { class: 'muted', text: loc }) : null,
+    confirmView(slot) {
+      return el('div', {}, [
+        el('div', { class: 'confirm-icon', html: SVG_CHECK }),
+        el('div', { class: 'confirm-view' }, [
+          el('h3', { text: 'Booking confirmed' }),
+          el('p', { class: 'when', text: shortDay(slot.start) + ' · ' + timeLabel(slot.start) }),
+          el('p', { class: 'sub', text: 'A confirmation email has been sent to you.' }),
         ]),
-      ]));
+      ]);
+    }
+
+    nav(delta) {
+      this.state.month = addMonths(this.state.month, delta);
+      this.state.day = null; this.state.view = 'pick';
+      var self = this;
+      this.loadMonth().then(function () { self.render(); });
+    }
+
+    // applyStep toggles which panes show when narrow (step-flow). Wide = all visible.
+    applyStep() {
+      if (!this.card) return;
+      this.card.classList.remove('step', 'step-cal', 'step-right');
+      if (!this.narrow) return;
+      this.card.classList.add('step');
+      // calendar step = day not yet chosen and not in form/confirm; else right pane.
+      var onRight = this.state.view === 'form' || this.state.view === 'confirm' || (this.state.view === 'pick' && this.state.day);
+      this.card.classList.add(onRight ? 'step-right' : 'step-cal');
+    }
+
+    render() {
+      this.wrap.innerHTML = '';
+      this.card = el('div', { class: 'card' }, [this.infoPane(), this.calPane(), this.rightPane()]);
+      // In step-flow, a slots/form view needs a back-to-calendar affordance.
+      if (this.narrow && (this.state.view === 'pick' && this.state.day)) {
+        var rc = this.card.querySelector('.right-col');
+        var self = this;
+        var back = el('button', { class: 'back-btn', html: SVG_BACK + ' Back' });
+        back.addEventListener('click', function () { self.state.day = null; self.render(); });
+        rc.insertBefore(back, rc.firstChild);
+      }
+      this.wrap.appendChild(this.card);
+      this.wrap.appendChild(el('div', { class: 'powered', html: 'Powered by <a href="https://calnode.com" target="_blank" rel="noopener">Calnode</a>' }));
+      this.applyStep();
     }
   }
-
-  function startOfMonth(d) { return new Date(d.getFullYear(), d.getMonth(), 1); }
-  function endOfMonth(d) { return new Date(d.getFullYear(), d.getMonth() + 1, 0); }
-  function addMonths(d, n) { return new Date(d.getFullYear(), d.getMonth() + n, 1); }
-  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
 
   customElements.define('calnode-booking', CalnodeBooking);
 
-  // ── popup mode ──────────────────────────────────────────────────────────────
+  // ── popup mode (isolated in its own Shadow DOM so host CSS can't break it) ──
+  var POPUP_STYLE = '' +
+    ':host{all:initial;}' +
+    '*{box-sizing:border-box;}' +
+    '.ovl{position:fixed;inset:0;background:rgba(15,23,42,.55);display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:5vh 16px;}' +
+    '.wrap{position:relative;width:100%;max-width:860px;}' +
+    '.x{position:absolute;top:14px;right:14px;z-index:2;width:32px;height:32px;border-radius:50%;border:none;background:#fff;box-shadow:0 1px 5px rgba(15,23,42,.2);cursor:pointer;color:#334155;display:flex;align-items:center;justify-content:center;}' +
+    '.x:hover{background:#f1f5f9;}' +
+    '@media (max-width:560px){.ovl{padding:0;}.wrap{max-width:none;min-height:100%;}}';
+
   function openPopup(slug) {
-    var overlay = el('div', {});
-    overlay.setAttribute('style', 'position:fixed;inset:0;background:rgba(15,23,42,.5);display:flex;align-items:flex-start;justify-content:center;padding:5vh 16px;z-index:2147483647;overflow:auto;');
-    var close = el('button', { text: '✕' });
-    close.setAttribute('style', 'position:absolute;top:16px;right:16px;width:36px;height:36px;border-radius:50%;border:none;background:#fff;font-size:18px;cursor:pointer;');
+    var hostEl = el('div', {});
+    hostEl.setAttribute('style', 'position:fixed;inset:0;z-index:2147483647;');
+    var sr = hostEl.attachShadow({ mode: 'open' });
+    sr.appendChild(el('style', { text: POPUP_STYLE }));
     var widget = document.createElement('calnode-booking');
     widget.setAttribute('slug', slug);
-    function shut() { overlay.remove(); }
+    widget.setAttribute('data-modal', '');
+    var close = el('button', { class: 'x', html: SVG_X, 'aria-label': 'Close' });
+    var overlay = el('div', { class: 'ovl' }, [el('div', { class: 'wrap' }, [close, widget])]);
+    function shut() { hostEl.remove(); document.removeEventListener('keydown', onKey); }
+    function onKey(e) { if (e.key === 'Escape') shut(); }
     overlay.addEventListener('click', function (e) { if (e.target === overlay) shut(); });
     close.addEventListener('click', shut);
-    overlay.appendChild(close); overlay.appendChild(widget);
-    document.body.appendChild(overlay);
+    document.addEventListener('keydown', onKey);
+    sr.appendChild(overlay);
+    document.body.appendChild(hostEl);
   }
+
   function wirePopups(scope) {
     (scope || document).querySelectorAll('[data-calnode-popup]:not([data-calnode-wired])').forEach(function (b) {
       b.setAttribute('data-calnode-wired', '1');

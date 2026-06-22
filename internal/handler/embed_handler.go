@@ -10,9 +10,22 @@ import (
 //go:embed embed.js
 var embedJS []byte
 
+//go:embed templates/booking.css
+var bookingCSS []byte
+
 // embedJSModTime is a fixed build-time-ish stamp for cache validation; the asset
 // only changes when the binary is rebuilt, so process start time is fine.
 var embedJSModTime = time.Now()
+
+// BookingCSS serves the shared booking-UI stylesheet at GET /booking.css. Used by
+// both the server-rendered booking/manage pages and the embeddable widget (loaded
+// into its Shadow DOM), so the two never drift. Public, cacheable, framing-safe.
+func (h *Handler) BookingCSS(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/css; charset=utf-8")
+	w.Header().Set("Cache-Control", "public, max-age=3600")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	http.ServeContent(w, r, "booking.css", embedJSModTime, bytes.NewReader(bookingCSS))
+}
 
 // EmbedJS serves the embeddable booking widget script at GET /embed.js. It's a
 // public, framework-free Web Component; cacheable, and safe to load from any site.

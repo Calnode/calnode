@@ -1,0 +1,251 @@
+/* Shared booking UI styles — the single source of truth for the visual primitives
+ * used by BOTH the server-rendered booking/manage pages and the embeddable widget
+ * (injected into its Shadow DOM). Page chrome (body background, powered-by) and the
+ * per-context responsive layer (page @media vs widget @container) live with each
+ * surface; everything that defines how the card/calendar/slots/form/confirm LOOK
+ * lives here so the two never drift. Class names are shared verbatim. */
+
+/* Reset — also relied on by the widget's Shadow DOM, which has no UA reset of its
+ * own. box-sizing:border-box keeps width:100% panes inside the card; zeroing margin/
+ * padding removes default <ul>/<h1>/<p> spacing (component rules below set their own). */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* ── Card ────────────────────────────────────────── */
+.card {
+  display: flex;
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.06), 0 12px 40px rgba(0,0,0,.1);
+  overflow: hidden;
+  width: 100%;
+  max-width: 860px;
+}
+
+/* ── Info panel ──────────────────────────────────── */
+.info {
+  width: 240px;
+  flex-shrink: 0;
+  padding: 2rem 1.5rem;
+  border-right: 1px solid #e5e7eb;
+}
+.host-name  { font-size: .8125rem; color: #6b7280; margin-bottom: .375rem; }
+.event-name { font-size: 1.25rem; font-weight: 700; margin-bottom: 1rem; line-height: 1.3; }
+.meta       { list-style: none; display: flex; flex-direction: column; gap: .5rem; }
+.meta li    { display: flex; align-items: center; gap: .5rem; font-size: .8125rem; color: #4b5563; }
+.meta svg   { flex-shrink: 0; color: #9ca3af; }
+.description { margin-top: 1rem; font-size: .8125rem; color: #6b7280; line-height: 1.65; }
+.description p + p { margin-top: .5rem; }
+.description strong { font-weight: 600; color: #4b5563; }
+.description em { font-style: italic; }
+
+/* ── Calendar column ─────────────────────────────── */
+.cal-col {
+  flex: 0 0 auto;
+  padding: 2rem 1.5rem 2rem 2rem;
+  border-right: 1px solid #e5e7eb;
+}
+
+.cal-nav {
+  display: flex;
+  align-items: center;
+  margin-bottom: 1rem;
+  gap: .5rem;
+}
+.cal-nav button {
+  width: 28px; height: 28px;
+  border: 1px solid #e5e7eb;
+  background: #fff;
+  border-radius: 6px;
+  cursor: pointer;
+  color: #6b7280;
+  display: flex; align-items: center; justify-content: center;
+  transition: background .12s, color .12s;
+  flex-shrink: 0;
+}
+.cal-nav button:hover:not(:disabled) { background: #f9fafb; color: #111827; }
+.cal-nav button:disabled { opacity: .3; cursor: default; }
+.month-label {
+  flex: 1;
+  font-size: .9375rem;
+  font-weight: 600;
+  color: #111827;
+}
+
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 40px);
+  gap: 2px;
+}
+.ch {
+  width: 40px; height: 28px;
+  text-align: center;
+  font-size: .6875rem;
+  font-weight: 500;
+  color: #9ca3af;
+  display: flex; align-items: center; justify-content: center;
+}
+.cd {
+  width: 40px; height: 40px;
+  border: none; background: none;
+  border-radius: 8px;
+  font-size: .875rem;
+  color: #374151;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background .1s, color .1s;
+  position: relative;
+}
+.cd.available { background: #f3f4f6; }
+.cd.available:hover { background: #e5e7eb; }
+.cd.sel { background: #111827 !important; color: #fff !important; font-weight: 600; }
+.cd.today::after {
+  content: '';
+  position: absolute;
+  bottom: 4px;
+  left: 50%; transform: translateX(-50%);
+  width: 4px; height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.cd.sel.today::after { background: #fff; }
+.cd:disabled { color: #d1d5db; cursor: default; background: none !important; }
+
+.tz-label {
+  margin-top: .875rem;
+  font-size: .6875rem;
+  color: #9ca3af;
+}
+.tz-wrapper {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.tz-wrapper select {
+  appearance: none;
+  -webkit-appearance: none;
+  font-size: .6875rem;
+  color: #9ca3af;
+  font-family: inherit;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  outline: none;
+}
+.tz-wrapper svg { pointer-events: none; color: #9ca3af; flex-shrink: 0; }
+.tz-wrapper:hover select,
+.tz-wrapper:hover svg { color: #6b7280; }
+
+/* ── Right column ────────────────────────────────── */
+.right-col {
+  flex: 1;
+  min-width: 0;
+  padding: 2rem 1.5rem;
+}
+.hidden { display: none !important; }
+
+/* Slots */
+.slots-header { font-size: .9375rem; font-weight: 600; margin-bottom: 1rem; color: #111827; }
+.slots-list { display: flex; flex-direction: column; gap: .5rem; max-height: 340px; overflow-y: auto; }
+.slot-btn {
+  padding: .625rem 1rem;
+  border: 1.5px solid #e5e7eb;
+  background: #fff;
+  border-radius: 8px;
+  font-size: .875rem;
+  font-weight: 500;
+  color: #111827;
+  cursor: pointer;
+  text-align: center;
+  transition: border-color .12s, background .12s;
+}
+.slot-btn:hover { border-color: #111827; background: #f9fafb; }
+.slot-btn.sel   { background: #111827; color: #fff; border-color: #111827; }
+.hint { font-size: .8125rem; color: #9ca3af; }
+
+/* Form */
+.back-btn {
+  display: inline-flex; align-items: center; gap: .25rem;
+  background: none; border: none; color: #6b7280;
+  cursor: pointer; font-size: .8125rem; margin-bottom: 1rem; padding: 0;
+}
+.back-btn:hover { color: #111827; }
+.slot-label { font-size: .875rem; font-weight: 600; color: #111827; margin-bottom: 1.25rem; }
+.field { display: flex; flex-direction: column; gap: .3rem; margin-bottom: .75rem; }
+.field label { font-size: .75rem; font-weight: 500; color: #6b7280; }
+.field input {
+  padding: .55rem .75rem;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: .875rem;
+  color: #111827;
+  outline: none;
+  transition: border-color .12s, box-shadow .12s;
+}
+.field input:focus { border-color: #111827; box-shadow: 0 0 0 3px rgba(17,24,39,.06); }
+.btn-primary {
+  width: 100%; padding: .675rem 1rem; margin-top: .5rem;
+  background: #111827; color: #fff;
+  border: none; border-radius: 8px;
+  font-size: .9375rem; font-weight: 600;
+  cursor: pointer; transition: background .12s;
+}
+.btn-primary:hover:not(:disabled) { background: #1f2937; }
+.btn-primary:disabled { opacity: .5; cursor: default; }
+.form-error { font-size: .8125rem; color: #dc2626; margin-top: .375rem; min-height: 1.2em; }
+
+.field select {
+  padding: .55rem .75rem;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: .875rem;
+  color: #111827;
+  outline: none;
+  background: #fff;
+  width: 100%;
+  cursor: pointer;
+  transition: border-color .12s;
+}
+.field select:focus { border-color: #111827; }
+.field-checkbox { display: flex; align-items: center; gap: .5rem; margin-top: .25rem; }
+.field-checkbox input[type="checkbox"] { width: 15px; height: 15px; flex-shrink: 0; margin: 0; cursor: pointer; }
+.field-checkbox label { font-size: .875rem; color: #374151; margin: 0; cursor: pointer; }
+.required-star { color: #dc2626; }
+
+/* Confirmation */
+.confirm-icon {
+  width: 48px; height: 48px;
+  background: #dcfce7;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: .875rem;
+}
+.confirm-view h3 { font-size: 1rem; font-weight: 700; margin-bottom: .375rem; }
+.confirm-view .when { font-size: .875rem; font-weight: 600; color: #111827; margin-bottom: .25rem; }
+.confirm-view .sub { font-size: .8125rem; color: #6b7280; }
+
+/* Avatar */
+.avatar-img {
+  width: 56px; height: 56px;
+  border-radius: 50%; object-fit: cover;
+  margin-bottom: .75rem;
+}
+.avatar-initials {
+  width: 56px; height: 56px;
+  border-radius: 50%;
+  background: #e5e7eb;
+  color: #374151;
+  font-size: 1.25rem; font-weight: 600;
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: .75rem;
+}
+/* Host face stack: leftmost paints on top (inline z-index, descending). */
+.host-faces { display: flex; margin-bottom: .75rem; }
+.host-faces .face { position: relative; line-height: 0; }
+.host-faces .face + .face { margin-left: -16px; }
+.host-faces .avatar-img,
+.host-faces .avatar-initials {
+  margin-bottom: 0;
+  border: 2.5px solid #fff;
+  box-shadow: 0 0 0 1px rgba(0,0,0,.06);
+}

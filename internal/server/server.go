@@ -268,6 +268,7 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 
 	// Public booking page
 	mux.HandleFunc("GET /embed.js", h.EmbedJS)
+	mux.HandleFunc("GET /booking.css", h.BookingCSS)
 	mux.HandleFunc("GET /book/{slug}", h.BookPage)
 
 	// Manage booking (reschedule / cancel via token link)
