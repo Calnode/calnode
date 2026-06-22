@@ -129,6 +129,12 @@ func (w *Worker) Poll(ctx context.Context) {
 		`DELETE FROM idempotency_keys WHERE created_at < ?`, idemCutoff); err != nil {
 		w.logger.Error("worker: purge idempotency keys", "error", err)
 	}
+	// Expired MCP OAuth authorization codes are single-use and short-lived; sweep the
+	// abandoned ones so the table doesn't accumulate dead rows.
+	if _, err := w.db.ExecContext(ctx,
+		`DELETE FROM oauth_auth_codes WHERE expires_at < ?`, now); err != nil {
+		w.logger.Error("worker: purge oauth auth codes", "error", err)
+	}
 
 	// Reaper: handle running jobs whose lock has expired (process crashed mid-job).
 	// Jobs with retries remaining are reset to pending with a 1-minute delay so

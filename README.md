@@ -83,8 +83,12 @@ confirmation emails, webhooks, reminders — fire identically.
 
 Two transports:
 - **stdio** for local agents — run `calnode mcp` (logs to stderr, JSON-RPC on stdout).
-- **Streamable HTTP** at `POST /mcp` for remote agents, authenticated with an API key
-  (`Authorization: Bearer <key>`).
+- **Streamable HTTP** at `POST /mcp` for remote agents. Calnode is its own **OAuth 2.1
+  authorization server** (dynamic client registration + PKCE), so an agent adds the
+  server by URL and clicks **Connect** → signs in with the workspace's Google/Microsoft
+  login → approves a consent screen — no pre-shared key. A `cno_` API key also works
+  (`Authorization: Bearer <key>`) for scripts. *(The Connect UX needs HTTPS — it shines
+  on a deployed instance.)*
 
 ```
 User:  "Book a 30-min call with Wynne next week — I'm in Auckland."

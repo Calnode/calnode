@@ -618,6 +618,24 @@ A Model Context Protocol server is compiled into the binary on the official Go S
   stored on bookings. `cancel_booking` uses `CancelByID` (any booking in the
   workspace). Gap: `create_booking` does not yet honour an `idempotency_key`
   (REST-only).
+- **Authorization — the "Connect" flow** (`mcp_oauth.go`, `mcp_oauth_authorize.go`):
+  Calnode is its own **OAuth 2.1 authorization server** for the `/mcp` resource, so an
+  agent (Claude, ChatGPT) adds the server by URL and clicks **Connect** instead of
+  pasting a key.
+  - `/mcp` is guarded by `auth.RequireBearerToken(VerifyMCPBearer)`; a `401` advertises
+    `/.well-known/oauth-protected-resource` (RFC 9728), which points at the AS metadata
+    `/.well-known/oauth-authorization-server` (RFC 8414).
+  - Clients self-register at `POST /oauth/register` (RFC 7591 DCR; public PKCE clients).
+    `GET/POST /oauth/authorize` checks for a Calnode session — if absent it bounces
+    through the **existing Google/Microsoft login** (via a `post_login_redirect` cookie
+    that `finishOAuthLogin` honours) and back to a **consent** screen. `POST /oauth/token`
+    does PKCE-S256-verified `authorization_code` and rotating `refresh_token` grants.
+  - Tokens are opaque, **SHA-256-hashed** in `oauth_access_tokens` (migration 00033);
+    `VerifyMCPBearer` accepts either an OAuth access token or a `cno_` API key, so
+    scripted callers keep working. The worker purges expired `oauth_auth_codes`.
+  - The slick Connect UX needs the server on **HTTPS** with valid metadata (deployed
+    instance); `http://localhost` works for stdio/manual testing but not the remote
+    connector UI. Deferred: an admin "Connected apps" list + server-side revoke.
 
 ---
 
