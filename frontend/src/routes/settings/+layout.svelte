@@ -12,6 +12,7 @@
 		{ href: `${base}/settings/branding`, label: 'Branding', adminOnly: true },
 		{ href: `${base}/settings/email`, label: 'Email', adminOnly: true },
 		{ href: `${base}/settings/google`, label: 'Google OAuth', adminOnly: true },
+		{ href: `${base}/settings/ai`, label: 'AI', adminOnly: true },
 		{ href: `${base}/settings/tracking`, label: 'Tracking', adminOnly: true },
 	];
 </script>

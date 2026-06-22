@@ -213,6 +213,41 @@ func TestBookPage_rendersIntakeQuestions(t *testing.T) {
 	}
 }
 
+func TestBookPage_assistantPanelGatedOnLLM(t *testing.T) {
+	h, apiKey, _ := setupWorkspace(t)
+	slug, _ := seedEventTypeHTTP(t, h, apiKey)
+
+	render := func() string {
+		req := httptest.NewRequest(http.MethodGet, "/book/"+slug, nil)
+		req.SetPathValue("slug", slug)
+		rec := httptest.NewRecorder()
+		h.BookPage(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("BookPage: %d — %s", rec.Code, rec.Body.String())
+		}
+		return rec.Body.String()
+	}
+
+	// AI off (default) → no chat panel.
+	if body := render(); strings.Contains(body, "Book by chat") {
+		t.Error("assistant panel rendered while LLM is disabled")
+	}
+
+	// Enable the LLM (dummy endpoint; reload builds a client without a network call).
+	prec := httptest.NewRecorder()
+	h.RequireAuth(h.PatchLLMSettings)(prec, authReq(http.MethodPatch, "/v1/settings/llm",
+		`{"enabled":true,"endpoint":"http://example.test/v1","model":"m"}`, apiKey))
+	if prec.Code != http.StatusOK {
+		t.Fatalf("enable llm: %d — %s", prec.Code, prec.Body.String())
+	}
+
+	// AI on → chat panel + assistant endpoint wired.
+	body := render()
+	if !strings.Contains(body, "Book by chat") || !strings.Contains(body, "/assistant") {
+		t.Errorf("assistant panel/script missing when LLM enabled")
+	}
+}
+
 func TestBookPage_maxFutureDays0(t *testing.T) {
 	h, apiKey, _ := setupWorkspace(t)
 	slug := "zero-days"

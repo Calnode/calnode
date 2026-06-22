@@ -147,6 +147,16 @@ export type GoogleSettings = {
 	base_url: string;
 };
 
+export type LLMSettings = {
+	enabled: boolean;
+	endpoint: string;
+	model: string;
+	api_key_set: boolean;
+	configured: boolean;
+	/** true when a live client is active (enabled + configured). */
+	active: boolean;
+};
+
 export type TeamMember = {
 	id: string;
 	email: string;

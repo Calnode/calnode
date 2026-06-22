@@ -86,6 +86,27 @@ body {
 </header>
 {{end}}
 
+{{if .AssistantEnabled}}
+<div class="assistant" id="assistant">
+  <div class="asst-head">
+    <span class="asst-title">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.8L18.7 9.7l-4.8 1.9L12 16.4l-1.9-4.8L5.3 9.7l4.8-1.9L12 3z"/></svg>
+      Book by chat
+    </span>
+    <button type="button" class="asst-toggle" id="asst-toggle" aria-controls="asst-body">Hide</button>
+  </div>
+  <div class="asst-body" id="asst-body">
+    <div class="asst-log" id="asst-log" aria-live="polite">
+      <div class="asst-msg bot">Hi! Tell me roughly when you'd like to meet — e.g. "Tuesday afternoon" or "next week" — and I'll find a time. You can always use the calendar below instead.</div>
+    </div>
+    <form class="asst-row" id="asst-form" autocomplete="off">
+      <input class="asst-input" id="asst-input" type="text" placeholder="Type when you're free…" aria-label="Message the booking assistant" maxlength="500">
+      <button class="asst-send" id="asst-send" type="submit">Send</button>
+    </form>
+  </div>
+</div>
+{{end}}
+
 <div class="card">
 
   <!-- Info panel -->
@@ -654,5 +675,73 @@ body {
 
 }());
 </script>
+
+{{if .AssistantEnabled}}
+<script>
+(function () {
+  'use strict';
+  var SLUG = "{{.Slug}}";
+  var form = document.getElementById('asst-form');
+  if (!form) return;
+  var input  = document.getElementById('asst-input');
+  var send   = document.getElementById('asst-send');
+  var log    = document.getElementById('asst-log');
+  var panel  = document.getElementById('assistant');
+  var toggle = document.getElementById('asst-toggle');
+  var messages = [];   // [{role:'user'|'assistant', content}] — conversation state
+  var busy = false;
+
+  function tz() {
+    var s = document.getElementById('tz-select');
+    return (s && s.value) ? s.value : Intl.DateTimeFormat().resolvedOptions().timeZone;
+  }
+  function add(text, cls) {
+    var d = document.createElement('div');
+    d.className = 'asst-msg ' + cls;
+    d.textContent = text;               // textContent, not innerHTML → no injection
+    log.appendChild(d);
+    log.scrollTop = log.scrollHeight;
+    return d;
+  }
+
+  toggle.addEventListener('click', function () {
+    var hidden = panel.classList.toggle('collapsed');
+    toggle.textContent = hidden ? 'Show' : 'Hide';
+  });
+
+  form.addEventListener('submit', async function (e) {
+    e.preventDefault();
+    var text = (input.value || '').trim();
+    if (!text || busy) return;
+    messages.push({ role: 'user', content: text });
+    add(text, 'user');
+    input.value = ''; busy = true; send.disabled = true;
+    var typing = add('…', 'asst-typing');
+    try {
+      var res = await fetch('/v1/event-types/' + encodeURIComponent(SLUG) + '/assistant', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: messages, timezone: tz() })
+      });
+      typing.remove();
+      if (!res.ok) throw new Error('http ' + res.status);
+      var data = await res.json();
+      if (data.reply) {
+        messages.push({ role: 'assistant', content: data.reply });
+        add(data.reply, data.booking ? 'ok' : 'bot');
+      } else if (data.booking) {
+        add('Booked — check your email for the confirmation.', 'ok');
+      }
+      if (data.fallback) add('Tip: you can also pick a time from the calendar below.', 'note');
+    } catch (err) {
+      typing.remove();
+      add('Sorry — something went wrong. Please use the calendar below.', 'note');
+    } finally {
+      busy = false; send.disabled = false; input.focus();
+    }
+  });
+}());
+</script>
+{{end}}
 </body>
 </html>

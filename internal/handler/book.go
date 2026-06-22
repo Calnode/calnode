@@ -43,6 +43,8 @@ type bookPageData struct {
 	LocationLabel string
 	MaxFutureDays int
 	Questions     []bookQuestion
+	// AssistantEnabled shows the conversational-booking chat panel when the LLM layer is on.
+	AssistantEnabled bool
 	// Tracking
 	HeadHTML         template.HTML // operator-configured <head> code injection (trusted)
 	DataLayerEnabled bool
@@ -346,8 +348,9 @@ func (h *Handler) BookPage(w http.ResponseWriter, r *http.Request) {
 		Hosts:         hosts,
 		HostsLabel:    hostsLabel(hosts),
 		LocationLabel: locationLabel(locType, locValue),
-		MaxFutureDays: maxDays,
-		Questions:     questions,
+		MaxFutureDays:    maxDays,
+		Questions:        questions,
+		AssistantEnabled: h.getLLM() != nil,
 
 		HeadHTML:         template.HTML(track.HeadHTML),
 		DataLayerEnabled: track.DataLayerEnabled,
