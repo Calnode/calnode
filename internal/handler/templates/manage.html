@@ -79,6 +79,9 @@ body {
 .state-page h2 { font-size: 1rem; font-weight: 700; margin-bottom: .375rem; }
 .state-page p  { font-size: .8125rem; color: #6b7280; line-height: 1.6; max-width: 320px; }
 
+/* Mobile back-to-calendar button inside the reschedule picker; hidden on desktop. */
+.cal-back { display: none; }
+
 /* ── Mobile ──────────────────────────────────────── */
 @media (max-width: 700px) {
   body { padding: 0 0 1.5rem; gap: 1rem; }
@@ -88,6 +91,11 @@ body {
   .cal-grid { grid-template-columns: repeat(7, 1fr); width: 100%; }
   .ch, .cd { width: 100%; }
   .right-col { padding: 1.25rem 1rem; }
+  /* Reschedule step-flow: calendar step shows info + calendar (slots hidden); slots
+     step shows just the times (info + calendar hidden). Toggled by m-rcal/m-rslots. */
+  .card.m-rcal #reschedule-view { display: none; }
+  .card.m-rslots .info, .card.m-rslots #cal-col { display: none; }
+  .cal-back { display: inline-flex; }
 }
 </style>
 </head>
@@ -159,6 +167,10 @@ body {
   {{else}}
   <!-- Calendar column (only shown while picking a new time) -->
   <section id="cal-col" class="cal-col hidden" aria-label="Date picker">
+    <button class="back-btn cal-back" id="resched-back-main">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+      Back
+    </button>
     <div class="cal-nav">
       <span id="month-label" aria-live="polite"></span>
       <button id="prev-btn" aria-label="Previous month">
@@ -289,10 +301,20 @@ body {
 
   const TEXT_VIEWS = ['main-view', 'reschedule-view', 'confirm-reschedule-view',
     'cancel-confirm-view', 'success-reschedule-view', 'success-cancel-view'];
+  const card = document.querySelector('.card');
+  // Mobile reschedule step-flow: within the picker, show the calendar step OR the
+  // slots step (toggled classes; CSS gates them to ≤700px). On desktop the calendar
+  // and slots sit side by side, so these classes are inert.
+  function setRStep(step) {
+    if (!card) return;
+    card.classList.toggle('m-rcal', step === 'cal');
+    card.classList.toggle('m-rslots', step === 'slots');
+  }
   // Show one right-column view; the calendar column is visible only while picking.
   function showView(id) {
     TEXT_VIEWS.forEach(v => $(v).classList.toggle('hidden', v !== id));
     $('cal-col').classList.toggle('hidden', id !== 'reschedule-view');
+    if (id !== 'reschedule-view' && card) card.classList.remove('m-rcal', 'm-rslots');
   }
 
   $('current-time').textContent = fmtDatetime(CURRENT_ISO);
@@ -396,6 +418,7 @@ body {
     pickedDate = new Date(y, m, d);
     pickedSlot = null;
     renderCal();
+    setRStep('slots'); // mobile: advance from the calendar to the times
     $('slots-date').textContent = fmtDate(pickedDate);
     const list = $('slots-list');
 
@@ -433,6 +456,7 @@ body {
   // ── Navigation ──────────────────────────────────────────────────────────────
   $('reschedule-btn').addEventListener('click', () => {
     showView('reschedule-view');
+    setRStep('cal'); // mobile: start on the calendar step
     if (!pickedDate) {
       $('slots-date').textContent = 'Select a date';
       $('slots-list').innerHTML = '<p class="hint">Pick a day from the calendar.</p>';
@@ -440,9 +464,14 @@ body {
     loadMonthAvailability(navYear, navMonth);
   });
   $('cancel-btn').addEventListener('click', () => showView('cancel-confirm-view'));
-  $('back-to-main-btn').addEventListener('click', () => showView('main-view'));
+  // In the reschedule slots step on mobile, "Back" returns to the calendar step;
+  // otherwise (desktop, or calendar step) it exits to the main view.
+  $('back-to-main-btn').addEventListener('click', () => {
+    if (window.innerWidth <= 700) { setRStep('cal'); } else { showView('main-view'); }
+  });
+  $('resched-back-main').addEventListener('click', () => showView('main-view'));
   $('back-to-main-from-cancel-btn').addEventListener('click', () => showView('main-view'));
-  $('back-to-picker-btn').addEventListener('click', () => showView('reschedule-view'));
+  $('back-to-picker-btn').addEventListener('click', () => { showView('reschedule-view'); setRStep('slots'); });
 
   // ── Confirm reschedule ──────────────────────────────────────────────────────
   $('confirm-reschedule-btn').addEventListener('click', async () => {
