@@ -12,7 +12,7 @@ import (
 // img-src allows https:/data: so an operator's external brand logo (and any
 // remote avatar) loads; images are inert, so this is a safe relaxation even on
 // the otherwise-strict default policy.
-const strictPublicCSP = "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self'; frame-ancestors 'none'"
+const strictPublicCSP = "default-src 'self'; script-src 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self'; frame-ancestors 'none'"
 
 // dataLayerFields is the set of keys an operator may push into window.dataLayer.
 // Labels live in the admin UI; the backend only validates keys.
@@ -68,7 +68,7 @@ func publicCSP(t trackingSettings) string {
 	var b strings.Builder
 	b.WriteString("default-src 'self'; ")
 	b.WriteString("script-src 'self' 'unsafe-inline' " + sources + "; ")
-	b.WriteString("style-src 'unsafe-inline' " + sources + "; ")
+	b.WriteString("style-src 'self' 'unsafe-inline' " + sources + "; ")
 	b.WriteString("connect-src 'self' " + sources + "; ")
 	b.WriteString("img-src 'self' data: " + sources + "; ")
 	b.WriteString("frame-src " + sources + "; ")
