@@ -87,13 +87,13 @@ body {
 {{end}}
 
 {{if .AssistantEnabled}}
-<div class="assistant" id="assistant">
+<div class="assistant collapsed" id="assistant">
   <div class="asst-head">
     <span class="asst-title">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.8L18.7 9.7l-4.8 1.9L12 16.4l-1.9-4.8L5.3 9.7l4.8-1.9L12 3z"/></svg>
       Book by chat
     </span>
-    <button type="button" class="asst-toggle" id="asst-toggle" aria-controls="asst-body">Hide</button>
+    <button type="button" class="asst-toggle" id="asst-toggle" aria-controls="asst-body">Show</button>
   </div>
   <div class="asst-body" id="asst-body">
     <div class="asst-log" id="asst-log" aria-live="polite">

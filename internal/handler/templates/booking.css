@@ -269,8 +269,10 @@
 }
 
 /* ── Conversational booking assistant (book.html; shared so the widget can adopt it) ── */
-.assistant { max-width: 860px; margin: 14px auto 0; background: #fff; border: 1px solid #e5e7eb; border-radius: 16px; overflow: hidden; box-shadow: 0 1px 2px rgba(16,24,40,.04); }
-.asst-head { display: flex; align-items: center; justify-content: space-between; padding: .75rem 1rem; border-bottom: 1px solid #f3f4f6; }
+.assistant { width: 100%; max-width: 540px; margin: 0 auto; background: #fff; border: 1px solid #e5e7eb; border-radius: 16px; overflow: hidden; box-shadow: 0 1px 2px rgba(16,24,40,.04); }
+.assistant.collapsed { width: auto; }                     /* compact pill when collapsed */
+.assistant.collapsed .asst-head { border-bottom: none; }  /* no dangling underline */
+.asst-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .625rem .875rem; border-bottom: 1px solid #f3f4f6; }
 .asst-title { display: flex; align-items: center; gap: .5rem; font-size: .875rem; font-weight: 600; color: #111827; }
 .asst-title svg { color: #6b7280; }
 .asst-toggle { background: none; border: none; font: inherit; font-size: .8125rem; color: #6b7280; cursor: pointer; }

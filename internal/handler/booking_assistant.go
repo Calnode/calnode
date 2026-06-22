@@ -6,12 +6,28 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/calnode/calnode/internal/booking"
 	"github.com/calnode/calnode/internal/llm"
 )
+
+// reasoningRe strips chain-of-thought that reasoning models (e.g. MiniMax M3) emit inline
+// in the content. We never show this to the booker.
+var reasoningRe = regexp.MustCompile(`(?s)<think>.*?</think>|<thinking>.*?</thinking>`)
+
+func stripReasoning(s string) string {
+	s = reasoningRe.ReplaceAllString(s, "")
+	// Drop a dangling, unclosed reasoning block (truncated output).
+	for _, tag := range []string{"<think>", "<thinking>"} {
+		if i := strings.Index(s, tag); i >= 0 {
+			s = s[:i]
+		}
+	}
+	return strings.TrimSpace(s)
+}
 
 // Conversational booking assistant (PRD §8.11) — the public, user-facing AI feature. A
 // booker chats in natural language; the LLM drives a NARROW, event-type-scoped tool set
@@ -112,6 +128,7 @@ func (h *Handler) BookingAssistant(w http.ResponseWriter, r *http.Request) {
 			})
 			return
 		}
+		res.Message.Content = stripReasoning(res.Message.Content)
 		msgs = append(msgs, res.Message)
 
 		if len(res.Message.ToolCalls) == 0 {
@@ -178,15 +195,17 @@ func (h *Handler) assistantSystemPrompt(ctx context.Context, slug, tz string) (s
 	}
 
 	today := time.Now().UTC().Format("2006-01-02")
-	return fmt.Sprintf(`You are a friendly scheduling assistant helping a visitor book "%s" (a %d-minute %s meeting).
-Today is %s. The visitor's timezone is %s; show and discuss times in that timezone.
+	return fmt.Sprintf(`You are a concise scheduling assistant helping a visitor book "%s" (a %d-minute %s meeting).
+Today is %s. The visitor's timezone is %s — show times in that timezone and state it once early on; if they name a different timezone, use theirs.
 
-Rules:
-- To find times, ALWAYS call find_available_slots — never invent or calculate availability yourself. Only offer times it returns.
-- Before booking, collect the visitor's name and email, and answers to any REQUIRED intake questions, then confirm the chosen time with them.
+Style: reply in 1–2 short sentences. Offer at most ~5 times, inline (e.g. "Wed 10:00, 10:30, or 11:00?") — never dump a full list, headings, tables, or emoji. Plain, warm, brief. Never reveal your reasoning or any <think> content.
+
+Booking flow:
+- To find times, ALWAYS call find_available_slots — never invent or calculate availability. Only offer times it returns.
+- Collect the visitor's name and email (and answers to any REQUIRED intake questions), confirm the time, then call book with an exact slot_start from find_available_slots.
 - Intake questions: %s
-- Call book ONLY with an exact slot_start returned by find_available_slots, plus name, email, and required answers. After booking, give a short friendly confirmation.
-- Be concise. If you can't help, suggest they use the calendar picker on the page.`,
+- After booking, confirm in one short line.
+- If you can't help, suggest the calendar picker on the page.`,
 		name, duration, locationLabel(locType, ""), today, tz, questions), true
 }
 

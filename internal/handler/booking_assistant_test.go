@@ -32,7 +32,7 @@ func TestBookingAssistant_findThenBook(t *testing.T) {
 	mock := scriptedLLM(t,
 		`{"choices":[{"message":{"role":"assistant","tool_calls":[{"id":"c1","type":"function","function":{"name":"find_available_slots","arguments":"{}"}}]}}]}`,
 		`{"choices":[{"message":{"role":"assistant","tool_calls":[{"id":"c2","type":"function","function":{"name":"book","arguments":"{\"slot_start\":\"2027-05-03T10:00:00Z\",\"name\":\"Pat\",\"email\":\"pat@example.com\"}"}}]}}]}`,
-		`{"choices":[{"message":{"role":"assistant","content":"All set — booked for May 3 at 10:00. See you then!"}}]}`,
+		`{"choices":[{"message":{"role":"assistant","content":"<think>I booked it; now confirm briefly.</think>All set — booked for May 3 at 10:00. See you then!"}}]}`,
 	)
 	defer mock.Close()
 
@@ -79,6 +79,9 @@ func TestBookingAssistant_findThenBook(t *testing.T) {
 	}
 	if !strings.Contains(resp.Reply, "booked for May 3") {
 		t.Errorf("reply = %q; want the final confirmation", resp.Reply)
+	}
+	if strings.Contains(resp.Reply, "<think>") || strings.Contains(resp.Reply, "now confirm briefly") {
+		t.Errorf("reply leaked model reasoning: %q", resp.Reply)
 	}
 }
 
