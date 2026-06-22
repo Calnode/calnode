@@ -34,6 +34,9 @@ func main() {
 		case "recover-key":
 			runRecoverKey(os.Args[2:])
 			return
+		case "mcp":
+			runMCPStdio(os.Args[2:])
+			return
 		}
 	}
 

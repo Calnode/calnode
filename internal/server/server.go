@@ -24,8 +24,12 @@ import (
 // New builds the HTTP mux and starts background services. It returns the
 // handler and a drain function that blocks until the background worker has
 // finished its current poll cycle — call drain before httpServer.Shutdown.
-func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logger) (http.Handler, func()) {
-	mux := http.NewServeMux()
+// BuildHandler constructs the fully-wired Handler — mailer, webhook worker, calendar
+// providers, OAuth — without registering HTTP routes or starting an HTTP server. New
+// uses it to back the HTTP server; the `calnode mcp` subcommand uses it to serve the
+// MCP server over stdio. The returned drain func blocks until the background worker
+// has finished its current poll cycle.
+func BuildHandler(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logger) (*handler.Handler, func()) {
 	h := handler.New(db, logger)
 	h.SetBaseURL(cfg.BaseURL)
 	h.SetPublicBaseURL(cfg.PublicBaseURL)
@@ -129,6 +133,15 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 		h.SetCalendar(calSvc)
 		h.StartCalendarReconciler(ctx)
 	}
+
+	return h, drain
+}
+
+// New wires services via BuildHandler, then registers all HTTP routes. It returns the
+// http.Handler and the worker drain func.
+func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logger) (http.Handler, func()) {
+	h, drain := BuildHandler(ctx, cfg, db, logger)
+	mux := http.NewServeMux()
 
 	// Ops
 	mux.HandleFunc("GET /healthz", h.Healthz)
