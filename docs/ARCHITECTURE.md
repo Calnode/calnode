@@ -613,11 +613,15 @@ A Model Context Protocol server is compiled into the binary on the official Go S
   `dispatchBookingConfirmation` / `rescheduleSideEffects` / `cancelSideEffects`. So an
   MCP booking fires calendar events, emails, webhooks, and reminders identically to a
   web booking.
-- **Scope:** booking reads/mutations are workspace-scoped (instance-per-tenant); the
-  tools translate between the slug they expose as `event_type_id` and the internal id
-  stored on bookings. `cancel_booking` uses `CancelByID` (any booking in the
-  workspace). Gap: `create_booking` does not yet honour an `idempotency_key`
-  (REST-only).
+- **Scope:** the management tools are **role-scoped** to mirror the REST model —
+  `MCPCallerMiddleware` (after `RequireBearerToken`) binds the user+role to the request
+  context, and the tools branch on it: members see/act on only bookings they host
+  (`ListByHost`, host-scoped `Cancel`), admins/owner get the whole workspace
+  (`ListAll`/`CancelByID`). The stdio transport has no bound caller → full access (local
+  operator). `list_event_types`/`get_available_slots`/`create_booking` are the public
+  booking surface (unscoped). Tools translate between the slug they expose as
+  `event_type_id` and the internal booking id. Gap: `create_booking` does not yet honour
+  an `idempotency_key` (REST-only).
 - **Authorization — the "Connect" flow** (`mcp_oauth.go`, `mcp_oauth_authorize.go`):
   Calnode is its own **OAuth 2.1 authorization server** for the `/mcp` resource, so an
   agent (Claude, ChatGPT) adds the server by URL and clicks **Connect** instead of
