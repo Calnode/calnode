@@ -268,26 +268,46 @@
   box-shadow: 0 0 0 1px rgba(0,0,0,.06);
 }
 
-/* ── Conversational booking assistant (book.html; shared so the widget can adopt it) ── */
-.assistant { width: 100%; max-width: 540px; margin: 0 auto; background: #fff; border: 1px solid #e5e7eb; border-radius: 16px; overflow: hidden; box-shadow: 0 1px 2px rgba(16,24,40,.04); }
-.assistant.collapsed { width: auto; }                     /* compact pill when collapsed */
-.assistant.collapsed .asst-head { border-bottom: none; }  /* no dangling underline */
-.asst-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .625rem .875rem; border-bottom: 1px solid #f3f4f6; }
-.asst-title { display: flex; align-items: center; gap: .5rem; font-size: .875rem; font-weight: 600; color: #111827; }
+/* ── Conversational booking assistant — floating launcher + drawer (book.html; shared with the widget) ── */
+.asst-fab-btn {
+  position: fixed; right: 20px; bottom: 20px; z-index: 50;
+  display: inline-flex; align-items: center; gap: .5rem;
+  background: #111827; color: #fff; border: none; border-radius: 999px;
+  padding: .7rem 1.1rem; font: inherit; font-size: .875rem; font-weight: 600;
+  cursor: pointer; box-shadow: 0 6px 24px rgba(16,24,40,.18);
+}
+.asst-fab-btn svg { color: #fff; }
+.asst-fab-btn:hover { background: #1f2937; }
+.asst-fab-btn[hidden] { display: none; }
+
+.asst-panel {
+  position: fixed; right: 20px; bottom: 20px; z-index: 51;
+  width: 380px; max-width: calc(100vw - 32px);
+  height: 540px; max-height: calc(100vh - 40px);
+  display: flex; flex-direction: column;
+  background: #fff; border: 1px solid #e5e7eb; border-radius: 16px;
+  overflow: hidden; box-shadow: 0 12px 40px rgba(16,24,40,.22);
+}
+.asst-panel[hidden] { display: none; }
+.asst-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .75rem 1rem; border-bottom: 1px solid #f3f4f6; flex-shrink: 0; }
+.asst-title { display: flex; align-items: center; gap: .5rem; font-size: .9375rem; font-weight: 600; color: #111827; }
 .asst-title svg { color: #6b7280; }
-.asst-toggle { background: none; border: none; font: inherit; font-size: .8125rem; color: #6b7280; cursor: pointer; }
-.asst-toggle:hover { color: #111827; }
-.assistant.collapsed .asst-body { display: none; }
-.asst-body { padding: .75rem 1rem 1rem; }
-.asst-log { display: flex; flex-direction: column; gap: .5rem; max-height: 320px; overflow-y: auto; padding: .25rem 0 .5rem; }
+.asst-close { background: none; border: none; padding: .25rem; color: #9ca3af; cursor: pointer; line-height: 0; border-radius: 6px; }
+.asst-close:hover { color: #111827; background: #f3f4f6; }
+.asst-log { flex: 1; display: flex; flex-direction: column; gap: .5rem; overflow-y: auto; padding: 1rem; }
 .asst-msg { max-width: 85%; padding: .5rem .75rem; border-radius: 12px; font-size: .875rem; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
 .asst-msg.bot { align-self: flex-start; background: #f3f4f6; color: #111827; border-bottom-left-radius: 4px; }
 .asst-msg.user { align-self: flex-end; background: #111827; color: #fff; border-bottom-right-radius: 4px; }
 .asst-msg.note { align-self: center; background: none; color: #6b7280; font-size: .8125rem; text-align: center; }
 .asst-msg.ok { align-self: flex-start; background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
 .asst-typing { align-self: flex-start; color: #9ca3af; font-size: .8125rem; padding: .25rem; }
-.asst-row { display: flex; gap: .5rem; margin-top: .5rem; }
+.asst-row { display: flex; gap: .5rem; padding: .75rem; border-top: 1px solid #f3f4f6; flex-shrink: 0; }
 .asst-input { flex: 1; min-width: 0; border: 1px solid #e5e7eb; border-radius: 10px; padding: .5rem .75rem; font: inherit; font-size: .875rem; color: #111827; outline: none; }
 .asst-input:focus { border-color: #111827; }
 .asst-send { border: none; background: #111827; color: #fff; border-radius: 10px; padding: .5rem 1rem; font: inherit; font-size: .875rem; font-weight: 600; cursor: pointer; }
 .asst-send:disabled { opacity: .5; cursor: default; }
+
+@media (max-width: 700px) {
+  .asst-panel { right: 8px; left: 8px; bottom: 8px; width: auto; max-width: none; height: 72vh; }
+  .asst-fab-btn { right: 12px; bottom: 12px; }
+}

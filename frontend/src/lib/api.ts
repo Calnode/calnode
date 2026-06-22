@@ -155,6 +155,10 @@ export type LLMSettings = {
 	configured: boolean;
 	/** true when a live client is active (enabled + configured). */
 	active: boolean;
+	/** admin "additional instructions" appended to the base prompt. */
+	extra_instructions: string;
+	/** read-only, code-owned base system prompt (not editable). */
+	base_prompt: string;
 };
 
 export type TeamMember = {

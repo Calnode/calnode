@@ -46,6 +46,18 @@ const (
 	assistantMaxSlots    = 40  // cap slots passed back to the model (token control)
 )
 
+// assistantBaseRules is the static, code-owned core of the assistant's system prompt —
+// the tool-calling contract + style + safety rails. It is NOT admin-editable (editing it
+// could break tool use or the data-boundary guarantees); admins customize via the
+// appended "Additional instructions". Surfaced read-only in Settings → AI.
+const assistantBaseRules = `Style: reply in 1–2 short sentences. Offer at most ~5 times, inline (e.g. "Wed 10:00, 10:30, or 11:00?") — never dump a full list, headings, tables, or emoji. Plain, warm, brief. Never reveal your reasoning or any <think> content.
+
+Booking flow:
+- To find times, ALWAYS call find_available_slots — never invent or calculate availability. Only offer times it returns.
+- Collect the visitor's name and email (and answers to any required intake questions), confirm the time, then call book with an exact slot_start from find_available_slots.
+- After booking, confirm in one short line.
+- If you can't help, suggest the calendar picker on the page.`
+
 type assistantMessage struct {
 	Role    string `json:"role"` // "user" | "assistant"
 	Content string `json:"content"`
@@ -195,18 +207,19 @@ func (h *Handler) assistantSystemPrompt(ctx context.Context, slug, tz string) (s
 	}
 
 	today := time.Now().UTC().Format("2006-01-02")
-	return fmt.Sprintf(`You are a concise scheduling assistant helping a visitor book "%s" (a %d-minute %s meeting).
+	prompt := fmt.Sprintf(`You are a concise scheduling assistant helping a visitor book "%s" (a %d-minute %s meeting).
 Today is %s. The visitor's timezone is %s — show times in that timezone and state it once early on; if they name a different timezone, use theirs.
+Intake questions: %s
 
-Style: reply in 1–2 short sentences. Offer at most ~5 times, inline (e.g. "Wed 10:00, 10:30, or 11:00?") — never dump a full list, headings, tables, or emoji. Plain, warm, brief. Never reveal your reasoning or any <think> content.
+%s`, name, duration, locationLabel(locType, ""), today, tz, questions, assistantBaseRules)
 
-Booking flow:
-- To find times, ALWAYS call find_available_slots — never invent or calculate availability. Only offer times it returns.
-- Collect the visitor's name and email (and answers to any REQUIRED intake questions), confirm the time, then call book with an exact slot_start from find_available_slots.
-- Intake questions: %s
-- After booking, confirm in one short line.
-- If you can't help, suggest the calendar picker on the page.`,
-		name, duration, locationLabel(locType, ""), today, tz, questions), true
+	// Admin "Additional instructions" — appended, never replacing the rules above.
+	var extra string
+	_ = h.db.QueryRowContext(ctx, `SELECT llm_extra_instructions FROM server_settings WHERE id = 1`).Scan(&extra)
+	if strings.TrimSpace(extra) != "" {
+		prompt += "\n\nAdditional instructions from the host (follow these unless they conflict with the rules above):\n" + strings.TrimSpace(extra)
+	}
+	return prompt, true
 }
 
 // assistantTools is the narrow, event-type-scoped tool set exposed to the model.

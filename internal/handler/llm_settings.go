@@ -52,23 +52,27 @@ func (h *Handler) GetLLMSettings(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusForbidden, "admin access required")
 		return
 	}
-	var endpoint, model, keyEnc string
+	var endpoint, model, keyEnc, extra string
 	var enabled int
 	err := h.db.QueryRowContext(r.Context(), `
-		SELECT llm_endpoint, llm_model, llm_api_key_enc, llm_enabled
-		FROM server_settings WHERE id = 1`).Scan(&endpoint, &model, &keyEnc, &enabled)
+		SELECT llm_endpoint, llm_model, llm_api_key_enc, llm_enabled, llm_extra_instructions
+		FROM server_settings WHERE id = 1`).Scan(&endpoint, &model, &keyEnc, &enabled, &extra)
 	if err != nil && err != sql.ErrNoRows {
 		h.logger.ErrorContext(r.Context(), "llm settings: query", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	h.writeJSON(w, http.StatusOK, map[string]any{
-		"enabled":     enabled != 0,
-		"endpoint":    endpoint,
-		"model":       model,
-		"api_key_set": keyEnc != "",
-		"configured":  endpoint != "",
-		"active":      h.getLLM() != nil,
+		"enabled":            enabled != 0,
+		"endpoint":           endpoint,
+		"model":              model,
+		"api_key_set":        keyEnc != "",
+		"configured":         endpoint != "",
+		"active":             h.getLLM() != nil,
+		"extra_instructions": extra,
+		// Read-only: the code-owned base prompt, so admins can see what their instructions
+		// are added to (they can't edit it — it's the tool-calling contract).
+		"base_prompt": assistantBaseRules,
 	})
 }
 
@@ -82,10 +86,11 @@ func (h *Handler) PatchLLMSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 8<<10)
 	var req struct {
-		Enabled  *bool   `json:"enabled"`
-		Endpoint *string `json:"endpoint"`
-		Model    *string `json:"model"`
-		APIKey   *string `json:"api_key"`
+		Enabled           *bool   `json:"enabled"`
+		Endpoint          *string `json:"endpoint"`
+		Model             *string `json:"model"`
+		APIKey            *string `json:"api_key"`
+		ExtraInstructions *string `json:"extra_instructions"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.writeError(w, http.StatusBadRequest, "invalid JSON")
@@ -127,6 +132,17 @@ func (h *Handler) PatchLLMSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		if _, err := h.db.ExecContext(r.Context(),
 			`UPDATE server_settings SET llm_api_key_enc = ?, updated_at = datetime('now') WHERE id = 1`, enc); err != nil {
+			h.llmDBError(w, r, err)
+			return
+		}
+	}
+	if req.ExtraInstructions != nil {
+		v := *req.ExtraInstructions
+		if len(v) > 4000 {
+			v = v[:4000]
+		}
+		if _, err := h.db.ExecContext(r.Context(),
+			`UPDATE server_settings SET llm_extra_instructions = ?, updated_at = datetime('now') WHERE id = 1`, v); err != nil {
 			h.llmDBError(w, r, err)
 			return
 		}

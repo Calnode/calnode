@@ -6,6 +6,7 @@
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
 	import { Switch } from '$lib/components/ui/switch';
+	import { Textarea } from '$lib/components/ui/textarea';
 	import { toast } from 'svelte-sonner';
 	import { saveOnCmdS } from '$lib/save-shortcut';
 
@@ -18,6 +19,7 @@
 	let endpoint = $state('');
 	let model = $state('');
 	let apiKey = $state('');
+	let extraInstructions = $state('');
 
 	onMount(async () => {
 		try {
@@ -25,6 +27,7 @@
 			enabled = settings.enabled;
 			endpoint = settings.endpoint;
 			model = settings.model;
+			extraInstructions = settings.extra_instructions;
 		} catch (e: any) {
 			toast.error(e.message || 'Could not load AI settings');
 		} finally {
@@ -35,10 +38,14 @@
 	async function save() {
 		saving = true;
 		try {
-			const body: Record<string, unknown> = { enabled, endpoint: endpoint.trim(), model: model.trim() };
+			const body: Record<string, unknown> = {
+				enabled, endpoint: endpoint.trim(), model: model.trim(),
+				extra_instructions: extraInstructions
+			};
 			if (apiKey) body.api_key = apiKey;
 			settings = await api.patch<LLMSettings>('/v1/settings/llm', body);
 			enabled = settings.enabled;
+			extraInstructions = settings.extra_instructions;
 			apiKey = '';
 			toast.success(settings.active ? 'Saved — AI is on' : 'Saved');
 		} catch (e: any) {
@@ -129,6 +136,28 @@
 				<Button variant="outline" onclick={testConnection} disabled={testing}>
 					{testing ? 'Testing…' : 'Test connection'}
 				</Button>
+			</div>
+		</div>
+
+		<div class="rounded-lg border bg-card p-6">
+			<h2 class="text-sm font-semibold">Assistant instructions</h2>
+			<p class="mt-0.5 text-xs text-muted-foreground">
+				Extra guidance — tone, business context, do's and don'ts. Appended to the built-in
+				instructions (which handle the booking flow + safety and can't be edited).
+			</p>
+			<div class="mt-3 space-y-1.5">
+				<Label for="ai-extra">Additional instructions</Label>
+				<Textarea id="ai-extra" rows={4} bind:value={extraInstructions}
+					placeholder="e.g. Keep a warm, professional tone. We're a law firm — mention that consultations are confidential." />
+			</div>
+			{#if settings?.base_prompt}
+				<details class="mt-4">
+					<summary class="cursor-pointer text-xs font-medium text-muted-foreground">View built-in base instructions (read-only)</summary>
+					<pre class="mt-2 max-h-64 overflow-auto whitespace-pre-wrap rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">{settings.base_prompt}</pre>
+				</details>
+			{/if}
+			<div class="mt-5">
+				<Button onclick={save} disabled={saving}>{saving ? 'Saving…' : 'Save'}</Button>
 			</div>
 		</div>
 

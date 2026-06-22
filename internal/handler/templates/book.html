@@ -87,23 +87,27 @@ body {
 {{end}}
 
 {{if .AssistantEnabled}}
-<div class="assistant collapsed" id="assistant">
+<button type="button" class="asst-fab-btn" id="asst-open" aria-expanded="false" aria-controls="asst-panel">
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.8L18.7 9.7l-4.8 1.9L12 16.4l-1.9-4.8L5.3 9.7l4.8-1.9L12 3z"/></svg>
+  Book by chat
+</button>
+<div class="asst-panel" id="asst-panel" role="dialog" aria-label="Book by chat" hidden>
   <div class="asst-head">
     <span class="asst-title">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.8L18.7 9.7l-4.8 1.9L12 16.4l-1.9-4.8L5.3 9.7l4.8-1.9L12 3z"/></svg>
       Book by chat
     </span>
-    <button type="button" class="asst-toggle" id="asst-toggle" aria-controls="asst-body">Show</button>
+    <button type="button" class="asst-close" id="asst-close" aria-label="Close">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
   </div>
-  <div class="asst-body" id="asst-body">
-    <div class="asst-log" id="asst-log" aria-live="polite">
-      <div class="asst-msg bot">Hi! Tell me roughly when you'd like to meet — e.g. "Tuesday afternoon" or "next week" — and I'll find a time. You can always use the calendar below instead.</div>
-    </div>
-    <form class="asst-row" id="asst-form" autocomplete="off">
-      <input class="asst-input" id="asst-input" type="text" placeholder="Type when you're free…" aria-label="Message the booking assistant" maxlength="500">
-      <button class="asst-send" id="asst-send" type="submit">Send</button>
-    </form>
+  <div class="asst-log" id="asst-log" aria-live="polite">
+    <div class="asst-msg bot">Hi! Tell me roughly when you'd like to meet — e.g. "Tuesday afternoon" or "next week" — and I'll find a time. You can always use the calendar instead.</div>
   </div>
+  <form class="asst-row" id="asst-form" autocomplete="off">
+    <input class="asst-input" id="asst-input" type="text" placeholder="Type when you're free…" aria-label="Message the booking assistant" maxlength="500">
+    <button class="asst-send" id="asst-send" type="submit">Send</button>
+  </form>
 </div>
 {{end}}
 
@@ -683,11 +687,12 @@ body {
   var SLUG = "{{.Slug}}";
   var form = document.getElementById('asst-form');
   if (!form) return;
-  var input  = document.getElementById('asst-input');
-  var send   = document.getElementById('asst-send');
-  var log    = document.getElementById('asst-log');
-  var panel  = document.getElementById('assistant');
-  var toggle = document.getElementById('asst-toggle');
+  var input   = document.getElementById('asst-input');
+  var send    = document.getElementById('asst-send');
+  var log     = document.getElementById('asst-log');
+  var panel   = document.getElementById('asst-panel');
+  var openBtn = document.getElementById('asst-open');
+  var closeBtn = document.getElementById('asst-close');
   var messages = [];   // [{role:'user'|'assistant', content}] — conversation state
   var busy = false;
 
@@ -704,10 +709,18 @@ body {
     return d;
   }
 
-  toggle.addEventListener('click', function () {
-    var hidden = panel.classList.toggle('collapsed');
-    toggle.textContent = hidden ? 'Show' : 'Hide';
-  });
+  function openPanel() {
+    panel.hidden = false; openBtn.hidden = true;
+    openBtn.setAttribute('aria-expanded', 'true');
+    input.focus();
+  }
+  function closePanel() {
+    panel.hidden = true; openBtn.hidden = false;
+    openBtn.setAttribute('aria-expanded', 'false');
+  }
+  openBtn.addEventListener('click', openPanel);
+  closeBtn.addEventListener('click', closePanel);
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !panel.hidden) closePanel(); });
 
   form.addEventListener('submit', async function (e) {
     e.preventDefault();

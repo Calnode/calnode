@@ -17,8 +17,8 @@ func TestLLMSettings_configureEnableAndTest(t *testing.T) {
 
 	h, apiKey, _ := setupWorkspace(t)
 
-	// Configure + enable.
-	body := `{"enabled":true,"endpoint":"` + mock.URL + `","model":"test-model","api_key":"sk-secret"}`
+	// Configure + enable, with admin extra instructions.
+	body := `{"enabled":true,"endpoint":"` + mock.URL + `","model":"test-model","api_key":"sk-secret","extra_instructions":"Always be formal."}`
 	rec := httptest.NewRecorder()
 	h.RequireAuth(h.PatchLLMSettings)(rec, authReq(http.MethodPatch, "/v1/settings/llm", body, apiKey))
 	if rec.Code != http.StatusOK {
@@ -27,6 +27,12 @@ func TestLLMSettings_configureEnableAndTest(t *testing.T) {
 	s := rec.Body.String()
 	if !strings.Contains(s, `"active":true`) || !strings.Contains(s, `"api_key_set":true`) || !strings.Contains(s, `"enabled":true`) {
 		t.Errorf("after patch expected active+api_key_set+enabled: %s", s)
+	}
+	if !strings.Contains(s, "Always be formal.") {
+		t.Errorf("extra_instructions not echoed back: %s", s)
+	}
+	if !strings.Contains(s, "Booking flow") { // the read-only base_prompt
+		t.Errorf("base_prompt not returned: %s", s)
 	}
 	// The secret must never be echoed back.
 	if strings.Contains(s, "sk-secret") {
