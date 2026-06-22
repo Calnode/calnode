@@ -16,6 +16,7 @@ import (
 	"github.com/calnode/calnode/internal/mailer"
 	"github.com/calnode/calnode/internal/secret"
 
+	"github.com/modelcontextprotocol/go-sdk/auth"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/calnode/calnode/internal/webhook"
 	"github.com/calnode/calnode/internal/worker"
@@ -171,10 +172,22 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	mux.HandleFunc("POST /v1/auth/logout", h.Logout)
 
 	// MCP server (Model Context Protocol) — Streamable HTTP transport for remote
-	// agents, API-key authenticated. One server instance reused across requests.
+	// agents. One server instance reused across requests. Guarded by a bearer token:
+	// an OAuth access token (the "Connect" flow) or a cno_ API key, both resolved by
+	// verifyMCPBearer. A 401 advertises the OAuth discovery doc so clients can connect.
 	mcpSrv := h.MCPServer()
 	mcpHTTP := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return mcpSrv }, nil)
-	mux.Handle("/mcp", h.RequireAuth(mcpHTTP.ServeHTTP))
+	mcpAuth := auth.RequireBearerToken(h.VerifyMCPBearer, &auth.RequireBearerTokenOptions{
+		ResourceMetadataURL: cfg.BaseURL + "/.well-known/oauth-protected-resource",
+	})
+	mux.Handle("/mcp", mcpAuth(mcpHTTP))
+
+	// OAuth 2.1 authorization server for MCP (discovery + dynamic client registration;
+	// the interactive /oauth/authorize + /oauth/token live with the consent flow). All
+	// public — the security gate is the user login + consent at /oauth/authorize.
+	mux.HandleFunc("GET /.well-known/oauth-protected-resource", h.OAuthProtectedResourceMetadata)
+	mux.HandleFunc("GET /.well-known/oauth-authorization-server", h.OAuthAuthServerMetadata)
+	mux.HandleFunc("POST /oauth/register", h.RegisterOAuthClient)
 
 	// Password management.
 	mux.HandleFunc("POST /v1/users/me/password", h.RequireAuth(h.ChangePassword))
