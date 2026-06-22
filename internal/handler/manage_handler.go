@@ -45,6 +45,7 @@ type managePageData struct {
 	LogoURL      string
 	LogoHeight   int
 	LogoOpacity  string // CSS opacity value, e.g. "1" or "0.6"
+	CSSVersion   string // cache-busts the /booking.css link (content hash)
 }
 
 // ManagePage renders the attendee manage page for a booking (reschedule / cancel).
@@ -126,6 +127,7 @@ func (h *Handler) renderManage(w http.ResponseWriter, r *http.Request, data mana
 	data.LogoURL = brand.LogoURL
 	data.LogoHeight = pageLogoHeight(brand.LogoHeight)
 	data.LogoOpacity = opacityCSS(brand.LogoOpacity)
+	data.CSSVersion = bookingCSSVersion
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Content-Security-Policy", publicCSP(track))

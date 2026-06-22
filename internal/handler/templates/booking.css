@@ -309,17 +309,17 @@
 
 /* Subtle inline entry point under the event meta — toggles the same drawer. */
 .asst-link {
-  display: inline-flex; align-items: center; gap: .375rem; margin-top: 1.5rem;
-  background: none; border: 1px solid #e5e7eb; border-radius: 999px; padding: .4rem .8rem;
-  font: inherit; font-size: .8125rem; font-weight: 500; color: #4b5563; cursor: pointer;
+  display: inline-flex; align-items: center; gap: .375rem; margin-top: 16px;
+  background: #f5f3ff; border: 1px solid #ddd6fe; border-radius: 999px; padding: .4rem .8rem;
+  font: inherit; font-size: .8125rem; font-weight: 500; color: #6d28d9; cursor: pointer;
   transition: border-color .12s, color .12s, background .12s;
 }
-.asst-link:hover { border-color: #d1d5db; color: #111827; background: #f9fafb; }
-.asst-link svg { color: #9ca3af; }
-.asst-link:hover svg { color: #6b7280; }
+.asst-link:hover { border-color: #c4b5fd; color: #5b21b6; background: #ede9fe; }
+.asst-link svg { color: #8b5cf6; }
+.asst-link:hover svg { color: #7c3aed; }
 .asst-link .asst-link-arrow { margin-left: .0625rem; }
 .asst-link:focus { outline: none; }
-.asst-link:focus-visible { outline: 2px solid rgba(17,24,39,.25); outline-offset: 2px; }
+.asst-link:focus-visible { outline: 2px solid rgba(124,58,237,.35); outline-offset: 2px; }
 
 @media (max-width: 700px) {
   .asst-panel { right: 8px; left: 8px; bottom: 8px; width: auto; max-width: none; height: 72vh; }

@@ -45,6 +45,8 @@ type bookPageData struct {
 	Questions     []bookQuestion
 	// AssistantEnabled shows the conversational-booking chat panel when the LLM layer is on.
 	AssistantEnabled bool
+	// CSSVersion cache-busts the /booking.css link (content hash).
+	CSSVersion string
 	// Tracking
 	HeadHTML         template.HTML // operator-configured <head> code injection (trusted)
 	DataLayerEnabled bool
@@ -351,6 +353,7 @@ func (h *Handler) BookPage(w http.ResponseWriter, r *http.Request) {
 		MaxFutureDays:    maxDays,
 		Questions:        questions,
 		AssistantEnabled: h.getLLM() != nil,
+		CSSVersion:       bookingCSSVersion,
 
 		HeadHTML:         template.HTML(track.HeadHTML),
 		DataLayerEnabled: track.DataLayerEnabled,
