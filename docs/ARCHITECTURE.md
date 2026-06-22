@@ -644,6 +644,18 @@ A Model Context Protocol server is compiled into the binary on the official Go S
     lists the grants a user authorized and revokes one (deletes the token → immediate
     loss of `/mcp` access). Per-user scoped, like API keys.
 
+**Roles & permissions — design decision (2026-06-22).** Roles are **fixed**
+(owner / admin / member) with hard-coded capabilities, enforced identically across the
+REST API, the admin UI, and the MCP tools. Configurable RBAC (a per-role permission
+matrix the owner edits) was **deliberately deferred** — it's the industry norm to ship
+fixed roles, the PRD scopes "advanced RBAC" to a later paid add-on, and a matrix would
+multiply the enforcement/test surface across three call sites (a misconfiguration =
+privilege escalation). The role-scoping is forward-compatible: tools compute
+"can this user do X" from the bound caller's role (`mcpCallerScope`), so a future config
+layer would change only *how* that's computed, not the call sites. If a real need
+appears, prefer a few **targeted toggles** (e.g. "members may connect agents", "members
+see team-wide bookings") over a general matrix.
+
 ---
 
 ## 20. Changelog
@@ -651,6 +663,17 @@ A Model Context Protocol server is compiled into the binary on the official Go S
 This doc tracks the code; when you change behaviour in an area above, update the
 matching section in the same PR. Notable rounds:
 
+- **2026-06-22 — Native MCP server + OAuth "Connect".** A Model Context Protocol
+  server compiled into the binary (official Go SDK) with 7 tools over **stdio**
+  (`calnode mcp`) and **Streamable HTTP** (`/mcp`); tools reuse the REST services via
+  extracted shared cores (no parallel code path). Calnode is its own **OAuth 2.1 AS**
+  (discovery + DCR + PKCE auth-code/refresh + consent reusing the existing SSO login;
+  migration 00033) so agents connect by URL + click Connect; a `cno_` API key still
+  works. Tools are **role-scoped** (members → own bookings only). **Connected apps**
+  admin page (`/connections`) to revoke grants. Fixed roles kept; configurable RBAC
+  deferred (see the design note above). New §19. Fixes this round: RFC 9207 `iss` on
+  the auth response, and consent-page `form-action` CSP must allow the client redirect
+  origin (else the post-consent redirect to the client is blocked).
 - **2026-06-21 — Microsoft 365 + multi-provider calendar.** A **calendar provider
   abstraction** (`internal/calendar` `Provider` + `Service`), the **Microsoft 365 /
   Outlook** provider (Graph free/busy, create/reschedule/cancel, **Teams** links),

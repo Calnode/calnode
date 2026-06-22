@@ -96,6 +96,18 @@ Agent: get_available_slots("intro-call", "2026-06-16", "2026-06-20", "Pacific/Au
        → presents options → create_booking(…) → returns confirmation + meeting link
 ```
 
+**Connecting Claude (remote / HTTP).** In Claude (claude.ai or Desktop) →
+**Settings → Connectors → Add custom connector** → enter `https://<your-instance>/mcp`
+→ **Connect** → sign in → **Allow**. Custom connectors need a paid Claude plan; the
+server must be on HTTPS. *Local stdio alternative (any plan):* point an MCP client at
+the `calnode mcp` subcommand via its config file — no OAuth, runs against the local DB.
+
+**Permissions.** MCP tools are **role-scoped**, mirroring the rest of the app: an
+**owner/admin** acts across the whole workspace, a **member** sees and manages only
+bookings they host. (The stdio subcommand is the local operator → full access.) Booking
+*creation* and availability are the public booking surface, open to all. Roles are fixed
+(owner / admin / member); configurable RBAC is intentionally out of the lean core.
+
 ---
 
 ## Quick start
