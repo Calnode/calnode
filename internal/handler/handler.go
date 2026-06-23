@@ -13,6 +13,7 @@ import (
 	"github.com/calnode/calnode/internal/calendar"
 	"github.com/calnode/calnode/internal/llm"
 	"github.com/calnode/calnode/internal/mailer"
+	"github.com/calnode/calnode/internal/stripe"
 	"github.com/calnode/calnode/internal/webhook"
 	"github.com/calnode/calnode/internal/zoom"
 )
@@ -39,6 +40,23 @@ type Handler struct {
 	llm           *llm.Client // nil when the optional LLM layer is off/unconfigured
 	zoomMu        sync.RWMutex
 	zoom          *zoom.Client // nil when no Zoom app is configured
+	stripeMu      sync.RWMutex
+	stripe        *stripe.Client // nil when payments are unconfigured
+}
+
+// SetStripe swaps the active Stripe client (nil disables paid bookings). Hot-reloadable
+// from the Payments settings page.
+func (h *Handler) SetStripe(c *stripe.Client) {
+	h.stripeMu.Lock()
+	h.stripe = c
+	h.stripeMu.Unlock()
+}
+
+// getStripe returns the active Stripe client, or nil when payments are unconfigured.
+func (h *Handler) getStripe() *stripe.Client {
+	h.stripeMu.RLock()
+	defer h.stripeMu.RUnlock()
+	return h.stripe
 }
 
 // SetZoom swaps the active Zoom client (nil disables Zoom auto-minting). Hot-reloadable

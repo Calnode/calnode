@@ -17,6 +17,7 @@ import (
 	"github.com/calnode/calnode/internal/mailer"
 	"github.com/calnode/calnode/internal/secret"
 
+	"github.com/calnode/calnode/internal/stripe"
 	"github.com/calnode/calnode/internal/webhook"
 	"github.com/calnode/calnode/internal/worker"
 	"github.com/calnode/calnode/internal/zoom"
@@ -170,6 +171,20 @@ func BuildHandler(ctx context.Context, cfg *config.Config, db *sql.DB, logger *s
 		logger.Info("Zoom not configured — add credentials in Settings → Zoom")
 	}
 
+	// Optional Stripe payments — paid bookings. Off unless configured in Settings → Payments.
+	if dbStripe, dbStripeErr := handler.LoadStripeSettingsFromDB(db, encKey); dbStripeErr != nil {
+		logger.Warn("stripe settings: could not load from database", "error", dbStripeErr)
+	} else if dbStripe != nil {
+		if sc, err := stripe.New(dbStripe.SecretKey, dbStripe.PublishableKey, dbStripe.WebhookSecret); err != nil {
+			logger.Error("stripe: init failed", "error", err)
+		} else {
+			h.SetStripe(sc)
+			logger.Info("Stripe payments configured", "webhook_secret_set", dbStripe.WebhookSecret != "")
+		}
+	} else {
+		logger.Info("Stripe not configured — add credentials in Settings → Payments")
+	}
+
 	return h, drain
 }
 
@@ -279,6 +294,8 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	mux.HandleFunc("PATCH /v1/settings/google", settingsRL(h.RequireAuth(h.PatchGoogleSettings)))
 	mux.HandleFunc("GET /v1/settings/zoom", h.RequireAuth(h.GetZoomSettings))
 	mux.HandleFunc("PATCH /v1/settings/zoom", settingsRL(h.RequireAuth(h.PatchZoomSettings)))
+	mux.HandleFunc("GET /v1/settings/stripe", h.RequireAuth(h.GetStripeSettings))
+	mux.HandleFunc("PATCH /v1/settings/stripe", settingsRL(h.RequireAuth(h.PatchStripeSettings)))
 	mux.HandleFunc("GET /v1/settings/tracking", h.RequireAuth(h.GetTrackingSettings))
 	mux.HandleFunc("PATCH /v1/settings/tracking", settingsRL(h.RequireAuth(h.PatchTrackingSettings)))
 	mux.HandleFunc("GET /v1/settings/llm", h.RequireAuth(h.GetLLMSettings))
