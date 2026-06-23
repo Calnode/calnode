@@ -41,6 +41,7 @@ type bookPageData struct {
 	Hosts         []hostDisplay // faces for the info panel (1 = single, >1 = group stack)
 	HostsLabel    string        // "Alex, Sam & 2 others" for the group case
 	LocationLabel string
+	PriceLabel    string // formatted price (e.g. "$50.00"); empty for free events
 	MaxFutureDays int
 	Questions     []bookQuestion
 	// AssistantEnabled shows the conversational-booking chat panel when the LLM layer is on.
@@ -171,6 +172,31 @@ func renderMarkdown(src string) template.HTML {
 	return template.HTML(buf.String())
 }
 
+// formatPrice renders an amount in minor units for display, using a symbol for common
+// currencies and falling back to "AMOUNT CODE". Returns "" for free (cents <= 0).
+func formatPrice(cents int, currency string) string {
+	if cents <= 0 {
+		return ""
+	}
+	amount := float64(cents) / 100
+	switch strings.ToLower(currency) {
+	case "usd":
+		return fmt.Sprintf("$%.2f", amount)
+	case "eur":
+		return fmt.Sprintf("€%.2f", amount)
+	case "gbp":
+		return fmt.Sprintf("£%.2f", amount)
+	case "aud":
+		return fmt.Sprintf("A$%.2f", amount)
+	case "cad":
+		return fmt.Sprintf("C$%.2f", amount)
+	case "nzd":
+		return fmt.Sprintf("NZ$%.2f", amount)
+	default:
+		return fmt.Sprintf("%.2f %s", amount, strings.ToUpper(currency))
+	}
+}
+
 func locationLabel(locType, locValue string) string {
 	switch locType {
 	case "zoom":
@@ -277,15 +303,18 @@ func (h *Handler) BookPage(w http.ResponseWriter, r *http.Request) {
 		hostName    string
 		avatarURL   string
 		routingMode string
+		priceCents  int
+		currency    string
 	)
 	err := h.db.QueryRowContext(r.Context(), `
 		SELECT et.id, et.name, COALESCE(et.description, ''),
 		       et.duration_minutes, et.location_type, COALESCE(et.location_value, ''),
-		       et.max_future_days, et.routing_mode, u.name, COALESCE(u.avatar_url, '')
+		       et.max_future_days, et.routing_mode, u.name, COALESCE(u.avatar_url, ''),
+		       et.price_cents, et.currency
 		FROM event_types et
 		JOIN users u ON u.id = et.user_id
 		WHERE et.slug = ? AND et.is_active = 1 AND et.is_public = 1`,
-		slug).Scan(&etID, &name, &description, &durMins, &locType, &locValue, &maxDays, &routingMode, &hostName, &avatarURL)
+		slug).Scan(&etID, &name, &description, &durMins, &locType, &locValue, &maxDays, &routingMode, &hostName, &avatarURL, &priceCents, &currency)
 
 	if errors.Is(err, sql.ErrNoRows) {
 		http.Error(w, "Page not found", http.StatusNotFound)
@@ -354,6 +383,7 @@ func (h *Handler) BookPage(w http.ResponseWriter, r *http.Request) {
 		Hosts:         hosts,
 		HostsLabel:    hostsLabel(hosts),
 		LocationLabel: locationLabel(locType, locValue),
+		PriceLabel:    formatPrice(priceCents, currency),
 		MaxFutureDays:    maxDays,
 		Questions:        questions,
 		AssistantEnabled: h.getLLM() != nil,

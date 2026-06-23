@@ -137,6 +137,12 @@ body {
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
         {{.LocationLabel}}
       </li>
+      {{if .PriceLabel}}
+      <li>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+        {{.PriceLabel}}
+      </li>
+      {{end}}
     </ul>
     {{if .AssistantEnabled}}
     <button type="button" class="asst-link" id="asst-open-inline">
@@ -324,6 +330,16 @@ body {
     ['slots-view', 'form-view', 'confirm-view'].forEach(v =>
       $(v).classList.toggle('hidden', v !== id)
     );
+  }
+
+  // Returning from Stripe Checkout (success_url): the payment was captured and the booking
+  // is confirmed by webhook. Show a payment-received confirmation instead of the picker.
+  if (new URLSearchParams(window.location.search).get('paid') === '1') {
+    var _ch3 = document.querySelector('#confirm-view h3');
+    var _csub = document.querySelector('#confirm-view .sub');
+    if (_ch3) _ch3.textContent = 'Payment received';
+    if (_csub) _csub.textContent = 'Your booking is confirmed — a confirmation email is on its way.';
+    showView('confirm-view');
   }
 
   // ── Mobile step-flow ────────────────────────────────────────────────────────
@@ -595,6 +611,9 @@ body {
       // matters for round-robin 'even', and includes any optional Group hosts who
       // joined). Falls back to the slot's best-effort face if the body is unusable.
       const booked = await r.json().catch(() => null);
+      // Paid event types: the server holds the slot and returns a Stripe Checkout URL —
+      // redirect there to pay. The booking is confirmed by webhook once payment completes.
+      if (booked && booked.checkout_url) { window.location.href = booked.checkout_url; return; }
       if (booked && Array.isArray(booked.hosts) && booked.hosts.length) {
         booked.hosts.forEach(h => { hostMeta[h.id] = { name: h.name, avatar_url: h.avatar_url || '' }; });
         renderHosts(booked.hosts.map(h => h.id));

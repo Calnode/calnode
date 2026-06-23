@@ -413,6 +413,9 @@
           return r.json().then(function (data) { return { ok: r.ok, data: data }; });
         }).then(function (res) {
           if (!res.ok) throw new Error(res.data && res.data.error ? res.data.error : 'Could not complete booking.');
+          // Paid event types: the server returns a Stripe Checkout URL. Send the visitor
+          // there (top window, so it isn't trapped in the host page's frame).
+          if (res.data && res.data.checkout_url) { (window.top || window).location.href = res.data.checkout_url; return; }
           self.state.view = 'confirm'; self.render();
           self.dispatchEvent(new CustomEvent('calnode:booked', { bubbles: true, composed: true, detail: res.data }));
         }).catch(function (err) {

@@ -34,6 +34,8 @@ export type EventType = {
 	min_notice_minutes: number;
 	max_future_days: number;
 	max_active_bookings: number;
+	price_cents: number; // 0 = free
+	currency: string;    // ISO 4217, lowercase (e.g. "usd")
 	created_at: string;
 	subj_confirmation?: string;
 	subj_cancellation?: string;
@@ -158,6 +160,15 @@ export type ZoomSettings = {
 export type ZoomStatus = {
 	configured: boolean; // a Zoom app is set up for the instance
 	connected: boolean;  // the current host has connected their Zoom account
+};
+
+export type StripeSettings = {
+	publishable_key: string;
+	secret_key_set: boolean;
+	webhook_secret_set: boolean;
+	configured: boolean; // can take a payment AND verify the confirming webhook
+	/** The endpoint to register in the Stripe dashboard. */
+	webhook_url: string;
 };
 
 export type LLMSettings = {

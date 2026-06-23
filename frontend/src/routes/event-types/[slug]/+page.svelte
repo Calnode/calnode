@@ -64,7 +64,11 @@
 		buffer_before_minutes: 0, buffer_after_minutes: 0,
 		min_notice_minutes: 0, max_future_days: 60,
 		max_active_bookings: 1,
+		price_cents: 0, currency: 'usd',
 	});
+
+	// Price is edited in major units (e.g. dollars); stored as integer cents.
+	let priceMajor = $state('0');
 
 	// True when the connected calendar will auto-generate the chosen platform's link.
 	const meetAutoGen = $derived(
@@ -274,7 +278,10 @@
 				min_notice_minutes: et.min_notice_minutes,
 				max_future_days: et.max_future_days,
 				max_active_bookings: et.max_active_bookings,
+				price_cents: et.price_cents ?? 0,
+				currency: et.currency ?? 'usd',
 			};
+			priceMajor = ((et.price_cents ?? 0) / 100).toFixed(2);
 			reminders = et.reminders ?? [];
 			if (et.routing_mode === 'round_robin') { hostScope = 'people'; staffing = 'rotate'; }
 			else if (et.routing_mode === 'collective') { hostScope = 'people'; staffing = 'together'; }
@@ -321,6 +328,8 @@
 				min_notice_minutes: Number(form.min_notice_minutes),
 				max_future_days: Number(form.max_future_days),
 				max_active_bookings: Number(form.max_active_bookings),
+				price_cents: Math.max(0, Math.round(Number(priceMajor) * 100)) || 0,
+				currency: form.currency.trim().toLowerCase() || 'usd',
 				routing_mode: routingMode,
 				rr_strategy: rrStrategy,
 				reminders,
@@ -684,6 +693,25 @@
 					{/if}
 				</div>
 			</div>
+		</div>
+
+		<!-- Price -->
+		<div class="mt-6 border-t pt-5">
+			<p class="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Price</p>
+			<div class="grid grid-cols-2 gap-4">
+				<div class="space-y-1.5">
+					<Label for="et-price">Amount</Label>
+					<Input id="et-price" type="number" min="0" step="0.01" bind:value={priceMajor} placeholder="0.00" />
+				</div>
+				<div class="space-y-1.5">
+					<Label for="et-currency">Currency</Label>
+					<Input id="et-currency" type="text" maxlength={3} bind:value={form.currency} placeholder="usd" />
+				</div>
+			</div>
+			<p class="mt-2 text-xs text-muted-foreground">
+				Leave at 0 for a free event. A price sends bookers to Stripe Checkout before the slot is
+				confirmed — requires <a href="/admin/settings/payments" class="underline">Stripe</a> to be connected.
+			</p>
 		</div>
 
 		<!-- Scheduling -->
