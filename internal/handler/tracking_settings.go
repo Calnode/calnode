@@ -20,6 +20,8 @@ var dataLayerFields = []string{
 	"booking_id", "event_type_slug", "event_type_name",
 	"start_at", "end_at", "status", "location",
 	"host_name", "attendee_name", "attendee_email", "attendee_timezone", "answers",
+	// Payment / revenue (for GA4-style conversion tracking on paid bookings).
+	"value", "currency", "is_paid", "transaction_id",
 }
 
 var validDataLayerField = func() map[string]bool {

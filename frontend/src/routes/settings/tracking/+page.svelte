@@ -23,7 +23,8 @@
 		booking_id: 'Booking reference', event_type_slug: 'Event type slug', event_type_name: 'Event type name',
 		start_at: 'Start time', end_at: 'End time', status: 'Status', location: 'Location',
 		host_name: 'Host name', attendee_name: 'Attendee name', attendee_email: 'Attendee email',
-		attendee_timezone: 'Attendee timezone', answers: 'Intake answers'
+		attendee_timezone: 'Attendee timezone', answers: 'Intake answers',
+		value: 'Revenue / amount', currency: 'Currency', is_paid: 'Paid flag', transaction_id: 'Transaction ID'
 	};
 	const piiFields = new Set(['attendee_name', 'attendee_email', 'attendee_timezone', 'answers']);
 
