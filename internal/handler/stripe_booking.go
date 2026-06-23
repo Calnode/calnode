@@ -71,7 +71,7 @@ func (h *Handler) StripeWebhook(w http.ResponseWriter, r *http.Request) {
 		}
 		if sess.PaymentStatus == "paid" {
 			if id := sess.Metadata["booking_id"]; id != "" {
-				h.confirmPaidBooking(context.Background(), id, sess.PaymentIntent)
+				h.confirmPaidBooking(context.Background(), id, sess.PaymentIntent, int(sess.AmountTotal), sess.Currency)
 			}
 		}
 	case "checkout.session.expired":
@@ -85,16 +85,18 @@ func (h *Handler) StripeWebhook(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-// confirmPaidBooking flips a held booking to paid and fires the deferred confirmation
-// side-effects. Idempotent: the conditional UPDATE (payment_status='pending') ensures only the
-// first delivery of a (possibly retried) webhook dispatches.
-func (h *Handler) confirmPaidBooking(ctx context.Context, bookingID, paymentIntentID string) {
+// confirmPaidBooking flips a held booking to paid, records the charged amount, and fires the
+// deferred confirmation side-effects. Idempotent: the conditional UPDATE (payment_status=
+// 'pending') ensures only the first delivery of a (possibly retried) webhook dispatches.
+func (h *Handler) confirmPaidBooking(ctx context.Context, bookingID, paymentIntentID string, amountCents int, currency string) {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 
 	res, err := h.db.ExecContext(ctx,
-		`UPDATE bookings SET payment_status = 'paid', stripe_payment_intent_id = ?
-		 WHERE id = ? AND payment_status = 'pending'`, paymentIntentID, bookingID)
+		`UPDATE bookings SET payment_status = 'paid', stripe_payment_intent_id = ?,
+		     amount_paid_cents = ?, amount_paid_currency = ?
+		 WHERE id = ? AND payment_status = 'pending'`,
+		paymentIntentID, amountCents, currency, bookingID)
 	if err != nil {
 		h.logger.ErrorContext(ctx, "stripe: mark booking paid", "error", err, "booking_id", bookingID)
 		return
@@ -120,8 +122,10 @@ func (h *Handler) confirmPaidBooking(ctx context.Context, bookingID, paymentInte
 		h.logger.ErrorContext(ctx, "stripe: load confirmation input", "error", err, "booking_id", bookingID)
 		return
 	}
-	// Run the same side-effects a free booking gets (calendar, emails, Zoom/Meet, webhooks).
-	h.dispatchBookingConfirmation(b, in)
+	// Run the same side-effects a free booking gets (calendar, emails, Zoom/Meet, webhooks) in
+	// the background, so the webhook is acknowledged immediately (well under Stripe's timeout).
+	// dispatchBookingConfirmation manages its own context, so fire-and-forget is safe.
+	go h.dispatchBookingConfirmation(b, in)
 }
 
 // releaseUnpaidHold cancels a still-pending booking whose Checkout session expired, freeing

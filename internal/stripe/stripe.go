@@ -73,10 +73,12 @@ type CheckoutParams struct {
 
 // CheckoutSession is the subset of a Stripe Checkout Session we use.
 type CheckoutSession struct {
-	ID            string `json:"id"`
-	URL           string `json:"url"`            // hosted Checkout page to redirect the booker to
-	PaymentStatus string `json:"payment_status"` // "paid" | "unpaid" | "no_payment_required"
-	PaymentIntent string `json:"payment_intent"` // set once paid (used for refunds)
+	ID            string            `json:"id"`
+	URL           string            `json:"url"`            // hosted Checkout page to redirect the booker to
+	PaymentStatus string            `json:"payment_status"` // "paid" | "unpaid" | "no_payment_required"
+	PaymentIntent string            `json:"payment_intent"` // set once paid (used for refunds)
+	AmountTotal   int64             `json:"amount_total"`   // charged amount in minor units
+	Currency      string            `json:"currency"`       // charged currency (lowercase)
 	Metadata      map[string]string `json:"metadata"`
 }
 

@@ -145,6 +145,14 @@
 
 	function fmt(iso: string) { return fmtDateTime(iso, $prefs); }
 	function fmtSlotTime(iso: string) { return fmtTime(iso, $prefs); }
+	function fmtMoney(cents?: number, cur?: string) {
+		if (!cents) return '';
+		const amt = (cents / 100).toFixed(2);
+		const c = (cur || 'usd').toUpperCase();
+		const sym: Record<string, string> = { USD: '$', EUR: '€', GBP: '£', AUD: 'A$', CAD: 'C$', NZD: 'NZ$' };
+		return sym[c] ? sym[c] + amt : amt + ' ' + c;
+	}
+	const payLabel: Record<string, string> = { paid: 'Paid', refunded: 'Refunded', pending: 'Pending payment' };
 
 	function todayISO() {
 		return new Date().toISOString().slice(0, 10);
@@ -274,6 +282,31 @@
 						<tr>
 							<td colspan={scope === 'all' ? 6 : 5} class="p-0">
 								<div class="border-t bg-muted/20 px-4 py-3">
+									<p class="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Details</p>
+									<dl class="mb-3 space-y-1.5 text-sm">
+										<div class="flex gap-4">
+											<dt class="w-48 shrink-0 font-medium text-foreground">Booked on</dt>
+											<dd class="text-muted-foreground">{fmt(b.created_at)}</dd>
+										</div>
+										{#if b.payment_status}
+											<div class="flex gap-4">
+												<dt class="w-48 shrink-0 font-medium text-foreground">Payment</dt>
+												<dd class="text-muted-foreground">
+													{payLabel[b.payment_status] ?? b.payment_status}{#if b.amount_paid_cents} · {fmtMoney(b.amount_paid_cents, b.amount_paid_currency)}{/if}
+												</dd>
+											</div>
+										{/if}
+										{#if b.location_value}
+											<div class="flex gap-4">
+												<dt class="w-48 shrink-0 font-medium text-foreground">Location</dt>
+												<dd class="break-all text-muted-foreground">
+													{#if /^https?:/.test(b.location_value)}
+														<a href={b.location_value} target="_blank" rel="noopener noreferrer" class="text-primary underline">{b.location_value}</a>
+													{:else}{b.location_value}{/if}
+												</dd>
+											</div>
+										{/if}
+									</dl>
 									<p class="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Intake responses</p>
 									{#if answersLoading[b.id]}
 										<p class="text-sm text-muted-foreground">Loading…</p>

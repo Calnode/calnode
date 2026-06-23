@@ -332,6 +332,9 @@ type bookingJSON struct {
 	LocationValue      string         `json:"location_value,omitempty"`
 	CreatedAt          string         `json:"created_at"`
 	UpdatedAt          string         `json:"updated_at"`
+	PaymentStatus      string         `json:"payment_status,omitempty"`       // omitted for free bookings
+	AmountPaidCents    int            `json:"amount_paid_cents,omitempty"`
+	AmountPaidCurrency string         `json:"amount_paid_currency,omitempty"`
 	Attendees          []attendeeJSON `json:"attendees,omitempty"`
 	Hosts              []hostBrief    `json:"hosts,omitempty"` // assigned host(s) for display; set on the public create response
 }
@@ -947,9 +950,10 @@ func (h *Handler) ListBookings(w http.ResponseWriter, r *http.Request) {
 	ph := strings.Repeat("?,", len(ids))
 	ph = ph[:len(ph)-1]
 
-	// Fetch event type slugs via a single JOIN.
+	// Fetch event type slugs + payment info via a single JOIN.
 	etRows, err := h.db.QueryContext(r.Context(),
-		`SELECT b.id, COALESCE(et.slug, '') FROM bookings b
+		`SELECT b.id, COALESCE(et.slug, ''), b.payment_status, b.amount_paid_cents, b.amount_paid_currency
+		 FROM bookings b
 		 LEFT JOIN event_types et ON et.id = b.event_type_id
 		 WHERE b.id IN (`+ph+`)`, ids...)
 	if err != nil {
@@ -959,12 +963,18 @@ func (h *Handler) ListBookings(w http.ResponseWriter, r *http.Request) {
 	}
 	defer etRows.Close()
 	for etRows.Next() {
-		var bid, slug string
-		if err := etRows.Scan(&bid, &slug); err != nil {
+		var bid, slug, payStatus, payCur string
+		var payAmt int
+		if err := etRows.Scan(&bid, &slug, &payStatus, &payAmt, &payCur); err != nil {
 			continue
 		}
 		if i, ok := idxByID[bid]; ok {
 			items[i].EventTypeSlug = slug
+			if payStatus != "" && payStatus != "none" {
+				items[i].PaymentStatus = payStatus
+				items[i].AmountPaidCents = payAmt
+				items[i].AmountPaidCurrency = payCur
+			}
 		}
 	}
 	if err := etRows.Err(); err != nil {
