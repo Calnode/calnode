@@ -275,7 +275,8 @@ func (s *Service) Get(ctx context.Context, id string) (*Booking, error) {
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, event_type_id, host_id, start_at, end_at, status,
 		       COALESCE(cancellation_reason, ''), COALESCE(location_value, ''),
-		       created_at, updated_at
+		       created_at, updated_at,
+		       payment_status, amount_paid_cents, amount_paid_currency
 		FROM bookings WHERE id = ?`, id)
 	return scanBooking(row)
 }
@@ -288,7 +289,8 @@ func (s *Service) ListByHost(ctx context.Context, hostID string) ([]Booking, err
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, event_type_id, host_id, start_at, end_at, status,
 		       COALESCE(cancellation_reason, ''), COALESCE(location_value, ''),
-		       created_at, updated_at
+		       created_at, updated_at,
+		       payment_status, amount_paid_cents, amount_paid_currency
 		FROM bookings
 		WHERE status != 'cancelled'
 		  AND (host_id = ? OR EXISTS (
@@ -318,7 +320,8 @@ func (s *Service) ListAll(ctx context.Context) ([]Booking, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, event_type_id, host_id, start_at, end_at, status,
 		       COALESCE(cancellation_reason, ''), COALESCE(location_value, ''),
-		       created_at, updated_at
+		       created_at, updated_at,
+		       payment_status, amount_paid_cents, amount_paid_currency
 		FROM bookings
 		WHERE status != 'cancelled'
 		ORDER BY start_at`)
@@ -451,7 +454,8 @@ func (s *Service) Reschedule(ctx context.Context, bookingID string, newStart, ne
 	b, err := scanBooking(tx.QueryRowContext(ctx, `
 		SELECT id, event_type_id, host_id, start_at, end_at, status,
 		       COALESCE(cancellation_reason,''), COALESCE(location_value,''),
-		       created_at, updated_at
+		       created_at, updated_at,
+		       payment_status, amount_paid_cents, amount_paid_currency
 		FROM bookings WHERE id = ?`, bookingID))
 	if err != nil {
 		return nil, err
@@ -532,7 +536,8 @@ func (s *Service) ReassignHost(ctx context.Context, bookingID, newHostID string)
 	b, err := scanBooking(tx.QueryRowContext(ctx, `
 		SELECT id, event_type_id, host_id, start_at, end_at, status,
 		       COALESCE(cancellation_reason,''), COALESCE(location_value,''),
-		       created_at, updated_at
+		       created_at, updated_at,
+		       payment_status, amount_paid_cents, amount_paid_currency
 		FROM bookings WHERE id = ?`, bookingID))
 	if err != nil {
 		return nil, err
@@ -656,6 +661,7 @@ func scanBooking(s scanner) (*Booking, error) {
 		&startStr, &endStr, &b.Status,
 		&b.CancellationReason, &b.LocationValue,
 		&createdStr, &updatedStr,
+		&b.PaymentStatus, &b.AmountPaidCents, &b.AmountPaidCurrency,
 	)
 	if err == sql.ErrNoRows {
 		return nil, ErrNotFound

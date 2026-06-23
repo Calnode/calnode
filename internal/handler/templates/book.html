@@ -262,6 +262,9 @@ body {
 
   const SLUG     = "{{.Slug}}";
   const MAX_DAYS = {{.MaxFutureDays}};
+  const PRICE_CENTS = {{.PriceCents}};
+  const CURRENCY = "{{.Currency}}";
+  const EVENT_NAME = {{.Name}};
   let TZ         = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -334,13 +337,28 @@ body {
 
   // Returning from Stripe Checkout (success_url): the payment was captured and the booking
   // is confirmed by webhook. Show a payment-received confirmation instead of the picker.
-  if (new URLSearchParams(window.location.search).get('paid') === '1') {
+  (function () {
+    var params = new URLSearchParams(window.location.search);
+    if (params.get('paid') !== '1') return;
     var _ch3 = document.querySelector('#confirm-view h3');
     var _csub = document.querySelector('#confirm-view .sub');
     if (_ch3) _ch3.textContent = 'Payment received';
     if (_csub) _csub.textContent = 'Your booking is confirmed — a confirmation email is on its way.';
     showView('confirm-view');
-  }
+    // Fire the conversion event for paid bookings too (the form-submit path redirected to
+    // Stripe before it could). transaction_id lets GA4/GTM dedupe on refresh.
+    if (window.__CALNODE_DL && typeof calnodePush === 'function') {
+      calnodePush('calnode_booking_confirmed', {
+        event_type_slug: SLUG,
+        event_type_name: EVENT_NAME,
+        status: 'confirmed',
+        is_paid: true,
+        value: PRICE_CENTS / 100,
+        currency: (CURRENCY || 'usd').toUpperCase(),
+        transaction_id: params.get('session_id') || '',
+      });
+    }
+  })();
 
   // ── Mobile step-flow ────────────────────────────────────────────────────────
   // On narrow viewports (CSS-gated) we show one section at a time: calendar, then
@@ -631,7 +649,7 @@ body {
         calnodePush('calnode_booking_confirmed', {
           booking_id: booked && booked.id,
           event_type_slug: SLUG,
-          event_type_name: {{.Name}},
+          event_type_name: EVENT_NAME,
           start_at: pickedSlot.start,
           end_at: pickedSlot.end,
           status: 'confirmed',
@@ -641,6 +659,9 @@ body {
           attendee_email: form.email.value.trim(),
           attendee_timezone: TZ,
           answers: dlAnswers,
+          is_paid: false,
+          value: PRICE_CENTS / 100,
+          currency: (CURRENCY || 'usd').toUpperCase(),
         });
       }
 

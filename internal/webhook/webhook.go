@@ -52,6 +52,9 @@ const (
 	FieldAttendeeEmail   = "attendee_email"
 	FieldAttendeeTZ      = "attendee_timezone"
 	FieldAnswers         = "answers"
+	FieldPaymentStatus   = "payment_status"
+	FieldAmountPaid      = "amount_paid_cents"
+	FieldCurrency        = "amount_paid_currency"
 )
 
 // AllFields is every selectable field, in payload order. Used to validate config
@@ -62,14 +65,17 @@ var AllFields = []string{
 	FieldEventTypeSlug, FieldEventTypeName,
 	FieldHostID, FieldHostName, FieldHostEmail,
 	FieldAttendeeName, FieldAttendeeEmail, FieldAttendeeTZ, FieldAnswers,
+	FieldPaymentStatus, FieldAmountPaid, FieldCurrency,
 }
 
-// defaultFields reproduces the original payload exactly (no PII, no answers) so a
-// webhook with no field config (fields IS NULL) keeps its historical shape.
+// defaultFields reproduces the original payload (no PII, no answers) so a webhook with no
+// field config (fields IS NULL) keeps its historical shape. Payment fields are included but
+// omitempty, so free bookings are byte-identical to before; only paid bookings gain them.
 var defaultFields = []string{
 	FieldID, FieldEventTypeSlug, FieldHostID, FieldStartAt, FieldEndAt,
 	FieldStatus, FieldLocation, FieldCancelReason, FieldCreatedAt,
 	FieldPreviousStartAt, FieldPreviousEndAt,
+	FieldPaymentStatus, FieldAmountPaid, FieldCurrency,
 }
 
 var validField = func() map[string]bool {
@@ -116,6 +122,9 @@ type BookingPayload struct {
 	CreatedAt          string `json:"created_at"`
 	PreviousStartAt    string `json:"previous_start_at,omitempty"`
 	PreviousEndAt      string `json:"previous_end_at,omitempty"`
+	PaymentStatus      string `json:"payment_status,omitempty"`
+	AmountPaidCents    int    `json:"amount_paid_cents,omitempty"`
+	AmountPaidCurrency string `json:"amount_paid_currency,omitempty"`
 }
 
 type Service struct {
@@ -335,6 +344,8 @@ func buildData(bd enrichedBooking, fields []string) map[string]any {
 		FieldCancelReason:    bd.core.CancellationReason,
 		FieldPreviousStartAt: bd.core.PreviousStartAt,
 		FieldPreviousEndAt:   bd.core.PreviousEndAt,
+		FieldPaymentStatus:   bd.core.PaymentStatus,
+		FieldCurrency:        bd.core.AmountPaidCurrency,
 	}
 	out := make(map[string]any, len(fields))
 	for _, f := range fields {
@@ -342,6 +353,8 @@ func buildData(bd enrichedBooking, fields []string) map[string]any {
 			out[f] = v
 		} else if v, ok := omitEmpty[f]; ok && v != "" {
 			out[f] = v
+		} else if f == FieldAmountPaid && bd.core.AmountPaidCents > 0 {
+			out[f] = bd.core.AmountPaidCents
 		}
 	}
 	return out

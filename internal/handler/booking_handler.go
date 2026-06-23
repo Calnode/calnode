@@ -25,6 +25,15 @@ import (
 // rate limit, for the openly-public booking page.
 const maxBookingsPerEmailPerHour = 10
 
+// paymentStatusForWebhook maps the internal payment_status to the webhook value, treating
+// the free-booking sentinel "none" as empty so the omitempty field is dropped for free bookings.
+func paymentStatusForWebhook(s string) string {
+	if s == "none" {
+		return ""
+	}
+	return s
+}
+
 // onlineMeetingLocation reports whether an event-type location is a native online
 // meeting type (Google Meet or Microsoft Teams) that may be auto-generated.
 func onlineMeetingLocation(locType string) bool {
@@ -347,7 +356,7 @@ type hostBrief struct {
 }
 
 func toBookingJSON(b *booking.Booking) bookingJSON {
-	return bookingJSON{
+	j := bookingJSON{
 		ID:                 b.ID,
 		EventTypeID:        b.EventTypeID,
 		HostID:             b.HostID,
@@ -359,6 +368,13 @@ func toBookingJSON(b *booking.Booking) bookingJSON {
 		CreatedAt:          b.CreatedAt.UTC().Format(time.RFC3339),
 		UpdatedAt:          b.UpdatedAt.UTC().Format(time.RFC3339),
 	}
+	// Payment fields are omitted for free bookings (payment_status defaults to 'none').
+	if b.PaymentStatus != "" && b.PaymentStatus != "none" {
+		j.PaymentStatus = b.PaymentStatus
+		j.AmountPaidCents = b.AmountPaidCents
+		j.AmountPaidCurrency = b.AmountPaidCurrency
+	}
+	return j
 }
 
 // noConnectedDestination reports whether the given host has no connected destination
@@ -875,14 +891,17 @@ func (h *Handler) dispatchBookingConfirmation(b *booking.Booking, in bookingConf
 		}
 	}
 	if err := h.webhookSvc.Enqueue(ctx, "booking.created", webhook.BookingPayload{
-		ID:            b.ID,
-		EventTypeSlug: in.EventTypeSlug,
-		HostID:        b.HostID,
-		StartAt:       b.StartAt.UTC().Format(time.RFC3339),
-		EndAt:         b.EndAt.UTC().Format(time.RFC3339),
-		Status:        b.Status,
-		LocationValue: b.LocationValue,
-		CreatedAt:     b.CreatedAt.UTC().Format(time.RFC3339),
+		ID:                 b.ID,
+		EventTypeSlug:      in.EventTypeSlug,
+		HostID:             b.HostID,
+		StartAt:            b.StartAt.UTC().Format(time.RFC3339),
+		EndAt:              b.EndAt.UTC().Format(time.RFC3339),
+		Status:             b.Status,
+		LocationValue:      b.LocationValue,
+		CreatedAt:          b.CreatedAt.UTC().Format(time.RFC3339),
+		PaymentStatus:      paymentStatusForWebhook(b.PaymentStatus),
+		AmountPaidCents:    b.AmountPaidCents,
+		AmountPaidCurrency: b.AmountPaidCurrency,
 	}); err != nil {
 		h.logger.Error("enqueue booking.created webhook", "error", err, "booking_id", b.ID)
 	}
@@ -950,10 +969,9 @@ func (h *Handler) ListBookings(w http.ResponseWriter, r *http.Request) {
 	ph := strings.Repeat("?,", len(ids))
 	ph = ph[:len(ph)-1]
 
-	// Fetch event type slugs + payment info via a single JOIN.
+	// Fetch event type slugs via a single JOIN (payment fields already come from toBookingJSON).
 	etRows, err := h.db.QueryContext(r.Context(),
-		`SELECT b.id, COALESCE(et.slug, ''), b.payment_status, b.amount_paid_cents, b.amount_paid_currency
-		 FROM bookings b
+		`SELECT b.id, COALESCE(et.slug, '') FROM bookings b
 		 LEFT JOIN event_types et ON et.id = b.event_type_id
 		 WHERE b.id IN (`+ph+`)`, ids...)
 	if err != nil {
@@ -963,18 +981,12 @@ func (h *Handler) ListBookings(w http.ResponseWriter, r *http.Request) {
 	}
 	defer etRows.Close()
 	for etRows.Next() {
-		var bid, slug, payStatus, payCur string
-		var payAmt int
-		if err := etRows.Scan(&bid, &slug, &payStatus, &payAmt, &payCur); err != nil {
+		var bid, slug string
+		if err := etRows.Scan(&bid, &slug); err != nil {
 			continue
 		}
 		if i, ok := idxByID[bid]; ok {
 			items[i].EventTypeSlug = slug
-			if payStatus != "" && payStatus != "none" {
-				items[i].PaymentStatus = payStatus
-				items[i].AmountPaidCents = payAmt
-				items[i].AmountPaidCurrency = payCur
-			}
 		}
 	}
 	if err := etRows.Err(); err != nil {
@@ -1166,6 +1178,12 @@ func (h *Handler) cancelSideEffects(b booking.Booking) {
 			h.logger.Error("booking cancellation email (attendee)", "error", err, "booking_id", b.ID)
 		}
 	}
+	// Re-read payment state — refundBookingPayment above may have flipped it to 'refunded'.
+	var payStatus, payCur string
+	var payAmt int
+	_ = h.db.QueryRowContext(ctx,
+		`SELECT payment_status, amount_paid_cents, amount_paid_currency FROM bookings WHERE id = ?`, b.ID).
+		Scan(&payStatus, &payAmt, &payCur)
 	if err := h.webhookSvc.Enqueue(ctx, "booking.cancelled", webhook.BookingPayload{
 		ID:                 b.ID,
 		EventTypeSlug:      d.EventTypeSlug,
@@ -1176,6 +1194,9 @@ func (h *Handler) cancelSideEffects(b booking.Booking) {
 		CancellationReason: b.CancellationReason,
 		LocationValue:      b.LocationValue,
 		CreatedAt:          b.CreatedAt.UTC().Format(time.RFC3339),
+		PaymentStatus:      paymentStatusForWebhook(payStatus),
+		AmountPaidCents:    payAmt,
+		AmountPaidCurrency: payCur,
 	}); err != nil {
 		h.logger.Error("enqueue booking.cancelled webhook", "error", err, "booking_id", b.ID)
 	}

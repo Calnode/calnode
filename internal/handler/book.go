@@ -42,6 +42,8 @@ type bookPageData struct {
 	HostsLabel    string        // "Alex, Sam & 2 others" for the group case
 	LocationLabel string
 	PriceLabel    string // formatted price (e.g. "$50.00"); empty for free events
+	PriceCents    int    // raw price for the dataLayer conversion value (0 = free)
+	Currency      string // ISO 4217, lowercase
 	MaxFutureDays int
 	Questions     []bookQuestion
 	// AssistantEnabled shows the conversational-booking chat panel when the LLM layer is on.
@@ -384,6 +386,8 @@ func (h *Handler) BookPage(w http.ResponseWriter, r *http.Request) {
 		HostsLabel:    hostsLabel(hosts),
 		LocationLabel: locationLabel(locType, locValue),
 		PriceLabel:    formatPrice(priceCents, currency),
+		PriceCents:    priceCents,
+		Currency:      currency,
 		MaxFutureDays:    maxDays,
 		Questions:        questions,
 		AssistantEnabled: h.getLLM() != nil,

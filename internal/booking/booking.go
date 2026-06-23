@@ -25,6 +25,9 @@ type Booking struct {
 	LocationValue      string
 	CreatedAt          time.Time
 	UpdatedAt          time.Time
+	PaymentStatus      string // none | pending | paid | refunded
+	AmountPaidCents    int
+	AmountPaidCurrency string
 }
 
 // Attendee is a participant in a booking (the person who made the booking).
