@@ -196,3 +196,8 @@ A few load-bearing decisions (full detail in the the design docs):
 
 [Apache-2.0](LICENSE). The full scheduler is self-hostable, and nothing previously
 free is ever paywalled.
+
+The **code** is Apache-2.0; the **"Calnode" name and logo** are not — see
+[TRADEMARK.md](TRADEMARK.md) (use the code freely; name your fork something else).
+Contributions are accepted under a [CLA](CLA.md) so the project can stand behind every
+line and keep its future licensing options open — see [CONTRIBUTING.md](CONTRIBUTING.md).

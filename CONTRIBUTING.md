@@ -90,5 +90,12 @@ prefer additive, nullable/defaulted columns.
 2. `go test ./...` green; `make build` succeeds; run `pnpm test:visual` if you
    touched UI/theme.
 3. Keep the change focused; explain the *why* in the PR description.
-4. By contributing you agree your work is licensed under the project's
-   [Apache-2.0](LICENSE) license.
+4. **Contributor License Agreement.** First-time contributors are asked to sign our
+   [CLA](CLA.md) — a bot comments on your PR with a one-line phrase to post. You keep the
+   copyright to your work; the CLA just lets the project distribute it and license future
+   versions under different terms if needed (e.g. a hosted edition). It's a one-time signature.
+   *(This is a CLA, not a DCO: a DCO only certifies origin, whereas retaining relicensing
+   rights requires a CLA.)*
+
+The project's distributed code remains [Apache-2.0](LICENSE). "Calnode" is a project name/mark —
+see [TRADEMARK.md](TRADEMARK.md) for how you may (and may not) use it.

@@ -1,0 +1,47 @@
+# CLA Assistant — gates pull requests on a signed Contributor License Agreement.
+#
+# How it works: when someone opens a PR, the bot checks whether they've signed. If not, it
+# comments asking them to sign by replying with the exact phrase below; their signature is
+# recorded in signatures/version1/cla.json in this repo. Maintainers in `allowlist` are
+# never asked.
+#
+# ── SETUP (two one-time steps) ─────────────────────────────────────────────────────────
+# 1. Create a Personal Access Token (classic, `repo` scope — or a fine-grained token with
+#    Contents + Pull requests write on this repo) and add it as a repo secret named
+#    PERSONAL_ACCESS_TOKEN. It's needed so the bot can commit signatures + comment.
+# 2. Edit `allowlist` below to your maintainers' GitHub usernames (so you don't have to sign
+#    your own PRs).
+# Until step 1 is done the workflow is inert (it just won't run successfully) — it does not
+# block anything else.
+name: CLA Assistant
+on:
+  issue_comment:
+    types: [created]
+  pull_request_target:
+    types: [opened, closed, synchronize]
+
+permissions:
+  actions: write
+  contents: write
+  pull-requests: write
+  statuses: write
+
+jobs:
+  cla:
+    runs-on: ubuntu-latest
+    steps:
+      - name: CLA Assistant
+        if: (github.event.comment.body == 'recheck' || github.event.comment.body == 'I have read the CLA Document and I hereby sign the CLA') || github.event_name == 'pull_request_target'
+        uses: contributor-assistant/github-action@v2.6.1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PERSONAL_ACCESS_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+        with:
+          path-to-signatures: 'signatures/version1/cla.json'
+          path-to-document: 'https://github.com/Calnode/calnode/blob/main/CLA.md'
+          branch: 'main'
+          custom-notsigned-prcomment: 'Thanks for your contribution! Before we can merge it, please read our [Contributor License Agreement](https://github.com/Calnode/calnode/blob/main/CLA.md) and sign it by posting the exact comment below in this PR.'
+          custom-pr-sign-comment: 'I have read the CLA Document and I hereby sign the CLA'
+          custom-allsigned-prcomment: 'All contributors have signed the CLA. ✅'
+          # TODO: replace with your maintainers' GitHub usernames.
+          allowlist: 'dependabot[bot]'
