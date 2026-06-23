@@ -398,6 +398,10 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	mux.HandleFunc("GET /v1/zoom/status", h.RequireAuth(h.ZoomStatus))
 	mux.HandleFunc("DELETE /v1/zoom", h.RequireAuth(h.DisconnectZoom))
 
+	// Stripe payment webhook — public, authenticated by the signing secret (no session
+	// cookie, so the CSRF check doesn't apply). Must receive the raw body.
+	mux.HandleFunc("POST /v1/stripe/webhook", h.StripeWebhook)
+
 	// API keys
 	mux.HandleFunc("GET /v1/api-keys", h.RequireAuth(h.ListAPIKeys))
 	mux.HandleFunc("POST /v1/api-keys", h.RequireAuth(h.CreateAPIKey))

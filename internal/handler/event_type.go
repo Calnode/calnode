@@ -44,6 +44,8 @@ type eventTypeJSON struct {
 	SubjCancellation    *string  `json:"subj_cancellation"`
 	SubjReschedule      *string  `json:"subj_reschedule"`
 	SubjReminder        *string  `json:"subj_reminder"`
+	PriceCents          int      `json:"price_cents"` // 0 = free
+	Currency            string   `json:"currency"`    // ISO 4217, lowercase (e.g. "usd")
 	Reminders           []int    `json:"reminders"` // hours_before values
 	// Owned is true when the requesting user owns this event type; false when they
 	// only see it as an assigned host (read-only — only the owner can edit).
@@ -80,6 +82,7 @@ func scanEventTypeRow(s rowScanner, trailing ...any) (*eventTypeJSON, error) {
 		&isActive, &isPublic, &et.CreatedAt,
 		&msgConf, &msgCancel, &msgResched, &msgRemind,
 		&subjConf, &subjCancel, &subjResched, &subjRemind,
+		&et.PriceCents, &et.Currency,
 	}
 	dests = append(dests, trailing...)
 	err := s.Scan(dests...)
@@ -133,7 +136,8 @@ const etColumns = `id, slug, name, description,
 	min_notice_minutes, max_future_days, max_active_bookings,
 	is_active, is_public, created_at,
 	msg_confirmation, msg_cancellation, msg_reschedule, msg_reminder,
-	subj_confirmation, subj_cancellation, subj_reschedule, subj_reminder`
+	subj_confirmation, subj_cancellation, subj_reschedule, subj_reminder,
+	price_cents, currency`
 
 // selectETCols fetches a single owner-scoped event type (no `owned` column).
 const selectETCols = "SELECT " + etColumns + " FROM event_types"
@@ -409,6 +413,8 @@ func (h *Handler) PatchEventType(w http.ResponseWriter, r *http.Request) {
 		SubjCancellation    *string  `json:"subj_cancellation"`
 		SubjReschedule      *string  `json:"subj_reschedule"`
 		SubjReminder        *string  `json:"subj_reminder"`
+		PriceCents          *int     `json:"price_cents"`
+		Currency            *string  `json:"currency"`
 		Reminders           []int    `json:"reminders"` // nil = don't touch; [] = clear all
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -499,6 +505,27 @@ func (h *Handler) PatchEventType(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		set("max_active_bookings", *req.MaxActiveBookings)
+	}
+	if req.PriceCents != nil {
+		if *req.PriceCents < 0 {
+			h.writeError(w, http.StatusBadRequest, "price_cents cannot be negative (0 = free)")
+			return
+		}
+		// A price is only bookable once payments are configured — block the footgun of a
+		// paid event type that no one can actually book.
+		if *req.PriceCents > 0 && h.getStripe() == nil {
+			h.writeError(w, http.StatusBadRequest, "connect Stripe in Settings → Payments before setting a price")
+			return
+		}
+		set("price_cents", *req.PriceCents)
+	}
+	if req.Currency != nil {
+		cur := strings.ToLower(strings.TrimSpace(*req.Currency))
+		if len(cur) != 3 {
+			h.writeError(w, http.StatusBadRequest, "currency must be a 3-letter ISO 4217 code")
+			return
+		}
+		set("currency", cur)
 	}
 	if req.IsActive != nil {
 		v := 0

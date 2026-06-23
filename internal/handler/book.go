@@ -202,17 +202,18 @@ func (h *Handler) PublicEventType(w http.ResponseWriter, r *http.Request) {
 	slug := r.PathValue("slug")
 	var (
 		etID, name, description, locType, locValue string
-		hostName, avatarURL, routingMode           string
-		durMins, maxDays                           int
+		hostName, avatarURL, routingMode, currency string
+		durMins, maxDays, priceCents               int
 	)
 	err := h.db.QueryRowContext(r.Context(), `
 		SELECT et.id, et.name, COALESCE(et.description, ''),
 		       et.duration_minutes, et.location_type, COALESCE(et.location_value, ''),
-		       et.max_future_days, et.routing_mode, u.name, COALESCE(u.avatar_url, '')
+		       et.max_future_days, et.routing_mode, u.name, COALESCE(u.avatar_url, ''),
+		       et.price_cents, et.currency
 		FROM event_types et
 		JOIN users u ON u.id = et.user_id
 		WHERE et.slug = ? AND et.is_active = 1 AND et.is_public = 1`,
-		slug).Scan(&etID, &name, &description, &durMins, &locType, &locValue, &maxDays, &routingMode, &hostName, &avatarURL)
+		slug).Scan(&etID, &name, &description, &durMins, &locType, &locValue, &maxDays, &routingMode, &hostName, &avatarURL, &priceCents, &currency)
 	if errors.Is(err, sql.ErrNoRows) {
 		h.writeError(w, http.StatusNotFound, "event type not found")
 		return
@@ -253,6 +254,8 @@ func (h *Handler) PublicEventType(w http.ResponseWriter, r *http.Request) {
 		"location_label":   locationLabel(locType, locValue),
 		"max_future_days":  maxDays,
 		"assistant_enabled": h.getLLM() != nil,
+		"price_cents":      priceCents,
+		"currency":         currency,
 		"hosts":            outHosts,
 		"business_name":    brand.BusinessName,
 		"logo_url":         abs(brand.LogoURL),

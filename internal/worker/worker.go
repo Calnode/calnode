@@ -135,6 +135,15 @@ func (w *Worker) Poll(ctx context.Context) {
 		`DELETE FROM oauth_auth_codes WHERE expires_at < ?`, now); err != nil {
 		w.logger.Error("worker: purge oauth auth codes", "error", err)
 	}
+	// Backstop for the Stripe checkout.session.expired webhook: release any payment hold
+	// still pending well past the 31-min checkout window, freeing the slot. The webhook
+	// normally does this promptly; this catches missed/late deliveries.
+	holdCutoff := time.Now().UTC().Add(-45 * time.Minute).Format(time.RFC3339)
+	if _, err := w.db.ExecContext(ctx,
+		`UPDATE bookings SET status = 'cancelled', cancellation_reason = 'payment not completed'
+		 WHERE status = 'confirmed' AND payment_status = 'pending' AND created_at < ?`, holdCutoff); err != nil {
+		w.logger.Error("worker: release expired payment holds", "error", err)
+	}
 
 	// Reaper: handle running jobs whose lock has expired (process crashed mid-job).
 	// Jobs with retries remaining are reset to pending with a 1-minute delay so

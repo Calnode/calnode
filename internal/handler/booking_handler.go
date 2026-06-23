@@ -233,6 +233,10 @@ func resolveBookingHostPool(hosts []EventHost, routingMode string) (candidates, 
 // was archived) — surfaced to callers as "this slot is no longer available".
 var errNoHostAvailable = errors.New("no active host can take this booking")
 
+// errPaymentRequired is returned by the shared booking core for paid event types, which can
+// only be booked through the Stripe Checkout flow on the booking page (agents can't pay).
+var errPaymentRequired = errors.New("this event requires payment; please book on the booking page")
+
 // createBookingForSlug is the shared public booking-creation path for one event-type slug:
 // look up the (active) event type, validate intake answers, resolve the host pool, persist,
 // and fire the side effects (calendar/email/webhook/reminders) in the background. Returns the
@@ -251,13 +255,19 @@ func (h *Handler) createBookingForSlug(ctx context.Context, slug string, startAt
 		RRStrategy        string
 		IsActive          int
 		MaxActiveBookings int
+		PriceCents        int
 	}
 	err := h.db.QueryRowContext(ctx, `
-		SELECT id, name, duration_minutes, location_type, location_value, routing_mode, rr_strategy, is_active, max_active_bookings
+		SELECT id, name, duration_minutes, location_type, location_value, routing_mode, rr_strategy, is_active, max_active_bookings, price_cents
 		FROM event_types WHERE slug = ?`, slug).
-		Scan(&et.ID, &et.Name, &et.DurationMinutes, &et.LocationType, &et.LocationValue, &et.RoutingMode, &et.RRStrategy, &et.IsActive, &et.MaxActiveBookings)
+		Scan(&et.ID, &et.Name, &et.DurationMinutes, &et.LocationType, &et.LocationValue, &et.RoutingMode, &et.RRStrategy, &et.IsActive, &et.MaxActiveBookings, &et.PriceCents)
 	if err != nil || et.IsActive == 0 {
 		return nil, errEventTypeNotFound
+	}
+	// Paid events require the Stripe Checkout flow (booking page only) — agents/assistant
+	// can't pay, so they can't book a paid event.
+	if et.PriceCents > 0 {
+		return nil, errPaymentRequired
 	}
 	answers, err := h.validateAnswersCore(ctx, et.ID, rawAnswers)
 	if err != nil {
@@ -484,11 +494,13 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 		RRStrategy        string
 		IsActive          int
 		MaxActiveBookings int
+		PriceCents        int
+		Currency          string
 	}
 	err = h.db.QueryRowContext(r.Context(), `
-		SELECT id, user_id, name, duration_minutes, location_type, location_value, routing_mode, rr_strategy, is_active, max_active_bookings
+		SELECT id, user_id, name, duration_minutes, location_type, location_value, routing_mode, rr_strategy, is_active, max_active_bookings, price_cents, currency
 		FROM event_types WHERE slug = ?`, req.EventTypeSlug).
-		Scan(&et.ID, &et.UserID, &et.Name, &et.DurationMinutes, &et.LocationType, &et.LocationValue, &et.RoutingMode, &et.RRStrategy, &et.IsActive, &et.MaxActiveBookings)
+		Scan(&et.ID, &et.UserID, &et.Name, &et.DurationMinutes, &et.LocationType, &et.LocationValue, &et.RoutingMode, &et.RRStrategy, &et.IsActive, &et.MaxActiveBookings, &et.PriceCents, &et.Currency)
 	if err != nil {
 		h.writeError(w, http.StatusNotFound, "event type not found")
 		return
@@ -585,6 +597,42 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 		}
 		h.logger.ErrorContext(r.Context(), "create booking", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	// PAID event types: the booking row already holds the slot (status='confirmed'); now
+	// send the booker to Stripe Checkout and DEFER all confirmation side-effects until the
+	// webhook marks the payment paid. Free event types fall through to the normal path.
+	if et.PriceCents > 0 {
+		sc := h.getStripe()
+		if sc == nil {
+			// The price gate requires Stripe at save time, but never strand a charge:
+			// release the hold and tell the booker payments are unavailable.
+			_ = h.bookingSvc.CancelByID(r.Context(), b.ID, "payments unavailable")
+			h.writeError(w, http.StatusServiceUnavailable, "payments are temporarily unavailable")
+			return
+		}
+		checkoutURL, err := h.startBookingCheckout(r.Context(), sc, b.ID, et.PriceCents, et.Currency, et.Name, req.EventTypeSlug, req.Email)
+		if err != nil {
+			h.logger.ErrorContext(r.Context(), "create booking: start checkout", "error", err, "booking_id", b.ID)
+			_ = h.bookingSvc.CancelByID(r.Context(), b.ID, "checkout failed")
+			h.writeError(w, http.StatusBadGateway, "could not start payment")
+			return
+		}
+		respBody, _ := json.Marshal(map[string]any{
+			"payment_required": true,
+			"booking_id":       b.ID,
+			"checkout_url":     checkoutURL,
+		})
+		if idemKey != "" {
+			if err := h.finishIdempotencyKey(r.Context(), idemKey, http.StatusOK, respBody, b.ID); err != nil {
+				h.logger.ErrorContext(r.Context(), "create booking: store idempotency response", "error", err)
+			}
+			idemDone = true
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(respBody)
 		return
 	}
 
@@ -1054,6 +1102,8 @@ func (h *Handler) cancelSideEffects(b booking.Booking) {
 	gc := h.getCal()
 	// Delete the Zoom meeting this booking minted (if any) — independent of the calendar.
 	h.cancelZoomMeeting(ctx, &b)
+	// Refund the Stripe payment if this was a paid booking.
+	h.refundBookingPayment(ctx, b.ID)
 	var primaryPrefs = allOnPrefs
 	hosts, hErr := h.assignedHosts(ctx, b.ID)
 	if hErr != nil {
