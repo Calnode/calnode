@@ -14,6 +14,7 @@ import (
 	"github.com/calnode/calnode/internal/llm"
 	"github.com/calnode/calnode/internal/mailer"
 	"github.com/calnode/calnode/internal/webhook"
+	"github.com/calnode/calnode/internal/zoom"
 )
 
 type Handler struct {
@@ -36,6 +37,23 @@ type Handler struct {
 	secureCookie  bool
 	llmMu         sync.RWMutex
 	llm           *llm.Client // nil when the optional LLM layer is off/unconfigured
+	zoomMu        sync.RWMutex
+	zoom          *zoom.Client // nil when no Zoom app is configured
+}
+
+// SetZoom swaps the active Zoom client (nil disables Zoom auto-minting). Hot-reloadable
+// from the Zoom settings page.
+func (h *Handler) SetZoom(c *zoom.Client) {
+	h.zoomMu.Lock()
+	h.zoom = c
+	h.zoomMu.Unlock()
+}
+
+// getZoom returns the active Zoom client, or nil when no Zoom app is configured.
+func (h *Handler) getZoom() *zoom.Client {
+	h.zoomMu.RLock()
+	defer h.zoomMu.RUnlock()
+	return h.zoom
 }
 
 // SetLLM swaps the active LLM client (nil disables AI features). Hot-reloadable from

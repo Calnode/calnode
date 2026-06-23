@@ -19,6 +19,7 @@ import (
 
 	"github.com/calnode/calnode/internal/webhook"
 	"github.com/calnode/calnode/internal/worker"
+	"github.com/calnode/calnode/internal/zoom"
 	"github.com/modelcontextprotocol/go-sdk/auth"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -146,6 +147,29 @@ func BuildHandler(ctx context.Context, cfg *config.Config, db *sql.DB, logger *s
 		logger.Info("LLM layer not enabled — configure it in Settings → AI")
 	}
 
+	// Optional Zoom integration — each host connects their own Zoom account to
+	// auto-mint meeting links. DB settings take priority over env vars.
+	zoomClientID := cfg.ZoomClientID
+	zoomClientSecret := cfg.ZoomClientSecret
+	if dbZoom, dbZoomErr := handler.LoadZoomSettingsFromDB(db, encKey); dbZoomErr != nil {
+		logger.Warn("zoom settings: could not load from database", "error", dbZoomErr)
+	} else if dbZoom != nil {
+		zoomClientID = dbZoom.ClientID
+		zoomClientSecret = dbZoom.ClientSecret
+		logger.Info("Zoom OAuth: credentials loaded from database")
+	}
+	if zoomClientID != "" && zoomClientSecret != "" {
+		zoomRedirect := cfg.BaseURL + "/v1/zoom/callback"
+		if zc, err := zoom.New(db, zoomClientID, zoomClientSecret, zoomRedirect, cfg.EncryptionKey); err != nil {
+			logger.Error("zoom: init failed", "error", err)
+		} else {
+			h.SetZoom(zc)
+			logger.Info("Zoom integration configured", "redirect_url", zoomRedirect)
+		}
+	} else {
+		logger.Info("Zoom not configured — add credentials in Settings → Zoom")
+	}
+
 	return h, drain
 }
 
@@ -253,6 +277,8 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	mux.HandleFunc("POST /v1/settings/email/test", settingsRL(h.RequireAuth(h.TestEmailConnection)))
 	mux.HandleFunc("GET /v1/settings/google", h.RequireAuth(h.GetGoogleSettings))
 	mux.HandleFunc("PATCH /v1/settings/google", settingsRL(h.RequireAuth(h.PatchGoogleSettings)))
+	mux.HandleFunc("GET /v1/settings/zoom", h.RequireAuth(h.GetZoomSettings))
+	mux.HandleFunc("PATCH /v1/settings/zoom", settingsRL(h.RequireAuth(h.PatchZoomSettings)))
 	mux.HandleFunc("GET /v1/settings/tracking", h.RequireAuth(h.GetTrackingSettings))
 	mux.HandleFunc("PATCH /v1/settings/tracking", settingsRL(h.RequireAuth(h.PatchTrackingSettings)))
 	mux.HandleFunc("GET /v1/settings/llm", h.RequireAuth(h.GetLLMSettings))
@@ -348,6 +374,12 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	mux.HandleFunc("GET /v1/calendar/callback", h.CalendarCallback)
 	mux.HandleFunc("GET /v1/calendar/status", h.RequireAuth(h.CalendarStatus))
 	mux.HandleFunc("DELETE /v1/calendar", h.RequireAuth(h.DisconnectCalendar))
+
+	// Zoom — per-host OAuth connect (auto-mint meeting links).
+	mux.HandleFunc("GET /v1/zoom/connect", h.RequireAuth(h.ConnectZoom))
+	mux.HandleFunc("GET /v1/zoom/callback", h.ZoomCallback)
+	mux.HandleFunc("GET /v1/zoom/status", h.RequireAuth(h.ZoomStatus))
+	mux.HandleFunc("DELETE /v1/zoom", h.RequireAuth(h.DisconnectZoom))
 
 	// API keys
 	mux.HandleFunc("GET /v1/api-keys", h.RequireAuth(h.ListAPIKeys))

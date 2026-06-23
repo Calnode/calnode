@@ -35,6 +35,10 @@ type Config struct {
 	MicrosoftClientSecret string
 	MicrosoftTenant       string
 
+	// Zoom OAuth app (per-host meeting links) — DB settings take priority over these.
+	ZoomClientID     string
+	ZoomClientSecret string
+
 	// CookieSecure sets the Secure flag on session cookies. Defaults to true
 	// when BASE_URL starts with https://, but can be overridden explicitly via
 	// COOKIE_SECURE=false for HTTPS-terminated-at-proxy setups where the binary
@@ -69,6 +73,9 @@ func Load() *Config {
 		MicrosoftClientID:     getEnv("MICROSOFT_CLIENT_ID", ""),
 		MicrosoftClientSecret: getEnv("MICROSOFT_CLIENT_SECRET", ""),
 		MicrosoftTenant:       getEnv("MICROSOFT_TENANT", "common"),
+
+		ZoomClientID:     getEnv("ZOOM_CLIENT_ID", ""),
+		ZoomClientSecret: getEnv("ZOOM_CLIENT_SECRET", ""),
 
 		EmbedAllowedOrigins: splitCSV(getEnv("EMBED_ALLOWED_ORIGINS", "")),
 	}

@@ -17,6 +17,7 @@ import (
 	"github.com/calnode/calnode/internal/mailer"
 	"github.com/calnode/calnode/internal/uid"
 	"github.com/calnode/calnode/internal/webhook"
+	"github.com/calnode/calnode/internal/zoom"
 )
 
 // maxBookingsPerEmailPerHour caps how many bookings one email address can create
@@ -150,10 +151,20 @@ func (h *Handler) validateLocation(ctx context.Context, ownerID, locType string,
 		}
 		return fmt.Errorf("connect a Google calendar to auto-generate Meet links, or enter a Google Meet link")
 	case "zoom":
-		if !validVideoURL(locType, link) {
-			return fmt.Errorf("enter a valid Zoom link (https://…zoom.us/…)")
+		if link != "" {
+			if !validVideoURL(locType, link) {
+				return fmt.Errorf("enter a valid Zoom link (https://…zoom.us/…)")
+			}
+			return nil // a valid manual link always satisfies
 		}
-		return nil
+		// No link — only allowed when the owner has connected their Zoom account, so a
+		// real meeting can be auto-minted per booking.
+		if zc := h.getZoom(); zc != nil {
+			if connected, err := zc.Connected(ctx, ownerID); err == nil && connected {
+				return nil
+			}
+		}
+		return fmt.Errorf("connect your Zoom account to auto-generate meeting links, or enter a Zoom link")
 	case "link", "custom_video":
 		if !validVideoURL(locType, link) {
 			return fmt.Errorf("enter a valid meeting URL (https://…)")
@@ -699,6 +710,44 @@ func (h *Handler) dispatchBookingConfirmation(b *booking.Booking, in bookingConf
 	if onlineMeetingLocation(in.LocationType) && !autoGenMeet {
 		meetURL = b.LocationValue
 	}
+	// Zoom is an independent meeting-link provider (not tied to the host's calendar): for a
+	// Zoom-located event, default to the organizer's manual link, but if the primary host has
+	// connected their own Zoom account, mint a real meeting under it and use that join URL on
+	// the calendar events, the booking record, the webhook, and the emails.
+	if in.LocationType == "zoom" {
+		meetURL = b.LocationValue
+		if zc := h.getZoom(); zc != nil {
+			primaryHostID := b.HostID
+			for _, host := range hosts {
+				if host.IsPrimary {
+					primaryHostID = host.UserID
+					break
+				}
+			}
+			if connected, cerr := zc.Connected(ctx, primaryHostID); cerr != nil {
+				h.logger.Error("zoom: connection lookup", "error", cerr, "booking_id", b.ID)
+			} else if connected {
+				join, mid, zerr := zc.CreateMeeting(ctx, primaryHostID, zoom.MeetingParams{
+					Topic:           in.EventTypeName + " with " + in.OrganizerName,
+					Start:           b.StartAt,
+					DurationMinutes: int(b.EndAt.Sub(b.StartAt).Minutes()),
+					Timezone:        in.OrganizerTimezone,
+				})
+				if zerr != nil {
+					h.logger.Error("zoom: create meeting", "error", zerr, "booking_id", b.ID)
+				} else {
+					meetURL = join
+					b.LocationValue = join
+					bData.LocationValue = join
+					if _, err := h.db.ExecContext(ctx,
+						`UPDATE bookings SET location_value = ?, zoom_meeting_id = ? WHERE id = ?`,
+						join, mid, b.ID); err != nil {
+						h.logger.Error("zoom: save meeting", "error", err, "booking_id", b.ID)
+					}
+				}
+			}
+		}
+	}
 	var primaryPrefs hostPrefs = allOnPrefs
 	for _, host := range hosts {
 		// Create a calendar event on each host's connected calendar and record
@@ -1003,6 +1052,8 @@ func (h *Handler) cancelSideEffects(b booking.Booking) {
 	// host list fully first — the inner CancelEvent/loadHostPrefs queries can't run
 	// while a cursor holds the single DB connection (would deadlock).
 	gc := h.getCal()
+	// Delete the Zoom meeting this booking minted (if any) — independent of the calendar.
+	h.cancelZoomMeeting(ctx, &b)
 	var primaryPrefs = allOnPrefs
 	hosts, hErr := h.assignedHosts(ctx, b.ID)
 	if hErr != nil {
@@ -1067,6 +1118,43 @@ func (h *Handler) cancelSideEffects(b booking.Booking) {
 		CreatedAt:          b.CreatedAt.UTC().Format(time.RFC3339),
 	}); err != nil {
 		h.logger.Error("enqueue booking.cancelled webhook", "error", err, "booking_id", b.ID)
+	}
+}
+
+// rescheduleZoomMeeting updates the booking's Zoom meeting time after a reschedule (the
+// join URL is unchanged). No-op when Zoom isn't configured or the booking minted no meeting.
+// The meeting lives under the primary host's account (b.HostID).
+func (h *Handler) rescheduleZoomMeeting(ctx context.Context, b *booking.Booking) {
+	zc := h.getZoom()
+	if zc == nil {
+		return
+	}
+	var meetingID string
+	if err := h.db.QueryRowContext(ctx,
+		`SELECT COALESCE(zoom_meeting_id,'') FROM bookings WHERE id = ?`, b.ID).Scan(&meetingID); err != nil || meetingID == "" {
+		return
+	}
+	dur := int(b.EndAt.Sub(b.StartAt).Minutes())
+	// timezone is cosmetic for Zoom (start_time is sent as unambiguous UTC); leave blank.
+	if err := zc.UpdateMeeting(ctx, b.HostID, meetingID, b.StartAt, dur, ""); err != nil {
+		h.logger.Error("zoom: update meeting on reschedule", "error", err, "booking_id", b.ID)
+	}
+}
+
+// cancelZoomMeeting deletes the booking's Zoom meeting (if it minted one). No-op when Zoom
+// isn't configured or no meeting was created.
+func (h *Handler) cancelZoomMeeting(ctx context.Context, b *booking.Booking) {
+	zc := h.getZoom()
+	if zc == nil {
+		return
+	}
+	var meetingID string
+	if err := h.db.QueryRowContext(ctx,
+		`SELECT COALESCE(zoom_meeting_id,'') FROM bookings WHERE id = ?`, b.ID).Scan(&meetingID); err != nil || meetingID == "" {
+		return
+	}
+	if err := zc.DeleteMeeting(ctx, b.HostID, meetingID); err != nil {
+		h.logger.Error("zoom: delete meeting on cancel", "error", err, "booking_id", b.ID)
 	}
 }
 
