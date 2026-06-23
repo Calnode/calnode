@@ -126,12 +126,21 @@ export type WebhookDelivery = {
 	last_attempted_at?: string;
 };
 
+export type CalendarConnection = {
+	id: string;
+	provider: string;
+	account_email: string;
+	is_destination: boolean;
+	check_conflicts: boolean;
+};
+
 export type CalendarStatus = {
 	connected: boolean;
 	configured?: boolean;
 	calendar_id?: string;
-	provider?: string;    // connected provider name, when connected
+	provider?: string;    // destination provider name, when connected
 	providers?: string[]; // configured providers available to connect
+	connections?: CalendarConnection[]; // all connected calendars (many checked, one destination)
 };
 
 export type EmailSettings = {

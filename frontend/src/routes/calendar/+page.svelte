@@ -15,11 +15,13 @@
 	let status: CalendarStatus | null = $state(null);
 	let loading = $state(true);
 	let error = $state('');
-	let disconnecting = $state(false);
+	let busy = $state(false);
 	let justConnected = $state(false);
 	let disconnectOpen = $state(false);
+	let pendingDisconnectId: string | null = $state(null);
 
 	const providers = $derived(status?.providers ?? []);
+	const connections = $derived(status?.connections ?? []);
 
 	// Zoom is a separate, per-host meeting-link connection (not a calendar).
 	let zoom: ZoomStatus | null = $state(null);
@@ -52,15 +54,35 @@
 		loadZoom();
 	});
 
-	async function doDisconnect() {
-		disconnecting = true;
+	async function setDestination(id: string) {
+		busy = true;
+		error = '';
 		try {
-			await api.del('/v1/calendar');
+			await api.post(`/v1/calendar/connections/${id}/destination`, {});
 			await load();
 		} catch (e: any) {
 			error = e.message;
 		} finally {
-			disconnecting = false;
+			busy = false;
+		}
+	}
+
+	function askDisconnect(id: string) {
+		pendingDisconnectId = id;
+		disconnectOpen = true;
+	}
+
+	async function doDisconnect() {
+		if (!pendingDisconnectId) return;
+		busy = true;
+		try {
+			await api.del(`/v1/calendar/connections/${pendingDisconnectId}`);
+			await load();
+		} catch (e: any) {
+			error = e.message;
+		} finally {
+			busy = false;
+			pendingDisconnectId = null;
 		}
 	}
 
@@ -79,8 +101,8 @@
 
 <ConfirmDialog
 	bind:open={disconnectOpen}
-	title="Disconnect calendar?"
-	description="Calnode will stop checking for conflicts and new bookings won't be added to your calendar."
+	title="Disconnect this calendar?"
+	description="Calnode will stop checking it for conflicts. If it was your booking calendar, another connected calendar is promoted automatically."
 	confirmText="Disconnect"
 	destructive
 	onConfirm={doDisconnect}
@@ -99,14 +121,14 @@
 
 <div class="mb-8">
 	<h1 class="text-2xl font-semibold tracking-tight">Calendar</h1>
-	<p class="mt-1 text-sm text-muted-foreground">Connect a calendar to check availability and write confirmed bookings.</p>
+	<p class="mt-1 text-sm text-muted-foreground">Connect one or more calendars — all are checked for conflicts, and bookings are written to the one you choose.</p>
 </div>
 
 {#if error}
 	<p class="mb-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>
 {/if}
 {#if justConnected && status?.connected}
-	<p class="mb-4 rounded-md bg-green-50 px-3 py-2 text-sm text-green-700">{label(status.provider)} connected successfully.</p>
+	<p class="mb-4 rounded-md bg-green-50 px-3 py-2 text-sm text-green-700">Calendar connected successfully.</p>
 {/if}
 
 {#if loading}
@@ -119,41 +141,56 @@
 			or set the Microsoft (Outlook) credentials via environment variables, then restart the server.
 		</p>
 	</div>
-{:else if status?.connected}
-	<!-- Connected: show which provider, allow disconnect -->
-	<div class="max-w-md rounded-lg border bg-card p-6">
-		<div class="mb-5 flex items-start gap-3">
-			<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mt-0.5 shrink-0 text-muted-foreground">
-				<rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
-			</svg>
-			<div>
-				<p class="font-medium">{label(status.provider)}</p>
-				<p class="mt-0.5 text-sm text-muted-foreground">Check availability and write confirmed bookings to your calendar.</p>
-			</div>
-		</div>
-		<div class="mb-4 flex items-center gap-2 rounded-md bg-green-50 px-3 py-2.5 text-sm text-green-700 ring-1 ring-inset ring-green-600/20">
-			<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-			<span class="font-medium">Connected</span>
-		</div>
-		<Button variant="outline" onclick={() => (disconnectOpen = true)} disabled={disconnecting}>
-			{disconnecting ? 'Disconnecting…' : 'Disconnect calendar'}
-		</Button>
-	</div>
 {:else}
-	<!-- Not connected: one card per available provider -->
-	<div class="max-w-md space-y-3">
-		{#each providers as p}
-			<div class="flex items-center justify-between rounded-lg border bg-card p-5">
-				<div class="flex items-center gap-3">
-					<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="shrink-0 text-muted-foreground">
-						<rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
-					</svg>
-					<p class="font-medium">{label(p)}</p>
-				</div>
-				<Button onclick={() => (window.location.href = `/v1/calendar/connect?provider=${p}`)}>Connect</Button>
+	<div class="max-w-xl space-y-6">
+		{#if connections.length > 0}
+			<!-- Connected calendars: all checked for conflicts; exactly one is the write destination. -->
+			<div class="divide-y rounded-lg border bg-card">
+				{#each connections as c (c.id)}
+					<div class="flex items-center justify-between gap-3 p-4">
+						<div class="flex min-w-0 items-center gap-3">
+							<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="shrink-0 text-muted-foreground">
+								<rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+							</svg>
+							<div class="min-w-0">
+								<p class="truncate font-medium">{c.account_email || label(c.provider)}</p>
+								<p class="text-xs text-muted-foreground">{label(c.provider)} · checked for conflicts</p>
+							</div>
+						</div>
+						<div class="flex shrink-0 items-center gap-4">
+							<label class="flex cursor-pointer items-center gap-1.5 text-sm text-muted-foreground">
+								<input type="radio" name="destination" checked={c.is_destination} disabled={busy} onchange={() => setDestination(c.id)} />
+								Add bookings here
+							</label>
+							<Button variant="ghost" size="sm" onclick={() => askDisconnect(c.id)} disabled={busy}>Disconnect</Button>
+						</div>
+					</div>
+				{/each}
 			</div>
-		{/each}
-		<p class="text-xs text-muted-foreground">Connecting one calendar replaces any previously connected one.</p>
+			<p class="text-xs text-muted-foreground">
+				Every connected calendar is checked for conflicts. Confirmed bookings (and any auto-generated
+				meeting links) are written to the one marked <span class="font-medium">“Add bookings here”</span>.
+			</p>
+		{/if}
+
+		<!-- Connect (another) calendar -->
+		<div class="space-y-2">
+			<p class="text-sm font-medium">{connections.length > 0 ? 'Connect another calendar' : 'Connect a calendar'}</p>
+			{#each providers as p}
+				<div class="flex items-center justify-between rounded-lg border bg-card p-4">
+					<div class="flex items-center gap-3">
+						<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="shrink-0 text-muted-foreground">
+							<rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+						</svg>
+						<p class="font-medium">{label(p)}</p>
+					</div>
+					<Button variant={connections.length > 0 ? 'outline' : 'default'} onclick={() => (window.location.href = `/v1/calendar/connect?provider=${p}`)}>Connect</Button>
+				</div>
+			{/each}
+			{#if connections.length > 0}
+				<p class="text-xs text-muted-foreground">Connect a personal + work calendar (or both providers) so nothing double-books.</p>
+			{/if}
+		</div>
 	</div>
 {/if}
 
