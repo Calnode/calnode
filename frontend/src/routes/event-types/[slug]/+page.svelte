@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { page } from '$app/stores';
 	import { base } from '$app/paths';
-	import { api, type EventType, type EventTypeHost, type Question, type User, type Team, type CalendarStatus } from '$lib/api';
+	import { api, type EventType, type EventTypeHost, type Question, type User, type Team, type CalendarStatus, type ZoomStatus } from '$lib/api';
 	import { currentUser } from '$lib/stores';
 	import { Button, buttonVariants } from '$lib/components/ui/button';
 	import { ConfirmDialog } from '$lib/components/ui/confirm-dialog';
@@ -51,6 +51,8 @@
 
 	// Connected calendar (the owner's) — drives the meeting-link auto-generation hint.
 	let calStatus = $state<CalendarStatus | null>(null);
+	// Owner's Zoom connection — drives the Zoom auto-mint hint.
+	let zoomStatus = $state<ZoomStatus | null>(null);
 	// Which connected provider can natively mint each online platform's link.
 	const PLATFORM_PROVIDER: Record<string, string> = { google_meet: 'google', teams: 'microsoft' };
 	const isOnlineMeeting = (t: string) => t === 'google_meet' || t === 'teams';
@@ -70,6 +72,9 @@
 			!!calStatus?.connected &&
 			calStatus?.provider === PLATFORM_PROVIDER[form.location_type]
 	);
+
+	// True when the owner's connected Zoom account will auto-mint a meeting per booking.
+	const zoomAutoGen = $derived(form.location_type === 'zoom' && !!zoomStatus?.connected);
 
 	// Embed snippets. The widget derives its API base from the script's own origin,
 	// so the instance origin is all the snippet needs.
@@ -494,6 +499,7 @@
 		if (et?.owned === false) return;
 		// Connected calendar — best-effort; drives the meeting-link hint only.
 		api.get<CalendarStatus>('/v1/calendar/status').then((s) => (calStatus = s)).catch(() => {});
+	api.get<ZoomStatus>('/v1/zoom/status').then((s) => (zoomStatus = s)).catch(() => {});
 		loadQuestions();
 		if (hostScope === 'people') {
 			await loadHosts();
@@ -657,6 +663,21 @@
 							</p>
 						{/if}
 						<Input id="et-loc-val" bind:value={form.location_value} placeholder={meetAutoGen ? 'Optional fallback link' : `Paste a ${platform} link`} />
+					{:else if form.location_type === 'zoom'}
+						<Label for="et-loc-val">Zoom link</Label>
+						{#if zoomAutoGen}
+							<p class="rounded-md border border-green-600/20 bg-green-50 px-3 py-2 text-sm text-green-700">
+								A Zoom meeting is created automatically for each booking under the assigned host's connected Zoom account.
+							</p>
+						{:else}
+							<p class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+								{zoomStatus?.configured
+									? 'Connect your Zoom account on the Calendar page to auto-generate meeting links,'
+									: 'Zoom isn’t set up for this workspace (an admin can add it in Settings → Zoom),'}
+								or paste a Zoom link below to use for every booking.
+							</p>
+						{/if}
+						<Input id="et-loc-val" bind:value={form.location_value} placeholder={zoomAutoGen ? 'Optional fallback link' : 'https://…zoom.us/j/…'} />
 					{:else}
 						<Label for="et-loc-val">{LOCATION_NEEDS_VALUE[form.location_type] ?? 'Details'}</Label>
 						<Input id="et-loc-val" bind:value={form.location_value} placeholder={LOCATION_PLACEHOLDER[form.location_type] ?? 'Optional'} />

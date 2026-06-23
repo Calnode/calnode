@@ -147,6 +147,19 @@ export type GoogleSettings = {
 	base_url: string;
 };
 
+export type ZoomSettings = {
+	client_id: string;
+	client_secret_set: boolean;
+	configured: boolean;
+	/** Exact redirect URI to register in the Zoom Marketplace app. */
+	redirect_uri: string;
+};
+
+export type ZoomStatus = {
+	configured: boolean; // a Zoom app is set up for the instance
+	connected: boolean;  // the current host has connected their Zoom account
+};
+
 export type LLMSettings = {
 	enabled: boolean;
 	endpoint: string;

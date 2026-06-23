@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { page } from '$app/stores';
-	import { api, type CalendarStatus } from '$lib/api';
+	import { api, type CalendarStatus, type ZoomStatus } from '$lib/api';
 	import { Button } from '$lib/components/ui/button';
 	import { ConfirmDialog } from '$lib/components/ui/confirm-dialog';
 
@@ -21,6 +21,12 @@
 
 	const providers = $derived(status?.providers ?? []);
 
+	// Zoom is a separate, per-host meeting-link connection (not a calendar).
+	let zoom: ZoomStatus | null = $state(null);
+	let zoomJustConnected = $state(false);
+	let zoomDisconnecting = $state(false);
+	let zoomDisconnectOpen = $state(false);
+
 	async function load() {
 		try {
 			status = await api.get<CalendarStatus>('/v1/calendar/status');
@@ -31,9 +37,19 @@
 		}
 	}
 
+	async function loadZoom() {
+		try {
+			zoom = await api.get<ZoomStatus>('/v1/zoom/status');
+		} catch {
+			zoom = null;
+		}
+	}
+
 	onMount(() => {
 		justConnected = $page.url.searchParams.get('connected') === 'true';
+		zoomJustConnected = $page.url.searchParams.get('zoom') === 'connected';
 		load();
+		loadZoom();
 	});
 
 	async function doDisconnect() {
@@ -47,6 +63,18 @@
 			disconnecting = false;
 		}
 	}
+
+	async function doZoomDisconnect() {
+		zoomDisconnecting = true;
+		try {
+			await api.del('/v1/zoom');
+			await loadZoom();
+		} catch (e: any) {
+			error = e.message;
+		} finally {
+			zoomDisconnecting = false;
+		}
+	}
 </script>
 
 <ConfirmDialog
@@ -56,6 +84,15 @@
 	confirmText="Disconnect"
 	destructive
 	onConfirm={doDisconnect}
+/>
+
+<ConfirmDialog
+	bind:open={zoomDisconnectOpen}
+	title="Disconnect Zoom?"
+	description="New Zoom-located bookings assigned to you won't get an auto-generated meeting link."
+	confirmText="Disconnect"
+	destructive
+	onConfirm={doZoomDisconnect}
 />
 
 <svelte:head><title>Calendar — Calnode</title></svelte:head>
@@ -117,5 +154,45 @@
 			</div>
 		{/each}
 		<p class="text-xs text-muted-foreground">Connecting one calendar replaces any previously connected one.</p>
+	</div>
+{/if}
+
+<!-- Zoom — per-host meeting links (independent of the calendar) -->
+{#if zoom?.configured}
+	<div class="mt-10">
+		<h2 class="text-lg font-semibold tracking-tight">Zoom</h2>
+		<p class="mt-1 text-sm text-muted-foreground">
+			Connect your Zoom account so bookings with a Zoom location get a real meeting link minted under your account.
+		</p>
+		{#if zoomJustConnected && zoom.connected}
+			<p class="mt-3 max-w-md rounded-md bg-green-50 px-3 py-2 text-sm text-green-700">Zoom connected successfully.</p>
+		{/if}
+		<div class="mt-3 max-w-md">
+			{#if zoom.connected}
+				<div class="flex items-center justify-between rounded-lg border bg-card p-5">
+					<div class="flex items-center gap-3">
+						<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="shrink-0 text-muted-foreground"><path d="m22 8-6 4 6 4V8Z"/><rect x="2" y="6" width="14" height="12" rx="2"/></svg>
+						<div>
+							<p class="font-medium">Zoom</p>
+							<p class="mt-0.5 inline-flex items-center gap-1.5 text-sm text-green-700">
+								<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+								Connected
+							</p>
+						</div>
+					</div>
+					<Button variant="outline" onclick={() => (zoomDisconnectOpen = true)} disabled={zoomDisconnecting}>
+						{zoomDisconnecting ? 'Disconnecting…' : 'Disconnect'}
+					</Button>
+				</div>
+			{:else}
+				<div class="flex items-center justify-between rounded-lg border bg-card p-5">
+					<div class="flex items-center gap-3">
+						<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="shrink-0 text-muted-foreground"><path d="m22 8-6 4 6 4V8Z"/><rect x="2" y="6" width="14" height="12" rx="2"/></svg>
+						<p class="font-medium">Zoom</p>
+					</div>
+					<Button onclick={() => (window.location.href = '/v1/zoom/connect')}>Connect</Button>
+				</div>
+			{/if}
+		</div>
 	</div>
 {/if}
