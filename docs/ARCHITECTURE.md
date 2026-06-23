@@ -693,6 +693,12 @@ falls back to the deterministic slot picker.
   are required before `book` commits. Reasoning models' inline `<think>` is stripped; the
   prompt enforces brevity. Public + anonymous, so it's rate-limited (15/min/IP) with
   conversation/iteration/token caps.
+- **Streaming:** replies stream token-by-token. `llm.ChatStream` parses the provider's SSE;
+  the endpoint content-negotiates — `Accept: text/event-stream` runs the tool-loop with
+  ChatStream and emits `{token|status|done|fallback}` SSE events (`<think>` stripped on the
+  fly), while other callers keep the one-shot JSON path. (Gotcha: the request-logging
+  `responseWriter` embeds the RW interface, which doesn't promote `Flush` — it has an
+  explicit flush-transparent `Flush()` so streamed responses aren't buffered.)
 - **Admin instructions:** the base prompt (`assistantBaseRules`) is **code-owned** (the
   tool-calling contract + safety) and not editable; admins append free-text **"Additional
   instructions"** (tone/business context) shown alongside a read-only view of the base.
