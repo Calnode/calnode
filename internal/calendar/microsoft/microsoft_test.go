@@ -58,7 +58,7 @@ func connect(t *testing.T, c *Client, userID string) {
 	t.Helper()
 	seedUser(t, c.db, userID)
 	tok := &oauth2.Token{AccessToken: "access", RefreshToken: "refresh", Expiry: time.Now().Add(time.Hour)}
-	if err := c.saveToken(context.Background(), userID, "primary", "work", tok); err != nil {
+	if err := c.saveToken(context.Background(), userID, "primary", "", "work", tok); err != nil {
 		t.Fatalf("saveToken: %v", err)
 	}
 }
@@ -253,11 +253,11 @@ func TestSaveToken_refreshPreservesKind(t *testing.T) {
 	c := newTestClient(t)
 	seedUser(t, c.db, "u1")
 	tok := &oauth2.Token{AccessToken: "a", RefreshToken: "r", Expiry: time.Now().Add(time.Hour)}
-	if err := c.saveToken(context.Background(), "u1", "primary", "personal", tok); err != nil {
+	if err := c.saveToken(context.Background(), "u1", "primary", "", "personal", tok); err != nil {
 		t.Fatalf("saveToken: %v", err)
 	}
 	// Refresh path passes kind="" — must not wipe the stored "personal".
-	if err := c.saveToken(context.Background(), "u1", "primary", "", tok); err != nil {
+	if err := c.saveToken(context.Background(), "u1", "primary", "", "", tok); err != nil {
 		t.Fatalf("saveToken refresh: %v", err)
 	}
 	var kind string

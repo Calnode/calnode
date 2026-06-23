@@ -1,8 +1,12 @@
 package handler
 
 import (
+	"database/sql"
+	"errors"
 	"net/http"
 	"strings"
+
+	"github.com/calnode/calnode/internal/calendar"
 )
 
 // stateSep separates the provider name from the userID inside the (encrypted)
@@ -86,40 +90,90 @@ func (h *Handler) CalendarCallback(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	// One calendar per user: drop any prior connection on a different provider.
-	if err := svc.RetainOnly(r.Context(), userID, p.Name()); err != nil {
-		h.logger.WarnContext(r.Context(), "calendar callback: retain-only cleanup", "error", err, "user_id", userID)
-	}
+	// Multi-calendar: connecting is additive. The first connection becomes the destination
+	// (handled in the provider's saveToken); subsequent ones are conflict-check only.
 
 	http.Redirect(w, r, h.baseURL+"/admin/calendar?connected=true", http.StatusFound)
 }
 
-// CalendarStatus handles GET /v1/calendar/status (auth required).
+// CalendarStatus handles GET /v1/calendar/status (auth required). Returns the user's full
+// list of connected calendars (many may be checked for conflicts; exactly one is the
+// destination), plus which providers are available to connect.
 func (h *Handler) CalendarStatus(w http.ResponseWriter, r *http.Request) {
 	svc := h.getCal()
 	if svc == nil || !svc.Any() {
-		h.writeJSON(w, http.StatusOK, map[string]any{"connected": false, "configured": false})
+		h.writeJSON(w, http.StatusOK, map[string]any{"connected": false, "configured": false, "connections": []any{}})
 		return
 	}
 	user, _ := userFromContext(r.Context())
-	connected, provider, err := svc.Connected(r.Context(), user.ID)
+	conns, err := svc.Connections(r.Context(), user.ID)
 	if err != nil {
 		h.logger.ErrorContext(r.Context(), "calendar status", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	resp := map[string]any{
-		"connected":  connected,
-		"configured": true,
-		"providers":  svc.ProviderNames(), // which backends are available to connect
+	if conns == nil {
+		conns = []calendar.Connection{}
 	}
-	if connected {
-		resp["provider"] = provider
+	// Back-compat fields: `connected` + `provider` reflect the destination connection.
+	var destProvider string
+	for _, c := range conns {
+		if c.IsDestination {
+			destProvider = c.Provider
+		}
+	}
+	resp := map[string]any{
+		"connected":   len(conns) > 0,
+		"configured":  true,
+		"providers":   svc.ProviderNames(),
+		"connections": conns,
+	}
+	if destProvider != "" {
+		resp["provider"] = destProvider
 	}
 	h.writeJSON(w, http.StatusOK, resp)
 }
 
-// DisconnectCalendar handles DELETE /v1/calendar (auth required).
+// SetCalendarDestination handles POST /v1/calendar/connections/{id}/destination (auth) —
+// choose which connected calendar bookings are written to.
+func (h *Handler) SetCalendarDestination(w http.ResponseWriter, r *http.Request) {
+	svc := h.getCal()
+	if svc == nil || !svc.Any() {
+		h.writeError(w, http.StatusNotImplemented, "Calendar integration not configured")
+		return
+	}
+	user, _ := userFromContext(r.Context())
+	if err := svc.SetDestination(r.Context(), user.ID, r.PathValue("id")); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			h.writeError(w, http.StatusNotFound, "calendar connection not found")
+			return
+		}
+		h.logger.ErrorContext(r.Context(), "calendar set destination", "error", err)
+		h.writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// DisconnectCalendarConnection handles DELETE /v1/calendar/connections/{id} (auth) —
+// disconnect one calendar; promotes another to destination if this was it.
+func (h *Handler) DisconnectCalendarConnection(w http.ResponseWriter, r *http.Request) {
+	svc := h.getCal()
+	if svc == nil || !svc.Any() {
+		h.writeError(w, http.StatusNotImplemented, "Calendar integration not configured")
+		return
+	}
+	user, _ := userFromContext(r.Context())
+	if err := svc.DisconnectOne(r.Context(), user.ID, r.PathValue("id")); err != nil {
+		h.logger.ErrorContext(r.Context(), "calendar disconnect one", "error", err)
+		h.writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// DisconnectCalendar handles DELETE /v1/calendar (auth required) — disconnects ALL of the
+// user's calendars (kept for convenience / "remove everything").
 func (h *Handler) DisconnectCalendar(w http.ResponseWriter, r *http.Request) {
 	svc := h.getCal()
 	if svc == nil || !svc.Any() {

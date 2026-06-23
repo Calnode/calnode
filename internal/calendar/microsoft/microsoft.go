@@ -112,7 +112,34 @@ func (c *Client) Exchange(ctx context.Context, userID, code, calendarID string) 
 		calendarID = "primary"
 	}
 	kind := accountKindFromIDToken(tok)
-	return c.saveToken(ctx, userID, calendarID, kind, tok)
+	email := accountEmailFromIDToken(tok)
+	return c.saveToken(ctx, userID, calendarID, email, kind, tok)
+}
+
+// accountEmailFromIDToken reads the connected account's email/UPN from the id_token
+// (preferred_username, falling back to email). "" if unavailable — used to identify accounts
+// so a user can connect several Microsoft accounts.
+func accountEmailFromIDToken(tok *oauth2.Token) string {
+	raw, _ := tok.Extra("id_token").(string)
+	parts := strings.Split(raw, ".")
+	if len(parts) != 3 {
+		return ""
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return ""
+	}
+	var claims struct {
+		PreferredUsername string `json:"preferred_username"`
+		Email             string `json:"email"`
+	}
+	if json.Unmarshal(payload, &claims) != nil {
+		return ""
+	}
+	if claims.PreferredUsername != "" {
+		return claims.PreferredUsername
+	}
+	return claims.Email
 }
 
 // consumersTenantID is the fixed tenant a personal Microsoft account reports in
@@ -173,32 +200,9 @@ func (c *Client) HasDestination(ctx context.Context, userID string) (bool, error
 	return err == nil, err
 }
 
-// httpClient returns an authorized *http.Client for userID, filtered by
-// check_conflicts / is_destination (-1 means any). Returns (nil, nil) when no
-// matching connection exists.
-func (c *Client) httpClient(ctx context.Context, userID string, checkConflicts, isDestination int) (*http.Client, error) {
-	q := `SELECT access_token_enc, COALESCE(refresh_token_enc,''), calendar_id, COALESCE(expiry_at,'')
-	      FROM calendar_connections WHERE user_id = ? AND provider = ?`
-	args := []any{userID, providerName}
-	if checkConflicts >= 0 {
-		q += " AND check_conflicts = ?"
-		args = append(args, checkConflicts)
-	}
-	if isDestination >= 0 {
-		q += " AND is_destination = ?"
-		args = append(args, isDestination)
-	}
-	q += " LIMIT 1"
-
-	var accessEnc, refreshEnc, calID, expiryStr string
-	err := c.db.QueryRowContext(ctx, q, args...).Scan(&accessEnc, &refreshEnc, &calID, &expiryStr)
-	if err == sql.ErrNoRows {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, fmt.Errorf("microsoft: load connection: %w", err)
-	}
-
+// buildClient turns one connection row's encrypted tokens into an authorized *http.Client
+// whose refreshes persist back to that same account's row (keyed by accountEmail).
+func (c *Client) buildClient(ctx context.Context, userID, accessEnc, refreshEnc, calID, expiryStr, accountEmail string) (*http.Client, error) {
 	access, err := c.decrypt(accessEnc)
 	if err != nil {
 		return nil, fmt.Errorf("microsoft: decrypt access token: %w", err)
@@ -211,7 +215,6 @@ func (c *Client) httpClient(ctx context.Context, userID string, checkConflicts, 
 		}
 		refresh = string(rb)
 	}
-
 	var expiry time.Time
 	if expiryStr != "" {
 		expiry, _ = time.Parse(time.RFC3339, expiryStr)
@@ -219,21 +222,86 @@ func (c *Client) httpClient(ctx context.Context, userID string, checkConflicts, 
 	if expiry.IsZero() {
 		expiry = time.Now().Add(-time.Second) // force refresh of a stale/unknown token
 	}
-
 	tok := &oauth2.Token{AccessToken: string(access), RefreshToken: refresh, Expiry: expiry}
-	src := c.config.TokenSource(ctx, tok)
 	saving := &savingTokenSource{
-		inner:  oauth2.ReuseTokenSource(nil, src),
-		client: c,
-		userID: userID,
-		calID:  calID,
+		inner:        oauth2.ReuseTokenSource(nil, c.config.TokenSource(ctx, tok)),
+		client:       c,
+		userID:       userID,
+		calID:        calID,
+		accountEmail: accountEmail,
 	}
 	return oauth2.NewClient(ctx, saving), nil
 }
 
-// saveToken encrypts and upserts an OAuth token for userID (DELETE+INSERT in a tx).
-// kind is the account kind ("work"|"personal"|"") captured from the id_token.
-func (c *Client) saveToken(ctx context.Context, userID, calID, kind string, tok *oauth2.Token) error {
+// httpClient returns an authorized *http.Client for one matching connection (LIMIT 1),
+// filtered by check_conflicts / is_destination (-1 means any). Returns (nil, nil) when no
+// matching connection exists. Used for the single destination write.
+func (c *Client) httpClient(ctx context.Context, userID string, checkConflicts, isDestination int) (*http.Client, error) {
+	q := `SELECT access_token_enc, COALESCE(refresh_token_enc,''), calendar_id, COALESCE(expiry_at,''), COALESCE(account_email,'')
+	      FROM calendar_connections WHERE user_id = ? AND provider = ?`
+	args := []any{userID, providerName}
+	if checkConflicts >= 0 {
+		q += " AND check_conflicts = ?"
+		args = append(args, checkConflicts)
+	}
+	if isDestination >= 0 {
+		q += " AND is_destination = ?"
+		args = append(args, isDestination)
+	}
+	q += " LIMIT 1"
+
+	var accessEnc, refreshEnc, calID, expiryStr, accountEmail string
+	err := c.db.QueryRowContext(ctx, q, args...).Scan(&accessEnc, &refreshEnc, &calID, &expiryStr, &accountEmail)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("microsoft: load connection: %w", err)
+	}
+	return c.buildClient(ctx, userID, accessEnc, refreshEnc, calID, expiryStr, accountEmail)
+}
+
+// freeBusyConnections returns an authorized client for EVERY Microsoft connection the user
+// has with check_conflicts = 1 (so several connected Microsoft accounts are all checked).
+// Bad-credential rows are logged and skipped (fail-open).
+func (c *Client) freeBusyConnections(ctx context.Context, userID string) ([]*http.Client, error) {
+	rows, err := c.db.QueryContext(ctx, `
+		SELECT access_token_enc, COALESCE(refresh_token_enc,''), calendar_id, COALESCE(expiry_at,''), COALESCE(account_email,'')
+		FROM calendar_connections
+		WHERE user_id = ? AND provider = ? AND check_conflicts = 1`, userID, providerName)
+	if err != nil {
+		return nil, fmt.Errorf("microsoft: load freebusy connections: %w", err)
+	}
+	defer rows.Close()
+	type rowData struct{ accessEnc, refreshEnc, calID, expiryStr, accountEmail string }
+	var data []rowData
+	for rows.Next() {
+		var d rowData
+		if err := rows.Scan(&d.accessEnc, &d.refreshEnc, &d.calID, &d.expiryStr, &d.accountEmail); err != nil {
+			return nil, fmt.Errorf("microsoft: scan freebusy connection: %w", err)
+		}
+		data = append(data, d)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	var clients []*http.Client
+	for _, d := range data {
+		hc, err := c.buildClient(ctx, userID, d.accessEnc, d.refreshEnc, d.calID, d.expiryStr, d.accountEmail)
+		if err != nil {
+			c.logger.Warn("microsoft: skipping connection with bad credentials", "user_id", userID, "error", err)
+			continue
+		}
+		clients = append(clients, hc)
+	}
+	return clients, nil
+}
+
+// saveToken encrypts and upserts an OAuth token for ONE Microsoft account (keyed by
+// accountEmail), so a user can connect several. Replaces only that account's row. On a new
+// connection: check_conflicts=1, destination only if the user has none yet. On a refresh (row
+// exists): preserves check_conflicts/is_destination, and account_kind when kind=="".
+func (c *Client) saveToken(ctx context.Context, userID, calID, accountEmail, kind string, tok *oauth2.Token) error {
 	accessEnc, err := c.encrypt([]byte(tok.AccessToken))
 	if err != nil {
 		return err
@@ -258,24 +326,45 @@ func (c *Client) saveToken(ctx context.Context, userID, calID, kind string, tok 
 	}
 	defer tx.Rollback() //nolint:errcheck
 
-	// On refresh (kind == "") preserve the account_kind captured at connect, since
-	// this is a DELETE+INSERT and a refresh carries no id_token to re-derive it.
-	if kind == "" {
-		_ = tx.QueryRowContext(ctx,
-			`SELECT account_kind FROM calendar_connections WHERE user_id = ? AND provider = ?`,
-			userID, providerName).Scan(&kind)
+	// Resolve flags + account_kind: preserve from the existing account row (refresh); else new
+	// connection — checked for conflicts, destination only if the user has none yet.
+	checkConflicts, isDest := 1, 0
+	var ec, ed int
+	var existingKind string
+	switch err := tx.QueryRowContext(ctx,
+		`SELECT check_conflicts, is_destination, COALESCE(account_kind,'') FROM calendar_connections
+		 WHERE user_id = ? AND provider = ? AND account_email = ?`,
+		userID, providerName, accountEmail).Scan(&ec, &ed, &existingKind); err {
+	case nil:
+		checkConflicts, isDest = ec, ed
+		if kind == "" {
+			kind = existingKind // refresh carries no id_token → keep stored kind
+		}
+	case sql.ErrNoRows:
+		var destCount int
+		if err := tx.QueryRowContext(ctx,
+			`SELECT COUNT(*) FROM calendar_connections WHERE user_id = ? AND is_destination = 1`,
+			userID).Scan(&destCount); err != nil {
+			return fmt.Errorf("microsoft: save token dest check: %w", err)
+		}
+		if destCount == 0 {
+			isDest = 1
+		}
+	default:
+		return fmt.Errorf("microsoft: save token flag lookup: %w", err)
 	}
+
 	if _, err := tx.ExecContext(ctx,
-		`DELETE FROM calendar_connections WHERE user_id = ? AND provider = ?`,
-		userID, providerName); err != nil {
+		`DELETE FROM calendar_connections WHERE user_id = ? AND provider = ? AND account_email = ?`,
+		userID, providerName, accountEmail); err != nil {
 		return fmt.Errorf("microsoft: save token delete: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO calendar_connections
-		    (id, user_id, provider, access_token_enc, refresh_token_enc, calendar_id,
+		    (id, user_id, provider, account_email, access_token_enc, refresh_token_enc, calendar_id,
 		     check_conflicts, is_destination, expiry_at, created_at, account_kind)
-		VALUES (?, ?, ?, ?, ?, ?, 1, 1, ?, ?, ?)`,
-		uid.New(), userID, providerName, accessEnc, refreshEnc, calID, expiryStr, now, kind); err != nil {
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		uid.New(), userID, providerName, accountEmail, accessEnc, refreshEnc, calID, checkConflicts, isDest, expiryStr, now, kind); err != nil {
 		return fmt.Errorf("microsoft: save token insert: %w", err)
 	}
 	return tx.Commit()
@@ -283,11 +372,12 @@ func (c *Client) saveToken(ctx context.Context, userID, calID, kind string, tok 
 
 // savingTokenSource persists refreshed tokens to the DB when the access token changes.
 type savingTokenSource struct {
-	inner  oauth2.TokenSource
-	client *Client
-	userID string
-	calID  string
-	last   string
+	inner        oauth2.TokenSource
+	client       *Client
+	userID       string
+	calID        string
+	accountEmail string
+	last         string
 }
 
 func (s *savingTokenSource) Token() (*oauth2.Token, error) {
@@ -299,8 +389,8 @@ func (s *savingTokenSource) Token() (*oauth2.Token, error) {
 		s.last = tok.AccessToken
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		// kind="" → preserve the account_kind already stored (refresh has no id_token).
-		if err := s.client.saveToken(ctx, s.userID, s.calID, "", tok); err != nil {
+		// kind="" → preserve the account_kind + flags already stored (refresh has no id_token).
+		if err := s.client.saveToken(ctx, s.userID, s.calID, s.accountEmail, "", tok); err != nil {
 			s.client.logger.Error("microsoft: failed to persist refreshed token", "error", err, "user_id", s.userID)
 		}
 	}

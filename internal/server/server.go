@@ -390,6 +390,8 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	mux.HandleFunc("GET /v1/calendar/connect", h.RequireAuth(h.ConnectCalendar))
 	mux.HandleFunc("GET /v1/calendar/callback", h.CalendarCallback)
 	mux.HandleFunc("GET /v1/calendar/status", h.RequireAuth(h.CalendarStatus))
+	mux.HandleFunc("POST /v1/calendar/connections/{id}/destination", h.RequireAuth(h.SetCalendarDestination))
+	mux.HandleFunc("DELETE /v1/calendar/connections/{id}", h.RequireAuth(h.DisconnectCalendarConnection))
 	mux.HandleFunc("DELETE /v1/calendar", h.RequireAuth(h.DisconnectCalendar))
 
 	// Zoom — per-host OAuth connect (auto-mint meeting links).

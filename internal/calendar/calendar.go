@@ -91,11 +91,13 @@ func (s *Service) ProviderNames() []string {
 	return names
 }
 
-// providerForUser resolves the provider a user has connected (nil if none).
-func (s *Service) providerForUser(ctx context.Context, userID string) Provider {
+// providerForDestination resolves the provider of the user's DESTINATION connection — the one
+// calendar bookings are written to (is_destination = 1). Write/capability ops route here.
+// Returns nil if the user has no destination.
+func (s *Service) providerForDestination(ctx context.Context, userID string) Provider {
 	var name string
 	if err := s.db.QueryRowContext(ctx,
-		`SELECT provider FROM calendar_connections WHERE user_id = ? LIMIT 1`, userID).Scan(&name); err != nil {
+		`SELECT provider FROM calendar_connections WHERE user_id = ? AND is_destination = 1 LIMIT 1`, userID).Scan(&name); err != nil {
 		return nil
 	}
 	return s.providers[name]
@@ -124,7 +126,7 @@ func (s *Service) Connected(ctx context.Context, userID string) (bool, string, e
 func (s *Service) CanAutoGenerate(ctx context.Context, userID, locType string) (bool, error) {
 	var provider, kind string
 	err := s.db.QueryRowContext(ctx,
-		`SELECT provider, COALESCE(account_kind, '') FROM calendar_connections WHERE user_id = ? LIMIT 1`,
+		`SELECT provider, COALESCE(account_kind, '') FROM calendar_connections WHERE user_id = ? AND is_destination = 1 LIMIT 1`,
 		userID).Scan(&provider, &kind)
 	if err == sql.ErrNoRows {
 		return false, nil
@@ -148,60 +150,164 @@ func (s *Service) Disconnect(ctx context.Context, userID string) error {
 	return err
 }
 
-// RetainOnly removes the user's connections for every provider except keep —
-// enforcing one connected calendar per user when they switch providers (so
-// connecting Microsoft replaces a prior Google connection, and vice versa).
-func (s *Service) RetainOnly(ctx context.Context, userID, keep string) error {
-	_, err := s.db.ExecContext(ctx,
-		`DELETE FROM calendar_connections WHERE user_id = ? AND provider != ?`, userID, keep)
-	return err
+// Connection is one connected calendar account for the multi-calendar UI/API.
+type Connection struct {
+	ID             string `json:"id"`
+	Provider       string `json:"provider"`
+	AccountEmail   string `json:"account_email"`
+	IsDestination  bool   `json:"is_destination"`
+	CheckConflicts bool   `json:"check_conflicts"`
 }
 
-// HasDestination reports whether the user's connected provider has somewhere to
-// write events. Used to gate the email .ics fallback and skip pointless retries.
+// Connections lists the user's connected calendars (all providers), destination first.
+func (s *Service) Connections(ctx context.Context, userID string) ([]Connection, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, provider, COALESCE(account_email,''), is_destination, check_conflicts
+		FROM calendar_connections WHERE user_id = ?
+		ORDER BY is_destination DESC, created_at ASC`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Connection
+	for rows.Next() {
+		var c Connection
+		var dest, check int
+		if err := rows.Scan(&c.ID, &c.Provider, &c.AccountEmail, &dest, &check); err != nil {
+			return nil, err
+		}
+		c.IsDestination = dest != 0
+		c.CheckConflicts = check != 0
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
+// SetDestination makes connID the user's single write destination (clears the flag on the
+// rest). Errors if connID isn't one of the user's connections.
+func (s *Service) SetDestination(ctx context.Context, userID, connID string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback() //nolint:errcheck
+	var owned int
+	if err := tx.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM calendar_connections WHERE id = ? AND user_id = ?`, connID, userID).Scan(&owned); err != nil {
+		return err
+	}
+	if owned == 0 {
+		return sql.ErrNoRows
+	}
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE calendar_connections SET is_destination = 0 WHERE user_id = ?`, userID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE calendar_connections SET is_destination = 1 WHERE id = ? AND user_id = ?`, connID, userID); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// DisconnectOne removes one of the user's connections. If it was the destination, the
+// oldest remaining connection is promoted so the user keeps a write target.
+func (s *Service) DisconnectOne(ctx context.Context, userID, connID string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback() //nolint:errcheck
+	var wasDest int
+	switch err := tx.QueryRowContext(ctx,
+		`SELECT is_destination FROM calendar_connections WHERE id = ? AND user_id = ?`, connID, userID).Scan(&wasDest); err {
+	case nil:
+	case sql.ErrNoRows:
+		return nil // already gone / not theirs — no-op
+	default:
+		return err
+	}
+	if _, err := tx.ExecContext(ctx,
+		`DELETE FROM calendar_connections WHERE id = ? AND user_id = ?`, connID, userID); err != nil {
+		return err
+	}
+	if wasDest != 0 {
+		// Promote the oldest remaining connection to destination (if any).
+		var nextID string
+		if err := tx.QueryRowContext(ctx,
+			`SELECT id FROM calendar_connections WHERE user_id = ? ORDER BY created_at ASC LIMIT 1`, userID).Scan(&nextID); err == nil {
+			if _, err := tx.ExecContext(ctx,
+				`UPDATE calendar_connections SET is_destination = 1 WHERE id = ?`, nextID); err != nil {
+				return err
+			}
+		}
+	}
+	return tx.Commit()
+}
+
+// HasDestination reports whether the user has a destination calendar to write events to.
+// Used to gate the email .ics fallback and skip pointless retries.
 func (s *Service) HasDestination(ctx context.Context, userID string) (bool, error) {
-	if p := s.providerForUser(ctx, userID); p != nil {
+	if p := s.providerForDestination(ctx, userID); p != nil {
 		return p.HasDestination(ctx, userID)
 	}
 	return false, nil
 }
 
-// InvitesGuests reports whether the user's connected provider emails guests itself.
+// InvitesGuests reports whether the user's DESTINATION provider emails guests itself.
 func (s *Service) InvitesGuests(ctx context.Context, userID string) bool {
-	if p := s.providerForUser(ctx, userID); p != nil {
+	if p := s.providerForDestination(ctx, userID); p != nil {
 		return p.InvitesGuests()
 	}
 	return false
 }
 
-// FreeBusy returns busy intervals for the user from their connected provider.
+// FreeBusy returns the UNION of busy intervals for the user across EVERY connected provider
+// (each provider internally unions its own connected accounts with check_conflicts = 1). This
+// is what lets a user connect multiple calendars and have them all checked. Fail-open: a
+// provider that errors is skipped; an error is returned only if every provider failed (so a
+// flaky calendar never blocks availability or a booking).
 func (s *Service) FreeBusy(ctx context.Context, userID string, from, to time.Time) ([]slots.Interval, error) {
-	if p := s.providerForUser(ctx, userID); p != nil {
-		return p.FreeBusy(ctx, userID, from, to)
+	var out []slots.Interval
+	var firstErr error
+	anyOK := false
+	for _, p := range s.providers {
+		iv, err := p.FreeBusy(ctx, userID, from, to)
+		if err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		anyOK = true
+		out = append(out, iv...)
 	}
-	return nil, nil
+	if !anyOK && firstErr != nil {
+		return nil, firstErr
+	}
+	return out, nil
 }
 
-// CreateEvent creates an event on the user's connected provider; returns ("","",nil)
-// if they have none.
+// CreateEvent creates an event on the user's DESTINATION calendar; returns ("","",nil) if
+// they have no destination.
 func (s *Service) CreateEvent(ctx context.Context, userID string, p CreateEventParams) (string, string, error) {
-	if pr := s.providerForUser(ctx, userID); pr != nil {
+	if pr := s.providerForDestination(ctx, userID); pr != nil {
 		return pr.CreateEvent(ctx, userID, p)
 	}
 	return "", "", nil
 }
 
-// UpdateEvent moves an event on the user's connected provider.
+// UpdateEvent moves an event on the user's DESTINATION calendar.
 func (s *Service) UpdateEvent(ctx context.Context, userID, eventID string, start, end time.Time) error {
-	if pr := s.providerForUser(ctx, userID); pr != nil {
+	if pr := s.providerForDestination(ctx, userID); pr != nil {
 		return pr.UpdateEvent(ctx, userID, eventID, start, end)
 	}
 	return nil
 }
 
-// CancelEvent deletes an event on the user's connected provider.
+// CancelEvent deletes an event on the user's DESTINATION calendar.
 func (s *Service) CancelEvent(ctx context.Context, userID, eventID string) error {
-	if pr := s.providerForUser(ctx, userID); pr != nil {
+	if pr := s.providerForDestination(ctx, userID); pr != nil {
 		return pr.CancelEvent(ctx, userID, eventID)
 	}
 	return nil

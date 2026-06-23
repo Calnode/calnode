@@ -44,7 +44,7 @@ func saveDestinationConnection(t *testing.T, c *Client, userID, calID string) {
 	t.Helper()
 	seedUser(t, c.db, userID)
 	tok := &oauth2.Token{AccessToken: "dst-token", Expiry: time.Now().Add(time.Hour)}
-	if err := c.saveToken(context.Background(), userID, calID, tok); err != nil {
+	if err := c.saveToken(context.Background(), userID, calID, "", tok); err != nil {
 		t.Fatalf("saveToken: %v", err)
 	}
 }
@@ -199,7 +199,7 @@ func TestCreateEvent_onlyDestinationConnections(t *testing.T) {
 	c := newTestClient(t)
 	seedUser(t, c.db, "user-1")
 	tok := &oauth2.Token{AccessToken: "tok", Expiry: time.Now().Add(time.Hour)}
-	c.saveToken(context.Background(), "user-1", "primary", tok) //nolint:errcheck
+	c.saveToken(context.Background(), "user-1", "primary", "", tok) //nolint:errcheck
 	c.db.ExecContext(context.Background(),                       //nolint:errcheck
 		`UPDATE calendar_connections SET is_destination = 0 WHERE user_id = ?`, "user-1")
 

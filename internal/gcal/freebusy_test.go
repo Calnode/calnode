@@ -56,7 +56,7 @@ func saveAndConnectClient(t *testing.T, c *Client, userID, calID, accessToken st
 		AccessToken: accessToken,
 		Expiry:      time.Now().Add(time.Hour), // valid; no refresh needed
 	}
-	if err := c.saveToken(context.Background(), userID, calID, tok); err != nil {
+	if err := c.saveToken(context.Background(), userID, calID, "", tok); err != nil {
 		t.Fatalf("saveToken: %v", err)
 	}
 }
@@ -138,7 +138,9 @@ func TestFreeBusy_notConnected_returnsNil(t *testing.T) {
 	}
 }
 
-func TestFreeBusy_nonOK_returnsError(t *testing.T) {
+func TestFreeBusy_nonOK_failsOpen(t *testing.T) {
+	// A connection returning non-200 is skipped (fail-open), not surfaced as an error —
+	// a flaky calendar must never block availability or a booking.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 	}))
@@ -148,9 +150,12 @@ func TestFreeBusy_nonOK_returnsError(t *testing.T) {
 	c.apiBase = srv.URL
 	saveAndConnectClient(t, c, "user-1", "primary", "bad-token")
 
-	_, err := c.FreeBusy(context.Background(), "user-1", time.Now(), time.Now().Add(time.Hour))
-	if err == nil {
-		t.Error("expected error for non-200 response; got nil")
+	got, err := c.FreeBusy(context.Background(), "user-1", time.Now(), time.Now().Add(time.Hour))
+	if err != nil {
+		t.Errorf("fail-open: expected nil error, got %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("expected no busy intervals from a failed connection, got %d", len(got))
 	}
 }
 
@@ -159,7 +164,7 @@ func TestFreeBusy_onlyCheckConflictsConnections(t *testing.T) {
 	c := newTestClient(t)
 	seedUser(t, c.db, "user-1")
 	tok := &oauth2.Token{AccessToken: "tok", Expiry: time.Now().Add(time.Hour)}
-	if err := c.saveToken(context.Background(), "user-1", "primary", tok); err != nil {
+	if err := c.saveToken(context.Background(), "user-1", "primary", "", tok); err != nil {
 		t.Fatalf("saveToken: %v", err)
 	}
 	// Flip check_conflicts to 0.

@@ -186,7 +186,7 @@ func TestSaveToken_connectedReturnsTrue(t *testing.T) {
 	c := newTestClient(t)
 	seedUser(t, c.db, "user-1")
 	tok := &oauth2.Token{AccessToken: "access-abc", RefreshToken: "refresh-xyz"}
-	if err := c.saveToken(context.Background(), "user-1", "primary", tok); err != nil {
+	if err := c.saveToken(context.Background(), "user-1", "primary", "", tok); err != nil {
 		t.Fatalf("saveToken: %v", err)
 	}
 	ok, err := c.Connected(context.Background(), "user-1")
@@ -202,8 +202,8 @@ func TestSaveToken_upsertReplacesExisting(t *testing.T) {
 	c := newTestClient(t)
 	ctx := context.Background()
 	seedUser(t, c.db, "user-1")
-	c.saveToken(ctx, "user-1", "primary", &oauth2.Token{AccessToken: "old"})          //nolint:errcheck
-	c.saveToken(ctx, "user-1", "primary", &oauth2.Token{AccessToken: "new", RefreshToken: "r"}) //nolint:errcheck
+	c.saveToken(ctx, "user-1", "primary", "", &oauth2.Token{AccessToken: "old"})          //nolint:errcheck
+	c.saveToken(ctx, "user-1", "primary", "", &oauth2.Token{AccessToken: "new", RefreshToken: "r"}) //nolint:errcheck
 
 	var n int
 	c.db.QueryRowContext(ctx, //nolint:errcheck
@@ -213,11 +213,50 @@ func TestSaveToken_upsertReplacesExisting(t *testing.T) {
 	}
 }
 
+func TestSaveToken_multiAccountDestinationInvariants(t *testing.T) {
+	c := newTestClient(t)
+	ctx := context.Background()
+	seedUser(t, c.db, "user-1")
+
+	// First account connected → becomes the destination.
+	c.saveToken(ctx, "user-1", "primary", "work@x.test", &oauth2.Token{AccessToken: "a1", RefreshToken: "r1"})    //nolint:errcheck
+	// Second account → checked for conflicts but NOT the destination.
+	c.saveToken(ctx, "user-1", "primary", "personal@x.test", &oauth2.Token{AccessToken: "a2", RefreshToken: "r2"}) //nolint:errcheck
+
+	rows := map[string]int{}
+	r, _ := c.db.QueryContext(ctx, `SELECT account_email, is_destination FROM calendar_connections WHERE user_id='user-1'`)
+	defer r.Close()
+	n := 0
+	for r.Next() {
+		var email string
+		var dest int
+		_ = r.Scan(&email, &dest)
+		rows[email] = dest
+		n++
+	}
+	if n != 2 {
+		t.Fatalf("got %d connections; want 2 (one per account)", n)
+	}
+	if rows["work@x.test"] != 1 || rows["personal@x.test"] != 0 {
+		t.Errorf("destination invariant wrong: %v (want work=1, personal=0)", rows)
+	}
+
+	// A token refresh of the SECOND account must NOT steal the destination or wipe the first.
+	c.saveToken(ctx, "user-1", "primary", "personal@x.test", &oauth2.Token{AccessToken: "a2b", RefreshToken: "r2"}) //nolint:errcheck
+	var workDest, personalDest, total int
+	c.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM calendar_connections WHERE user_id='user-1'`).Scan(&total)                                  //nolint:errcheck
+	c.db.QueryRowContext(ctx, `SELECT is_destination FROM calendar_connections WHERE account_email='work@x.test'`).Scan(&workDest)             //nolint:errcheck
+	c.db.QueryRowContext(ctx, `SELECT is_destination FROM calendar_connections WHERE account_email='personal@x.test'`).Scan(&personalDest)     //nolint:errcheck
+	if total != 2 || workDest != 1 || personalDest != 0 {
+		t.Errorf("after refresh: total=%d work.dest=%d personal.dest=%d; want 2,1,0", total, workDest, personalDest)
+	}
+}
+
 func TestDisconnect_removesConnection(t *testing.T) {
 	c := newTestClient(t)
 	ctx := context.Background()
 	seedUser(t, c.db, "user-1")
-	c.saveToken(ctx, "user-1", "primary", &oauth2.Token{AccessToken: "tok"}) //nolint:errcheck
+	c.saveToken(ctx, "user-1", "primary", "", &oauth2.Token{AccessToken: "tok"}) //nolint:errcheck
 
 	if err := c.Disconnect(ctx, "user-1"); err != nil {
 		t.Fatalf("Disconnect: %v", err)
@@ -239,35 +278,38 @@ func TestDisconnect_noOpWhenNotConnected(t *testing.T) {
 // HTTPClient helpers
 // ---------------------------------------------------------------------------
 
-func TestFreeBusyClient_nilWhenNotConnected(t *testing.T) {
+func TestFreeBusyConnections_emptyWhenNotConnected(t *testing.T) {
 	c := newTestClient(t)
-	hc, calID, err := c.FreeBusyClient(context.Background(), "user-1")
+	conns, err := c.freeBusyConnections(context.Background(), "user-1")
 	if err != nil {
-		t.Fatalf("FreeBusyClient: %v", err)
+		t.Fatalf("freeBusyConnections: %v", err)
 	}
-	if hc != nil || calID != "" {
-		t.Errorf("got (%v, %q); want (nil, \"\")", hc, calID)
+	if len(conns) != 0 {
+		t.Errorf("got %d connections; want 0", len(conns))
 	}
 }
 
-func TestFreeBusyClient_returnsClientAndCalendarID(t *testing.T) {
+func TestFreeBusyConnections_returnsConnectedCalendars(t *testing.T) {
 	c := newTestClient(t)
 	ctx := context.Background()
 	seedUser(t, c.db, "user-1")
-	c.saveToken(ctx, "user-1", "user@example.com", &oauth2.Token{ //nolint:errcheck
+	c.saveToken(ctx, "user-1", "user@example.com", "user@example.com", &oauth2.Token{ //nolint:errcheck
 		AccessToken: "tok",
 		Expiry:      time.Now().Add(time.Hour),
 	})
 
-	hc, calID, err := c.FreeBusyClient(ctx, "user-1")
+	conns, err := c.freeBusyConnections(ctx, "user-1")
 	if err != nil {
-		t.Fatalf("FreeBusyClient: %v", err)
+		t.Fatalf("freeBusyConnections: %v", err)
 	}
-	if hc == nil {
-		t.Fatal("expected non-nil http.Client")
+	if len(conns) != 1 {
+		t.Fatalf("got %d connections; want 1", len(conns))
 	}
-	if calID != "user@example.com" {
-		t.Errorf("calID = %q; want user@example.com", calID)
+	if conns[0].hc == nil {
+		t.Error("expected non-nil http.Client")
+	}
+	if conns[0].calID != "user@example.com" {
+		t.Errorf("calID = %q; want user@example.com", conns[0].calID)
 	}
 }
 
