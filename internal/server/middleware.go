@@ -61,6 +61,16 @@ func (rw *responseWriter) WriteHeader(status int) {
 	rw.ResponseWriter.WriteHeader(status)
 }
 
+// Flush keeps this wrapper transparent to streaming handlers (SSE): embedding the
+// http.ResponseWriter interface does not promote Flush, so without this the underlying
+// flusher would be hidden and a streamed response (e.g. the booking assistant) would be
+// buffered until the handler returns.
+func (rw *responseWriter) Flush() {
+	if f, ok := rw.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
 // SameOriginCheck is CSRF defense-in-depth layered on the session cookie's
 // SameSite=Lax: for a state-changing request that carries the admin session cookie,
 // it rejects the request when a present Origin (or, as a fallback, Referer) header

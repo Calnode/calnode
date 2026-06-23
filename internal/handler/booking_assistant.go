@@ -91,13 +91,13 @@ func (h *Handler) BookingAssistant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Stream token-by-token over SSE when the client asks for it; otherwise return the
+	// one-shot JSON response (back-compat + non-streaming callers).
+	sse := strings.Contains(r.Header.Get("Accept"), "text/event-stream")
+
 	client := h.getLLM()
 	if client == nil {
-		// AI off/unconfigured — tell the client to fall back to the deterministic picker.
-		h.writeJSON(w, http.StatusOK, assistantResponse{
-			Reply:    "The booking assistant isn't available right now — please pick a time from the calendar below.",
-			Fallback: true,
-		})
+		h.assistantFallback(w, sse, "The booking assistant isn't available right now — please pick a time from the calendar below.")
 		return
 	}
 
@@ -118,6 +118,21 @@ func (h *Handler) BookingAssistant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var sendSSE func(any)
+	if sse {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("X-Accel-Buffering", "no") // don't let a proxy buffer the stream
+		flusher, _ := w.(http.Flusher)
+		sendSSE = func(obj any) {
+			b, _ := json.Marshal(obj)
+			fmt.Fprintf(w, "data: %s\n\n", b)
+			if flusher != nil {
+				flusher.Flush()
+			}
+		}
+	}
+
 	// Build the message list: system + sanitized history (text only).
 	msgs := []llm.Message{{Role: "system", Content: sysPrompt}}
 	for _, m := range req.Messages {
@@ -131,26 +146,51 @@ func (h *Handler) BookingAssistant(w http.ResponseWriter, r *http.Request) {
 	var booked *assistantBooking
 
 	for iter := 0; iter < assistantMaxIters; iter++ {
-		res, err := client.Chat(r.Context(), llm.ChatRequest{Messages: msgs, Tools: tools, MaxTokens: assistantMaxTokens})
-		if err != nil {
-			h.logger.ErrorContext(r.Context(), "assistant: llm chat", "error", err)
-			h.writeJSON(w, http.StatusOK, assistantResponse{
-				Reply:    "Sorry — I'm having trouble right now. Please pick a time from the calendar below.",
-				Fallback: true,
+		chatReq := llm.ChatRequest{Messages: msgs, Tools: tools, MaxTokens: assistantMaxTokens}
+		var res *llm.ChatResult
+		var err error
+		if sse {
+			// Stream content deltas, stripping <think> as we go (recompute the cleaned
+			// text each fragment and emit only the new suffix).
+			var full strings.Builder
+			var prevClean string
+			res, err = client.ChatStream(r.Context(), chatReq, func(frag string) {
+				full.WriteString(frag)
+				clean := stripReasoning(full.String())
+				if len(clean) > len(prevClean) {
+					sendSSE(map[string]any{"type": "token", "text": clean[len(prevClean):]})
+					prevClean = clean
+				}
 			})
+		} else {
+			res, err = client.Chat(r.Context(), chatReq)
+		}
+		if err != nil {
+			h.logger.ErrorContext(r.Context(), "assistant: llm", "error", err)
+			if sse {
+				sendSSE(map[string]any{"type": "fallback", "text": "Sorry — I'm having trouble right now. Please use the calendar below."})
+			} else {
+				h.writeJSON(w, http.StatusOK, assistantResponse{Reply: "Sorry — I'm having trouble right now. Please pick a time from the calendar below.", Fallback: true})
+			}
 			return
 		}
 		res.Message.Content = stripReasoning(res.Message.Content)
 		msgs = append(msgs, res.Message)
 
 		if len(res.Message.ToolCalls) == 0 {
-			// Final natural-language reply.
-			h.writeJSON(w, http.StatusOK, assistantResponse{Reply: res.Message.Content, Booking: booked})
+			if sse {
+				sendSSE(map[string]any{"type": "done", "booking": booked})
+			} else {
+				h.writeJSON(w, http.StatusOK, assistantResponse{Reply: res.Message.Content, Booking: booked})
+			}
 			return
 		}
 
 		// Execute the model's tool calls and feed results back.
 		for _, tc := range res.Message.ToolCalls {
+			if sse {
+				sendSSE(map[string]any{"type": "status", "text": assistantToolStatus(tc.Function.Name)})
+			}
 			result, bk := h.runAssistantTool(r.Context(), slug, tz, tc.Function.Name, tc.Function.Arguments)
 			if bk != nil {
 				booked = bk
@@ -160,11 +200,38 @@ func (h *Handler) BookingAssistant(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Iteration cap hit without a final message — graceful fallback.
-	h.writeJSON(w, http.StatusOK, assistantResponse{
-		Reply:    "Let's keep it simple — please pick a time from the calendar below.",
-		Booking:  booked,
-		Fallback: true,
-	})
+	if sse {
+		sendSSE(map[string]any{"type": "fallback", "text": "Let's keep it simple — please pick a time from the calendar below."})
+	} else {
+		h.writeJSON(w, http.StatusOK, assistantResponse{Reply: "Let's keep it simple — please pick a time from the calendar below.", Booking: booked, Fallback: true})
+	}
+}
+
+// assistantFallback responds with a "use the picker" message in the right format.
+func (h *Handler) assistantFallback(w http.ResponseWriter, sse bool, msg string) {
+	if !sse {
+		h.writeJSON(w, http.StatusOK, assistantResponse{Reply: msg, Fallback: true})
+		return
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	b, _ := json.Marshal(map[string]any{"type": "fallback", "text": msg})
+	fmt.Fprintf(w, "data: %s\n\n", b)
+	if f, ok := w.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
+// assistantToolStatus is a short, booker-facing status shown while a tool runs.
+func assistantToolStatus(name string) string {
+	switch name {
+	case "find_available_slots":
+		return "Checking availability…"
+	case "book":
+		return "Booking…"
+	default:
+		return "Working…"
+	}
 }
 
 // assistantSystemPrompt builds the system prompt from the (active+public) event type's

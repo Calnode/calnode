@@ -43,6 +43,65 @@ func TestChat_sendsRequestAndParsesReply(t *testing.T) {
 	}
 }
 
+func TestChatStream_assemblesContentDeltas(t *testing.T) {
+	var gotStream bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var req map[string]any
+		json.Unmarshal(body, &req)
+		gotStream, _ = req["stream"].(bool)
+		w.Header().Set("Content-Type", "text/event-stream")
+		io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"content\":\"Wed \"}}]}\n\n")
+		io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"content\":\"10:00?\"}}]}\n\n")
+		io.WriteString(w, "data: [DONE]\n\n")
+	}))
+	defer srv.Close()
+
+	var deltas []string
+	c := New(Config{Endpoint: srv.URL + "/v1", Model: "m"})
+	res, err := c.ChatStream(context.Background(), ChatRequest{Messages: []Message{{Role: "user", Content: "when"}}}, func(s string) {
+		deltas = append(deltas, s)
+	})
+	if err != nil {
+		t.Fatalf("ChatStream: %v", err)
+	}
+	if !gotStream {
+		t.Error("request body did not set stream:true")
+	}
+	if res.Message.Content != "Wed 10:00?" {
+		t.Errorf("assembled content = %q; want %q", res.Message.Content, "Wed 10:00?")
+	}
+	if strings.Join(deltas, "|") != "Wed |10:00?" {
+		t.Errorf("onContent deltas = %v; want [\"Wed \" \"10:00?\"]", deltas)
+	}
+}
+
+func TestChatStream_accumulatesToolCallArguments(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Tool-call arguments arrive fragmented across chunks (OpenAI streaming shape).
+		io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"type\":\"function\",\"function\":{\"name\":\"book\",\"arguments\":\"{\\\"slot\"}}]}}]}\n\n")
+		io.WriteString(w, "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"_start\\\":\\\"x\\\"}\"}}]}}]}\n\n")
+		io.WriteString(w, "data: [DONE]\n\n")
+	}))
+	defer srv.Close()
+
+	c := New(Config{Endpoint: srv.URL, Model: "m"})
+	res, err := c.ChatStream(context.Background(), ChatRequest{Messages: []Message{{Role: "user", Content: "book"}}}, nil)
+	if err != nil {
+		t.Fatalf("ChatStream: %v", err)
+	}
+	if len(res.Message.ToolCalls) != 1 {
+		t.Fatalf("tool calls = %d; want 1", len(res.Message.ToolCalls))
+	}
+	tc := res.Message.ToolCalls[0]
+	if tc.ID != "call_1" || tc.Function.Name != "book" {
+		t.Errorf("tool call id/name = %q/%q", tc.ID, tc.Function.Name)
+	}
+	if tc.Function.Arguments != `{"slot_start":"x"}` {
+		t.Errorf("assembled arguments = %q; want %q", tc.Function.Arguments, `{"slot_start":"x"}`)
+	}
+}
+
 func TestChat_parsesToolCalls(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		io.WriteString(w, `{"choices":[{"message":{"role":"assistant","tool_calls":[

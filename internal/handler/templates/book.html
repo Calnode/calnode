@@ -741,24 +741,51 @@ body {
     add(text, 'user');
     input.value = ''; busy = true; send.disabled = true;
     var typing = add('…', 'asst-typing');
+    var botEl = null, booking = null;
+    function onEvent(obj) {
+      if (obj.type === 'token') {
+        if (!botEl) { typing.remove(); botEl = add('', 'bot'); }
+        botEl.textContent += obj.text;
+        log.scrollTop = log.scrollHeight;
+      } else if (obj.type === 'status') {
+        typing.textContent = obj.text;          // "Checking availability…"
+      } else if (obj.type === 'fallback') {
+        if (typing.parentNode) typing.remove();
+        add(obj.text, 'note');
+      } else if (obj.type === 'done') {
+        booking = obj.booking || null;
+      }
+    }
     try {
       var res = await fetch('/v1/event-types/' + encodeURIComponent(SLUG) + '/assistant', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'Accept': 'text/event-stream' },
         body: JSON.stringify({ messages: messages, timezone: tz() })
       });
-      typing.remove();
-      if (!res.ok) throw new Error('http ' + res.status);
-      var data = await res.json();
-      if (data.reply) {
-        messages.push({ role: 'assistant', content: data.reply });
-        add(data.reply, data.booking ? 'ok' : 'bot');
-      } else if (data.booking) {
-        add('Booked — check your email for the confirmation.', 'ok');
+      if (!res.ok || !res.body) throw new Error('http ' + res.status);
+      // Read the SSE stream: events are "data: <json>\n\n".
+      var reader = res.body.getReader(), dec = new TextDecoder(), buf = '';
+      while (true) {
+        var chunk = await reader.read();
+        if (chunk.done) break;
+        buf += dec.decode(chunk.value, { stream: true });
+        var parts = buf.split('\n\n'); buf = parts.pop();
+        for (var i = 0; i < parts.length; i++) {
+          var line = parts[i].trim();
+          if (line.indexOf('data:') !== 0) continue;
+          try { onEvent(JSON.parse(line.slice(5).trim())); } catch (_) {}
+        }
       }
-      if (data.fallback) add('Tip: you can also pick a time from the calendar below.', 'note');
+      if (typing.parentNode) typing.remove();
+      if (botEl && botEl.textContent) {
+        messages.push({ role: 'assistant', content: botEl.textContent });
+        if (booking) botEl.className = 'asst-msg ok';
+      }
+      if (booking && typeof calnodePush === 'function') {
+        calnodePush('calnode_booking_confirmed', { booking_id: booking.id, via: 'assistant' });
+      }
     } catch (err) {
-      typing.remove();
+      if (typing.parentNode) typing.remove();
       add('Sorry — something went wrong. Please use the calendar below.', 'note');
     } finally {
       busy = false; send.disabled = false; input.focus();

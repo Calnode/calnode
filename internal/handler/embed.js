@@ -248,7 +248,7 @@
       return d;
     }
 
-    asstSubmit() {
+    async asstSubmit() {
       var self = this;
       var text = (this.asstInput.value || '').trim();
       if (!text || this.asstBusy) return;
@@ -256,28 +256,52 @@
       this.asstAdd(text, 'user');
       this.asstInput.value = ''; this.asstBusy = true; this.asstSend.disabled = true;
       var typing = this.asstAdd('…', 'asst-typing');
-      fetch(BASE + '/v1/event-types/' + encodeURIComponent(this.slug) + '/assistant', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: this.asstMessages, timezone: TZ }),
-      }).then(function (r) {
-        if (!r.ok) throw new Error('http ' + r.status);
-        return r.json();
-      }).then(function (data) {
-        typing.remove();
-        if (data.reply) {
-          self.asstMessages.push({ role: 'assistant', content: data.reply });
-          self.asstAdd(data.reply, data.booking ? 'ok' : 'bot');
-        } else if (data.booking) {
-          self.asstAdd('Booked — check your email for the confirmation.', 'ok');
+      var botEl = null, booking = null;
+      var onEvent = function (obj) {
+        if (obj.type === 'token') {
+          if (!botEl) { typing.remove(); botEl = self.asstAdd('', 'bot'); }
+          botEl.textContent += obj.text;
+          self.asstLog.scrollTop = self.asstLog.scrollHeight;
+        } else if (obj.type === 'status') {
+          typing.textContent = obj.text;
+        } else if (obj.type === 'fallback') {
+          if (typing.parentNode) typing.remove();
+          self.asstAdd(obj.text, 'note');
+        } else if (obj.type === 'done') {
+          booking = obj.booking || null;
         }
-        if (data.fallback) self.asstAdd('Tip: you can also pick a time from the calendar.', 'note');
-        if (data.booking) self.dispatchEvent(new CustomEvent('calnode:booked', { bubbles: true, composed: true, detail: data.booking }));
-      }).catch(function () {
-        typing.remove();
-        self.asstAdd('Sorry — something went wrong. Please use the calendar.', 'note');
-      }).then(function () {
-        self.asstBusy = false; self.asstSend.disabled = false; self.asstInput.focus();
-      });
+      };
+      try {
+        var res = await fetch(BASE + '/v1/event-types/' + encodeURIComponent(this.slug) + '/assistant', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Accept': 'text/event-stream' },
+          body: JSON.stringify({ messages: this.asstMessages, timezone: TZ }),
+        });
+        if (!res.ok || !res.body) throw new Error('http ' + res.status);
+        var reader = res.body.getReader(), dec = new TextDecoder(), buf = '';
+        while (true) {
+          var chunk = await reader.read();
+          if (chunk.done) break;
+          buf += dec.decode(chunk.value, { stream: true });
+          var parts = buf.split('\n\n'); buf = parts.pop();
+          for (var i = 0; i < parts.length; i++) {
+            var line = parts[i].trim();
+            if (line.indexOf('data:') !== 0) continue;
+            try { onEvent(JSON.parse(line.slice(5).trim())); } catch (e) {}
+          }
+        }
+        if (typing.parentNode) typing.remove();
+        if (botEl && botEl.textContent) {
+          this.asstMessages.push({ role: 'assistant', content: botEl.textContent });
+          if (booking) botEl.className = 'asst-msg ok';
+        }
+        if (booking) this.dispatchEvent(new CustomEvent('calnode:booked', { bubbles: true, composed: true, detail: booking }));
+      } catch (e) {
+        if (typing.parentNode) typing.remove();
+        this.asstAdd('Sorry — something went wrong. Please use the calendar.', 'note');
+      } finally {
+        this.asstBusy = false; this.asstSend.disabled = false; this.asstInput.focus();
+      }
     }
 
     // syncDesc clamps the description to 2 lines (via the shared .clamp class) only
