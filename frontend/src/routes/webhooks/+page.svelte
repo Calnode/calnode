@@ -31,6 +31,11 @@
 			{ key: 'previous_start_at', label: 'Previous start (reschedule)' },
 			{ key: 'previous_end_at', label: 'Previous end (reschedule)' },
 		] },
+		{ group: 'Payment', fields: [
+			{ key: 'payment_status', label: 'Payment status' },
+			{ key: 'amount_paid_cents', label: 'Amount paid (cents)' },
+			{ key: 'amount_paid_currency', label: 'Currency' },
+		] },
 		{ group: 'Event type', fields: [
 			{ key: 'event_type_slug', label: 'Event type slug' },
 			{ key: 'event_type_name', label: 'Event type name' },

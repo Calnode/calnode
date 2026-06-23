@@ -341,9 +341,9 @@ type bookingJSON struct {
 	LocationValue      string         `json:"location_value,omitempty"`
 	CreatedAt          string         `json:"created_at"`
 	UpdatedAt          string         `json:"updated_at"`
-	PaymentStatus      string         `json:"payment_status,omitempty"`       // omitted for free bookings
-	AmountPaidCents    int            `json:"amount_paid_cents,omitempty"`
-	AmountPaidCurrency string         `json:"amount_paid_currency,omitempty"`
+	PaymentStatus      string         `json:"payment_status,omitempty" jsonschema:"payment state for paid event types: paid, refunded, or pending; absent for free bookings"`
+	AmountPaidCents    int            `json:"amount_paid_cents,omitempty" jsonschema:"amount charged in minor units (e.g. cents); absent for free bookings"`
+	AmountPaidCurrency string         `json:"amount_paid_currency,omitempty" jsonschema:"ISO 4217 currency of the charge (lowercase)"`
 	Attendees          []attendeeJSON `json:"attendees,omitempty"`
 	Hosts              []hostBrief    `json:"hosts,omitempty"` // assigned host(s) for display; set on the public create response
 }

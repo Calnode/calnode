@@ -42,12 +42,12 @@ func (h *Handler) MCPServer() *mcp.Server {
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "get_booking",
-		Description: "Fetch a single booking by its id, returning its event type, host, start/end times, status, and location.",
+		Description: "Fetch a single booking by its id, returning its event type, host, start/end times, status, location, and payment (payment_status + amount_paid_cents/currency for paid bookings).",
 	}, h.mcpGetBooking)
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "list_bookings",
-		Description: "List bookings in this workspace, newest first, with optional filters (status, date range, event type, host). Times are RFC3339 in UTC.",
+		Description: "List bookings in this workspace, newest first, with optional filters (status, date range, event type, host). Times are RFC3339 in UTC. Each booking includes payment fields (payment_status + amount_paid_cents/currency) for paid bookings — usable for revenue reporting.",
 	}, h.mcpListBookings)
 
 	mcp.AddTool(s, &mcp.Tool{
