@@ -713,10 +713,44 @@ falls back to the deterministic slot picker.
 
 ---
 
-## 21. Changelog
+## 21. Payments (Stripe) — paid bookings
+
+Optional, off by default, configured in **Settings → Payments** (one Stripe account per
+instance — instance-per-tenant, so no Connect/marketplace logic; the workspace keeps 100%).
+`internal/stripe` is a dependency-free client: Checkout Session create, session fetch, refund,
+and webhook signature verification (HMAC-SHA256 over `t.payload`, constant-time, 5-min tolerance).
+
+- **Price** is per event type (`price_cents` + `currency`; 0 = free → today's flow untouched).
+  A price can't be saved unless Stripe is configured.
+- **Pay-then-book with a held slot.** The booking is created as a normal `confirmed` row so the
+  existing double-booking guard reserves the slot, but with `payment_status='pending'` and all
+  confirmation side-effects **deferred**. (A separate `payment_status` column avoids a SQLite
+  rebuild of the `bookings.status` CHECK.) The booker is redirected to Stripe Checkout.
+- **Webhook confirms.** `POST /v1/stripe/webhook` (public, signature-authenticated) handles
+  `checkout.session.completed` → `confirmPaidBooking` flips `pending→paid` (idempotent via a
+  conditional UPDATE), records the charged amount, and **dispatches side-effects in the
+  background** (acks in <200ms, well under Stripe's retry window). `checkout.session.expired`
+  (+ a 45-min worker backstop) releases unpaid holds, freeing the slot.
+- **Refund on cancel** for paid bookings — fires from the shared `cancelSideEffects`, so admin,
+  manage-link, and MCP cancels all refund.
+- **Surfaced everywhere:** `payment_status`/`amount_paid_cents`/`amount_paid_currency` ride on
+  `booking.Booking` → REST (`GET` single + list), MCP (`get_booking`/`list_bookings`), and the
+  webhook payload (default fields, omitempty so free bookings are unchanged); a `$` chip in the
+  admin bookings list; price on the booking page + embed; and `value`/`currency`/`is_paid`/
+  `transaction_id` in the dataLayer conversion event (free + paid paths). Agents/assistant can't
+  pay, so paid events are rejected on the shared booking core (Checkout is booking-page only).
+
+---
+
+## 22. Changelog
 
 This doc tracks the code; when you change behaviour in an area above, update the
 matching section in the same PR. Notable rounds:
+
+- **2026-06-23 — Zoom + Stripe paid bookings.** Per-host Zoom OAuth (meeting links minted under
+  the assigned host's account; a meeting-link provider, independent of the calendar).
+  Stripe pay-then-book (held slot → Checkout → webhook-confirm → refund-on-cancel); payment is
+  first-class across REST/MCP/webhooks/tracking. New §21.
 
 - **2026-06-22 — LLM layer (conversational booking).** Optional BYO-LLM (OpenAI-compatible,
   off by default; Settings → AI). Public `…/assistant` tool-loop over the deterministic

@@ -67,6 +67,16 @@
 		await load();
 	}
 
+	// Refresh re-fetches in place (no full-page "Loading…" flash) — just spins the button.
+	let refreshing = $state(false);
+	async function refresh() {
+		if (refreshing) return;
+		refreshing = true;
+		error = '';
+		await load();
+		refreshing = false;
+	}
+
 	onMount(load);
 
 	let confirmOpen = $state(false);
@@ -168,18 +178,24 @@
 			{scope === 'all' ? 'All meetings across the workspace.' : 'Meetings you are hosting.'}
 		</p>
 	</div>
-	{#if isAdmin}
-		<div class="inline-flex shrink-0 rounded-md border p-0.5">
-			<button
-				class="rounded px-3 py-1 text-sm font-medium transition-colors {scope === 'mine' ? 'bg-secondary text-secondary-foreground' : 'text-muted-foreground hover:text-foreground'}"
-				onclick={() => setScope('mine')}
-			>My bookings</button>
-			<button
-				class="rounded px-3 py-1 text-sm font-medium transition-colors {scope === 'all' ? 'bg-secondary text-secondary-foreground' : 'text-muted-foreground hover:text-foreground'}"
-				onclick={() => setScope('all')}
-			>All bookings</button>
-		</div>
-	{/if}
+	<div class="flex shrink-0 items-center gap-2">
+		<Button variant="outline" size="sm" onclick={refresh} disabled={refreshing} aria-label="Refresh bookings">
+			<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class={refreshing ? 'animate-spin' : ''}><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/></svg>
+			Refresh
+		</Button>
+		{#if isAdmin}
+			<div class="inline-flex rounded-md border p-0.5">
+				<button
+					class="rounded px-3 py-1 text-sm font-medium transition-colors {scope === 'mine' ? 'bg-secondary text-secondary-foreground' : 'text-muted-foreground hover:text-foreground'}"
+					onclick={() => setScope('mine')}
+				>My bookings</button>
+				<button
+					class="rounded px-3 py-1 text-sm font-medium transition-colors {scope === 'all' ? 'bg-secondary text-secondary-foreground' : 'text-muted-foreground hover:text-foreground'}"
+					onclick={() => setScope('all')}
+				>All bookings</button>
+			</div>
+		{/if}
+	</div>
 </div>
 
 {#if error}<p class="mb-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>{/if}

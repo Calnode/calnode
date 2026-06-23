@@ -154,6 +154,8 @@ domains, Resend email, Google & Microsoft OAuth, Litestream backups, troubleshoo
 - REST API (88 endpoints) + API keys; **HMAC webhooks** with per-webhook payloads + delivery log
 - **Native MCP server** (8 tools; stdio via `calnode mcp` + Streamable HTTP at `/mcp`)
 - **Conversational booking** ("Book by chat" on the booking page + embed widget; BYO-LLM, off by default)
+- **Paid bookings** — Stripe Checkout (pay-then-book: the slot is held, confirmed on the payment webhook, auto-refunded on cancel)
+- **Zoom** — per-host OAuth; a Zoom-located booking mints a meeting under the assigned host's account
 - Embeddable booking widget (Shadow-DOM web component; inline + popup)
 - Members, roles (owner/admin/member), email-token invitations
 - `Idempotency-Key` on booking creation; transactional double-booking guard
@@ -161,7 +163,7 @@ domains, Resend email, Google & Microsoft OAuth, Litestream backups, troubleshoo
 - Optional analytics: `<head>` code injection + `window.dataLayer` events (GTM/GA4)
 
 **On the roadmap**
-- Apple / CalDAV calendars · Zoom OAuth (auto links) · magic-link auth · payments (Stripe)
+- Apple / CalDAV calendars · magic-link auth · OpenAPI spec · multi-domain (one instance, many hostnames)
 
 ---
 
