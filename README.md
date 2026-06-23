@@ -96,6 +96,14 @@ Agent: get_available_slots("intro-call", "2026-06-16", "2026-06-20", "Pacific/Au
        → presents options → create_booking(…) → returns confirmation + meeting link
 ```
 
+**Conversational booking — in the booking page itself.** Beyond agents, the booking page
+(and the embed widget) ships an optional **"Book by chat"** assistant: a visitor types
+"free Tuesday afternoon or next week" and it resolves real availability and books — the
+deterministic engine still computes the slots (the model never invents times), and the
+assistant only ever sees free/busy windows, never your calendar contents. **Bring your own
+model** — any OpenAI-compatible endpoint (a hosted model or one you run yourself); off by
+default, with the standard calendar always there as the fallback.
+
 **Connecting Claude (remote / HTTP).** In Claude (claude.ai or Desktop) →
 **Settings → Connectors → Add custom connector** → enter `https://<your-instance>/mcp`
 → **Connect** → sign in → **Allow**. Custom connectors need a paid Claude plan; the
@@ -145,6 +153,7 @@ domains, Resend email, Google & Microsoft OAuth, Litestream backups, troubleshoo
 - HTML branded email (logo, business name, size/opacity) with add-to-calendar links
 - REST API (88 endpoints) + API keys; **HMAC webhooks** with per-webhook payloads + delivery log
 - **Native MCP server** (8 tools; stdio via `calnode mcp` + Streamable HTTP at `/mcp`)
+- **Conversational booking** ("Book by chat" on the booking page + embed widget; BYO-LLM, off by default)
 - Embeddable booking widget (Shadow-DOM web component; inline + popup)
 - Members, roles (owner/admin/member), email-token invitations
 - `Idempotency-Key` on booking creation; transactional double-booking guard
@@ -152,8 +161,7 @@ domains, Resend email, Google & Microsoft OAuth, Litestream backups, troubleshoo
 - Optional analytics: `<head>` code injection + `window.dataLayer` events (GTM/GA4)
 
 **On the roadmap**
-- Apple / CalDAV calendars · Zoom OAuth (auto links) · magic-link auth ·
-  optional bring-your-own-LLM natural-language layer
+- Apple / CalDAV calendars · Zoom OAuth (auto links) · magic-link auth · payments (Stripe)
 
 ---
 

@@ -41,6 +41,20 @@ behaviour or markup must usually be made in all three, or they drift:
   implemented separately in each. If you change calendar *behaviour*, update all three.
 - Verify on **desktop and mobile** for each surface after touching the calendar.
 
+## Conversational booking assistant (optional LLM layer)
+
+The "Book by chat" assistant lives on **two** of those surfaces — `book.html` (floating
+drawer + inline link) and `embed.js` (inline link only; no floating button, to avoid
+colliding with host-site widgets). **Not** on the manage page (reschedule context — a
+reschedule chat is deliberately deferred). Server side is one endpoint,
+`POST /v1/event-types/{slug}/assistant` (`booking_assistant.go`): an LLM tool-loop that
+drives `find_available_slots`/`book` over the **shared deterministic cores** (`computeSlots`,
+`createBookingForSlug`) — never re-implement booking logic in the assistant. Invariants:
+the LLM does NL→constraints only (never time math), sees only computed availability (never
+raw calendar data), and `<think>` reasoning is stripped. Shared `.asst-*` styles are in
+`booking.css`; the base prompt (`assistantBaseRules`) is code-owned, admins only append
+"Additional instructions". Off by default — `getLLM()` nil → the picker is the fallback.
+
 ## Conventions
 
 - `pnpm` (not npm). Use `pnpm exec <tool>` for local binaries.

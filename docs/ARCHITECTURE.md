@@ -673,10 +673,51 @@ see team-wide bookings") over a general matrix.
 
 ---
 
-## 20. Changelog
+## 20. LLM layer (conversational booking)
+
+Optional, off by default, configured like SMTP (PRD §8.11). The core stays LLM-free; AI
+is purely additive and degrades gracefully — if it's off or unreachable, every surface
+falls back to the deterministic slot picker.
+
+- **Provider config** (`internal/llm`, `llm_settings.go`, migrations 00034/00035): a
+  dependency-free client for any **OpenAI-compatible** chat-completions endpoint —
+  `{endpoint, model, api_key}` stored on `server_settings` (key encrypted), set in
+  **Settings → AI** with a test-connection ping. Provider/model are config, not code.
+  `Handler.getLLM()` returns nil when off. Verified live with **MiniMax M3**.
+- **Conversational booking** (`booking_assistant.go`): `POST /v1/event-types/{slug}/assistant`
+  runs an LLM **tool-loop scoped to one event type** — the model drives `find_available_slots`
+  (→ `computeSlots`) and `book` (→ `createBookingForSlug`, the same creation core as MCP/REST).
+  Key invariants: the LLM does **NL → constraints + ranking, never time arithmetic** (the
+  deterministic engine computes availability); it **never sees raw calendar data** — only
+  computed windows + public config (privacy by construction); name/email + a booker confirm
+  are required before `book` commits. Reasoning models' inline `<think>` is stripped; the
+  prompt enforces brevity. Public + anonymous, so it's rate-limited (15/min/IP) with
+  conversation/iteration/token caps.
+- **Admin instructions:** the base prompt (`assistantBaseRules`) is **code-owned** (the
+  tool-calling contract + safety) and not editable; admins append free-text **"Additional
+  instructions"** (tone/business context) shown alongside a read-only view of the base.
+- **UI surfaces:** a floating launcher → **drawer** plus a subtle inline **"Book by chat"**
+  link on the booking page (`book.html`), and the **inline link only** on the embed widget
+  (`embed.js`) — no global floating button there, to avoid colliding with the host site's
+  own widgets. Shared `.asst-*` styles live in `booking.css`; `/booking.css` is
+  **content-hash cache-busted** (`?v=`) on the page `<link>` tags so CSS edits ship without
+  a stale-cache wait. The **manage page is deliberately excluded** — it's reschedule/cancel
+  context, and conversational AI's payoff is first-booking acquisition (a reschedule chat is
+  deferred until there's demand evidence).
+
+---
+
+## 21. Changelog
 
 This doc tracks the code; when you change behaviour in an area above, update the
 matching section in the same PR. Notable rounds:
+
+- **2026-06-22 — LLM layer (conversational booking).** Optional BYO-LLM (OpenAI-compatible,
+  off by default; Settings → AI). Public `…/assistant` tool-loop over the deterministic
+  cores (no raw calendar data; LLM doesn't do time math); floating drawer + inline link on
+  book.html, inline link on the embed widget; admin "Additional instructions" over a
+  code-owned base prompt; `<think>` strip; booking.css content-hash cache-busting. Manage
+  page intentionally excluded. New §20.
 
 - **2026-06-22 — Native MCP server + OAuth "Connect".** A Model Context Protocol
   server compiled into the binary (official Go SDK) with 8 tools over **stdio**
