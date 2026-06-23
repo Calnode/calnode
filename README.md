@@ -192,6 +192,23 @@ A few load-bearing decisions (full detail in the the design docs):
 
 ---
 
+## Commercial support
+
+Self-hosting is free forever — `docker run` it and you own the whole thing. If you'd
+rather not run it yourself, **[Orchestratr](https://calnode.com/services)** — the team
+behind Calnode — will deploy and operate it for you:
+
+- **Production deployment** on your infrastructure — VPC, private cloud, or bare metal
+- **SSO** (SAML / OIDC) integrated with Okta, Entra ID, or Google Workspace
+- **Calendar, Zoom & CRM integration** wired into your existing stack
+- **Migration** off Calendly / cal.com, plus bulk user & team provisioning
+- **Training & ongoing support** for your ops and IT teams
+
+Built for regulated and mid-to-large orgs that need Calnode on their own infrastructure,
+fully integrated. → **[calnode.com/services](https://calnode.com/services)**
+
+---
+
 ## License
 
 [Apache-2.0](LICENSE). The full scheduler is self-hostable, and nothing previously
