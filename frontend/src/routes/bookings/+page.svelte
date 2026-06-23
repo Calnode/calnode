@@ -219,13 +219,22 @@
 						<td class="px-4 py-3 font-mono text-xs text-muted-foreground">{b.event_type_slug ?? '—'}</td>
 						<td class="px-4 py-3 text-muted-foreground">{fmt(b.start_at)}</td>
 						<td class="px-4 py-3">
-							{#if b.status === 'confirmed'}
-								<Badge class="bg-green-50 text-green-700 border-green-200">{b.status}</Badge>
-							{:else if b.status === 'cancelled'}
-								<Badge variant="destructive" class="bg-destructive/10 text-destructive border-transparent">{b.status}</Badge>
-							{:else}
-								<Badge variant="secondary">{b.status}</Badge>
-							{/if}
+							<div class="flex flex-wrap items-center gap-1.5">
+								{#if b.status === 'confirmed'}
+									<Badge class="bg-green-50 text-green-700 border-green-200">{b.status}</Badge>
+								{:else if b.status === 'cancelled'}
+									<Badge variant="destructive" class="bg-destructive/10 text-destructive border-transparent">{b.status}</Badge>
+								{:else}
+									<Badge variant="secondary">{b.status}</Badge>
+								{/if}
+								{#if b.payment_status === 'paid'}
+									<Badge class="border-emerald-200 bg-emerald-50 text-emerald-700">{fmtMoney(b.amount_paid_cents, b.amount_paid_currency)}</Badge>
+								{:else if b.payment_status === 'refunded'}
+									<Badge variant="secondary" class="text-muted-foreground">refunded</Badge>
+								{:else if b.payment_status === 'pending'}
+									<Badge class="border-amber-200 bg-amber-50 text-amber-700">unpaid</Badge>
+								{/if}
+							</div>
 						</td>
 						<td class="px-4 py-3">
 							<Tooltip.Provider>
