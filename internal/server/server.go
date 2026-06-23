@@ -212,6 +212,8 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	// Email + password login.
 	loginRL := RateLimit(10, time.Minute)
 	mux.HandleFunc("POST /v1/auth/login/email", loginRL(h.LoginEmail))
+	mux.HandleFunc("POST /v1/auth/magic-link/request", loginRL(h.RequestMagicLink))
+	mux.HandleFunc("GET /v1/auth/magic-link/verify", loginRL(h.VerifyMagicLink))
 
 	// OAuth login (browser sessions for admin UI).
 	authRL := RateLimit(10, time.Minute)

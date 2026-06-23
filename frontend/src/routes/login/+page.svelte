@@ -17,6 +17,8 @@
 	let password = $state('');
 	let submitting = $state(false);
 	let loginError = $state('');
+	let magicSubmitting = $state(false);
+	let magicMessage = $state('');
 
 	const oauthErrorMessages: Record<string, string> = {
 		state: 'Login failed: invalid session state. Please try again.',
@@ -25,7 +27,8 @@
 		userinfo: 'Could not fetch your profile. Please try again.',
 		no_account: 'No Calnode account found for your email. Contact your admin.',
 		archived: 'Your account has been archived. If you think this is an error, please contact your workspace admin.',
-		session: 'Could not create a session. Please try again.'
+		session: 'Could not create a session. Please try again.',
+		link: 'This login link is invalid or has expired. Request a new one below.'
 	};
 
 	const errorKey = $derived($page.url.searchParams.get('error') ?? '');
@@ -62,10 +65,29 @@
 		}
 	}
 
+	async function sendMagicLink() {
+		magicSubmitting = true;
+		loginError = '';
+		try {
+			const res = await fetch('/v1/auth/magic-link/request', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ email: email.trim().toLowerCase() })
+			});
+			const data = await res.json().catch(() => ({}));
+			magicMessage = data.message || 'If an account with that email exists, a login link is on its way.';
+		} catch {
+			magicMessage = 'If an account with that email exists, a login link is on its way.';
+		} finally {
+			magicSubmitting = false;
+		}
+	}
+
 	const showGoogle = $derived(status?.providers?.includes('google') ?? false);
 	const showMicrosoft = $derived(status?.providers?.includes('microsoft') ?? false);
 	const showEmail = $derived(status?.email_login ?? false);
 	const showForgot = $derived(status?.smtp_configured ?? false);
+	const showMagic = $derived(status?.smtp_configured ?? false);
 	const showDivider = $derived((showGoogle || showMicrosoft) && showEmail);
 </script>
 
@@ -146,7 +168,33 @@
 				</form>
 			{/if}
 
-			{#if !showGoogle && !showMicrosoft && !showEmail}
+			{#if showMagic}
+				{#if showGoogle || showMicrosoft || showEmail}
+					<div class="my-4 flex items-center gap-3 text-xs text-muted-foreground">
+						<div class="h-px flex-1 bg-border"></div>
+						or
+						<div class="h-px flex-1 bg-border"></div>
+					</div>
+				{/if}
+				{#if magicMessage}
+					<div class="rounded-md bg-green-50 px-3 py-2.5 text-sm text-green-700">{magicMessage}</div>
+				{:else}
+					<form onsubmit={(e) => { e.preventDefault(); sendMagicLink(); }} class="space-y-3">
+						{#if !showEmail}
+							<div class="space-y-1.5">
+								<Label for="magic-email">Email</Label>
+								<Input id="magic-email" type="email" autocomplete="email" bind:value={email} required />
+							</div>
+						{/if}
+						<Button type="submit" variant="outline" class="h-11 w-full" disabled={magicSubmitting}>
+							{magicSubmitting ? 'Sending…' : 'Email me a login link'}
+						</Button>
+						<p class="text-center text-xs text-muted-foreground">A one-time sign-in link, no password needed.</p>
+					</form>
+				{/if}
+			{/if}
+
+			{#if !showGoogle && !showMicrosoft && !showEmail && !showMagic}
 				<p class="text-center text-sm text-muted-foreground">No login methods are configured. Contact your administrator.</p>
 			{/if}
 		{/if}
