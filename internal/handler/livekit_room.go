@@ -22,6 +22,7 @@ var liveKitRoomJS []byte
 
 var liveKitSDKETag = etagOf(liveKitSDK)
 var liveKitRoomJSETag = etagOf(liveKitRoomJS)
+var liveKitRoomHTMLETag = etagOf(liveKitRoomHTML)
 
 func etagOf(b []byte) string {
 	sum := sha256.Sum256(b)
@@ -38,6 +39,10 @@ func (h *Handler) LiveKitRoom(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Referrer-Policy", "no-referrer")
+	w.Header().Set("ETag", liveKitRoomHTMLETag)
+	// no-cache = always revalidate before use; a redeploy of the room UI is picked up on the
+	// next load (cheap 304 when unchanged) instead of being pinned by a long max-age.
+	w.Header().Set("Cache-Control", "no-cache")
 	http.ServeContent(w, r, "livekit-room.html", time.Time{}, bytes.NewReader(liveKitRoomHTML))
 }
 
@@ -54,7 +59,9 @@ func (h *Handler) LiveKitRoomJSAsset(w http.ResponseWriter, r *http.Request) {
 func serveJSAsset(w http.ResponseWriter, r *http.Request, body []byte, etag string) {
 	w.Header().Set("Content-Type", "application/javascript; charset=utf-8")
 	w.Header().Set("ETag", etag)
-	w.Header().Set("Cache-Control", "public, max-age=3600, must-revalidate")
+	// no-cache = revalidate every load; the content-hash ETag makes that a tiny 304 unless the
+	// asset actually changed. Avoids the room UI being pinned to a stale copy after a deploy.
+	w.Header().Set("Cache-Control", "no-cache")
 	http.ServeContent(w, r, "asset.js", time.Time{}, bytes.NewReader(body))
 }
 
