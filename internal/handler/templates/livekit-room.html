@@ -12,6 +12,7 @@
     #lk-app { height:100dvh; display:flex; flex-direction:column; }
     button { font:inherit; cursor:pointer; border:0; border-radius:10px; }
     .hidden { display:none !important; }
+    .brand-logo { display:block; max-height:42px; max-width:200px; margin:0 auto 18px; object-fit:contain; }
 
     /* Prejoin */
     #lk-prejoin { margin:auto; width:100%; max-width:520px; padding:24px; }
@@ -110,6 +111,7 @@
   <div id="lk-app">
     <!-- Prejoin -->
     <section id="lk-prejoin">
+      {{if .LogoURL}}<img class="brand-logo" src="{{.LogoURL}}" alt="{{.BusinessName}}">{{end}}
       <h1>Ready to join?</h1>
       <p class="sub">Check your camera and mic, then join the meeting.</p>
       <div class="preview-wrap">
@@ -160,11 +162,13 @@
 
     <!-- Left / error -->
     <section id="lk-left" class="center-msg hidden">
+      {{if .LogoURL}}<img class="brand-logo" src="{{.LogoURL}}" alt="{{.BusinessName}}">{{end}}
       <h1>You left the meeting</h1>
       <p>You can rejoin if it's still in progress.</p>
       <button onclick="location.reload()">Rejoin</button>
     </section>
     <section id="lk-error" class="center-msg hidden">
+      {{if .LogoURL}}<img class="brand-logo" src="{{.LogoURL}}" alt="{{.BusinessName}}">{{end}}
       <h1>Can't join this meeting</h1>
       <p id="lk-error-msg">This meeting link is invalid or has expired.</p>
     </section>

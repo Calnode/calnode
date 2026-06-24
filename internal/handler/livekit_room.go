@@ -45,11 +45,17 @@ func (h *Handler) LiveKitRoom(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusNotFound, "video meetings are not configured on this instance")
 		return
 	}
+	brand := h.loadBranding(r.Context())
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Referrer-Policy", "no-referrer")
 	// The HTML carries content-versioned asset URLs, so it must never be cached itself.
 	w.Header().Set("Cache-Control", "no-store")
-	if err := liveKitRoomTmpl.Execute(w, map[string]string{"SDKVer": liveKitSDKVer, "RoomVer": liveKitRoomJSVer}); err != nil {
+	if err := liveKitRoomTmpl.Execute(w, map[string]string{
+		"SDKVer":       liveKitSDKVer,
+		"RoomVer":      liveKitRoomJSVer,
+		"LogoURL":      brand.LogoURL, // relative, same-origin; empty = no logo
+		"BusinessName": brand.BusinessName,
+	}); err != nil {
 		h.logger.ErrorContext(r.Context(), "livekit room: render", "error", err)
 	}
 }
