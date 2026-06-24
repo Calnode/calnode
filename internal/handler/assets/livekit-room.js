@@ -49,9 +49,21 @@
     sel.innerHTML = '';
     devs.forEach(function (d, i) {
       var o = document.createElement('option');
-      o.value = d.deviceId; o.textContent = d.label || ('Device ' + (i + 1));
+      o.value = d.deviceId; o.textContent = cleanLabel(d.label) || ('Device ' + (i + 1));
       sel.appendChild(o);
     });
+  }
+  // Browsers tack on noisy hardware detail — USB vendor:product IDs, Windows "Default - " /
+  // "Communications - " role prefixes, and enumeration indices like "(3- …)". Strip them for a
+  // clean picker (e.g. "Default - Microphone (3- AT2020 USB ) (17a0:0002)" → "AT2020 USB").
+  function cleanLabel(label) {
+    var s = (label || '')
+      .replace(/\s*\([0-9a-fA-F]{4}:[0-9a-fA-F]{4}\)\s*$/, '') // trailing USB vendor:product id
+      .replace(/^(Default|Communications)\s*-\s*/i, '')         // Windows audio role prefix
+      .replace(/^(Microphone|Camera|Speaker)\s*\(\s*\d*-?\s*(.+?)\s*\)\s*$/i, '$2') // "Microphone (3- AT2020 USB )" → "AT2020 USB"
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+    return s;
   }
 
   async function startPreview() {
