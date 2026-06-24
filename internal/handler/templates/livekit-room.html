@@ -65,6 +65,38 @@
     .center-msg button { background:var(--accent); color:#fff; padding:12px 22px; font-weight:600; }
     #lk-status { position:fixed; top:12px; left:50%; transform:translateX(-50%); background:var(--panel2);
       border:1px solid var(--line); color:var(--muted); padding:7px 14px; border-radius:999px; font-size:.82rem; }
+
+    /* Media area + speaker (stage + filmstrip) layout */
+    #lk-main { flex:1; display:flex; min-height:0; min-width:0; }
+    #lk-media { flex:1; display:flex; flex-direction:column; min-height:0; min-width:0; }
+    #lk-stage { flex:1; display:flex; padding:12px 12px 6px; min-height:0; }
+    #lk-stage .tile { width:100%; height:100%; aspect-ratio:auto; }
+    #lk-strip { display:flex; gap:10px; padding:6px 12px 12px; overflow-x:auto; flex:0 0 auto; }
+    #lk-strip .tile { flex:0 0 200px; aspect-ratio:16/9; }
+    .tile { cursor:pointer; }
+    .ctrl { position:relative; }
+    .ctrl .badge { position:absolute; top:-4px; right:-4px; min-width:17px; height:17px; padding:0 4px;
+      border-radius:9px; background:var(--danger); color:#fff; font-size:.66rem; font-weight:600;
+      display:flex; align-items:center; justify-content:center; }
+    .ctrl .badge.hidden { display:none; }
+
+    /* Ephemeral chat panel */
+    #lk-chat { width:320px; max-width:80vw; flex:0 0 auto; border-left:1px solid var(--line);
+      background:var(--panel); display:flex; flex-direction:column; min-height:0; }
+    #lk-chat.hidden { display:none; }
+    .chat-head { padding:12px 14px; border-bottom:1px solid var(--line); font-weight:600;
+      display:flex; align-items:center; justify-content:space-between; }
+    .chat-head button { background:none; border:0; color:var(--muted); font-size:1.3rem; line-height:1; cursor:pointer; }
+    #lk-chat-msgs { flex:1; overflow-y:auto; padding:12px; display:flex; flex-direction:column; gap:8px; }
+    #lk-chat-empty { margin:auto; color:var(--muted); font-size:.85rem; text-align:center; padding:0 16px; }
+    .msg { max-width:85%; padding:6px 10px; border-radius:11px; background:var(--panel2); font-size:.86rem; overflow-wrap:anywhere; }
+    .msg.me { align-self:flex-end; background:var(--accent); color:#fff; }
+    .msg .who { font-size:.68rem; color:var(--muted); margin-bottom:1px; }
+    .msg.me .who { color:rgba(255,255,255,.85); }
+    #lk-chat-form { display:flex; gap:8px; padding:10px; border-top:1px solid var(--line); }
+    #lk-chat-input { flex:1; min-width:0; background:var(--panel2); border:1px solid var(--line); color:var(--text);
+      border-radius:9px; padding:9px 11px; font:inherit; }
+    #lk-chat-send { background:var(--accent); color:#fff; padding:0 14px; border-radius:9px; }
   </style>
 </head>
 <body>
@@ -94,11 +126,27 @@
 
     <!-- Room -->
     <section id="lk-room" class="hidden">
-      <div id="lk-grid"></div>
+      <div id="lk-main">
+        <div id="lk-media">
+          <div id="lk-stage" class="hidden"></div>
+          <div id="lk-grid"></div>
+          <div id="lk-strip" class="hidden"></div>
+        </div>
+        <aside id="lk-chat" class="hidden">
+          <div class="chat-head"><span>Chat</span><button id="lk-chat-close" aria-label="Close chat">&times;</button></div>
+          <div id="lk-chat-msgs"><p id="lk-chat-empty">Messages are visible only during this call — they're never stored and vanish when it ends.</p></div>
+          <form id="lk-chat-form" autocomplete="off">
+            <input id="lk-chat-input" type="text" maxlength="500" placeholder="Type a message…">
+            <button id="lk-chat-send" type="submit">Send</button>
+          </form>
+        </aside>
+      </div>
       <div id="lk-bar">
         <button id="lk-mic-btn" class="ctrl" title="Microphone" aria-label="Toggle microphone"></button>
         <button id="lk-cam-btn" class="ctrl" title="Camera" aria-label="Toggle camera"></button>
         <button id="lk-screen" class="ctrl" title="Share screen" aria-label="Share screen"></button>
+        <button id="lk-layout-btn" class="ctrl" title="Switch layout (grid / speaker)" aria-label="Switch layout"></button>
+        <button id="lk-chat-btn" class="ctrl" title="Chat" aria-label="Toggle chat"></button>
         <button id="lk-leave" class="ctrl leave" title="Leave">Leave</button>
       </div>
     </section>

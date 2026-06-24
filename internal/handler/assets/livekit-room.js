@@ -15,6 +15,8 @@
     cam: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>',
     camOff: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 16v1a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2m5.66 0H14a2 2 0 0 1 2 2v3.34l1 1L23 7v10"/><line x1="1" y1="1" x2="23" y2="23"/></svg>',
     screen: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>',
+    layout: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><rect x="3" y="15" width="6" height="6" rx="1" fill="currentColor"/><rect x="11" y="15" width="6" height="6" rx="1" fill="currentColor"/></svg>',
+    chat: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>',
   };
 
   function showOnly(id) {
@@ -105,6 +107,84 @@
   // ----- Room -----
   var room = null;
   var tiles = {}; // identity -> { el, video, camoff }
+  var myName = 'Guest';
+  var layoutMode = 'grid';   // 'grid' | 'speaker'
+  var pinnedId = null;       // identity manually pinned to the stage (speaker mode)
+  var activeSpeakerId = null;
+  var chatOpen = false, unread = 0;
+
+  // relayout places tiles into the grid, or (speaker mode) a big stage + a filmstrip. Moving a
+  // tile's element between containers via appendChild preserves its playing <video>, so no track
+  // re-attach is needed. The stage shows the pinned tile, else the active speaker, else the first.
+  function relayout() {
+    var grid = $('lk-grid'), stage = $('lk-stage'), strip = $('lk-strip');
+    var ids = Object.keys(tiles);
+    if (layoutMode === 'grid' || !ids.length) {
+      grid.classList.remove('hidden'); stage.classList.add('hidden'); strip.classList.add('hidden');
+      ids.forEach(function (id) { grid.appendChild(tiles[id].el); });
+      return;
+    }
+    grid.classList.add('hidden'); stage.classList.remove('hidden'); strip.classList.remove('hidden');
+    var focus = (pinnedId && tiles[pinnedId]) ? pinnedId
+      : (activeSpeakerId && tiles[activeSpeakerId]) ? activeSpeakerId : ids[0];
+    ids.forEach(function (id) { (id === focus ? stage : strip).appendChild(tiles[id].el); });
+  }
+
+  // togglePin: click a tile → spotlight it; click the spotlighted tile again → back to grid.
+  function togglePin(id) {
+    if (layoutMode === 'grid') { layoutMode = 'speaker'; pinnedId = id; }
+    else if (pinnedId === id) { layoutMode = 'grid'; pinnedId = null; }
+    else { pinnedId = id; }
+    paintLayoutBtn(); relayout();
+  }
+  function toggleLayout() {
+    layoutMode = layoutMode === 'grid' ? 'speaker' : 'grid';
+    pinnedId = null;
+    paintLayoutBtn(); relayout();
+  }
+  function paintLayoutBtn() {
+    var b = $('lk-layout-btn'); if (!b) return;
+    b.innerHTML = ICON.layout;
+    b.classList.toggle('active', layoutMode === 'speaker');
+  }
+
+  // ----- Ephemeral chat (LiveKit data channel — peer-to-peer, never stored) -----
+  function onData(payload, participant) {
+    try {
+      var msg = JSON.parse(new TextDecoder().decode(payload));
+      if (msg && msg.t === 'chat' && msg.text) {
+        addMsg(msg.name || (participant && participant.name) || 'Guest', String(msg.text), false);
+      }
+    } catch (e) { /* ignore non-chat data */ }
+  }
+  function addMsg(who, text, mine) {
+    var empty = $('lk-chat-empty'); if (empty) empty.remove();
+    var el = document.createElement('div'); el.className = 'msg' + (mine ? ' me' : '');
+    var w = document.createElement('div'); w.className = 'who'; w.textContent = mine ? 'You' : who;
+    var t = document.createElement('div'); t.textContent = text;
+    el.appendChild(w); el.appendChild(t);
+    var box = $('lk-chat-msgs'); box.appendChild(el); box.scrollTop = box.scrollHeight;
+    if (!chatOpen && !mine) { unread++; paintChatBadge(); }
+  }
+  function sendChat(text) {
+    text = (text || '').trim();
+    if (!text || !room) return;
+    var data = new TextEncoder().encode(JSON.stringify({ t: 'chat', name: myName, text: text }));
+    try { room.localParticipant.publishData(data, { reliable: true }); } catch (e) {}
+    addMsg('You', text, true);
+  }
+  function setChat(open) {
+    chatOpen = open;
+    $('lk-chat').classList.toggle('hidden', !open);
+    $('lk-chat-btn').classList.toggle('active', open);
+    if (open) { unread = 0; paintChatBadge(); $('lk-chat-input').focus(); }
+  }
+  function paintChatBadge() {
+    var btn = $('lk-chat-btn'); if (!btn) return;
+    var b = btn.querySelector('.badge'); if (!b) return;
+    b.textContent = unread > 9 ? '9+' : String(unread);
+    b.classList.toggle('hidden', unread === 0);
+  }
 
   function tileFor(identity, name, isLocal) {
     if (tiles[identity]) return tiles[identity];
@@ -120,6 +200,7 @@
     label.innerHTML = '<span class="name"></span><span class="mic-off hidden">' + ICON.micOff + '</span>';
     label.querySelector('.name').textContent = name + (isLocal ? ' (you)' : '');
     el.appendChild(video); el.appendChild(camoff); el.appendChild(label);
+    el.addEventListener('click', function () { togglePin(identity); });
     $('lk-grid').appendChild(el);
     tiles[identity] = { el: el, video: video, camoff: camoff, label: label, hasVideo: false };
     setCamOff(identity, true);
@@ -128,6 +209,8 @@
   function removeTile(identity) {
     var t = tiles[identity];
     if (t) { t.el.remove(); delete tiles[identity]; }
+    if (pinnedId === identity) { pinnedId = null; }
+    relayout();
   }
   function setCamOff(identity, off) {
     var t = tiles[identity]; if (!t) return;
@@ -156,6 +239,7 @@
     p.trackPublications.forEach(function (pub) {
       if (pub.track) handleTrack(pub.track, pub, p);
     });
+    relayout();
     return t;
   }
 
@@ -171,6 +255,7 @@
   async function join() {
     var name = ($('lk-name').value || '').trim();
     if (!name) { $('lk-name').focus(); return; }
+    myName = name;
     try { localStorage.setItem('calnode_name', name); } catch (e) {}
     $('lk-join').disabled = true; $('lk-join').textContent = 'Joining…';
 
@@ -201,7 +286,11 @@
       .on(RE.ActiveSpeakersChanged, function (speakers) {
         var ids = {}; speakers.forEach(function (s) { ids[s.identity] = true; });
         Object.keys(tiles).forEach(function (id) { tiles[id].el.classList.toggle('speaking', !!ids[id]); });
+        if (speakers.length) activeSpeakerId = speakers[0].identity;
+        // In speaker mode with nothing pinned, follow whoever's talking.
+        if (layoutMode === 'speaker' && !pinnedId) relayout();
       })
+      .on(RE.DataReceived, onData)
       .on(RE.Disconnected, function () { showOnly('lk-left'); });
 
     try {
@@ -220,6 +309,7 @@
 
     // Existing participants already in the room.
     room.remoteParticipants.forEach(wireParticipant);
+    relayout();
     setupControls();
   }
 
@@ -249,7 +339,14 @@
       try { await lp.setScreenShareEnabled(!lp.isScreenShareEnabled); } catch (e) {}
       paint();
     };
+    $('lk-layout-btn').onclick = toggleLayout;
+    $('lk-chat-btn').innerHTML = ICON.chat + '<span class="badge hidden"></span>';
+    paintChatBadge();
+    $('lk-chat-btn').onclick = function () { setChat(!chatOpen); };
+    $('lk-chat-close').onclick = function () { setChat(false); };
+    $('lk-chat-form').onsubmit = function (e) { e.preventDefault(); var inp = $('lk-chat-input'); sendChat(inp.value); inp.value = ''; };
     $('lk-leave').onclick = function () { if (room) room.disconnect(); };
+    paintLayoutBtn();
     paint();
   }
 
