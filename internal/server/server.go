@@ -14,6 +14,7 @@ import (
 	"github.com/calnode/calnode/internal/config"
 	"github.com/calnode/calnode/internal/gcal"
 	"github.com/calnode/calnode/internal/handler"
+	"github.com/calnode/calnode/internal/livekit"
 	"github.com/calnode/calnode/internal/llm"
 	"github.com/calnode/calnode/internal/mailer"
 	"github.com/calnode/calnode/internal/secret"
@@ -197,6 +198,16 @@ func BuildHandler(ctx context.Context, cfg *config.Config, db *sql.DB, logger *s
 		logger.Info("Stripe not configured — add credentials in Settings → Payments")
 	}
 
+	// Optional LiveKit video — built-in meeting rooms. Off unless configured in Settings → Video.
+	if dbLK, dbLKErr := handler.LoadLiveKitSettingsFromDB(db, encKey); dbLKErr != nil {
+		logger.Warn("livekit settings: could not load from database", "error", dbLKErr)
+	} else if dbLK != nil {
+		h.SetLiveKit(livekit.New(dbLK.URL, dbLK.APIKey, dbLK.APISecret, encKey))
+		logger.Info("LiveKit video configured", "url", dbLK.URL)
+	} else {
+		logger.Info("LiveKit not configured — add a server in Settings → Video")
+	}
+
 	return h, drain
 }
 
@@ -308,6 +319,8 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	mux.HandleFunc("PATCH /v1/settings/google", settingsRL(h.RequireAuth(h.PatchGoogleSettings)))
 	mux.HandleFunc("GET /v1/settings/zoom", h.RequireAuth(h.GetZoomSettings))
 	mux.HandleFunc("PATCH /v1/settings/zoom", settingsRL(h.RequireAuth(h.PatchZoomSettings)))
+	mux.HandleFunc("GET /v1/settings/livekit", h.RequireAuth(h.GetLiveKitSettings))
+	mux.HandleFunc("PATCH /v1/settings/livekit", settingsRL(h.RequireAuth(h.PatchLiveKitSettings)))
 	mux.HandleFunc("GET /v1/settings/stripe", h.RequireAuth(h.GetStripeSettings))
 	mux.HandleFunc("PATCH /v1/settings/stripe", settingsRL(h.RequireAuth(h.PatchStripeSettings)))
 	mux.HandleFunc("GET /v1/settings/tracking", h.RequireAuth(h.GetTrackingSettings))
@@ -387,6 +400,13 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	mux.HandleFunc("GET /embed.js", h.EmbedJS)
 	mux.HandleFunc("GET /booking.css", h.BookingCSS)
 	mux.HandleFunc("GET /book/{slug}", h.BookPage)
+
+	// Built-in LiveKit video room (public): the page, its vendored assets, and the token
+	// exchange. The signed room token in the join URL is the capability — no auth.
+	mux.HandleFunc("GET /room/{room}", h.LiveKitRoom)
+	mux.HandleFunc("GET /assets/livekit-client.js", h.LiveKitSDKAsset)
+	mux.HandleFunc("GET /assets/livekit-room.js", h.LiveKitRoomJSAsset)
+	mux.HandleFunc("POST /v1/livekit/token", bookingRL(h.LiveKitToken))
 
 	// Manage booking (reschedule / cancel via token link)
 	mux.HandleFunc("GET /manage/{token}", manageRL(h.ManagePage))

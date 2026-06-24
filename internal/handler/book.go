@@ -209,6 +209,8 @@ func locationLabel(locType, locValue string) string {
 		return "Google Meet"
 	case "teams":
 		return "Microsoft Teams"
+	case "livekit":
+		return "Video meeting"
 	case "phone":
 		return "Phone Call"
 	case "in_person":

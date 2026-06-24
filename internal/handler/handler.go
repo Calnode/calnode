@@ -13,6 +13,7 @@ import (
 	"github.com/calnode/calnode/internal/calendar"
 	"github.com/calnode/calnode/internal/llm"
 	"github.com/calnode/calnode/internal/mailer"
+	"github.com/calnode/calnode/internal/livekit"
 	"github.com/calnode/calnode/internal/stripe"
 	"github.com/calnode/calnode/internal/webhook"
 	"github.com/calnode/calnode/internal/zoom"
@@ -42,6 +43,23 @@ type Handler struct {
 	zoom          *zoom.Client // nil when no Zoom app is configured
 	stripeMu      sync.RWMutex
 	stripe        *stripe.Client // nil when payments are unconfigured
+	livekitMu     sync.RWMutex
+	livekit       *livekit.Client // nil when LiveKit video is unconfigured
+}
+
+// SetLiveKit swaps the active LiveKit client (nil disables built-in video rooms).
+// Hot-reloadable from the LiveKit settings page.
+func (h *Handler) SetLiveKit(c *livekit.Client) {
+	h.livekitMu.Lock()
+	h.livekit = c
+	h.livekitMu.Unlock()
+}
+
+// getLiveKit returns the active LiveKit client, or nil when video is unconfigured.
+func (h *Handler) getLiveKit() *livekit.Client {
+	h.livekitMu.RLock()
+	defer h.livekitMu.RUnlock()
+	return h.livekit
 }
 
 // SetStripe swaps the active Stripe client (nil disables paid bookings). Hot-reloadable

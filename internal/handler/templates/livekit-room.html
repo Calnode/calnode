@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Video meeting — Calnode</title>
+  <style>
+    :root { --bg:#0b0d12; --panel:#151921; --panel2:#1d222c; --line:#2a313d; --text:#e7eaf0; --muted:#9aa3b2; --accent:#6366f1; --danger:#ef4444; --good:#22c55e; }
+    * { box-sizing:border-box; }
+    html,body { margin:0; height:100%; background:var(--bg); color:var(--text);
+      font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif; }
+    #lk-app { height:100dvh; display:flex; flex-direction:column; }
+    button { font:inherit; cursor:pointer; border:0; border-radius:10px; }
+    .hidden { display:none !important; }
+
+    /* Prejoin */
+    #lk-prejoin { margin:auto; width:100%; max-width:520px; padding:24px; }
+    #lk-prejoin h1 { font-size:1.25rem; font-weight:600; margin:0 0 4px; }
+    #lk-prejoin p.sub { color:var(--muted); margin:0 0 20px; font-size:.9rem; }
+    .preview-wrap { position:relative; aspect-ratio:16/9; background:#000; border-radius:14px; overflow:hidden; border:1px solid var(--line); }
+    .preview-wrap video { width:100%; height:100%; object-fit:cover; transform:scaleX(-1); }
+    .preview-off { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:.9rem; }
+    .row { display:flex; gap:10px; margin-top:14px; }
+    .row > * { flex:1; min-width:0; }
+    label { display:block; font-size:.78rem; color:var(--muted); margin:0 0 4px; }
+    input[type=text], select { width:100%; background:var(--panel); color:var(--text); border:1px solid var(--line);
+      border-radius:10px; padding:10px 12px; font-size:.95rem; }
+    .toggles { display:flex; gap:10px; margin-top:14px; }
+    .toggle { flex:1; background:var(--panel); border:1px solid var(--line); color:var(--text); padding:10px; border-radius:10px; display:flex; align-items:center; justify-content:center; gap:8px; font-size:.9rem; }
+    .toggle.off { color:var(--muted); background:var(--panel2); }
+    .join-btn { width:100%; margin-top:18px; background:var(--accent); color:#fff; padding:13px; font-size:1rem; font-weight:600; }
+    .join-btn:disabled { opacity:.6; cursor:default; }
+
+    /* Room */
+    #lk-room { flex:1; display:flex; flex-direction:column; min-height:0; }
+    #lk-grid { flex:1; display:grid; gap:10px; padding:12px; min-height:0;
+      grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr)); align-content:center; }
+    .tile { position:relative; background:var(--panel); border-radius:14px; overflow:hidden; aspect-ratio:16/9;
+      border:2px solid transparent; min-height:0; }
+    .tile.speaking { border-color:var(--good); }
+    .tile video { width:100%; height:100%; object-fit:cover; background:#000; }
+    .tile.local video { transform:scaleX(-1); }
+    .tile .camoff { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; }
+    .tile .avatar { width:64px; height:64px; border-radius:50%; background:var(--accent); color:#fff;
+      display:flex; align-items:center; justify-content:center; font-size:1.5rem; font-weight:600; }
+    .tile .label { position:absolute; left:8px; bottom:8px; background:rgba(0,0,0,.55); color:#fff;
+      font-size:.78rem; padding:3px 8px; border-radius:7px; display:flex; align-items:center; gap:6px; max-width:80%; }
+    .tile .label .mic-off { color:var(--danger); }
+    .label .name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+    /* Control bar */
+    #lk-bar { display:flex; align-items:center; justify-content:center; gap:12px; padding:14px; background:var(--panel);
+      border-top:1px solid var(--line); }
+    .ctrl { width:52px; height:52px; border-radius:14px; background:var(--panel2); color:var(--text);
+      display:flex; align-items:center; justify-content:center; }
+    .ctrl.off { background:#3a2330; color:var(--danger); }
+    .ctrl.active { background:var(--accent); color:#fff; }
+    .ctrl.leave { background:var(--danger); color:#fff; width:auto; padding:0 20px; gap:8px; font-weight:600; }
+    .ctrl svg { width:22px; height:22px; }
+
+    /* Status / error / left screens */
+    .center-msg { margin:auto; text-align:center; padding:24px; max-width:420px; }
+    .center-msg h1 { font-size:1.2rem; margin:0 0 8px; }
+    .center-msg p { color:var(--muted); margin:0 0 18px; }
+    .center-msg button { background:var(--accent); color:#fff; padding:12px 22px; font-weight:600; }
+    #lk-status { position:fixed; top:12px; left:50%; transform:translateX(-50%); background:var(--panel2);
+      border:1px solid var(--line); color:var(--muted); padding:7px 14px; border-radius:999px; font-size:.82rem; }
+  </style>
+</head>
+<body>
+  <div id="lk-app">
+    <!-- Prejoin -->
+    <section id="lk-prejoin">
+      <h1>Ready to join?</h1>
+      <p class="sub">Check your camera and mic, then join the meeting.</p>
+      <div class="preview-wrap">
+        <video id="lk-preview" autoplay playsinline muted></video>
+        <div id="lk-preview-off" class="preview-off hidden">Camera off</div>
+      </div>
+      <div class="toggles">
+        <button id="lk-pre-cam" class="toggle">Camera on</button>
+        <button id="lk-pre-mic" class="toggle">Mic on</button>
+      </div>
+      <div class="row">
+        <div><label for="lk-cam">Camera</label><select id="lk-cam"></select></div>
+        <div><label for="lk-mic">Microphone</label><select id="lk-mic"></select></div>
+      </div>
+      <div style="margin-top:14px">
+        <label for="lk-name">Your name</label>
+        <input id="lk-name" type="text" maxlength="60" placeholder="Enter your name" autocomplete="name">
+      </div>
+      <button id="lk-join" class="join-btn">Join meeting</button>
+    </section>
+
+    <!-- Room -->
+    <section id="lk-room" class="hidden">
+      <div id="lk-grid"></div>
+      <div id="lk-bar">
+        <button id="lk-mic" class="ctrl" title="Microphone" aria-label="Toggle microphone"></button>
+        <button id="lk-cam" class="ctrl" title="Camera" aria-label="Toggle camera"></button>
+        <button id="lk-screen" class="ctrl" title="Share screen" aria-label="Share screen"></button>
+        <button id="lk-leave" class="ctrl leave" title="Leave">Leave</button>
+      </div>
+    </section>
+
+    <!-- Left / error -->
+    <section id="lk-left" class="center-msg hidden">
+      <h1>You left the meeting</h1>
+      <p>You can rejoin if it's still in progress.</p>
+      <button onclick="location.reload()">Rejoin</button>
+    </section>
+    <section id="lk-error" class="center-msg hidden">
+      <h1>Can't join this meeting</h1>
+      <p id="lk-error-msg">This meeting link is invalid or has expired.</p>
+    </section>
+
+    <div id="lk-status" class="hidden"></div>
+  </div>
+
+  <script src="/assets/livekit-client.js"></script>
+  <script src="/assets/livekit-room.js"></script>
+</body>
+</html>

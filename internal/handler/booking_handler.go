@@ -174,6 +174,19 @@ func (h *Handler) validateLocation(ctx context.Context, ownerID, locType string,
 			}
 		}
 		return fmt.Errorf("connect your Zoom account to auto-generate meeting links, or enter a Zoom link")
+	case "livekit":
+		// Built-in video room. A valid manual link always satisfies; otherwise LiveKit must be
+		// configured on the instance so a room can be auto-minted per booking.
+		if link != "" {
+			if !validVideoURL(locType, link) {
+				return fmt.Errorf("enter a valid meeting URL (https://…)")
+			}
+			return nil
+		}
+		if h.getLiveKit() != nil {
+			return nil
+		}
+		return fmt.Errorf("configure LiveKit in Settings → Video to host built-in video rooms, or enter a meeting link")
 	case "link", "custom_video":
 		if !validVideoURL(locType, link) {
 			return fmt.Errorf("enter a valid meeting URL (https://…)")
@@ -815,6 +828,24 @@ func (h *Handler) dispatchBookingConfirmation(b *booking.Booking, in bookingConf
 						h.logger.Error("zoom: save meeting", "error", err, "booking_id", b.ID)
 					}
 				}
+			}
+		}
+	}
+	// LiveKit: instance-level built-in video. Mint a room + an expiring, signed join URL
+	// (no per-host connection). Falls back to the organizer's manual link if unconfigured.
+	if in.LocationType == "livekit" {
+		meetURL = b.LocationValue
+		if lk := h.getLiveKit(); lk != nil {
+			room := "booking-" + b.ID
+			// Valid from now until a bit past the meeting end (late joins / overruns).
+			joinURL := lk.BookingJoinURL(h.baseURL, room, b.EndAt.Add(2*time.Hour))
+			meetURL = joinURL
+			b.LocationValue = joinURL
+			bData.LocationValue = joinURL
+			if _, err := h.db.ExecContext(ctx,
+				`UPDATE bookings SET location_value = ?, livekit_room = ? WHERE id = ?`,
+				joinURL, room, b.ID); err != nil {
+				h.logger.Error("livekit: save room", "error", err, "booking_id", b.ID)
 			}
 		}
 	}
