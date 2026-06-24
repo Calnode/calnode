@@ -2,10 +2,12 @@ package handler
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
 
+	"github.com/calnode/calnode/internal/caldav"
 	"github.com/calnode/calnode/internal/calendar"
 )
 
@@ -94,6 +96,59 @@ func (h *Handler) CalendarCallback(w http.ResponseWriter, r *http.Request) {
 	// (handled in the provider's saveToken); subsequent ones are conflict-check only.
 
 	http.Redirect(w, r, h.baseURL+"/admin/calendar?connected=true", http.StatusFound)
+}
+
+// ConnectCalDAV handles POST /v1/calendar/caldav/connect (auth required). CalDAV is
+// credential-based (no OAuth redirect): the host supplies a server (a preset like "icloud"/
+// "fastmail" or a full server URL for Nextcloud/custom), their username, and an app-specific
+// password. We discover their calendar, validate the credentials, and store the connection.
+// Body: {"preset": "...", "server_url": "...", "username": "...", "app_password": "..."}.
+func (h *Handler) ConnectCalDAV(w http.ResponseWriter, r *http.Request) {
+	svc := h.getCal()
+	if svc == nil || !svc.Any() {
+		h.writeError(w, http.StatusNotImplemented, "Calendar integration not configured")
+		return
+	}
+	cc, ok := svc.Provider("caldav").(*caldav.Client)
+	if !ok || cc == nil {
+		h.writeError(w, http.StatusNotImplemented, "CalDAV is not available")
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 8<<10)
+	var req struct {
+		Preset    string `json:"preset"`
+		ServerURL string `json:"server_url"`
+		Username  string `json:"username"`
+		Password  string `json:"app_password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	server := strings.TrimSpace(req.ServerURL)
+	if server == "" {
+		if p, okp := caldav.Presets[strings.ToLower(strings.TrimSpace(req.Preset))]; okp {
+			server = p
+		}
+	}
+	if server == "" {
+		h.writeError(w, http.StatusBadRequest, "choose a provider or enter a server URL")
+		return
+	}
+	// SSRF guard: only http(s), and reject obviously-internal hosts so an admin can't probe the
+	// metadata endpoint or LAN via the discovery fetch.
+	if !strings.HasPrefix(server, "https://") && !strings.HasPrefix(server, "http://") {
+		h.writeError(w, http.StatusBadRequest, "server URL must start with https://")
+		return
+	}
+	user, _ := userFromContext(r.Context())
+	email, _, err := cc.Connect(r.Context(), user.ID, server, req.Username, req.Password)
+	if err != nil {
+		// Discovery/auth failures are user-actionable — surface the message to the form.
+		h.writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	h.writeJSON(w, http.StatusOK, map[string]any{"connected": true, "account_email": email})
 }
 
 // CalendarStatus handles GET /v1/calendar/status (auth required). Returns the user's full

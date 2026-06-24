@@ -385,12 +385,10 @@ func toBookingJSON(b *booking.Booking) bookingJSON {
 // On a lookup error we report false (don't attach): a missing .ics — recipients
 // still have the add-to-calendar links — beats risking a duplicate invite.
 //
-// This is the single gate for the whole .ics feature. It is provider-agnostic via
-// Service.HasDestination, which counts Google AND Microsoft destinations (both
-// auto-invite). A future provider that does NOT auto-invite — e.g. plain CalDAV
-// without iTIP scheduling — would want the .ics, so the gate would then need to key
-// on whether the host's provider auto-delivers invites, not merely on having a
-// destination.
+// This is the single gate for the whole .ics feature. It keys on whether the host's
+// destination provider auto-delivers invites: Google and Microsoft Graph do (so our
+// .ics would duplicate), but CalDAV (no iTIP scheduling) does NOT — so a CalDAV
+// destination still needs our .ics, exactly as a host with no destination does.
 func (h *Handler) noConnectedDestination(ctx context.Context, hostID string) bool {
 	gc := h.getCal()
 	if gc == nil {
@@ -400,7 +398,12 @@ func (h *Handler) noConnectedDestination(ctx context.Context, hostID string) boo
 	if err != nil {
 		return false
 	}
-	return !has
+	if !has {
+		return true // no destination → attach our .ics
+	}
+	// Has a destination, but if that provider doesn't email guests itself (CalDAV),
+	// we must still attach the .ics so the guest gets an invite.
+	return !gc.InvitesGuests(ctx, hostID)
 }
 
 // CreateBooking handles POST /v1/bookings (public — no auth required).

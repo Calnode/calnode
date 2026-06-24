@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/calnode/calnode/frontend"
+	"github.com/calnode/calnode/internal/caldav"
 	"github.com/calnode/calnode/internal/calendar"
 	"github.com/calnode/calnode/internal/calendar/microsoft"
 	"github.com/calnode/calnode/internal/config"
@@ -131,6 +132,17 @@ func BuildHandler(ctx context.Context, cfg *config.Config, db *sql.DB, logger *s
 			calSvc.Register(mc)
 			logger.Info("Microsoft 365 calendar configured", "tenant", cfg.MicrosoftTenant)
 		}
+	}
+
+	// CalDAV (Apple iCloud / Fastmail / Nextcloud / generic): unlike Google/Microsoft it
+	// needs no instance-level OAuth app — each host connects their own server with an
+	// app-specific password — so it's always available. Registered last so it never displaces
+	// Google/Microsoft as the OAuth-callback primary.
+	if cdav, err := caldav.New(db, cfg.EncryptionKey); err != nil {
+		logger.Error("caldav: init failed", "error", err)
+	} else {
+		calSvc.Register(cdav)
+		logger.Info("CalDAV calendar configured")
 	}
 
 	if calSvc.Any() {
@@ -391,6 +403,7 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	// Google Calendar — connect/callback/status/disconnect
 	mux.HandleFunc("GET /v1/calendar/connect", h.RequireAuth(h.ConnectCalendar))
 	mux.HandleFunc("GET /v1/calendar/callback", h.CalendarCallback)
+	mux.HandleFunc("POST /v1/calendar/caldav/connect", h.RequireAuth(h.ConnectCalDAV))
 	mux.HandleFunc("GET /v1/calendar/status", h.RequireAuth(h.CalendarStatus))
 	mux.HandleFunc("POST /v1/calendar/connections/{id}/destination", h.RequireAuth(h.SetCalendarDestination))
 	mux.HandleFunc("DELETE /v1/calendar/connections/{id}", h.RequireAuth(h.DisconnectCalendarConnection))
