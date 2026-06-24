@@ -52,6 +52,8 @@ type bookPageData struct {
 	CSSVersion string
 	// Tracking
 	HeadHTML         template.HTML // operator-configured <head> code injection (trusted)
+	GTMContainerID   string        // native GTM container (validated GTM-XXXX); "" = off
+	GA4MeasurementID string        // native GA4 measurement id (validated G-XXXX); "" = off
 	DataLayerEnabled bool
 	DataLayerFields  template.JS // JSON array of enabled dataLayer field keys
 	QuestionsJSON    template.JS // {questionID: label} map for labelling answers in dataLayer
@@ -394,6 +396,8 @@ func (h *Handler) BookPage(w http.ResponseWriter, r *http.Request) {
 		CSSVersion:       bookingCSSVersion,
 
 		HeadHTML:         template.HTML(track.HeadHTML),
+		GTMContainerID:   track.GTMContainerID,
+		GA4MeasurementID: track.GA4MeasurementID,
 		DataLayerEnabled: track.DataLayerEnabled,
 		DataLayerFields:  template.JS(dlFields),
 		QuestionsJSON:    template.JS(qjson),

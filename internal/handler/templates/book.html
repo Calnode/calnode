@@ -5,6 +5,30 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <title>{{.Name}}</title>
+{{if .GTMContainerID}}
+<!-- Google Tag Manager (native — loaded from the configured container ID) -->
+<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src='https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);})(window,document,'script','dataLayer','{{.GTMContainerID}}');</script>
+{{end}}
+{{if .GA4MeasurementID}}
+<!-- Google Analytics 4 (native — gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id={{.GA4MeasurementID}}"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','{{.GA4MeasurementID}}');</script>
+{{end}}
+<script>
+  // Global GA4 conversion helper — usable from both the booking script and the assistant
+  // script. For GA4 used DIRECTLY (gtag.js, no GTM), GA4 won't treat our custom dataLayer event
+  // as a conversion, so emit a native purchase/lead event. No-op when GA4 isn't configured or
+  // gtag hasn't loaded. (GTM users trigger off the calnode_booking_confirmed dataLayer event.)
+  window.__CALNODE_GA4 = "{{.GA4MeasurementID}}";
+  window.ga4Convert = function (isPaid, value, currency, txnId) {
+    if (!window.__CALNODE_GA4 || typeof gtag !== 'function') return;
+    gtag('event', isPaid ? 'purchase' : 'generate_lead', {
+      transaction_id: txnId || '',
+      value: value || 0,
+      currency: (currency || 'USD').toUpperCase()
+    });
+  };
+</script>
 {{.HeadHTML}}
 {{if .DataLayerEnabled}}
 <script>
@@ -79,6 +103,7 @@ body {
 </style>
 </head>
 <body>
+{{if .GTMContainerID}}<noscript><iframe src="https://www.googletagmanager.com/ns.html?id={{.GTMContainerID}}" height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>{{end}}
 
 {{if or .LogoURL .BusinessName}}
 <header style="text-align:center;padding:24px 16px 4px;">
@@ -358,6 +383,7 @@ body {
         transaction_id: params.get('session_id') || '',
       });
     }
+    ga4Convert(true, PRICE_CENTS / 100, CURRENCY, params.get('session_id'));
   })();
 
   // ── Mobile step-flow ────────────────────────────────────────────────────────
@@ -664,6 +690,7 @@ body {
           currency: (CURRENCY || 'usd').toUpperCase(),
         });
       }
+      ga4Convert(false, PRICE_CENTS / 100, CURRENCY, booked && booked.id);
 
       // Booking succeeded. Re-enable the button so a second booking attempt in the
       // same session (before the page is refreshed) isn't silently blocked by a
@@ -824,6 +851,7 @@ body {
       if (booking && typeof calnodePush === 'function') {
         calnodePush('calnode_booking_confirmed', { booking_id: booking.id, via: 'assistant' });
       }
+      if (booking && typeof ga4Convert === 'function') ga4Convert(false, 0, '', booking.id);
     } catch (err) {
       if (typing.parentNode) typing.remove();
       add('Sorry — something went wrong. Please use the calendar below.', 'note');

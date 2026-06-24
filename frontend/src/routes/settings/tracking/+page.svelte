@@ -17,6 +17,8 @@
 		datalayer_enabled: boolean;
 		datalayer_fields: string[];
 		available_fields: string[];
+		gtm_container_id: string;
+		ga4_measurement_id: string;
 	};
 
 	const fieldLabels: Record<string, string> = {
@@ -35,6 +37,8 @@
 	let dlEnabled = $state(false);
 	let dlFields = $state<string[]>([]);
 	let availableFields = $state<string[]>([]);
+	let gtmId = $state('');
+	let ga4Id = $state('');
 
 	onMount(async () => {
 		try {
@@ -44,6 +48,8 @@
 			dlEnabled = t.datalayer_enabled;
 			dlFields = t.datalayer_fields ?? [];
 			availableFields = t.available_fields ?? [];
+			gtmId = t.gtm_container_id ?? '';
+			ga4Id = t.ga4_measurement_id ?? '';
 		} catch (e: any) {
 			toast.error(e.message || 'Could not load tracking settings');
 		} finally {
@@ -62,9 +68,13 @@
 				head_html: headHtml,
 				csp_allow: cspAllow,
 				datalayer_enabled: dlEnabled,
-				datalayer_fields: dlFields
+				datalayer_fields: dlFields,
+				gtm_container_id: gtmId.trim(),
+				ga4_measurement_id: ga4Id.trim()
 			});
 			dlFields = t.datalayer_fields ?? [];
+			gtmId = t.gtm_container_id ?? '';
+			ga4Id = t.ga4_measurement_id ?? '';
 			toast.success('Tracking settings saved');
 		} catch (e: any) {
 			toast.error(e.message || 'Could not save tracking settings');
@@ -82,12 +92,39 @@
 	<p class="py-8 text-sm text-muted-foreground">Loading…</p>
 {:else}
 	<div class="max-w-2xl space-y-6">
+		<!-- Native GA4 / GTM -->
+		<div class="rounded-lg border bg-card p-6">
+			<h2 class="text-sm font-semibold">Google Analytics &amp; Tag Manager</h2>
+			<p class="mt-0.5 text-xs text-muted-foreground">
+				Enter an ID and Calnode loads the official tag on your booking page automatically — no snippet to
+				paste, and the page's CSP is handled for you. Leave a field blank to turn that tag off.
+			</p>
+			<div class="mt-4 grid gap-4 sm:grid-cols-2">
+				<div class="space-y-1.5">
+					<Label for="gtm-id">GTM Container ID</Label>
+					<Input id="gtm-id" bind:value={gtmId} placeholder="GTM-XXXXXXX" class="font-mono" />
+					<p class="text-xs text-muted-foreground">
+						Recommended — manages GA4 + Ads tags. Trigger them on the
+						<code class="rounded bg-muted px-1">calnode_booking_confirmed</code> dataLayer event below.
+					</p>
+				</div>
+				<div class="space-y-1.5">
+					<Label for="ga4-id">GA4 Measurement ID</Label>
+					<Input id="ga4-id" bind:value={ga4Id} placeholder="G-XXXXXXXXXX" class="font-mono" />
+					<p class="text-xs text-muted-foreground">
+						Loads GA4 directly. Bookings fire a <code class="rounded bg-muted px-1">purchase</code> /
+						<code class="rounded bg-muted px-1">generate_lead</code> event with revenue.
+					</p>
+				</div>
+			</div>
+		</div>
+
 		<!-- Code injection -->
 		<div class="rounded-lg border bg-card p-6">
 			<h2 class="text-sm font-semibold">Code injection (head)</h2>
 			<p class="mt-0.5 text-xs text-muted-foreground">
-				Raw HTML/JS injected into the &lt;head&gt; of your public booking and manage pages — for
-				Google Tag Manager, GA4, Meta Pixel, etc. It runs on visitors' browsers; only admins can set it.
+				Raw HTML/JS injected into the &lt;head&gt; of your public booking and manage pages — for any tag
+				<em>not</em> covered above (Meta Pixel, Plausible, custom). It runs on visitors' browsers; only admins can set it.
 			</p>
 			<div class="mt-4 space-y-1.5">
 				<Label for="head-html">&lt;head&gt; HTML</Label>
