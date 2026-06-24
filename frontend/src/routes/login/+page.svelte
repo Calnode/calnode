@@ -19,6 +19,8 @@
 	let loginError = $state('');
 	let magicSubmitting = $state(false);
 	let magicMessage = $state('');
+	let magicError = $state('');
+	let magicEmail = $state('');
 
 	const oauthErrorMessages: Record<string, string> = {
 		state: 'Login failed: invalid session state. Please try again.',
@@ -65,14 +67,24 @@
 		}
 	}
 
+	const isValidEmail = (e: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
+
 	async function sendMagicLink() {
+		const addr = magicEmail.trim().toLowerCase();
+		// Require a valid address up front — otherwise the request silently no-ops (the
+		// endpoint returns the same generic message), which looks like nothing happened.
+		if (!isValidEmail(addr)) {
+			magicError = 'Enter a valid email address first.';
+			return;
+		}
+		magicError = '';
 		magicSubmitting = true;
 		loginError = '';
 		try {
 			const res = await fetch('/v1/auth/magic-link/request', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ email: email.trim().toLowerCase() })
+				body: JSON.stringify({ email: addr })
 			});
 			const data = await res.json().catch(() => ({}));
 			magicMessage = data.message || 'If an account with that email exists, a login link is on its way.';
@@ -180,12 +192,14 @@
 					<div class="rounded-md bg-green-50 px-3 py-2.5 text-sm text-green-700">{magicMessage}</div>
 				{:else}
 					<form onsubmit={(e) => { e.preventDefault(); sendMagicLink(); }} class="space-y-3">
-						{#if !showEmail}
-							<div class="space-y-1.5">
-								<Label for="magic-email">Email</Label>
-								<Input id="magic-email" type="email" autocomplete="email" bind:value={email} required />
-							</div>
-						{/if}
+						<div class="space-y-1.5">
+							<Label for="magic-email">Email</Label>
+							<Input id="magic-email" type="email" autocomplete="email" placeholder="you@example.com"
+								bind:value={magicEmail} oninput={() => (magicError = '')} aria-invalid={magicError ? 'true' : undefined} />
+							{#if magicError}
+								<p class="text-xs text-destructive">{magicError}</p>
+							{/if}
+						</div>
 						<Button type="submit" variant="outline" class="h-11 w-full" disabled={magicSubmitting}>
 							{magicSubmitting ? 'Sending…' : 'Email me a login link'}
 						</Button>
