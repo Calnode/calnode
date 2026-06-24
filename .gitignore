@@ -2,6 +2,10 @@
 /calnode
 /calnode.exe
 
+# Local Claude Code tooling: per-developer dev-server config (launch.json) and the
+# machine-specific permission allowlist (settings.local.json) — never shared.
+/.claude/
+
 # Project docs: internal/strategy docs stay local; the architecture overview is
 # published for contributors. (A parent dir can't be re-included, so ignore the
 # contents and un-ignore the one file.)
