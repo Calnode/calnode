@@ -190,15 +190,30 @@
         var by = {};
         (r.slots || []).forEach(function (s) { (by[dayKey(s.start)] = by[dayKey(s.start)] || []).push(s); });
         this.state.slotsByDay = by;
+        // Capture the id→host map so the header can narrow to a slot's actual host once
+        // one is picked. Avatar URLs come back relative; make them absolute (the widget
+        // runs cross-origin to the Calnode instance).
+        this.hostMeta = this.hostMeta || {};
+        var hm = this.hostMeta;
+        Object.keys(r.hosts || {}).forEach(function (id) {
+          var m = r.hosts[id] || {}, av = m.avatar_url || '';
+          hm[id] = { name: m.name || '', avatar_url: av && av.charAt(0) === '/' ? BASE + av : av };
+        });
       } catch (e) { this.state.slotsByDay = {}; }
     }
 
     infoPane() {
-      // Show every host the endpoint returns (round-robin: the whole rotation team;
-      // fixed/group: the required set). Stacked faces overlap via .face + z-index, same
-      // as the native booking page — showing only hosts[0] surfaced one person (often
-      // one with no availability) over slots that belong to someone else.
-      var hosts = (this.info.hosts && this.info.hosts.length) ? this.info.hosts : [];
+      // Default: show every host the endpoint returns (round-robin: the whole rotation
+      // team; fixed/group: the required set), stacked via .face + z-index — same as the
+      // native page. Showing only hosts[0] surfaced one person (often one with no
+      // availability) over slots that belong to someone else. Once a slot is picked,
+      // narrow to that slot's actual assigned host(s), resolved from the id→host map.
+      var hosts, sel = this.state.slot;
+      if ((this.state.view === 'form' || this.state.view === 'confirm') && sel && sel.host_ids && this.hostMeta) {
+        var hm = this.hostMeta;
+        hosts = sel.host_ids.map(function (id) { return hm[id]; }).filter(Boolean);
+      }
+      if (!hosts || !hosts.length) hosts = (this.info.hosts && this.info.hosts.length) ? this.info.hosts : [];
       var faceKids = hosts.map(function (host, i) {
         var z = (hosts.length - i) * 10;
         var inner = host.avatar_url
