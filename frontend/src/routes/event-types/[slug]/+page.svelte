@@ -688,6 +688,11 @@
 							</p>
 						{/if}
 						<Input id="et-loc-val" bind:value={form.location_value} placeholder={zoomAutoGen ? 'Optional fallback link' : 'https://…zoom.us/j/…'} />
+					{:else if form.location_type === 'livekit'}
+						<Label>Video room</Label>
+						<p class="rounded-md border border-green-600/20 bg-green-50 px-3 py-2 text-sm text-green-700">
+							A secure video room is created automatically for each booking — no link needed. Guests join in the browser. (Set up the server in Settings → Video.)
+						</p>
 					{:else}
 						<Label for="et-loc-val">{LOCATION_NEEDS_VALUE[form.location_type] ?? 'Details'}</Label>
 						<Input id="et-loc-val" bind:value={form.location_value} placeholder={LOCATION_PLACEHOLDER[form.location_type] ?? 'Optional'} />
