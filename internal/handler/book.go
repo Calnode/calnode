@@ -107,11 +107,11 @@ func (h *Handler) displayHosts(ctx context.Context, etID, mode string) []hostDis
 		}
 		out = append(out, hostDisplay{Name: name, Initial: firstRune(name), AvatarURL: avatar})
 	}
-	// Round-robin shows a single default face (the top-priority host); the JS swaps
-	// it per selected slot. Other modes show the whole required set.
-	if mode == "round_robin" && len(out) > 1 {
-		out = out[:1]
-	}
+	// Round-robin shows the whole rotation team by default (stacked faces) — anyone in
+	// the pool might take the meeting. Showing only the top-priority host was misleading:
+	// it surfaced one specific person (often one with no availability) over slots that
+	// actually belong to someone else. On slot-pick the JS narrows the header to that
+	// slot's assigned host. Other modes show their whole required set.
 	return out
 }
 
