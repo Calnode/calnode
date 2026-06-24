@@ -182,7 +182,7 @@
   function paintChatBadge() {
     var btn = $('lk-chat-btn'); if (!btn) return;
     var b = btn.querySelector('.badge'); if (!b) return;
-    b.textContent = unread > 9 ? '9+' : String(unread);
+    // A simple red dot — presence of unread, not a count.
     b.classList.toggle('hidden', unread === 0);
   }
 
@@ -225,6 +225,8 @@
   function attachVideo(identity, track) {
     var t = tiles[identity]; if (!t) return;
     track.attach(t.video); t.hasVideo = true; setCamOff(identity, false);
+    // A screen share must not be mirrored (the .local tile mirrors the selfie camera).
+    t.el.classList.toggle('screen', track.source === LK.Track.Source.ScreenShare);
   }
   function detachVideo(identity, track) {
     var t = tiles[identity]; if (!t) return;
