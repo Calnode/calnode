@@ -58,6 +58,16 @@
   function addMonths(d, n) { return new Date(d.getFullYear(), d.getMonth() + n, 1); }
   function mondayIndex(d) { return (d.getDay() + 6) % 7; }
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  // Group host label: "Alex", "Alex & Sam", "Alex, Sam & Jo", "A, B, C & 2 others".
+  function hostsLabel(hosts) {
+    function fn(h) { return String(h.name || '').split(' ')[0]; }
+    var n = hosts.length;
+    if (n === 0) return '';
+    if (n === 1) return hosts[0].name || '';
+    if (n === 2) return fn(hosts[0]) + ' & ' + fn(hosts[1]);
+    if (n === 3) return fn(hosts[0]) + ', ' + fn(hosts[1]) + ' & ' + fn(hosts[2]);
+    return fn(hosts[0]) + ', ' + fn(hosts[1]) + ', ' + fn(hosts[2]) + ' & ' + (n - 3) + (n - 3 === 1 ? ' other' : ' others');
+  }
   function money(cents, cur) {
     var amt = (cents / 100).toFixed(2);
     var c = (cur || 'usd').toUpperCase();
@@ -184,16 +194,25 @@
     }
 
     infoPane() {
-      var host = (this.info.hosts && this.info.hosts[0]) || null;
-      var faceKids = [];
-      if (host && host.avatar_url) faceKids.push(el('span', { class: 'face' }, [el('img', { class: 'avatar-img', src: host.avatar_url, alt: host.name || '' })]));
-      else if (host && host.name) faceKids.push(el('span', { class: 'face' }, [el('span', { class: 'avatar-initials', text: (host.name[0] || '?').toUpperCase() })]));
+      // Show every host the endpoint returns (round-robin: the whole rotation team;
+      // fixed/group: the required set). Stacked faces overlap via .face + z-index, same
+      // as the native booking page — showing only hosts[0] surfaced one person (often
+      // one with no availability) over slots that belong to someone else.
+      var hosts = (this.info.hosts && this.info.hosts.length) ? this.info.hosts : [];
+      var faceKids = hosts.map(function (host, i) {
+        var z = (hosts.length - i) * 10;
+        var inner = host.avatar_url
+          ? el('img', { class: 'avatar-img', src: host.avatar_url, alt: host.name || '' })
+          : el('span', { class: 'avatar-initials', text: ((host.name || '?')[0] || '?').toUpperCase() });
+        return el('span', { class: 'face', style: 'z-index:' + z }, [inner]);
+      });
       // info-head = avatar + title (host name + event name). On compact widths the
       // avatar centers against this title only; meta + description sit below, indented
       // to line up under the title. On desktop these wrappers are plain blocks, so the
       // vertical column is unchanged.
       var titleKids = [];
-      if (host && host.name) titleKids.push(el('p', { class: 'host-name', text: host.name }));
+      var label = hostsLabel(hosts);
+      if (label) titleKids.push(el('p', { class: 'host-name', text: label }));
       titleKids.push(el('h1', { class: 'event-name', text: this.info.name }));
       var head = el('div', { class: 'info-head' }, [
         el('div', { class: 'host-faces' }, faceKids),
