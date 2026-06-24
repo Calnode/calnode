@@ -220,7 +220,7 @@
 
   function setupControls() {
     var lp = room.localParticipant;
-    var micBtn = $('lk-mic'), camBtn = $('lk-cam'), screenBtn = $('lk-screen');
+    var micBtn = $('lk-mic-btn'), camBtn = $('lk-cam-btn'), screenBtn = $('lk-screen');
     var paint = function () {
       micBtn.innerHTML = lp.isMicrophoneEnabled ? ICON.mic : ICON.micOff;
       micBtn.classList.toggle('off', !lp.isMicrophoneEnabled);
