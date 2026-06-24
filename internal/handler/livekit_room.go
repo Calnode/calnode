@@ -6,6 +6,7 @@ import (
 	_ "embed"
 	"encoding/hex"
 	"encoding/json"
+	"html/template"
 	"net/http"
 	"strings"
 	"time"
@@ -22,12 +23,19 @@ var liveKitRoomJS []byte
 
 var liveKitSDKETag = etagOf(liveKitSDK)
 var liveKitRoomJSETag = etagOf(liveKitRoomJS)
-var liveKitRoomHTMLETag = etagOf(liveKitRoomHTML)
 
 func etagOf(b []byte) string {
 	sum := sha256.Sum256(b)
 	return `"` + hex.EncodeToString(sum[:])[:16] + `"`
 }
+
+// The room page injects these content-hash versions into its <script src="…?v=…"> tags so a
+// changed asset gets a brand-new URL — unservable from any stale browser/service-worker cache.
+var (
+	liveKitRoomTmpl = template.Must(template.New("lkroom").Parse(string(liveKitRoomHTML)))
+	liveKitSDKVer   = strings.Trim(liveKitSDKETag, `"`)
+	liveKitRoomJSVer = strings.Trim(liveKitRoomJSETag, `"`)
+)
 
 // LiveKitRoom serves the public video-room page at GET /room/{room}. The page itself is
 // static; the opaque room token travels in the query string and the room JS exchanges it for
@@ -39,11 +47,11 @@ func (h *Handler) LiveKitRoom(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Referrer-Policy", "no-referrer")
-	w.Header().Set("ETag", liveKitRoomHTMLETag)
-	// no-cache = always revalidate before use; a redeploy of the room UI is picked up on the
-	// next load (cheap 304 when unchanged) instead of being pinned by a long max-age.
-	w.Header().Set("Cache-Control", "no-cache")
-	http.ServeContent(w, r, "livekit-room.html", time.Time{}, bytes.NewReader(liveKitRoomHTML))
+	// The HTML carries content-versioned asset URLs, so it must never be cached itself.
+	w.Header().Set("Cache-Control", "no-store")
+	if err := liveKitRoomTmpl.Execute(w, map[string]string{"SDKVer": liveKitSDKVer, "RoomVer": liveKitRoomJSVer}); err != nil {
+		h.logger.ErrorContext(r.Context(), "livekit room: render", "error", err)
+	}
 }
 
 // LiveKitSDKAsset serves the vendored LiveKit browser SDK at GET /assets/livekit-client.js.
