@@ -13,8 +13,6 @@
 		api_key: string;
 		api_secret_set: boolean;
 		configured: boolean;
-		recordings_enabled: boolean;
-		recordings_storage_ready: boolean;
 	};
 
 	let loading = $state(true);
@@ -24,14 +22,12 @@
 	let url = $state('');
 	let apiKey = $state('');
 	let apiSecret = $state('');
-	let recordingsEnabled = $state(false);
 
 	onMount(async () => {
 		try {
 			settings = await api.get<LiveKitSettings>('/v1/settings/livekit');
 			url = settings.url;
 			apiKey = settings.api_key;
-			recordingsEnabled = settings.recordings_enabled;
 		} catch (e: any) {
 			toast.error(e.message || 'Could not load video settings');
 		} finally {
@@ -42,7 +38,7 @@
 	async function save() {
 		saving = true;
 		try {
-			const body: Record<string, unknown> = { url: url.trim(), api_key: apiKey.trim(), recordings_enabled: recordingsEnabled };
+			const body: Record<string, unknown> = { url: url.trim(), api_key: apiKey.trim() };
 			if (apiSecret) body.api_secret = apiSecret;
 			settings = await api.patch<LiveKitSettings>('/v1/settings/livekit', body);
 			apiSecret = '';
@@ -139,22 +135,6 @@
 					{/if}
 				</div>
 			</div>
-
-			{#if settings?.configured}
-				<div class="mt-5 border-t pt-4">
-					<label class="flex cursor-pointer items-start gap-3">
-						<input type="checkbox" class="mt-0.5" bind:checked={recordingsEnabled} />
-						<span>
-							<span class="text-sm font-medium">Allow hosts to record meetings</span>
-							<span class="mt-0.5 block text-xs text-muted-foreground">
-								The host gets a Record button in the call. Recordings upload to your backups bucket under a
-								<code class="rounded bg-muted px-1">recordings/</code> prefix, and everyone sees a “Recording” banner.
-								{#if !settings?.recordings_storage_ready}<span class="text-amber-700">No backups bucket is configured (set <code class="rounded bg-muted px-1">LITESTREAM_*</code>), so recordings can’t be stored yet.</span>{/if}
-							</span>
-						</span>
-					</label>
-				</div>
-			{/if}
 
 			<div class="mt-5 flex items-center gap-3">
 				<Button onclick={save} disabled={saving}>{saving ? 'Saving…' : 'Save'}</Button>

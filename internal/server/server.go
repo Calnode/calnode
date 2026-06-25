@@ -321,6 +321,8 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	mux.HandleFunc("PATCH /v1/settings/zoom", settingsRL(h.RequireAuth(h.PatchZoomSettings)))
 	mux.HandleFunc("GET /v1/settings/livekit", h.RequireAuth(h.GetLiveKitSettings))
 	mux.HandleFunc("PATCH /v1/settings/livekit", settingsRL(h.RequireAuth(h.PatchLiveKitSettings)))
+	mux.HandleFunc("GET /v1/settings/storage", h.RequireAuth(h.GetStorageSettings))
+	mux.HandleFunc("PATCH /v1/settings/storage", settingsRL(h.RequireAuth(h.PatchStorageSettings)))
 	mux.HandleFunc("GET /v1/settings/stripe", h.RequireAuth(h.GetStripeSettings))
 	mux.HandleFunc("PATCH /v1/settings/stripe", settingsRL(h.RequireAuth(h.PatchStripeSettings)))
 	mux.HandleFunc("GET /v1/settings/tracking", h.RequireAuth(h.GetTrackingSettings))

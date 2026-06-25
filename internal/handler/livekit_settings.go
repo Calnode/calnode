@@ -50,23 +50,19 @@ func (h *Handler) GetLiveKitSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var url, apiKey, secretEnc string
-	var recEnabled int
 	err := h.db.QueryRowContext(r.Context(), `
-		SELECT livekit_url, livekit_api_key, livekit_api_secret_enc, COALESCE(recordings_enabled,0)
-		FROM server_settings WHERE id = 1`).Scan(&url, &apiKey, &secretEnc, &recEnabled)
+		SELECT livekit_url, livekit_api_key, livekit_api_secret_enc
+		FROM server_settings WHERE id = 1`).Scan(&url, &apiKey, &secretEnc)
 	if err != nil && err != sql.ErrNoRows {
 		h.logger.ErrorContext(r.Context(), "livekit settings: query", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	_, storageReady := recordingStorage()
 	h.writeJSON(w, http.StatusOK, map[string]any{
-		"url":                url,
-		"api_key":            apiKey,
-		"api_secret_set":     secretEnc != "",
-		"configured":         url != "" && apiKey != "" && secretEnc != "",
-		"recordings_enabled": recEnabled != 0,
-		"recordings_storage_ready": storageReady, // backups bucket present → recordings can upload
+		"url":            url,
+		"api_key":        apiKey,
+		"api_secret_set": secretEnc != "",
+		"configured":     url != "" && apiKey != "" && secretEnc != "",
 	})
 }
 
@@ -80,10 +76,9 @@ func (h *Handler) PatchLiveKitSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 8<<10)
 	var req struct {
-		URL               string `json:"url"`
-		APIKey            string `json:"api_key"`
-		APISecret         string `json:"api_secret"`
-		RecordingsEnabled bool   `json:"recordings_enabled"`
+		URL       string `json:"url"`
+		APIKey    string `json:"api_key"`
+		APISecret string `json:"api_secret"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.writeError(w, http.StatusBadRequest, "invalid JSON")
@@ -91,16 +86,6 @@ func (h *Handler) PatchLiveKitSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	req.URL = strings.TrimSpace(req.URL)
 	req.APIKey = strings.TrimSpace(req.APIKey)
-
-	// Recording toggle is independent of the server creds — set it either way.
-	recEnabled := 0
-	if req.RecordingsEnabled {
-		recEnabled = 1
-	}
-	if _, err := h.db.ExecContext(r.Context(),
-		`UPDATE server_settings SET recordings_enabled = ?, updated_at = datetime('now') WHERE id = 1`, recEnabled); err != nil {
-		h.logger.ErrorContext(r.Context(), "livekit settings: recordings toggle", "error", err)
-	}
 
 	if req.URL == "" {
 		if _, err := h.db.ExecContext(r.Context(), `

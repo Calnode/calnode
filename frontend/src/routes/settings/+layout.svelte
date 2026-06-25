@@ -14,6 +14,7 @@
 		{ href: `${base}/settings/google`, label: 'Google OAuth', adminOnly: true },
 		{ href: `${base}/settings/zoom`, label: 'Zoom', adminOnly: true },
 		{ href: `${base}/settings/video`, label: 'Video', adminOnly: true },
+		{ href: `${base}/settings/storage`, label: 'Storage', adminOnly: true },
 		{ href: `${base}/settings/payments`, label: 'Payments', adminOnly: true },
 		{ href: `${base}/settings/ai`, label: 'AI', adminOnly: true },
 		{ href: `${base}/settings/tracking`, label: 'Tracking', adminOnly: true },
