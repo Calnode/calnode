@@ -249,6 +249,7 @@ func (h *Handler) EgressWebhook(w http.ResponseWriter, r *http.Request) {
 		} `json:"room"`
 		EgressInfo struct {
 			EgressID    string `json:"egress_id"`
+			RoomName    string `json:"room_name"`
 			Status      string `json:"status"`
 			FileResults []struct {
 				Filename string `json:"filename"`
@@ -261,6 +262,14 @@ func (h *Handler) EgressWebhook(w http.ResponseWriter, r *http.Request) {
 	// so it never outlives the meeting. (Requires the webhook to be registered in LiveKit.)
 	if ev.Event == "room_finished" && ev.Room.Name != "" {
 		h.finalizeActiveRecording(r.Context(), ev.Room.Name)
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	// The egress lifecycle is the source of truth for the recording banner: drive the room's
+	// recording flag off the actual egress, so the indicator self-heals regardless of which code
+	// path started/stopped it (no reliance on every caller remembering to clear the flag).
+	if ev.Event == "egress_started" && ev.EgressInfo.RoomName != "" {
+		h.mergeRoomMeta(r.Context(), ev.EgressInfo.RoomName, "recording", true)
 		w.WriteHeader(http.StatusOK)
 		return
 	}
@@ -281,6 +290,9 @@ func (h *Handler) EgressWebhook(w http.ResponseWriter, r *http.Request) {
 			       duration_s = ?, updated_at = datetime('now') WHERE egress_id = ?`,
 			status, key, durSec, info.EgressID); err != nil {
 			h.logger.ErrorContext(r.Context(), "livekit: finalize recording", "error", err)
+		}
+		if info.RoomName != "" {
+			h.mergeRoomMeta(r.Context(), info.RoomName, "recording", false) // clear the banner (no-op if the room is gone)
 		}
 	}
 	w.WriteHeader(http.StatusOK)

@@ -25,6 +25,7 @@
     ['lk-prejoin', 'lk-room', 'lk-left', 'lk-error'].forEach(function (s) {
       $(s).classList.toggle('hidden', s !== id);
     });
+    if (id !== 'lk-room') $('lk-rec-banner').classList.add('hidden'); // the banner only belongs in-room
   }
   function fail(msg) {
     if (msg) $('lk-error-msg').textContent = msg;
