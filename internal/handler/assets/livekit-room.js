@@ -294,9 +294,13 @@
       return res.ok;
     } catch (e) { return false; }
   }
+  // A recording belongs to the meeting, not a lingering egress: stop it whenever the host leaves
+  // so it never runs unattended. (End-for-all finalizes server-side via room/end.)
+  async function stopRecIfHosting() { if (amHost() && recording) await postLK('record/stop'); }
   async function endForAll() { closeLeaveModal(); await postLK('room/end'); if (room) room.disconnect(); }
   async function reassignAndLeave() {
     closeLeaveModal();
+    await stopRecIfHosting();
     var id = $('lk-reassign-sel').value;
     if (id) await postLK('room/reassign-host', { identity: id });
     if (room) room.disconnect();
@@ -492,7 +496,7 @@
     $('lk-leave').onclick = leaveOrPrompt;
     $('lk-end-all').onclick = endForAll;
     $('lk-reassign-leave').onclick = reassignAndLeave;
-    $('lk-just-leave').onclick = function () { if (room) room.disconnect(); };
+    $('lk-just-leave').onclick = async function () { await stopRecIfHosting(); if (room) room.disconnect(); };
     $('lk-leave-cancel').onclick = closeLeaveModal;
     if (recordingAvailable) {
       // Wire the button; applyRoomMeta shows it only while we're host (durable or reassigned).

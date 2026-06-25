@@ -244,6 +244,9 @@ func (h *Handler) EgressWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 	var ev struct {
 		Event      string `json:"event"`
+		Room       struct {
+			Name string `json:"name"`
+		} `json:"room"`
 		EgressInfo struct {
 			EgressID    string `json:"egress_id"`
 			Status      string `json:"status"`
@@ -254,6 +257,13 @@ func (h *Handler) EgressWebhook(w http.ResponseWriter, r *http.Request) {
 		} `json:"egress_info"`
 	}
 	_ = json.Unmarshal(body, &ev)
+	// Room closed (host ended it, or everyone left) — stop + finalize any recording still running,
+	// so it never outlives the meeting. (Requires the webhook to be registered in LiveKit.)
+	if ev.Event == "room_finished" && ev.Room.Name != "" {
+		h.finalizeActiveRecording(r.Context(), ev.Room.Name)
+		w.WriteHeader(http.StatusOK)
+		return
+	}
 	if ev.Event == "egress_ended" || ev.Event == "egress_failed" {
 		info := ev.EgressInfo
 		status := "complete"
