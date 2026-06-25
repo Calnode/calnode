@@ -117,11 +117,12 @@ func (h *Handler) LiveKitToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.writeJSON(w, http.StatusOK, map[string]any{
-		"url":      lk.ClientURL(),
-		"token":    token,
-		"room":     room,
-		"identity": identity,
-		"role":     role, // "host" unlocks the in-call host controls
+		"url":        lk.ClientURL(),
+		"token":      token,
+		"room":       room,
+		"identity":   identity,
+		"role":       role,                                                  // "host" unlocks host controls
+		"can_record": role == "host" && h.recordingAvailable(r.Context()), // host + recording configured
 	})
 }
 

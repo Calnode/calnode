@@ -3,6 +3,9 @@ package livekit
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -89,4 +92,81 @@ func (c *Client) SetParticipantRole(ctx context.Context, room, identity, role st
 		videoGrant{RoomAdmin: true, Room: room},
 		map[string]any{"room": room, "identity": identity, "metadata": role})
 	return err
+}
+
+// UpdateRoomMetadata sets the room's metadata (read by clients to show e.g. a recording banner).
+func (c *Client) UpdateRoomMetadata(ctx context.Context, room, metadata string) error {
+	_, err := c.twirp(ctx, "RoomService", "UpdateRoomMetadata",
+		videoGrant{RoomAdmin: true, Room: room},
+		map[string]string{"room": room, "metadata": metadata})
+	return err
+}
+
+// S3Config is the destination bucket for recordings (reused from the Litestream backup config).
+type S3Config struct {
+	AccessKey, Secret, Region, Endpoint, Bucket string
+}
+
+// StartRoomCompositeEgress records the whole room (composited video + mixed audio) to an MP4 in
+// S3 and returns the egress id. filepath is the object key within the bucket.
+func (c *Client) StartRoomCompositeEgress(ctx context.Context, room, filepath string, s3 S3Config) (string, error) {
+	s3body := map[string]any{"access_key": s3.AccessKey, "secret": s3.Secret, "bucket": s3.Bucket}
+	if s3.Region != "" {
+		s3body["region"] = s3.Region
+	}
+	if s3.Endpoint != "" { // non-AWS (R2/B2/MinIO/…): explicit endpoint + path-style addressing
+		s3body["endpoint"] = s3.Endpoint
+		s3body["force_path_style"] = true
+	}
+	body := map[string]any{
+		"room_name": room,
+		"layout":    "grid",
+		"file_outputs": []any{map[string]any{
+			"file_type": "MP4",
+			"filepath":  filepath,
+			"s3":        s3body,
+		}},
+	}
+	rb, err := c.twirp(ctx, "Egress", "StartRoomCompositeEgress", videoGrant{RoomRecord: true}, body)
+	if err != nil {
+		return "", err
+	}
+	var out struct {
+		EgressID string `json:"egress_id"`
+	}
+	_ = json.Unmarshal(rb, &out)
+	return out.EgressID, nil
+}
+
+// StopEgress stops a running egress (recording).
+func (c *Client) StopEgress(ctx context.Context, egressID string) error {
+	_, err := c.twirp(ctx, "Egress", "StopEgress", videoGrant{RoomRecord: true}, map[string]string{"egress_id": egressID})
+	return err
+}
+
+// VerifyWebhook validates a LiveKit webhook: the Authorization header is a JWT (HS256, signed
+// with the API secret) whose sha256 claim is the base64 SHA-256 of the request body.
+func (c *Client) VerifyWebhook(authToken string, body []byte) error {
+	parts := strings.Split(authToken, ".")
+	if len(parts) != 3 {
+		return errors.New("livekit: malformed webhook token")
+	}
+	mac := hmac.New(sha256.New, []byte(c.apiSecret))
+	mac.Write([]byte(parts[0] + "." + parts[1]))
+	want := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+	if !hmac.Equal([]byte(parts[2]), []byte(want)) {
+		return errors.New("livekit: bad webhook signature")
+	}
+	var claims struct {
+		Sha256 string `json:"sha256"`
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil || json.Unmarshal(raw, &claims) != nil {
+		return errors.New("livekit: bad webhook claims")
+	}
+	sum := sha256.Sum256(body)
+	if claims.Sha256 != base64.StdEncoding.EncodeToString(sum[:]) {
+		return errors.New("livekit: webhook body hash mismatch")
+	}
+	return nil
 }

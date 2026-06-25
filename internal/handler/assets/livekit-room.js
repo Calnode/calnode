@@ -17,6 +17,7 @@
     screen: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>',
     layout: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><rect x="3" y="15" width="6" height="6" rx="1" fill="currentColor"/><rect x="11" y="15" width="6" height="6" rx="1" fill="currentColor"/></svg>',
     chat: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>',
+    record: '<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="7"/></svg>',
   };
 
   function showOnly(id) {
@@ -113,6 +114,25 @@
   var activeSpeakerId = null;
   var chatOpen = false, unread = 0;
   var isHost = false; // set from the token role; can change if host is reassigned to us
+  var canRecord = false, recording = false;
+
+  // applyRoomMeta reflects the room's recording state (set by the host via the server) to every
+  // participant: a "Recording" banner for all, and the record button's active state for the host.
+  function applyRoomMeta() {
+    if (!room) return;
+    var rec = false;
+    try { rec = !!JSON.parse(room.metadata || '{}').recording; } catch (e) {}
+    recording = rec;
+    $('lk-rec-banner').classList.toggle('hidden', !rec);
+    var btn = $('lk-record-btn');
+    if (btn) { btn.classList.toggle('recording', rec); btn.title = rec ? 'Stop recording' : 'Record meeting'; }
+  }
+  async function toggleRecord() {
+    var btn = $('lk-record-btn'); if (btn) btn.disabled = true;
+    await postLK(recording ? 'record/stop' : 'record/start');
+    if (btn) btn.disabled = false;
+    // The room-metadata change will drive the banner/button via applyRoomMeta.
+  }
 
   // relayout places tiles into the grid, or (speaker mode) a big stage + a filmstrip. Moving a
   // tile's element between containers via appendChild preserves its playing <video>, so no track
@@ -200,19 +220,20 @@
     $('lk-leave-modal').classList.remove('hidden');
   }
   function closeLeaveModal() { $('lk-leave-modal').classList.add('hidden'); }
-  async function postRoom(path, extra) {
+  // postLK POSTs to /v1/livekit/<path> with the opaque room token (the host capability).
+  async function postLK(path, extra) {
     try {
-      var res = await fetch('/v1/livekit/room/' + path, {
+      var res = await fetch('/v1/livekit/' + path, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(Object.assign({ t: roomToken }, extra || {}))
       });
       return res.ok;
     } catch (e) { return false; }
   }
-  async function endForAll() { await postRoom('end'); if (room) room.disconnect(); }
+  async function endForAll() { await postLK('room/end'); if (room) room.disconnect(); }
   async function reassignAndLeave() {
     var id = $('lk-reassign-sel').value;
-    if (id) await postRoom('reassign-host', { identity: id });
+    if (id) await postLK('room/reassign-host', { identity: id });
     if (room) room.disconnect();
   }
 
@@ -304,6 +325,7 @@
     }
     stopPreview();
     isHost = !!(data && data.role === 'host');
+    canRecord = !!(data && data.can_record);
 
     room = new LK.Room({ adaptiveStream: true, dynacast: true });
     var RE = LK.RoomEvent;
@@ -324,6 +346,7 @@
         if (layoutMode === 'speaker' && !pinnedId) relayout();
       })
       .on(RE.DataReceived, onData)
+      .on(RE.RoomMetadataChanged, applyRoomMeta)
       .on(RE.ParticipantMetadataChanged, function (prev, participant) {
         // If host is reassigned to us mid-call, our metadata flips to "host".
         if (room && participant && participant.identity === room.localParticipant.identity) {
@@ -389,6 +412,11 @@
     $('lk-reassign-leave').onclick = reassignAndLeave;
     $('lk-just-leave').onclick = function () { if (room) room.disconnect(); };
     $('lk-leave-cancel').onclick = closeLeaveModal;
+    if (canRecord) {
+      var rb = $('lk-record-btn');
+      rb.innerHTML = ICON.record; rb.classList.remove('hidden'); rb.onclick = toggleRecord;
+    }
+    applyRoomMeta(); // reflect any recording already in progress
     paintLayoutBtn();
     paint();
   }

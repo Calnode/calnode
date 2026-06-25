@@ -118,6 +118,14 @@
     #lk-reassign-wrap { margin-top:16px; padding-top:14px; border-top:1px solid var(--line); }
     #lk-reassign-wrap label { display:block; font-size:.82rem; color:var(--muted); margin-bottom:6px; }
     #lk-reassign-sel { margin-bottom:4px; }
+
+    /* Recording indicator (shown to everyone) + record button active state */
+    .rec-banner { position:fixed; top:12px; left:50%; transform:translateX(-50%); background:var(--danger);
+      color:#fff; padding:6px 14px; border-radius:999px; font-size:.82rem; font-weight:600; z-index:40;
+      display:flex; align-items:center; gap:7px; }
+    .rec-dot { width:9px; height:9px; border-radius:50%; background:#fff; animation:recpulse 1.4s infinite; }
+    @keyframes recpulse { 0%,100% { opacity:1; } 50% { opacity:.3; } }
+    .ctrl.recording { background:var(--danger); color:#fff; }
   </style>
 </head>
 <body>
@@ -169,6 +177,7 @@
         <button id="lk-screen" class="ctrl" title="Share screen" aria-label="Share screen"></button>
         <button id="lk-layout-btn" class="ctrl" title="Switch layout (grid / speaker)" aria-label="Switch layout"></button>
         <button id="lk-chat-btn" class="ctrl" title="Chat" aria-label="Toggle chat"></button>
+        <button id="lk-record-btn" class="ctrl hidden" title="Record meeting" aria-label="Record meeting"></button>
         <button id="lk-leave" class="ctrl leave" title="Leave">Leave</button>
       </div>
     </section>
@@ -187,6 +196,7 @@
     </section>
 
     <div id="lk-status" class="hidden"></div>
+    <div id="lk-rec-banner" class="rec-banner hidden"><span class="rec-dot"></span>Recording</div>
 
     <!-- Host-only leave modal -->
     <div id="lk-leave-modal" class="modal-overlay hidden">
