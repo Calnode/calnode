@@ -116,7 +116,7 @@
   var chatOpen = false, unread = 0;
   var isHost = false; // set from the token role; can change if host is reassigned to us
   var canRecord = false, recording = false;
-  var canScreenShare = true, allowShare = true; // me / attendees-in-general
+  var canScreenShare = false, allowShare = false; // me / attendees-in-general (host opts in)
 
   // applyRoomMeta reflects shared room state (recording + screen-share permission) to everyone:
   // the recording banner + button, and whether non-hosts may see the screen-share button.
@@ -129,7 +129,7 @@
     var btn = $('lk-record-btn');
     if (btn) { btn.classList.toggle('recording', recording); btn.title = recording ? 'Stop recording' : 'Record meeting'; }
 
-    allowShare = meta.allowShare !== false; // default allowed
+    allowShare = meta.allowShare === true; // default off — host opts attendees in
     var host = amHost();
     var sc = $('lk-screen');
     if (sc && !host) sc.classList.toggle('hidden', !allowShare); // non-hosts lose the button when off
@@ -354,8 +354,8 @@
     stopPreview();
     isHost = !!(data && data.role === 'host');
     canRecord = !!(data && data.can_record);
-    canScreenShare = !(data && data.can_screenshare === false); // default true
-    allowShare = !(data && data.allow_share === false);
+    canScreenShare = !!(data && data.can_screenshare); // default off
+    allowShare = !!(data && data.allow_share);
 
     room = new LK.Room({ adaptiveStream: true, dynacast: true });
     var RE = LK.RoomEvent;

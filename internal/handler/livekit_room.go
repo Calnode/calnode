@@ -197,15 +197,15 @@ func (h *Handler) mergeRoomMeta(ctx context.Context, room, key string, val any) 
 }
 
 // attendeeShareAllowed reports whether attendees may share their screen (room metadata
-// allowShare; defaults to true when unset or the room doesn't exist yet).
+// allowShare; defaults to FALSE when unset — the host opts attendees in explicitly).
 func (h *Handler) attendeeShareAllowed(ctx context.Context, room string) bool {
 	lk := h.getLiveKit()
 	if lk == nil {
-		return true
+		return false
 	}
 	cur, err := lk.RoomMetadata(ctx, room)
 	if err != nil || cur == "" {
-		return true
+		return false
 	}
 	var m struct {
 		AllowShare *bool `json:"allowShare"`
@@ -213,7 +213,7 @@ func (h *Handler) attendeeShareAllowed(ctx context.Context, room string) bool {
 	if json.Unmarshal([]byte(cur), &m) == nil && m.AllowShare != nil {
 		return *m.AllowShare
 	}
-	return true
+	return false
 }
 
 // ScreenShareToggle handles POST /v1/livekit/room/screenshare (host token) — turns attendee
