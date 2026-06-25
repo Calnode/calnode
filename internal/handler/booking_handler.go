@@ -828,15 +828,17 @@ func (h *Handler) dispatchBookingConfirmation(b *booking.Booking, in bookingConf
 	// LiveKit: instance-level built-in video. Mint a room + an expiring, signed join URL
 	// (no per-host connection, no manual link — the room is always generated). If LiveKit was
 	// disabled after the event type was created, meetURL stays empty (booking still succeeds).
+	var livekitHostURL string // the host (controls-enabled) link, for host calendar events + host emails
 	if in.LocationType == "livekit" {
 		if lk := h.getLiveKit(); lk != nil {
 			room := "booking-" + b.ID
 			// Valid from now until a bit past the meeting end (late joins / overruns). Two links:
-			// the host's (controls-enabled) goes on the host calendar events; the attendee's plain
-			// link goes in the email + manage page + the stored location_value.
+			// the host's (controls-enabled) goes on the host calendar events + host emails; the
+			// attendee's plain link goes in the attendee email + manage page + location_value.
 			exp := b.EndAt.Add(2 * time.Hour)
 			attendeeURL := lk.BookingJoinURL(h.baseURL, room, "", exp)
 			meetURL = lk.BookingJoinURL(h.baseURL, room, "host", exp) // host calendar events
+			livekitHostURL = meetURL
 			b.LocationValue = attendeeURL
 			bData.LocationValue = attendeeURL
 			if _, err := h.db.ExecContext(ctx,
@@ -903,6 +905,9 @@ func (h *Handler) dispatchBookingConfirmation(b *booking.Booking, in bookingConf
 		if prefs.NotifyHostBooking {
 			hd := bData
 			hd.HostName, hd.HostEmail = host.Name, host.Email
+			if livekitHostURL != "" {
+				hd.LocationValue = livekitHostURL // host email gets the controls-enabled link
+			}
 			hd.AttachICS = h.noConnectedDestination(ctx, host.UserID) // per-host: their own calendar
 			hd.ICSSequence = int(b.UpdatedAt.Unix())
 			if err := mailer.SendConfirmationToHost(ctx, h.mailer, hd); err != nil {
