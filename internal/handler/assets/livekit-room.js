@@ -18,7 +18,7 @@
     layout: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><rect x="3" y="15" width="6" height="6" rx="1" fill="currentColor"/><rect x="11" y="15" width="6" height="6" rx="1" fill="currentColor"/></svg>',
     chat: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>',
     record: '<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="7"/></svg>',
-    shareLock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="13" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><circle cx="12" cy="9.5" r="2"/><path d="M12 11.5v1.5"/></svg>',
+    gear: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
   };
 
   function showOnly(id) {
@@ -114,7 +114,8 @@
   var pinnedId = null;       // identity manually pinned to the stage (speaker mode)
   var activeSpeakerId = null;
   var chatOpen = false, unread = 0;
-  var isHost = false; // set from the token role; can change if host is reassigned to us
+  var isHost = false; // current live host status; can change as host is reassigned/reclaimed
+  var hostCapable = false; // held host capability at join (host link / owner) — enables the menu + reclaim
   var canRecord = false, recording = false;
   var canScreenShare = false, allowShare = false; // me / attendees-in-general (host opts in)
 
@@ -132,17 +133,49 @@
     allowShare = meta.allowShare === true; // default off — host opts attendees in
     var host = amHost();
     var sc = $('lk-screen');
-    if (sc && !host) sc.classList.toggle('hidden', !allowShare); // non-hosts lose the button when off
-    var sp = $('lk-shareperm-btn');
-    if (sp) {
-      sp.classList.toggle('off', !allowShare);
-      sp.title = allowShare ? 'Attendee screen-share: on' : 'Attendee screen-share: off';
-    }
+    if (sc) sc.classList.toggle('hidden', !host && !allowShare); // host always; attendees only when allowed
+    var menu = $('lk-host-menu');
+    if (menu && !menu.classList.contains('hidden')) renderHostMenu(); // keep the toggle label live
   }
   async function toggleSharePerm() {
     await postLK('room/screenshare', { allow: !allowShare });
-    // The room-metadata change drives applyRoomMeta; reflect optimistically too.
-    allowShare = !allowShare; applyRoomMeta();
+    allowShare = !allowShare; applyRoomMeta(); // optimistic; the room-metadata event also reconciles
+  }
+
+  // ----- Host controls menu (gear popover) -----
+  function openHostMenu() { renderHostMenu(); $('lk-host-menu').classList.toggle('hidden'); }
+  function renderHostMenu() {
+    var active = amHost();
+    var share = $('lk-hm-share');
+    share.classList.toggle('hidden', !active);
+    share.textContent = (allowShare ? '✓ Guests can share screen' : 'Allow guests to share screen');
+    $('lk-hm-makehost').classList.toggle('hidden', !active);
+    var list = $('lk-hm-participants'); list.innerHTML = '';
+    if (active) {
+      var others = room ? Array.from(room.remoteParticipants.values()) : [];
+      if (others.length === 0) {
+        var none = document.createElement('div'); none.className = 'hm-empty';
+        none.textContent = 'No one else here yet'; list.appendChild(none);
+      }
+      others.forEach(function (p) {
+        var b = document.createElement('button'); b.type = 'button'; b.className = 'hm-sub';
+        b.textContent = p.name || 'Participant';
+        b.onclick = function () { makeHost(p.identity); };
+        list.appendChild(b);
+      });
+    }
+    // Reclaim: shown to the owner once they've stepped down (capable but not currently host).
+    $('lk-hm-reclaim').classList.toggle('hidden', !(hostCapable && !active));
+  }
+  async function makeHost(identity) {
+    $('lk-host-menu').classList.add('hidden');
+    // Server demotes me + promotes them; my ParticipantMetadataChanged flips isHost to false.
+    await postLK('room/reassign-host', { identity: identity });
+  }
+  async function reclaimHost() {
+    $('lk-host-menu').classList.add('hidden');
+    var me = room && room.localParticipant ? room.localParticipant.identity : '';
+    if (me) await postLK('room/reassign-host', { identity: me });
   }
   async function toggleRecord() {
     var btn = $('lk-record-btn'); if (btn) btn.disabled = true;
@@ -353,6 +386,7 @@
     }
     stopPreview();
     isHost = !!(data && data.role === 'host');
+    hostCapable = isHost; // sticky: the owner can reclaim host even after stepping down
     canRecord = !!(data && data.can_record);
     canScreenShare = !!(data && data.can_screenshare); // default off
     allowShare = !!(data && data.allow_share);
@@ -389,6 +423,7 @@
           else if (m === 'attendee') isHost = false;
           var rb = $('lk-record-btn');
           if (rb) rb.classList.toggle('hidden', !(isHost && canRecord));
+          applyRoomMeta(); // refresh my screen button + the host menu for the new status
         }
       })
       .on(RE.Disconnected, function () { closeLeaveModal(); showOnly('lk-left'); });
@@ -455,9 +490,18 @@
       var rb = $('lk-record-btn');
       rb.innerHTML = ICON.record; rb.classList.remove('hidden'); rb.onclick = toggleRecord;
     }
-    if (isHost) {
-      var sp = $('lk-shareperm-btn');
-      sp.innerHTML = ICON.shareLock; sp.classList.remove('hidden'); sp.onclick = toggleSharePerm;
+    if (hostCapable) {
+      $('lk-host-menu-btn').innerHTML = ICON.gear;
+      $('lk-host-menu-wrap').classList.remove('hidden');
+      $('lk-host-menu-btn').onclick = openHostMenu;
+      $('lk-hm-share').onclick = function () { $('lk-host-menu').classList.add('hidden'); toggleSharePerm(); };
+      $('lk-hm-reclaim').onclick = reclaimHost;
+      document.addEventListener('click', function (e) {
+        var menu = $('lk-host-menu'), wrap = $('lk-host-menu-wrap');
+        if (!menu || menu.classList.contains('hidden')) return;
+        if (wrap && wrap.contains(e.target)) return; // clicks on the gear/menu stay open
+        menu.classList.add('hidden');
+      });
     }
     applyRoomMeta(); // reflect recording + screen-share state already set
     paintLayoutBtn();

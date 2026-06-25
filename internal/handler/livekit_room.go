@@ -293,12 +293,14 @@ func (h *Handler) EndRoom(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// ReassignHost handles POST /v1/livekit/room/reassign-host — promotes another participant to
-// host (sets their metadata to "host"), so the meeting can continue after the host leaves.
+// ReassignHost handles POST /v1/livekit/room/reassign-host — makes one participant the single
+// host. It demotes whoever is host now, then promotes the target. This serves three flows:
+// passing host on leave, transferring host while staying (the caller steps down), and the
+// booking owner reclaiming host (target = the caller's own identity).
 func (h *Handler) ReassignHost(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Token    string `json:"t"`
-		Identity string `json:"identity"` // the participant to promote
+		Identity string `json:"identity"` // the participant to make host (self for reclaim)
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&req); err != nil {
 		h.writeError(w, http.StatusBadRequest, "invalid JSON")
@@ -312,6 +314,7 @@ func (h *Handler) ReassignHost(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusBadRequest, "identity is required")
 		return
 	}
+	h.demoteOtherHosts(r.Context(), room) // single host: clear the current one first
 	if err := h.getLiveKit().SetParticipantRole(r.Context(), room, req.Identity, "host"); err != nil {
 		h.logger.ErrorContext(r.Context(), "livekit: reassign host", "error", err, "room", room)
 		h.writeError(w, http.StatusBadGateway, "could not reassign the host")

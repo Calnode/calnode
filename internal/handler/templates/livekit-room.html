@@ -127,6 +127,21 @@
     .rec-dot { width:9px; height:9px; border-radius:50%; background:#fff; animation:recpulse 1.4s infinite; }
     @keyframes recpulse { 0%,100% { opacity:1; } 50% { opacity:.3; } }
     .ctrl.recording { background:var(--danger); color:#fff; }
+
+    /* Host controls menu (gear popover above the bar) */
+    .hm-wrap { position:relative; display:inline-flex; }
+    .host-menu { position:absolute; bottom:calc(100% + 10px); right:0; min-width:230px; max-width:280px;
+      background:var(--panel2); border:1px solid var(--line); border-radius:12px; padding:6px;
+      display:flex; flex-direction:column; gap:1px; box-shadow:0 10px 34px rgba(0,0,0,.55); z-index:60; }
+    .host-menu.hidden { display:none; }
+    .hm-item, .hm-sub { display:block; width:100%; text-align:left; background:none; color:var(--text);
+      padding:10px 12px; border-radius:8px; font-size:.9rem; }
+    .hm-item:hover, .hm-sub:hover { background:var(--panel); }
+    .hm-item.hidden, .hm-section.hidden { display:none; }
+    .hm-section { border-top:1px solid var(--line); margin-top:4px; padding-top:5px; }
+    .hm-label { font-size:.68rem; color:var(--muted); padding:5px 12px 3px; text-transform:uppercase; letter-spacing:.05em; }
+    .hm-sub { padding-left:18px; color:var(--text); }
+    .hm-empty { font-size:.82rem; color:var(--muted); padding:8px 12px; }
   </style>
 </head>
 <body>
@@ -178,7 +193,17 @@
         <button id="lk-screen" class="ctrl" title="Share screen" aria-label="Share screen"></button>
         <button id="lk-layout-btn" class="ctrl" title="Switch layout (grid / speaker)" aria-label="Switch layout"></button>
         <button id="lk-chat-btn" class="ctrl" title="Chat" aria-label="Toggle chat"></button>
-        <button id="lk-shareperm-btn" class="ctrl hidden" title="Attendee screen sharing" aria-label="Toggle attendee screen sharing"></button>
+        <span id="lk-host-menu-wrap" class="hm-wrap hidden">
+          <button id="lk-host-menu-btn" class="ctrl" title="Host controls" aria-label="Host controls"></button>
+          <div id="lk-host-menu" class="host-menu hidden">
+            <button id="lk-hm-share" class="hm-item"></button>
+            <div id="lk-hm-makehost" class="hm-section">
+              <div class="hm-label">Make someone host</div>
+              <div id="lk-hm-participants"></div>
+            </div>
+            <button id="lk-hm-reclaim" class="hm-item hm-section">Take host back</button>
+          </div>
+        </span>
         <button id="lk-record-btn" class="ctrl hidden" title="Record meeting" aria-label="Record meeting"></button>
         <button id="lk-leave" class="ctrl leave" title="Leave">Leave</button>
       </div>
