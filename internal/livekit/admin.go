@@ -78,10 +78,11 @@ func (c *Client) twirp(ctx context.Context, service, method string, grant videoG
 	return rb, nil
 }
 
-// DeleteRoom ends the room for everyone — all participants are disconnected.
+// DeleteRoom ends the room for everyone — all participants are disconnected. Requires the
+// server-level roomCreate grant (not room-scoped roomAdmin).
 func (c *Client) DeleteRoom(ctx context.Context, room string) error {
 	_, err := c.twirp(ctx, "RoomService", "DeleteRoom",
-		videoGrant{RoomAdmin: true, Room: room}, map[string]string{"room": room})
+		videoGrant{RoomCreate: true}, map[string]string{"room": room})
 	return err
 }
 

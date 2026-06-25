@@ -70,7 +70,8 @@ func normalizeWS(raw string) string {
 type videoGrant struct {
 	Room           string `json:"room,omitempty"`
 	RoomJoin       bool   `json:"roomJoin,omitempty"`
-	RoomAdmin      bool   `json:"roomAdmin,omitempty"`  // manage the room (delete, update participants)
+	RoomAdmin      bool   `json:"roomAdmin,omitempty"`  // administer a specific room (update participants, metadata)
+	RoomCreate     bool   `json:"roomCreate,omitempty"` // server-level: create/delete rooms
 	RoomRecord     bool   `json:"roomRecord,omitempty"` // start/stop egress
 	RoomList       bool   `json:"roomList,omitempty"`
 	CanPublish     bool   `json:"canPublish,omitempty"`
