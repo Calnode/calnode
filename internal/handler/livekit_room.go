@@ -313,6 +313,7 @@ func (h *Handler) EndRoom(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	h.finalizeActiveRecording(r.Context(), room) // stop + close any running recording before tearing down
 	if err := h.getLiveKit().DeleteRoom(r.Context(), room); err != nil {
 		h.logger.ErrorContext(r.Context(), "livekit: end room", "error", err, "room", room)
 		h.writeError(w, http.StatusBadGateway, "could not end the meeting")

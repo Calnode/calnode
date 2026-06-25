@@ -53,6 +53,14 @@ func (h *Handler) SetLiveKit(c *livekit.Client) {
 	h.livekitMu.Lock()
 	h.livekit = c
 	h.livekitMu.Unlock()
+	// Self-heal: any recording still 'active' is an orphan from before this restart (its egress
+	// is no longer tracked), and would otherwise block the idempotent guard on its room forever.
+	if c != nil {
+		if _, err := h.db.Exec(
+			`UPDATE recordings SET status = 'complete', updated_at = datetime('now') WHERE status = 'active'`); err != nil {
+			h.logger.Warn("livekit: sweep stale recordings", "error", err)
+		}
+	}
 }
 
 // getLiveKit returns the active LiveKit client, or nil when video is unconfigured.

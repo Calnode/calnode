@@ -87,6 +87,7 @@ func (h *Handler) RecordStart(w http.ResponseWriter, r *http.Request) {
 	_ = h.db.QueryRowContext(r.Context(),
 		`SELECT egress_id FROM recordings WHERE room = ? AND status = 'active' LIMIT 1`, room).Scan(&existing)
 	if existing != "" {
+		h.mergeRoomMeta(r.Context(), room, "recording", true) // already recording — re-assert the banner
 		h.writeJSON(w, http.StatusOK, map[string]any{"recording": true})
 		return
 	}
@@ -125,17 +126,35 @@ func (h *Handler) RecordStop(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	lk := h.getLiveKit()
-	var egressID string
-	_ = h.db.QueryRowContext(r.Context(),
-		`SELECT egress_id FROM recordings WHERE room = ? AND status = 'active' LIMIT 1`, room).Scan(&egressID)
-	if egressID != "" {
-		if err := lk.StopEgress(r.Context(), egressID); err != nil {
-			h.logger.ErrorContext(r.Context(), "livekit: stop egress", "error", err, "egress", egressID)
-		}
-	}
+	h.finalizeActiveRecording(r.Context(), room)
 	h.mergeRoomMeta(r.Context(), room, "recording", false)
 	h.writeJSON(w, http.StatusOK, map[string]any{"recording": false})
+}
+
+// finalizeActiveRecording stops the room's active egress (if any) and marks its recordings row
+// complete RIGHT NOW — rather than waiting on the egress webhook, which may not be registered in
+// LiveKit. The object_key was set at start, so the recording stays listed and downloadable; the
+// webhook, if it later arrives, just refines the duration. Without this a stopped recording's row
+// stays 'active' forever and blocks the next record/start in the same room (idempotent no-op).
+func (h *Handler) finalizeActiveRecording(ctx context.Context, room string) {
+	lk := h.getLiveKit()
+	if lk == nil {
+		return
+	}
+	var egressID string
+	_ = h.db.QueryRowContext(ctx,
+		`SELECT egress_id FROM recordings WHERE room = ? AND status = 'active' LIMIT 1`, room).Scan(&egressID)
+	if egressID == "" {
+		return
+	}
+	if err := lk.StopEgress(ctx, egressID); err != nil {
+		h.logger.ErrorContext(ctx, "livekit: stop egress", "error", err, "egress", egressID)
+	}
+	if _, err := h.db.ExecContext(ctx,
+		`UPDATE recordings SET status = 'complete', updated_at = datetime('now')
+		 WHERE room = ? AND status = 'active'`, room); err != nil {
+		h.logger.ErrorContext(ctx, "livekit: close recording row", "error", err, "room", room)
+	}
 }
 
 // ListRecordings handles GET /v1/recordings (admin) — newest first, for the Recordings page.
