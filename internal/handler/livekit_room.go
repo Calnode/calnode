@@ -221,13 +221,14 @@ func (h *Handler) attendeeShareAllowed(ctx context.Context, room string) bool {
 func (h *Handler) ScreenShareToggle(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Token string `json:"t"`
+		At    string `json:"at"`
 		Allow bool   `json:"allow"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&req); err != nil {
 		h.writeError(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
-	room, ok := h.requireHostRoom(w, r, req.Token)
+	room, ok := h.authorizeHost(w, r, req.Token, req.At)
 	if !ok {
 		return
 	}
@@ -247,41 +248,68 @@ func (h *Handler) ScreenShareToggle(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// requireHostRoom validates the opaque room token in the request body and confirms it carries
-// the host role. Returns the room name, or "" after writing an error response.
-func (h *Handler) requireHostRoom(w http.ResponseWriter, r *http.Request, token string) (string, bool) {
+// hostRoomOrOwner reports the room if the caller is the durable host — they hold a host room
+// token, OR are a signed-in booking owner (so an owner who opened the attendee link still
+// drives the meeting). ok=false otherwise; no response is written. This is also who may RECLAIM
+// host after stepping down — a reassigned ("temporary") host has neither and so cannot.
+func (h *Handler) hostRoomOrOwner(r *http.Request, token string) (string, bool) {
+	lk := h.getLiveKit()
+	if lk == nil {
+		return "", false
+	}
+	room, role, _, err := lk.VerifyRoomToken(token)
+	if err != nil {
+		return "", false
+	}
+	if role == "host" {
+		return room, true
+	}
+	if uid, _, ok := h.sessionUser(r); ok && h.isBookingHost(r.Context(), room, uid) {
+		return room, true
+	}
+	return "", false
+}
+
+// authorizeHost authorizes a host action. It accepts the durable host (hostRoomOrOwner) OR a
+// participant who is the host RIGHT NOW — proven by verifying their LiveKit access token (signed
+// with our API secret) and confirming that identity currently carries the "host" role in the
+// room. That lets a reassigned host actually drive the meeting (end/record/share/reassign), not
+// just show the badge. Returns the room, or "" after writing an error response.
+func (h *Handler) authorizeHost(w http.ResponseWriter, r *http.Request, roomToken, accessToken string) (string, bool) {
 	lk := h.getLiveKit()
 	if lk == nil {
 		h.writeError(w, http.StatusNotFound, "video meetings are not configured")
 		return "", false
 	}
-	room, role, _, err := lk.VerifyRoomToken(token)
-	if err != nil {
-		h.writeError(w, http.StatusForbidden, err.Error())
-		return "", false
+	if room, ok := h.hostRoomOrOwner(r, roomToken); ok {
+		return room, true
 	}
-	// Host if the token says so, OR the requester is a signed-in host of this booking (so an
-	// owner who opened the attendee link can still drive the meeting).
-	if role != "host" {
-		uid, _, ok := h.sessionUser(r)
-		if !ok || !h.isBookingHost(r.Context(), room, uid) {
-			h.writeError(w, http.StatusForbidden, "only the meeting host can do that")
-			return "", false
+	if accessToken != "" {
+		if room, identity, err := lk.VerifyAccessToken(accessToken); err == nil && room != "" {
+			if parts, err := lk.ListParticipants(r.Context(), room); err == nil {
+				for _, p := range parts {
+					if p.Identity == identity && p.Metadata == "host" {
+						return room, true
+					}
+				}
+			}
 		}
 	}
-	return room, true
+	h.writeError(w, http.StatusForbidden, "only the meeting host can do that")
+	return "", false
 }
 
 // EndRoom handles POST /v1/livekit/room/end (host token in body) — ends the meeting for everyone.
 func (h *Handler) EndRoom(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Token string `json:"t"`
+		At    string `json:"at"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&req); err != nil {
 		h.writeError(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
-	room, ok := h.requireHostRoom(w, r, req.Token)
+	room, ok := h.authorizeHost(w, r, req.Token, req.At)
 	if !ok {
 		return
 	}
@@ -300,13 +328,14 @@ func (h *Handler) EndRoom(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) ReassignHost(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Token    string `json:"t"`
+		At       string `json:"at"`
 		Identity string `json:"identity"` // the participant to make host (self for reclaim)
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&req); err != nil {
 		h.writeError(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
-	room, ok := h.requireHostRoom(w, r, req.Token)
+	room, ok := h.authorizeHost(w, r, req.Token, req.At)
 	if !ok {
 		return
 	}

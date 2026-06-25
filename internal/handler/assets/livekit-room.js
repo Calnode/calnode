@@ -39,6 +39,7 @@
 
   // ----- Prejoin -----
   var roomToken = new URLSearchParams(location.search).get('t');
+  var accessToken = ''; // the LiveKit access JWT (proves our identity for temp-host actions)
   var previewTrack = null;
   var camOn = true, micOn = true;
 
@@ -134,6 +135,10 @@
     var host = amHost();
     var sc = $('lk-screen');
     if (sc) sc.classList.toggle('hidden', !host && !allowShare); // host always; attendees only when allowed
+    // Show the gear to whoever's host now (durable or reassigned); the owner also keeps it after
+    // stepping down so they can reclaim.
+    var wrap = $('lk-host-menu-wrap');
+    if (wrap) wrap.classList.toggle('hidden', !(hostCapable || host));
     var menu = $('lk-host-menu');
     if (menu && !menu.classList.contains('hidden')) renderHostMenu(); // keep the toggle label live
   }
@@ -280,7 +285,7 @@
     try {
       var res = await fetch('/v1/livekit/' + path, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(Object.assign({ t: roomToken }, extra || {}))
+        body: JSON.stringify(Object.assign({ t: roomToken, at: accessToken }, extra || {}))
       });
       return res.ok;
     } catch (e) { return false; }
@@ -385,6 +390,7 @@
       stopPreview(); fail(e.message); return;
     }
     stopPreview();
+    accessToken = (data && data.token) || '';
     isHost = !!(data && data.role === 'host');
     hostCapable = isHost; // sticky: the owner can reclaim host even after stepping down
     canRecord = !!(data && data.can_record);
@@ -490,19 +496,18 @@
       var rb = $('lk-record-btn');
       rb.innerHTML = ICON.record; rb.classList.remove('hidden'); rb.onclick = toggleRecord;
     }
-    if (hostCapable) {
-      $('lk-host-menu-btn').innerHTML = ICON.gear;
-      $('lk-host-menu-wrap').classList.remove('hidden');
-      $('lk-host-menu-btn').onclick = openHostMenu;
-      $('lk-hm-share').onclick = function () { $('lk-host-menu').classList.add('hidden'); toggleSharePerm(); };
-      $('lk-hm-reclaim').onclick = reclaimHost;
-      document.addEventListener('click', function (e) {
-        var menu = $('lk-host-menu'), wrap = $('lk-host-menu-wrap');
-        if (!menu || menu.classList.contains('hidden')) return;
-        if (wrap && wrap.contains(e.target)) return; // clicks on the gear/menu stay open
-        menu.classList.add('hidden');
-      });
-    }
+    // Host menu handlers are wired for everyone; the gear only SHOWS while you're host — durable
+    // OR reassigned. applyRoomMeta toggles its visibility as host status changes.
+    $('lk-host-menu-btn').innerHTML = ICON.gear;
+    $('lk-host-menu-btn').onclick = openHostMenu;
+    $('lk-hm-share').onclick = function () { $('lk-host-menu').classList.add('hidden'); toggleSharePerm(); };
+    $('lk-hm-reclaim').onclick = reclaimHost;
+    document.addEventListener('click', function (e) {
+      var menu = $('lk-host-menu'), wrap = $('lk-host-menu-wrap');
+      if (!menu || menu.classList.contains('hidden')) return;
+      if (wrap && wrap.contains(e.target)) return; // clicks on the gear/menu stay open
+      menu.classList.add('hidden');
+    });
     applyRoomMeta(); // reflect recording + screen-share state already set
     paintLayoutBtn();
     paint();

@@ -61,12 +61,13 @@ func (h *Handler) recordingAvailable(ctx context.Context) bool {
 func (h *Handler) RecordStart(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Token string `json:"t"`
+		At    string `json:"at"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&req); err != nil {
 		h.writeError(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
-	room, ok := h.requireHostRoom(w, r, req.Token)
+	room, ok := h.authorizeHost(w, r, req.Token, req.At)
 	if !ok {
 		return
 	}
@@ -114,12 +115,13 @@ func (h *Handler) RecordStart(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) RecordStop(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Token string `json:"t"`
+		At    string `json:"at"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&req); err != nil {
 		h.writeError(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
-	room, ok := h.requireHostRoom(w, r, req.Token)
+	room, ok := h.authorizeHost(w, r, req.Token, req.At)
 	if !ok {
 		return
 	}

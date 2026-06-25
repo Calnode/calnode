@@ -72,6 +72,34 @@ func TestAccessToken_claimsAndSignature(t *testing.T) {
 	}
 }
 
+func TestVerifyAccessToken_roundTripAndTamper(t *testing.T) {
+	c := testClient()
+	tok, identity, err := c.AccessToken("booking-77", "Alex", "host", true, time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatalf("AccessToken: %v", err)
+	}
+	room, gotID, err := c.VerifyAccessToken(tok)
+	if err != nil {
+		t.Fatalf("VerifyAccessToken: %v", err)
+	}
+	if room != "booking-77" {
+		t.Errorf("room = %q, want booking-77", room)
+	}
+	if gotID != identity {
+		t.Errorf("identity = %q, want %q", gotID, identity)
+	}
+	// Tampered signature is rejected.
+	if _, _, err := c.VerifyAccessToken(tok + "x"); err == nil {
+		t.Error("tampered access token should fail")
+	}
+	// A token signed with a different API secret can't validate.
+	var k [32]byte
+	other := New("https://x.livekit.cloud", "APIabc", "different-secret", k)
+	if _, _, err := other.VerifyAccessToken(tok); err == nil {
+		t.Error("access token from a different secret should fail")
+	}
+}
+
 func TestRoomToken_roundTripAndTamper(t *testing.T) {
 	c := testClient()
 	exp := time.Now().Add(time.Hour)

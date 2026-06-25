@@ -184,6 +184,38 @@ func (c *Client) roomMAC(payload string) string {
 	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 }
 
+// VerifyAccessToken verifies a participant LiveKit access JWT (HS256, signed with the API
+// secret) and returns the room it grants and the participant identity (sub). Used to prove a
+// caller's identity for host actions when they hold the host role via room metadata (a
+// reassigned host) rather than a host room token.
+func (c *Client) VerifyAccessToken(tok string) (room, identity string, err error) {
+	if c.apiSecret == "" {
+		return "", "", errors.New("livekit: not configured")
+	}
+	parts := strings.Split(tok, ".")
+	if len(parts) != 3 {
+		return "", "", errors.New("livekit: malformed access token")
+	}
+	mac := hmac.New(sha256.New, []byte(c.apiSecret))
+	mac.Write([]byte(parts[0] + "." + parts[1]))
+	want := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+	if !hmac.Equal([]byte(parts[2]), []byte(want)) {
+		return "", "", errors.New("livekit: bad access token signature")
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return "", "", fmt.Errorf("livekit: decode access token: %w", err)
+	}
+	var claims accessClaims
+	if err := json.Unmarshal(raw, &claims); err != nil {
+		return "", "", fmt.Errorf("livekit: parse access token: %w", err)
+	}
+	if claims.Exp != 0 && time.Now().Unix() > claims.Exp {
+		return "", "", errors.New("livekit: access token expired")
+	}
+	return claims.Video.Room, claims.Sub, nil
+}
+
 // BookingJoinURL builds a public join link: the room page URL carrying an opaque, expiring room
 // token. role "" = attendee link (in the attendee email / manage page); role "host" = the
 // host's link (on their calendar event), which unlocks the in-call host controls.
