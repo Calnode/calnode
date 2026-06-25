@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -96,6 +97,7 @@ func (h *Handler) RecordStart(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusBadGateway, "could not start recording")
 		return
 	}
+	h.logger.InfoContext(r.Context(), "livekit: egress started", "room", room, "egress_id", egressID, "filepath", filepath)
 	bookingID := strings.TrimPrefix(room, "booking-")
 	if _, err := h.db.ExecContext(r.Context(), `
 		INSERT INTO recordings (id, booking_id, room, egress_id, status, object_key, created_at, updated_at)
@@ -133,6 +135,78 @@ func (h *Handler) RecordStop(w http.ResponseWriter, r *http.Request) {
 	_ = lk.UpdateRoomMetadata(r.Context(), room, `{"recording":false}`)
 	h.writeJSON(w, http.StatusOK, map[string]any{"recording": false})
 }
+
+// ListRecordings handles GET /v1/recordings (admin) — newest first, for the Recordings page.
+func (h *Handler) ListRecordings(w http.ResponseWriter, r *http.Request) {
+	user, ok := userFromContext(r.Context())
+	if !ok || !user.IsAdmin {
+		h.writeError(w, http.StatusForbidden, "admin access required")
+		return
+	}
+	rows, err := h.db.QueryContext(r.Context(), `
+		SELECT id, COALESCE(booking_id,''), room, status, duration_s, COALESCE(object_key,''), created_at
+		FROM recordings ORDER BY created_at DESC LIMIT 200`)
+	if err != nil {
+		h.logger.ErrorContext(r.Context(), "recordings: list", "error", err)
+		h.writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	defer rows.Close()
+	type rec struct {
+		ID        string `json:"id"`
+		BookingID string `json:"booking_id"`
+		Room      string `json:"room"`
+		Status    string `json:"status"`
+		DurationS int    `json:"duration_s"`
+		HasFile   bool   `json:"has_file"`
+		CreatedAt string `json:"created_at"`
+	}
+	out := []rec{}
+	for rows.Next() {
+		var x rec
+		var key string
+		if err := rows.Scan(&x.ID, &x.BookingID, &x.Room, &x.Status, &x.DurationS, &key, &x.CreatedAt); err != nil {
+			continue
+		}
+		x.HasFile = key != ""
+		out = append(out, x)
+	}
+	h.writeJSON(w, http.StatusOK, map[string]any{"recordings": out})
+}
+
+// DownloadRecording handles GET /v1/recordings/{id}/download (admin) — redirects to a short-lived
+// presigned URL for the object in the bucket.
+func (h *Handler) DownloadRecording(w http.ResponseWriter, r *http.Request) {
+	user, ok := userFromContext(r.Context())
+	if !ok || !user.IsAdmin {
+		h.writeError(w, http.StatusForbidden, "admin access required")
+		return
+	}
+	var key string
+	switch err := h.db.QueryRowContext(r.Context(),
+		`SELECT COALESCE(object_key,'') FROM recordings WHERE id = ?`, r.PathValue("id")).Scan(&key); err {
+	case nil:
+	case sql.ErrNoRows:
+		h.writeError(w, http.StatusNotFound, "recording not found")
+		return
+	default:
+		h.writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	if key == "" {
+		h.writeError(w, http.StatusConflict, "this recording isn't ready yet")
+		return
+	}
+	s3, okS3 := recordingStorage()
+	if !okS3 {
+		h.writeError(w, http.StatusFailedDependency, "recording storage is not configured")
+		return
+	}
+	http.Redirect(w, r, presignS3Get(s3, key, 15*time.Minute, timeNow()), http.StatusFound)
+}
+
+// timeNow is a tiny seam so the presign is testable with a fixed clock.
+var timeNow = func() time.Time { return time.Now() }
 
 // EgressWebhook handles POST /v1/livekit/egress-webhook (public; verified by the LiveKit
 // signature). On egress completion it finalizes the recordings row with the object key + duration.
