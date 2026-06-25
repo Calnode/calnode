@@ -235,8 +235,9 @@
       return res.ok;
     } catch (e) { return false; }
   }
-  async function endForAll() { await postLK('room/end'); if (room) room.disconnect(); }
+  async function endForAll() { closeLeaveModal(); await postLK('room/end'); if (room) room.disconnect(); }
   async function reassignAndLeave() {
+    closeLeaveModal();
     var id = $('lk-reassign-sel').value;
     if (id) await postLK('room/reassign-host', { identity: id });
     if (room) room.disconnect();
@@ -253,7 +254,7 @@
     camoff.innerHTML = '<div class="avatar">' + initial(name) + '</div>';
     var label = document.createElement('div');
     label.className = 'label';
-    label.innerHTML = '<span class="name"></span><span class="mic-off hidden">' + ICON.micOff + '</span>';
+    label.innerHTML = '<span class="host-badge hidden">Host</span><span class="name"></span><span class="mic-off hidden">' + ICON.micOff + '</span>';
     label.querySelector('.name').textContent = name + (isLocal ? ' (you)' : '');
     el.appendChild(video); el.appendChild(camoff); el.appendChild(label);
     el.addEventListener('click', function () { togglePin(identity); });
@@ -277,6 +278,10 @@
     var t = tiles[identity]; if (!t) return;
     t.label.querySelector('.mic-off').classList.toggle('hidden', !off);
   }
+  function setHostBadge(identity, on) {
+    var t = tiles[identity]; if (!t) return;
+    t.label.querySelector('.host-badge').classList.toggle('hidden', !on);
+  }
 
   function attachVideo(identity, track) {
     var t = tiles[identity]; if (!t) return;
@@ -293,6 +298,7 @@
   function wireParticipant(p) {
     var t = tileFor(p.identity, p.name || p.identity, false);
     setMicOff(p.identity, !p.isMicrophoneEnabled);
+    setHostBadge(p.identity, p.metadata === 'host');
     // Attach any already-subscribed tracks.
     p.trackPublications.forEach(function (pub) {
       if (pub.track) handleTrack(pub.track, pub, p);
@@ -353,14 +359,16 @@
       .on(RE.DataReceived, onData)
       .on(RE.RoomMetadataChanged, applyRoomMeta)
       .on(RE.ParticipantMetadataChanged, function (prev, participant) {
-        // Only UPGRADE to host (e.g. host reassigned to us mid-call). Never downgrade here —
-        // a transient/empty metadata event during connect must not strip a host's controls.
-        if (room && participant && participant.identity === room.localParticipant.identity &&
-            participant.metadata === 'host') {
+        if (!room || !participant) return;
+        // Reflect the host badge for whoever this is (e.g. a newly-promoted host).
+        setHostBadge(participant.identity, participant.metadata === 'host');
+        // Only UPGRADE our own host status (host reassigned to us). Never downgrade here — a
+        // transient/empty metadata event during connect must not strip a host's controls.
+        if (participant.identity === room.localParticipant.identity && participant.metadata === 'host') {
           isHost = true;
         }
       })
-      .on(RE.Disconnected, function () { showOnly('lk-left'); });
+      .on(RE.Disconnected, function () { closeLeaveModal(); showOnly('lk-left'); });
 
     try {
       await room.connect(data.url, data.token);
@@ -370,6 +378,7 @@
     showOnly('lk-room');
     tileFor(room.localParticipant.identity, name, true);
     setMicOff(room.localParticipant.identity, !micOn);
+    setHostBadge(room.localParticipant.identity, amHost());
 
     var camOpts = $('lk-cam').value ? { deviceId: $('lk-cam').value } : undefined;
     var micOpts = $('lk-mic').value ? { deviceId: $('lk-mic').value } : undefined;
