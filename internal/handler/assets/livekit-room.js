@@ -18,6 +18,7 @@
     layout: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><rect x="3" y="15" width="6" height="6" rx="1" fill="currentColor"/><rect x="11" y="15" width="6" height="6" rx="1" fill="currentColor"/></svg>',
     chat: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>',
     record: '<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="7"/></svg>',
+    shareLock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="13" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><circle cx="12" cy="9.5" r="2"/><path d="M12 11.5v1.5"/></svg>',
   };
 
   function showOnly(id) {
@@ -115,17 +116,33 @@
   var chatOpen = false, unread = 0;
   var isHost = false; // set from the token role; can change if host is reassigned to us
   var canRecord = false, recording = false;
+  var canScreenShare = true, allowShare = true; // me / attendees-in-general
 
-  // applyRoomMeta reflects the room's recording state (set by the host via the server) to every
-  // participant: a "Recording" banner for all, and the record button's active state for the host.
+  // applyRoomMeta reflects shared room state (recording + screen-share permission) to everyone:
+  // the recording banner + button, and whether non-hosts may see the screen-share button.
   function applyRoomMeta() {
     if (!room) return;
-    var rec = false;
-    try { rec = !!JSON.parse(room.metadata || '{}').recording; } catch (e) {}
-    recording = rec;
-    $('lk-rec-banner').classList.toggle('hidden', !rec);
+    var meta = {};
+    try { meta = JSON.parse(room.metadata || '{}'); } catch (e) {}
+    recording = !!meta.recording;
+    $('lk-rec-banner').classList.toggle('hidden', !recording);
     var btn = $('lk-record-btn');
-    if (btn) { btn.classList.toggle('recording', rec); btn.title = rec ? 'Stop recording' : 'Record meeting'; }
+    if (btn) { btn.classList.toggle('recording', recording); btn.title = recording ? 'Stop recording' : 'Record meeting'; }
+
+    allowShare = meta.allowShare !== false; // default allowed
+    var host = amHost();
+    var sc = $('lk-screen');
+    if (sc && !host) sc.classList.toggle('hidden', !allowShare); // non-hosts lose the button when off
+    var sp = $('lk-shareperm-btn');
+    if (sp) {
+      sp.classList.toggle('off', !allowShare);
+      sp.title = allowShare ? 'Attendee screen-share: on' : 'Attendee screen-share: off';
+    }
+  }
+  async function toggleSharePerm() {
+    await postLK('room/screenshare', { allow: !allowShare });
+    // The room-metadata change drives applyRoomMeta; reflect optimistically too.
+    allowShare = !allowShare; applyRoomMeta();
   }
   async function toggleRecord() {
     var btn = $('lk-record-btn'); if (btn) btn.disabled = true;
@@ -337,6 +354,8 @@
     stopPreview();
     isHost = !!(data && data.role === 'host');
     canRecord = !!(data && data.can_record);
+    canScreenShare = !(data && data.can_screenshare === false); // default true
+    allowShare = !(data && data.allow_share === false);
 
     room = new LK.Room({ adaptiveStream: true, dynacast: true });
     var RE = LK.RoomEvent;
@@ -360,12 +379,16 @@
       .on(RE.RoomMetadataChanged, applyRoomMeta)
       .on(RE.ParticipantMetadataChanged, function (prev, participant) {
         if (!room || !participant) return;
-        // Reflect the host badge for whoever this is (e.g. a newly-promoted host).
-        setHostBadge(participant.identity, participant.metadata === 'host');
-        // Only UPGRADE our own host status (host reassigned to us). Never downgrade here — a
-        // transient/empty metadata event during connect must not strip a host's controls.
-        if (participant.identity === room.localParticipant.identity && participant.metadata === 'host') {
-          isHost = true;
+        var m = participant.metadata;
+        // Reflect the host badge for whoever this is (newly-promoted host, or a demoted one).
+        setHostBadge(participant.identity, m === 'host');
+        if (participant.identity === room.localParticipant.identity) {
+          // Upgrade on "host" (reassigned/promoted); downgrade only on the explicit "attendee"
+          // demote (single-host takeover). A transient/empty value must NOT strip our controls.
+          if (m === 'host') isHost = true;
+          else if (m === 'attendee') isHost = false;
+          var rb = $('lk-record-btn');
+          if (rb) rb.classList.toggle('hidden', !(isHost && canRecord));
         }
       })
       .on(RE.Disconnected, function () { closeLeaveModal(); showOnly('lk-left'); });
@@ -432,7 +455,11 @@
       var rb = $('lk-record-btn');
       rb.innerHTML = ICON.record; rb.classList.remove('hidden'); rb.onclick = toggleRecord;
     }
-    applyRoomMeta(); // reflect any recording already in progress
+    if (isHost) {
+      var sp = $('lk-shareperm-btn');
+      sp.innerHTML = ICON.shareLock; sp.classList.remove('hidden'); sp.onclick = toggleSharePerm;
+    }
+    applyRoomMeta(); // reflect recording + screen-share state already set
     paintLayoutBtn();
     paint();
   }

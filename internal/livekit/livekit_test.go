@@ -34,7 +34,7 @@ func TestNormalizeWS(t *testing.T) {
 func TestAccessToken_claimsAndSignature(t *testing.T) {
 	c := testClient()
 	exp := time.Now().Add(2 * time.Hour)
-	tok, identity, err := c.AccessToken("booking-123", "Wynne", "host", exp)
+	tok, identity, err := c.AccessToken("booking-123", "Wynne", "host", true, exp)
 	if err != nil {
 		t.Fatalf("AccessToken: %v", err)
 	}

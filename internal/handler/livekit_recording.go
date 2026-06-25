@@ -105,7 +105,7 @@ func (h *Handler) RecordStart(w http.ResponseWriter, r *http.Request) {
 		uid.New(), bookingID, room, egressID, filepath); err != nil {
 		h.logger.ErrorContext(r.Context(), "livekit: save recording", "error", err)
 	}
-	_ = lk.UpdateRoomMetadata(r.Context(), room, `{"recording":true}`) // drives the consent banner
+	h.mergeRoomMeta(r.Context(), room, "recording", true) // drives the consent banner
 	h.writeJSON(w, http.StatusOK, map[string]any{"recording": true})
 }
 
@@ -132,7 +132,7 @@ func (h *Handler) RecordStop(w http.ResponseWriter, r *http.Request) {
 			h.logger.ErrorContext(r.Context(), "livekit: stop egress", "error", err, "egress", egressID)
 		}
 	}
-	_ = lk.UpdateRoomMetadata(r.Context(), room, `{"recording":false}`)
+	h.mergeRoomMeta(r.Context(), room, "recording", false)
 	h.writeJSON(w, http.StatusOK, map[string]any{"recording": false})
 }
 

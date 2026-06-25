@@ -74,9 +74,10 @@ type videoGrant struct {
 	RoomCreate     bool   `json:"roomCreate,omitempty"` // server-level: create/delete rooms
 	RoomRecord     bool   `json:"roomRecord,omitempty"` // start/stop egress
 	RoomList       bool   `json:"roomList,omitempty"`
-	CanPublish     bool   `json:"canPublish,omitempty"`
-	CanSubscribe   bool   `json:"canSubscribe,omitempty"`
-	CanPublishData bool   `json:"canPublishData,omitempty"`
+	CanPublish       bool     `json:"canPublish,omitempty"`
+	CanSubscribe     bool     `json:"canSubscribe,omitempty"`
+	CanPublishData   bool     `json:"canPublishData,omitempty"`
+	CanPublishSources []string `json:"canPublishSources,omitempty"` // limit publishable sources; empty = all
 }
 
 type accessClaims struct {
@@ -92,23 +93,28 @@ type accessClaims struct {
 // AccessToken mints a LiveKit access JWT for one participant joining room. identity is the
 // stable LiveKit participant id (made unique here so two attendees with the same display name
 // don't evict each other); name is the display name. The token is a full publisher/subscriber.
-func (c *Client) AccessToken(room, name, role string, expiry time.Time) (token, identity string, err error) {
+func (c *Client) AccessToken(room, name, role string, canScreenShare bool, expiry time.Time) (token, identity string, err error) {
 	if c.apiKey == "" || c.apiSecret == "" {
 		return "", "", errors.New("livekit: not configured")
 	}
 	identity = uid.New() // unique per join
 	now := time.Now()
+	grant := videoGrant{
+		Room: room, RoomJoin: true,
+		CanPublish: true, CanSubscribe: true, CanPublishData: true,
+	}
+	if !canScreenShare {
+		// Camera + mic only — no screen share / screen-share audio.
+		grant.CanPublishSources = []string{"camera", "microphone"}
+	}
 	claims := accessClaims{
 		Iss:      c.apiKey,
 		Sub:      identity,
 		Name:     name,
-		Metadata: role, // "host" or "" — the room UI gates host controls on this
+		Metadata: role, // "host" / "attendee" — the room UI gates host controls on this
 		Nbf:      now.Add(-30 * time.Second).Unix(),
 		Exp:      expiry.Unix(),
-		Video: videoGrant{
-			Room: room, RoomJoin: true,
-			CanPublish: true, CanSubscribe: true, CanPublishData: true,
-		},
+		Video:    grant,
 	}
 	tok, err := signJWT(claims, c.apiSecret)
 	return tok, identity, err

@@ -411,6 +411,7 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	mux.HandleFunc("POST /v1/livekit/token", bookingRL(h.LiveKitToken))
 	mux.HandleFunc("POST /v1/livekit/room/end", bookingRL(h.EndRoom))
 	mux.HandleFunc("POST /v1/livekit/room/reassign-host", bookingRL(h.ReassignHost))
+	mux.HandleFunc("POST /v1/livekit/room/screenshare", bookingRL(h.ScreenShareToggle))
 	mux.HandleFunc("POST /v1/livekit/record/start", bookingRL(h.RecordStart))
 	mux.HandleFunc("POST /v1/livekit/record/stop", bookingRL(h.RecordStop))
 	mux.HandleFunc("POST /v1/livekit/egress-webhook", h.EgressWebhook)

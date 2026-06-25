@@ -95,11 +95,70 @@ func (c *Client) SetParticipantRole(ctx context.Context, room, identity, role st
 	return err
 }
 
+// Participant is the slice of a room participant we care about (identity + role metadata).
+type Participant struct {
+	Identity string
+	Metadata string
+}
+
+// ListParticipants returns the participants currently connected to a room.
+func (c *Client) ListParticipants(ctx context.Context, room string) ([]Participant, error) {
+	rb, err := c.twirp(ctx, "RoomService", "ListParticipants",
+		videoGrant{RoomAdmin: true, Room: room}, map[string]string{"room": room})
+	if err != nil {
+		return nil, err
+	}
+	var out struct {
+		Participants []struct {
+			Identity string `json:"identity"`
+			Metadata string `json:"metadata"`
+		} `json:"participants"`
+	}
+	_ = json.Unmarshal(rb, &out)
+	ps := make([]Participant, 0, len(out.Participants))
+	for _, p := range out.Participants {
+		ps = append(ps, Participant{Identity: p.Identity, Metadata: p.Metadata})
+	}
+	return ps, nil
+}
+
 // UpdateRoomMetadata sets the room's metadata (read by clients to show e.g. a recording banner).
 func (c *Client) UpdateRoomMetadata(ctx context.Context, room, metadata string) error {
 	_, err := c.twirp(ctx, "RoomService", "UpdateRoomMetadata",
 		videoGrant{RoomAdmin: true, Room: room},
 		map[string]string{"room": room, "metadata": metadata})
+	return err
+}
+
+// RoomMetadata returns the current metadata for a room ("" if the room doesn't exist yet).
+func (c *Client) RoomMetadata(ctx context.Context, room string) (string, error) {
+	rb, err := c.twirp(ctx, "RoomService", "ListRooms",
+		videoGrant{RoomList: true}, map[string]any{"names": []string{room}})
+	if err != nil {
+		return "", err
+	}
+	var out struct {
+		Rooms []struct {
+			Metadata string `json:"metadata"`
+		} `json:"rooms"`
+	}
+	_ = json.Unmarshal(rb, &out)
+	if len(out.Rooms) > 0 {
+		return out.Rooms[0].Metadata, nil
+	}
+	return "", nil
+}
+
+// SetParticipantSources restricts (or, with nil, restores all) a participant's publishable
+// sources — used to revoke/grant attendee screen-share live.
+func (c *Client) SetParticipantSources(ctx context.Context, room, identity string, sources []string) error {
+	perm := map[string]any{"canSubscribe": true, "canPublish": true, "canPublishData": true}
+	if sources != nil {
+		perm["canPublishSources"] = sources
+	}
+	_, err := c.twirp(ctx, "RoomService", "UpdateParticipant",
+		videoGrant{RoomAdmin: true, Room: room},
+		map[string]any{"room": room, "identity": identity, "permission": perm})
 	return err
 }
 
