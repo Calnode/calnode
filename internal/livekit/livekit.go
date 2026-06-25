@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
 	"strings"
 	"time"
@@ -31,6 +32,7 @@ type Client struct {
 	apiKey    string   // LiveKit API key (JWT issuer)
 	apiSecret string   // LiveKit API secret (JWT HMAC key)
 	roomKey   [32]byte // instance key for signing opaque room tokens (not the LiveKit secret)
+	hc        *http.Client
 }
 
 // New builds a Client. serverURL may be given as https:// or wss:// (LiveKit Cloud hands out
@@ -42,6 +44,7 @@ func New(serverURL, apiKey, apiSecret string, roomKey [32]byte) *Client {
 		apiKey:    apiKey,
 		apiSecret: apiSecret,
 		roomKey:   roomKey,
+		hc:        &http.Client{Timeout: 15 * time.Second},
 	}
 }
 
@@ -65,37 +68,42 @@ func normalizeWS(raw string) string {
 
 // videoGrant is the LiveKit "video" claim controlling what a participant may do.
 type videoGrant struct {
-	Room           string `json:"room"`
-	RoomJoin       bool   `json:"roomJoin"`
-	CanPublish     bool   `json:"canPublish"`
-	CanSubscribe   bool   `json:"canSubscribe"`
-	CanPublishData bool   `json:"canPublishData"`
+	Room           string `json:"room,omitempty"`
+	RoomJoin       bool   `json:"roomJoin,omitempty"`
+	RoomAdmin      bool   `json:"roomAdmin,omitempty"`  // manage the room (delete, update participants)
+	RoomRecord     bool   `json:"roomRecord,omitempty"` // start/stop egress
+	RoomList       bool   `json:"roomList,omitempty"`
+	CanPublish     bool   `json:"canPublish,omitempty"`
+	CanSubscribe   bool   `json:"canSubscribe,omitempty"`
+	CanPublishData bool   `json:"canPublishData,omitempty"`
 }
 
 type accessClaims struct {
-	Iss   string     `json:"iss"`
-	Sub   string     `json:"sub"`
-	Name  string     `json:"name,omitempty"`
-	Nbf   int64      `json:"nbf"`
-	Exp   int64      `json:"exp"`
-	Video videoGrant `json:"video"`
+	Iss      string     `json:"iss"`
+	Sub      string     `json:"sub"`
+	Name     string     `json:"name,omitempty"`
+	Metadata string     `json:"metadata,omitempty"` // participant metadata — carries the role ("host")
+	Nbf      int64      `json:"nbf"`
+	Exp      int64      `json:"exp"`
+	Video    videoGrant `json:"video"`
 }
 
 // AccessToken mints a LiveKit access JWT for one participant joining room. identity is the
 // stable LiveKit participant id (made unique here so two attendees with the same display name
 // don't evict each other); name is the display name. The token is a full publisher/subscriber.
-func (c *Client) AccessToken(room, name string, expiry time.Time) (token, identity string, err error) {
+func (c *Client) AccessToken(room, name, role string, expiry time.Time) (token, identity string, err error) {
 	if c.apiKey == "" || c.apiSecret == "" {
 		return "", "", errors.New("livekit: not configured")
 	}
 	identity = uid.New() // unique per join
 	now := time.Now()
 	claims := accessClaims{
-		Iss:  c.apiKey,
-		Sub:  identity,
-		Name: name,
-		Nbf:  now.Add(-30 * time.Second).Unix(),
-		Exp:  expiry.Unix(),
+		Iss:      c.apiKey,
+		Sub:      identity,
+		Name:     name,
+		Metadata: role, // "host" or "" — the room UI gates host controls on this
+		Nbf:      now.Add(-30 * time.Second).Unix(),
+		Exp:      expiry.Unix(),
 		Video: videoGrant{
 			Room: room, RoomJoin: true,
 			CanPublish: true, CanSubscribe: true, CanPublishData: true,
@@ -123,42 +131,44 @@ func b64(s string) string { return base64.RawURLEncoding.EncodeToString([]byte(s
 // ----- opaque room tokens (for the booking join URL) -----
 
 type roomTokenPayload struct {
-	R string `json:"r"` // room name
-	E int64  `json:"e"` // expiry (unix)
+	R    string `json:"r"`              // room name
+	E    int64  `json:"e"`              // expiry (unix)
+	Role string `json:"role,omitempty"` // "host" for the host's link; empty for attendees
 }
 
-// SignRoomToken returns an opaque token binding a room name + expiry, signed with the instance
-// key. It carries no LiveKit grant; the room page exchanges it for a real AccessToken.
-func (c *Client) SignRoomToken(room string, exp time.Time) string {
-	p, _ := json.Marshal(roomTokenPayload{R: room, E: exp.Unix()})
+// SignRoomToken returns an opaque token binding a room name + expiry (+ optional role), signed
+// with the instance key. It carries no LiveKit grant; the room page exchanges it for a real
+// AccessToken, and host-gated endpoints check the role.
+func (c *Client) SignRoomToken(room, role string, exp time.Time) string {
+	p, _ := json.Marshal(roomTokenPayload{R: room, E: exp.Unix(), Role: role})
 	payload := base64.RawURLEncoding.EncodeToString(p)
 	return payload + "." + c.roomMAC(payload)
 }
 
-// VerifyRoomToken validates an opaque room token and returns its room name and expiry. Errors
+// VerifyRoomToken validates an opaque room token and returns its room, role, and expiry. Errors
 // if the signature is bad or the token has expired.
-func (c *Client) VerifyRoomToken(tok string) (room string, exp time.Time, err error) {
+func (c *Client) VerifyRoomToken(tok string) (room, role string, exp time.Time, err error) {
 	dot := strings.IndexByte(tok, '.')
 	if dot < 0 {
-		return "", time.Time{}, errors.New("livekit: malformed room token")
+		return "", "", time.Time{}, errors.New("livekit: malformed room token")
 	}
 	payload, sig := tok[:dot], tok[dot+1:]
 	if !hmac.Equal([]byte(sig), []byte(c.roomMAC(payload))) {
-		return "", time.Time{}, errors.New("livekit: bad room token signature")
+		return "", "", time.Time{}, errors.New("livekit: bad room token signature")
 	}
 	raw, err := base64.RawURLEncoding.DecodeString(payload)
 	if err != nil {
-		return "", time.Time{}, fmt.Errorf("livekit: decode room token: %w", err)
+		return "", "", time.Time{}, fmt.Errorf("livekit: decode room token: %w", err)
 	}
 	var p roomTokenPayload
 	if err := json.Unmarshal(raw, &p); err != nil {
-		return "", time.Time{}, fmt.Errorf("livekit: parse room token: %w", err)
+		return "", "", time.Time{}, fmt.Errorf("livekit: parse room token: %w", err)
 	}
 	exp = time.Unix(p.E, 0)
 	if time.Now().After(exp) {
-		return "", time.Time{}, errors.New("livekit: this meeting link has expired")
+		return "", "", time.Time{}, errors.New("livekit: this meeting link has expired")
 	}
-	return p.R, exp, nil
+	return p.R, p.Role, exp, nil
 }
 
 func (c *Client) roomMAC(payload string) string {
@@ -167,9 +177,10 @@ func (c *Client) roomMAC(payload string) string {
 	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 }
 
-// BookingJoinURL builds the public join link Calnode stores as a booking's location_value:
-// the room page URL carrying an opaque, expiring room token. baseURL is the instance origin.
-func (c *Client) BookingJoinURL(baseURL, room string, exp time.Time) string {
-	t := c.SignRoomToken(room, exp)
+// BookingJoinURL builds a public join link: the room page URL carrying an opaque, expiring room
+// token. role "" = attendee link (in the attendee email / manage page); role "host" = the
+// host's link (on their calendar event), which unlocks the in-call host controls.
+func (c *Client) BookingJoinURL(baseURL, room, role string, exp time.Time) string {
+	t := c.SignRoomToken(room, role, exp)
 	return strings.TrimRight(baseURL, "/") + "/room/" + url.PathEscape(room) + "?t=" + url.QueryEscape(t)
 }

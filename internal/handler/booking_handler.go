@@ -831,14 +831,17 @@ func (h *Handler) dispatchBookingConfirmation(b *booking.Booking, in bookingConf
 	if in.LocationType == "livekit" {
 		if lk := h.getLiveKit(); lk != nil {
 			room := "booking-" + b.ID
-			// Valid from now until a bit past the meeting end (late joins / overruns).
-			joinURL := lk.BookingJoinURL(h.baseURL, room, b.EndAt.Add(2*time.Hour))
-			meetURL = joinURL
-			b.LocationValue = joinURL
-			bData.LocationValue = joinURL
+			// Valid from now until a bit past the meeting end (late joins / overruns). Two links:
+			// the host's (controls-enabled) goes on the host calendar events; the attendee's plain
+			// link goes in the email + manage page + the stored location_value.
+			exp := b.EndAt.Add(2 * time.Hour)
+			attendeeURL := lk.BookingJoinURL(h.baseURL, room, "", exp)
+			meetURL = lk.BookingJoinURL(h.baseURL, room, "host", exp) // host calendar events
+			b.LocationValue = attendeeURL
+			bData.LocationValue = attendeeURL
 			if _, err := h.db.ExecContext(ctx,
 				`UPDATE bookings SET location_value = ?, livekit_room = ? WHERE id = ?`,
-				joinURL, room, b.ID); err != nil {
+				attendeeURL, room, b.ID); err != nil {
 				h.logger.Error("livekit: save room", "error", err, "booking_id", b.ID)
 			}
 		}

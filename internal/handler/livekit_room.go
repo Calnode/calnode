@@ -98,7 +98,7 @@ func (h *Handler) LiveKitToken(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
-	room, exp, err := lk.VerifyRoomToken(req.Token)
+	room, role, exp, err := lk.VerifyRoomToken(req.Token)
 	if err != nil {
 		h.writeError(w, http.StatusForbidden, err.Error())
 		return
@@ -110,7 +110,7 @@ func (h *Handler) LiveKitToken(w http.ResponseWriter, r *http.Request) {
 	if len(name) > 60 {
 		name = name[:60]
 	}
-	token, identity, err := lk.AccessToken(room, name, exp)
+	token, identity, err := lk.AccessToken(room, name, role, exp)
 	if err != nil {
 		h.logger.ErrorContext(r.Context(), "livekit: mint access token", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "could not create a meeting token")
@@ -121,5 +121,74 @@ func (h *Handler) LiveKitToken(w http.ResponseWriter, r *http.Request) {
 		"token":    token,
 		"room":     room,
 		"identity": identity,
+		"role":     role, // "host" unlocks the in-call host controls
 	})
+}
+
+// requireHostRoom validates the opaque room token in the request body and confirms it carries
+// the host role. Returns the room name, or "" after writing an error response.
+func (h *Handler) requireHostRoom(w http.ResponseWriter, r *http.Request, token string) (string, bool) {
+	lk := h.getLiveKit()
+	if lk == nil {
+		h.writeError(w, http.StatusNotFound, "video meetings are not configured")
+		return "", false
+	}
+	room, role, _, err := lk.VerifyRoomToken(token)
+	if err != nil {
+		h.writeError(w, http.StatusForbidden, err.Error())
+		return "", false
+	}
+	if role != "host" {
+		h.writeError(w, http.StatusForbidden, "only the meeting host can do that")
+		return "", false
+	}
+	return room, true
+}
+
+// EndRoom handles POST /v1/livekit/room/end (host token in body) — ends the meeting for everyone.
+func (h *Handler) EndRoom(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Token string `json:"t"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&req); err != nil {
+		h.writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	room, ok := h.requireHostRoom(w, r, req.Token)
+	if !ok {
+		return
+	}
+	if err := h.getLiveKit().DeleteRoom(r.Context(), room); err != nil {
+		h.logger.ErrorContext(r.Context(), "livekit: end room", "error", err, "room", room)
+		h.writeError(w, http.StatusBadGateway, "could not end the meeting")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// ReassignHost handles POST /v1/livekit/room/reassign-host — promotes another participant to
+// host (sets their metadata to "host"), so the meeting can continue after the host leaves.
+func (h *Handler) ReassignHost(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Token    string `json:"t"`
+		Identity string `json:"identity"` // the participant to promote
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&req); err != nil {
+		h.writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	room, ok := h.requireHostRoom(w, r, req.Token)
+	if !ok {
+		return
+	}
+	if strings.TrimSpace(req.Identity) == "" {
+		h.writeError(w, http.StatusBadRequest, "identity is required")
+		return
+	}
+	if err := h.getLiveKit().SetParticipantRole(r.Context(), room, req.Identity, "host"); err != nil {
+		h.logger.ErrorContext(r.Context(), "livekit: reassign host", "error", err, "room", room)
+		h.writeError(w, http.StatusBadGateway, "could not reassign the host")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

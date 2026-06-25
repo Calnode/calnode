@@ -105,6 +105,19 @@
     #lk-chat-input { flex:1; min-width:0; background:var(--panel2); border:1px solid var(--line); color:var(--text);
       border-radius:9px; padding:9px 11px; font:inherit; }
     #lk-chat-send { background:var(--accent); color:#fff; padding:0 14px; border-radius:9px; }
+
+    /* Host leave modal */
+    .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.55); display:flex; align-items:center;
+      justify-content:center; z-index:50; padding:20px; }
+    .modal { background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:22px; width:100%; max-width:380px; }
+    .modal h2 { margin:0 0 16px; font-size:1.1rem; }
+    .modal-btn { display:block; width:100%; padding:12px; border-radius:10px; margin-top:10px; font-weight:600;
+      background:var(--panel2); color:var(--text); }
+    .modal-btn.danger { background:var(--danger); color:#fff; }
+    .modal-btn.ghost { background:transparent; color:var(--muted); font-weight:500; }
+    #lk-reassign-wrap { margin-top:16px; padding-top:14px; border-top:1px solid var(--line); }
+    #lk-reassign-wrap label { display:block; font-size:.82rem; color:var(--muted); margin-bottom:6px; }
+    #lk-reassign-sel { margin-bottom:4px; }
   </style>
 </head>
 <body>
@@ -174,6 +187,21 @@
     </section>
 
     <div id="lk-status" class="hidden"></div>
+
+    <!-- Host-only leave modal -->
+    <div id="lk-leave-modal" class="modal-overlay hidden">
+      <div class="modal">
+        <h2>Leave meeting?</h2>
+        <button id="lk-end-all" class="modal-btn danger">End meeting for everyone</button>
+        <div id="lk-reassign-wrap" class="hidden">
+          <label for="lk-reassign-sel">Or leave and pass host to</label>
+          <select id="lk-reassign-sel"></select>
+          <button id="lk-reassign-leave" class="modal-btn">Leave &amp; pass host</button>
+        </div>
+        <button id="lk-just-leave" class="modal-btn ghost">Just leave</button>
+        <button id="lk-leave-cancel" class="modal-btn ghost">Cancel</button>
+      </div>
+    </div>
   </div>
 
   <script src="/assets/livekit-client.js?v={{.SDKVer}}"></script>

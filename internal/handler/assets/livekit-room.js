@@ -112,6 +112,7 @@
   var pinnedId = null;       // identity manually pinned to the stage (speaker mode)
   var activeSpeakerId = null;
   var chatOpen = false, unread = 0;
+  var isHost = false; // set from the token role; can change if host is reassigned to us
 
   // relayout places tiles into the grid, or (speaker mode) a big stage + a filmstrip. Moving a
   // tile's element between containers via appendChild preserves its playing <video>, so no track
@@ -184,6 +185,35 @@
     var b = btn.querySelector('.badge'); if (!b) return;
     // A simple red dot — presence of unread, not a count.
     b.classList.toggle('hidden', unread === 0);
+  }
+
+  // ----- Host controls: leave / end-for-all / reassign -----
+  function leaveOrPrompt() {
+    var others = room ? Array.from(room.remoteParticipants.values()) : [];
+    if (!isHost || !others.length) { if (room) room.disconnect(); return; }
+    var sel = $('lk-reassign-sel'); sel.innerHTML = '';
+    others.forEach(function (p) {
+      var o = document.createElement('option'); o.value = p.identity; o.textContent = p.name || 'Participant';
+      sel.appendChild(o);
+    });
+    $('lk-reassign-wrap').classList.remove('hidden');
+    $('lk-leave-modal').classList.remove('hidden');
+  }
+  function closeLeaveModal() { $('lk-leave-modal').classList.add('hidden'); }
+  async function postRoom(path, extra) {
+    try {
+      var res = await fetch('/v1/livekit/room/' + path, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(Object.assign({ t: roomToken }, extra || {}))
+      });
+      return res.ok;
+    } catch (e) { return false; }
+  }
+  async function endForAll() { await postRoom('end'); if (room) room.disconnect(); }
+  async function reassignAndLeave() {
+    var id = $('lk-reassign-sel').value;
+    if (id) await postRoom('reassign-host', { identity: id });
+    if (room) room.disconnect();
   }
 
   function tileFor(identity, name, isLocal) {
@@ -273,6 +303,7 @@
       stopPreview(); fail(e.message); return;
     }
     stopPreview();
+    isHost = !!(data && data.role === 'host');
 
     room = new LK.Room({ adaptiveStream: true, dynacast: true });
     var RE = LK.RoomEvent;
@@ -293,6 +324,12 @@
         if (layoutMode === 'speaker' && !pinnedId) relayout();
       })
       .on(RE.DataReceived, onData)
+      .on(RE.ParticipantMetadataChanged, function (prev, participant) {
+        // If host is reassigned to us mid-call, our metadata flips to "host".
+        if (room && participant && participant.identity === room.localParticipant.identity) {
+          isHost = participant.metadata === 'host';
+        }
+      })
       .on(RE.Disconnected, function () { showOnly('lk-left'); });
 
     try {
@@ -347,7 +384,11 @@
     $('lk-chat-btn').onclick = function () { setChat(!chatOpen); };
     $('lk-chat-close').onclick = function () { setChat(false); };
     $('lk-chat-form').onsubmit = function (e) { e.preventDefault(); var inp = $('lk-chat-input'); sendChat(inp.value); inp.value = ''; };
-    $('lk-leave').onclick = function () { if (room) room.disconnect(); };
+    $('lk-leave').onclick = leaveOrPrompt;
+    $('lk-end-all').onclick = endForAll;
+    $('lk-reassign-leave').onclick = reassignAndLeave;
+    $('lk-just-leave').onclick = function () { if (room) room.disconnect(); };
+    $('lk-leave-cancel').onclick = closeLeaveModal;
     paintLayoutBtn();
     paint();
   }

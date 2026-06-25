@@ -407,6 +407,8 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	mux.HandleFunc("GET /assets/livekit-client.js", h.LiveKitSDKAsset)
 	mux.HandleFunc("GET /assets/livekit-room.js", h.LiveKitRoomJSAsset)
 	mux.HandleFunc("POST /v1/livekit/token", bookingRL(h.LiveKitToken))
+	mux.HandleFunc("POST /v1/livekit/room/end", bookingRL(h.EndRoom))
+	mux.HandleFunc("POST /v1/livekit/room/reassign-host", bookingRL(h.ReassignHost))
 
 	// Manage booking (reschedule / cancel via token link)
 	mux.HandleFunc("GET /manage/{token}", manageRL(h.ManagePage))

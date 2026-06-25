@@ -34,7 +34,7 @@ func TestNormalizeWS(t *testing.T) {
 func TestAccessToken_claimsAndSignature(t *testing.T) {
 	c := testClient()
 	exp := time.Now().Add(2 * time.Hour)
-	tok, identity, err := c.AccessToken("booking-123", "Wynne", exp)
+	tok, identity, err := c.AccessToken("booking-123", "Wynne", "host", exp)
 	if err != nil {
 		t.Fatalf("AccessToken: %v", err)
 	}
@@ -75,43 +75,46 @@ func TestAccessToken_claimsAndSignature(t *testing.T) {
 func TestRoomToken_roundTripAndTamper(t *testing.T) {
 	c := testClient()
 	exp := time.Now().Add(time.Hour)
-	tok := c.SignRoomToken("booking-xyz", exp)
+	tok := c.SignRoomToken("booking-xyz", "host", exp)
 
-	room, gotExp, err := c.VerifyRoomToken(tok)
+	room, role, gotExp, err := c.VerifyRoomToken(tok)
 	if err != nil {
 		t.Fatalf("VerifyRoomToken: %v", err)
 	}
 	if room != "booking-xyz" {
 		t.Errorf("room = %q, want booking-xyz", room)
 	}
+	if role != "host" {
+		t.Errorf("role = %q, want host", role)
+	}
 	if gotExp.Unix() != exp.Unix() {
 		t.Errorf("exp = %v, want %v", gotExp, exp)
 	}
 
 	// Tampered signature is rejected.
-	if _, _, err := c.VerifyRoomToken(tok + "x"); err == nil {
+	if _, _, _, err := c.VerifyRoomToken(tok + "x"); err == nil {
 		t.Error("tampered token should fail verification")
 	}
 	// A different instance key can't validate it.
 	var otherKey [32]byte
 	copy(otherKey[:], []byte("ffffffffffffffffffffffffffffffff"))
 	other := New("https://x", "APIabc", "topsecret", otherKey)
-	if _, _, err := other.VerifyRoomToken(tok); err == nil {
+	if _, _, _, err := other.VerifyRoomToken(tok); err == nil {
 		t.Error("token signed by a different key should fail")
 	}
 }
 
 func TestRoomToken_expired(t *testing.T) {
 	c := testClient()
-	tok := c.SignRoomToken("booking-old", time.Now().Add(-time.Minute))
-	if _, _, err := c.VerifyRoomToken(tok); err == nil {
+	tok := c.SignRoomToken("booking-old", "", time.Now().Add(-time.Minute))
+	if _, _, _, err := c.VerifyRoomToken(tok); err == nil {
 		t.Error("expired token should be rejected")
 	}
 }
 
 func TestBookingJoinURL(t *testing.T) {
 	c := testClient()
-	raw := c.BookingJoinURL("https://book.example.com/", "booking-9", time.Now().Add(time.Hour))
+	raw := c.BookingJoinURL("https://book.example.com/", "booking-9", "", time.Now().Add(time.Hour))
 	if !strings.HasPrefix(raw, "https://book.example.com/room/booking-9?t=") {
 		t.Fatalf("join URL = %q", raw)
 	}
@@ -119,11 +122,25 @@ func TestBookingJoinURL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse join URL: %v", err)
 	}
-	room, _, err := c.VerifyRoomToken(u.Query().Get("t"))
+	room, _, _, err := c.VerifyRoomToken(u.Query().Get("t"))
 	if err != nil {
 		t.Fatalf("embedded room token must verify: %v", err)
 	}
 	if room != "booking-9" {
 		t.Errorf("token room = %q, want booking-9", room)
+	}
+}
+
+func TestAPIBaseAndAdminToken(t *testing.T) {
+	c := testClient() // wsURL normalised from https://demo.livekit.cloud
+	if got := c.apiBase(); got != "https://demo.livekit.cloud" {
+		t.Errorf("apiBase = %q, want https://demo.livekit.cloud", got)
+	}
+	tok, err := c.adminToken(videoGrant{RoomAdmin: true, Room: "booking-1"})
+	if err != nil {
+		t.Fatalf("adminToken: %v", err)
+	}
+	if len(strings.Split(tok, ".")) != 3 {
+		t.Errorf("admin token should be a JWT")
 	}
 }
