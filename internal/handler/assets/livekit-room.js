@@ -208,15 +208,20 @@
   }
 
   // ----- Host controls: leave / end-for-all / reassign -----
+  function amHost() {
+    return isHost || (room && room.localParticipant && room.localParticipant.metadata === 'host');
+  }
   function leaveOrPrompt() {
+    // Non-hosts just leave. Hosts always get the modal (end / pass host / just leave); the
+    // pass-host option only appears when there's someone else to hand off to.
+    if (!amHost()) { if (room) room.disconnect(); return; }
     var others = room ? Array.from(room.remoteParticipants.values()) : [];
-    if (!isHost || !others.length) { if (room) room.disconnect(); return; }
     var sel = $('lk-reassign-sel'); sel.innerHTML = '';
     others.forEach(function (p) {
       var o = document.createElement('option'); o.value = p.identity; o.textContent = p.name || 'Participant';
       sel.appendChild(o);
     });
-    $('lk-reassign-wrap').classList.remove('hidden');
+    $('lk-reassign-wrap').classList.toggle('hidden', others.length === 0);
     $('lk-leave-modal').classList.remove('hidden');
   }
   function closeLeaveModal() { $('lk-leave-modal').classList.add('hidden'); }
@@ -348,9 +353,11 @@
       .on(RE.DataReceived, onData)
       .on(RE.RoomMetadataChanged, applyRoomMeta)
       .on(RE.ParticipantMetadataChanged, function (prev, participant) {
-        // If host is reassigned to us mid-call, our metadata flips to "host".
-        if (room && participant && participant.identity === room.localParticipant.identity) {
-          isHost = participant.metadata === 'host';
+        // Only UPGRADE to host (e.g. host reassigned to us mid-call). Never downgrade here —
+        // a transient/empty metadata event during connect must not strip a host's controls.
+        if (room && participant && participant.identity === room.localParticipant.identity &&
+            participant.metadata === 'host') {
+          isHost = true;
         }
       })
       .on(RE.Disconnected, function () { showOnly('lk-left'); });
