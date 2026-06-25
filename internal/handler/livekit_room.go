@@ -2,6 +2,7 @@ package handler
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	_ "embed"
 	"encoding/hex"
@@ -103,6 +104,13 @@ func (h *Handler) LiveKitToken(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusForbidden, err.Error())
 		return
 	}
+	// Auto-promote: a signed-in Calnode user who hosts this booking gets host controls no matter
+	// which link they opened — so the host never needs the special host link to drive the meeting.
+	if role != "host" {
+		if uid, _, ok := h.sessionUser(r); ok && h.isBookingHost(r.Context(), room, uid) {
+			role = "host"
+		}
+	}
 	name := strings.TrimSpace(req.Name)
 	if name == "" {
 		name = "Guest"
@@ -126,6 +134,19 @@ func (h *Handler) LiveKitToken(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// isBookingHost reports whether userID is a host of the booking the room belongs to
+// (room = "booking-<id>"). Used to auto-grant the host role to a signed-in owner.
+func (h *Handler) isBookingHost(ctx context.Context, room, userID string) bool {
+	if userID == "" || !strings.HasPrefix(room, "booking-") {
+		return false
+	}
+	bookingID := strings.TrimPrefix(room, "booking-")
+	var x int
+	err := h.db.QueryRowContext(ctx,
+		`SELECT 1 FROM booking_hosts WHERE booking_id = ? AND user_id = ? LIMIT 1`, bookingID, userID).Scan(&x)
+	return err == nil
+}
+
 // requireHostRoom validates the opaque room token in the request body and confirms it carries
 // the host role. Returns the room name, or "" after writing an error response.
 func (h *Handler) requireHostRoom(w http.ResponseWriter, r *http.Request, token string) (string, bool) {
@@ -139,9 +160,14 @@ func (h *Handler) requireHostRoom(w http.ResponseWriter, r *http.Request, token 
 		h.writeError(w, http.StatusForbidden, err.Error())
 		return "", false
 	}
+	// Host if the token says so, OR the requester is a signed-in host of this booking (so an
+	// owner who opened the attendee link can still drive the meeting).
 	if role != "host" {
-		h.writeError(w, http.StatusForbidden, "only the meeting host can do that")
-		return "", false
+		uid, _, ok := h.sessionUser(r)
+		if !ok || !h.isBookingHost(r.Context(), room, uid) {
+			h.writeError(w, http.StatusForbidden, "only the meeting host can do that")
+			return "", false
+		}
 	}
 	return room, true
 }
