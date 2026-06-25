@@ -117,7 +117,7 @@
   var chatOpen = false, unread = 0;
   var isHost = false; // current live host status; can change as host is reassigned/reclaimed
   var hostCapable = false; // held host capability at join (host link / owner) — enables the menu + reclaim
-  var canRecord = false, recording = false;
+  var recordingAvailable = false, recording = false; // instance can record / is recording now
   var canScreenShare = false, allowShare = false; // me / attendees-in-general (host opts in)
 
   // applyRoomMeta reflects shared room state (recording + screen-share permission) to everyone:
@@ -126,13 +126,17 @@
     if (!room) return;
     var meta = {};
     try { meta = JSON.parse(room.metadata || '{}'); } catch (e) {}
+    var host = amHost();
     recording = !!meta.recording;
     $('lk-rec-banner').classList.toggle('hidden', !recording);
     var btn = $('lk-record-btn');
-    if (btn) { btn.classList.toggle('recording', recording); btn.title = recording ? 'Stop recording' : 'Record meeting'; }
+    if (btn) {
+      btn.classList.toggle('hidden', !(host && recordingAvailable)); // visible only while host
+      btn.classList.toggle('recording', recording);
+      btn.title = recording ? 'Stop recording' : 'Record meeting';
+    }
 
     allowShare = meta.allowShare === true; // default off — host opts attendees in
-    var host = amHost();
     var sc = $('lk-screen');
     if (sc) sc.classList.toggle('hidden', !host && !allowShare); // host always; attendees only when allowed
     // Show the gear to whoever's host now (durable or reassigned); the owner also keeps it after
@@ -393,7 +397,7 @@
     accessToken = (data && data.token) || '';
     isHost = !!(data && data.role === 'host');
     hostCapable = isHost; // sticky: the owner can reclaim host even after stepping down
-    canRecord = !!(data && data.can_record);
+    recordingAvailable = !!(data && data.recording_available);
     canScreenShare = !!(data && data.can_screenshare); // default off
     allowShare = !!(data && data.allow_share);
 
@@ -427,9 +431,7 @@
           // demote (single-host takeover). A transient/empty value must NOT strip our controls.
           if (m === 'host') isHost = true;
           else if (m === 'attendee') isHost = false;
-          var rb = $('lk-record-btn');
-          if (rb) rb.classList.toggle('hidden', !(isHost && canRecord));
-          applyRoomMeta(); // refresh my screen button + the host menu for the new status
+          applyRoomMeta(); // refresh record + screen buttons + host menu for the new status
         }
       })
       .on(RE.Disconnected, function () { closeLeaveModal(); showOnly('lk-left'); });
@@ -492,9 +494,10 @@
     $('lk-reassign-leave').onclick = reassignAndLeave;
     $('lk-just-leave').onclick = function () { if (room) room.disconnect(); };
     $('lk-leave-cancel').onclick = closeLeaveModal;
-    if (canRecord) {
+    if (recordingAvailable) {
+      // Wire the button; applyRoomMeta shows it only while we're host (durable or reassigned).
       var rb = $('lk-record-btn');
-      rb.innerHTML = ICON.record; rb.classList.remove('hidden'); rb.onclick = toggleRecord;
+      rb.innerHTML = ICON.record; rb.onclick = toggleRecord;
     }
     // Host menu handlers are wired for everyone; the gear only SHOWS while you're host — durable
     // OR reassigned. applyRoomMeta toggles its visibility as host status changes.

@@ -132,14 +132,14 @@ func (h *Handler) LiveKitToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.writeJSON(w, http.StatusOK, map[string]any{
-		"url":             lk.ClientURL(),
-		"token":           token,
-		"room":            room,
-		"identity":        identity,
-		"role":            role,                                                  // "host" unlocks host controls
-		"can_record":      role == "host" && h.recordingAvailable(r.Context()), // host + recording configured
-		"can_screenshare": canShare,                                            // may this participant share?
-		"allow_share":     allowShare,                                          // current attendee-share setting (for the host toggle)
+		"url":                 lk.ClientURL(),
+		"token":               token,
+		"room":                room,
+		"identity":            identity,
+		"role":                role,                              // "host" unlocks host controls
+		"recording_available": h.recordingAvailable(r.Context()), // instance can record (role-independent)
+		"can_screenshare":     canShare,                          // may this participant share?
+		"allow_share":         allowShare,                        // current attendee-share setting (for the host toggle)
 	})
 }
 
