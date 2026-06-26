@@ -299,16 +299,24 @@ func (h *Handler) LiveKitWebhook(w http.ResponseWriter, r *http.Request) {
 			Name string `json:"name"`
 		} `json:"room"`
 		EgressInfo struct {
-			EgressID    string `json:"egress_id"`
-			RoomName    string `json:"room_name"`
+			EgressID    string `json:"egressId"`
+			RoomName    string `json:"roomName"`
 			Status      string `json:"status"`
 			FileResults []struct {
 				Filename string `json:"filename"`
-				Duration int64  `json:"duration"` // nanoseconds
-			} `json:"file_results"`
-		} `json:"egress_info"`
+				Duration int64  `json:"duration,string"` // protojson int64 (ns) → quoted string
+			} `json:"fileResults"`
+		} `json:"egressInfo"`
 	}
 	_ = json.Unmarshal(body, &ev)
+	// Self-diagnose a future field-name drift: log the raw body if an egress event parsed no id.
+	if ev.EgressInfo.EgressID == "" && strings.HasPrefix(ev.Event, "egress_") {
+		raw := string(body)
+		if len(raw) > 1500 {
+			raw = raw[:1500]
+		}
+		h.logger.WarnContext(r.Context(), "livekit: egress event with no egressId", "event", ev.Event, "raw", raw)
+	}
 	// Room closed (host ended it, or everyone left) — stop + finalize any recording still running,
 	// so it never outlives the meeting. (Requires the webhook to be registered in LiveKit.)
 	if ev.Event == "room_finished" && ev.Room.Name != "" {
