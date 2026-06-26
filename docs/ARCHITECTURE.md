@@ -742,10 +742,81 @@ and webhook signature verification (HMAC-SHA256 over `t.payload`, constant-time,
 
 ---
 
-## 22. Changelog
+## 22. Built-in video meetings (LiveKit)
+
+Self-hostable video as a booking **location type** (`event_types.location_type = "livekit"`),
+backed by a LiveKit server (Cloud or self-hosted — same config in Settings → Video). Deliberately
+**SDK-free server-side**: all tokens are hand-signed HS256/HMAC, so there's no Go SDK to vendor.
+The browser room is **vanilla JS + a vendored client SDK** (`assets/livekit-client.umd.min.js`),
+not part of the Svelte SPA.
+
+**Pieces.** `internal/livekit/` — `livekit.go` (token signing/verifying), `admin.go` (Twirp admin
+API + Egress, `DeleteRoom`/`UpdateParticipant`/`ListParticipants`/`UpdateRoomMetadata`/egress).
+`internal/handler/livekit_room.go` (token exchange, host auth, host-control endpoints) +
+`livekit_recording.go` (record start/stop, recordings list/download, webhook sink). Room UI =
+`templates/livekit-room.html` + `assets/livekit-room.js` (both `go:embed`-ed in the handler pkg —
+a Go rebuild is needed after editing them, independent of the SPA build).
+
+**Three token kinds (do not conflate):**
+1. **Room token** — opaque HMAC blob (`{r:room, e:exp, role}`) embedded in the booking's join URL.
+   No LiveKit grant, so the API secret never ships to the browser and the link can't be replayed
+   past the booking window. Signed/verified with the per-instance `roomKey`.
+2. **Access token** — the real LiveKit HS256 JWT (video grants) the SDK joins with; minted on
+   demand by the token-exchange endpoint. `VerifyAccessToken` re-checks it server-side for the host
+   model below.
+3. **Admin token** — short-lived HS256 JWT (room-scoped or server-level grant) for Twirp calls.
+
+**Host authority — `authorizeHost`, the key invariant.** Two booking links exist (attendee +
+host). A host action is authorized if the caller is **either**:
+- the **durable host** (`hostRoomOrOwner`) — holds a host *room token*, OR is the signed-in booking
+  owner (so an owner who opened the attendee link still drives the meeting); **or**
+- the **current reassigned host** — proven by verifying their *access token* (`VerifyAccessToken`)
+  and confirming that identity currently has `metadata="host"` via `ListParticipants`.
+
+Clients therefore send **both** `t` (room token) and `at` (access token) on every host call.
+Reassignment only flips a participant's metadata; without the access-token path a temp host would
+have the badge but no server-side power — `authorizeHost` is what closes that. **Reclaim host is
+durable-host-only** (a temp host can never reclaim). **Single host:** any host join calls
+`demoteOtherHosts` (metadata→`"attendee"`); clients downgrade only on the explicit `"attendee"`,
+never on a transient/empty metadata event.
+
+**Recording (Egress).** Room-composite egress → the **Litestream backups bucket** (`LITESTREAM_*`
+env), `recordings/` prefix; rows in a `recordings` table (status `active`→`complete`/`failed`,
+`object_key` set at **start**). **Finalization does not depend on the webhook**:
+`finalizeActiveRecording` stops the egress and marks the row complete on RecordStop / EndRoom /
+host-leave; a startup sweep closes orphaned `active` rows (so a stuck row can't block re-recording
+in a reused room). Downloads are presigned SigV4 GETs (`s3presign.go`). The webhook only *enriches*
+(accurate duration, file-ready confirmation).
+
+**Webhook — single sink.** LiveKit allows one webhook URL per project, so `POST
+/v1/livekit/webhook` (`LiveKitWebhook`; legacy alias `/v1/livekit/egress-webhook`) receives **every**
+project event. Each is signature-verified (`VerifyWebhook`, API key/secret); we act only on
+`egress_started/ended/failed` (banner flag + finalize row) and `room_finished` (stop a straggling
+egress), and 200-ACK + drop the rest (`room_started`, `participant_*`, `track_*`, …). The **egress
+lifecycle is the source of truth** for the recording banner flag, so the indicator self-heals
+regardless of which path started/stopped it. *Lifecycle events (attendance, duration) are received
+but not yet persisted — see PRD Phase 4.*
+
+**Shared room state = metadata.** Room metadata is one JSON blob `{recording, allowShare}`, pushed
+to all clients via LiveKit's `RoomMetadataChanged`. **Always `mergeRoomMeta` (read-merge-write)** —
+overwriting would clobber the other flag. The recording banner is an in-room overlay, hidden by
+`showOnly` off the room view. Attendee screen-share defaults **off**, enforced via
+`canPublishSources` (token mint + live `UpdateParticipant`), not just UI-hidden.
+
+**Deferred:** notetaker/transcription (`calnode-notetaker` agent dispatch → transcript callback →
+LLM summary) — the next build; consent-gated (§8.11/§15 of the PRD).
+
+---
+
+## 23. Changelog
 
 This doc tracks the code; when you change behaviour in an area above, update the
 matching section in the same PR. Notable rounds:
+
+- **2026-06-25/26 — Built-in video (LiveKit).** Full subsystem (see §22): SDK-free hand-signed
+  tokens, vanilla-JS room app, host controls (end-for-all, single-host reassign/reclaim, attendee
+  screen-share toggle), recording (Egress→S3, finalize-on-stop + startup sweep, presigned
+  downloads), single signature-verified webhook sink driving a self-healing recording banner.
 
 - **2026-06-23 — Zoom + Stripe paid bookings.** Per-host Zoom OAuth (meeting links minted under
   the assigned host's account; a meeting-link provider, independent of the calendar).
