@@ -345,6 +345,7 @@ func (h *Handler) LiveKitWebhook(w http.ResponseWriter, r *http.Request) {
 		if info.RoomName != "" {
 			h.mergeRoomMeta(r.Context(), info.RoomName, "recording", false) // clear the banner (no-op if the room is gone)
 		}
+		h.logger.InfoContext(r.Context(), "livekit: egress finished", "egress_id", info.EgressID, "status", status)
 		// Notetaker: the file is ready in S3 now — transcribe + summarise it (no-op unless enabled).
 		if status == "complete" {
 			var recID string

@@ -65,15 +65,26 @@ func (h *Handler) enqueueJob(ctx context.Context, typ string, payload any) error
 // maybeStartNotetaker is called when a recording finalizes (egress_ended): if the notetaker is on
 // and both STT + an LLM are configured, enqueue transcription for that recording.
 func (h *Handler) maybeStartNotetaker(ctx context.Context, recordingID string) {
-	if recordingID == "" || !h.notetakerEnabled(ctx) {
+	if recordingID == "" {
 		return
 	}
-	if h.deepgramKey(ctx) == "" || h.getLLM() == nil {
-		return // need both STT and an LLM to produce notes
+	if !h.notetakerEnabled(ctx) {
+		h.logger.InfoContext(ctx, "notetaker: skip — disabled", "recording_id", recordingID)
+		return
+	}
+	if h.deepgramKey(ctx) == "" {
+		h.logger.WarnContext(ctx, "notetaker: skip — no Deepgram key set", "recording_id", recordingID)
+		return
+	}
+	if h.getLLM() == nil {
+		h.logger.WarnContext(ctx, "notetaker: skip — no LLM configured", "recording_id", recordingID)
+		return
 	}
 	if err := h.enqueueJob(ctx, "notetaker.transcribe", map[string]string{"recording_id": recordingID}); err != nil {
 		h.logger.ErrorContext(ctx, "notetaker: enqueue transcribe", "error", err, "recording_id", recordingID)
+		return
 	}
+	h.logger.InfoContext(ctx, "notetaker: queued transcription", "recording_id", recordingID)
 }
 
 // JobNotetakerTranscribe (worker job) transcribes a finished recording via Deepgram, stores the
