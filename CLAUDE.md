@@ -15,6 +15,16 @@ served under `/admin/`. Public booking pages are server-rendered Go templates
 
 ## UI styling — required check
 
+**Default to shadcn-svelte in the admin UI.** In the SvelteKit admin app (`frontend/`),
+build from the existing shadcn-svelte components — `Button`/`buttonVariants`,
+`ConfirmDialog` (**never** `window.confirm`/`alert`), `Dialog`, `Input`, `Switch`,
+`Tooltip`, etc. Don't hand-roll buttons, modals, or browser-native dialogs. Destructive
+actions use `ConfirmDialog` with `destructive`; row actions use a ghost icon button +
+`Tooltip` (see `event-types`, `members`, `recordings`). **If shadcn genuinely doesn't fit,
+flag it (and the reason) before deviating — don't silently hand-roll.** This does NOT apply
+to the public booking templates (`internal/handler/templates/*.html`), `embed.js`, or the
+LiveKit room — those are intentionally framework-free (Go templates / vanilla JS, own CSS).
+
 shadcn-svelte components style state via Tailwind `data-*` variants. Bits-ui
 states exposed as `data-state="…"` (checked/unchecked/open/closed) need an
 `@custom-variant` remap in `frontend/src/app.css` or they render **silently
@@ -96,6 +106,13 @@ client SDK**, not Svelte.
 - Room HTML is served `no-store` and injects `?v=<content-hash>` onto the room JS/SDK assets —
   bump-free cache-busting. After changing the room JS/HTML you still need a frontend-independent
   Go rebuild (these assets are `go:embed`-ed in the handler package, not the SPA).
+- **Watch the room JS complexity.** `livekit-room.js` has grown large + stateful (host model,
+  single-host, consent, chat, layout, recording) with state in scattered module flags + manual
+  DOM updates — several bugs traced to that (stale state, the metadata up/down-grade logic). It's
+  fine now, but if it keeps growing the move is NOT "shadcn-ify it" (it's deliberately
+  framework-free) — it's tidy-in-place: one state object + a single derive/render, extract the
+  pure logic (host/consent state machines) into testable functions. A dedicated tiny Svelte build
+  is the last resort, not the first.
 
 ## Conventions
 
