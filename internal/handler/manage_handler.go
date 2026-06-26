@@ -46,6 +46,8 @@ type managePageData struct {
 	LogoHeight   int
 	LogoOpacity  string // CSS opacity value, e.g. "1" or "0.6"
 	CSSVersion   string // cache-busts the /booking.css link (content hash)
+	// BookingLogicJS is the shared booking-calendar logic module, inlined ahead of the page script.
+	BookingLogicJS template.JS
 }
 
 // ManagePage renders the attendee manage page for a booking (reschedule / cancel).
@@ -128,6 +130,7 @@ func (h *Handler) renderManage(w http.ResponseWriter, r *http.Request, data mana
 	data.LogoHeight = pageLogoHeight(brand.LogoHeight)
 	data.LogoOpacity = opacityCSS(brand.LogoOpacity)
 	data.CSSVersion = bookingCSSVersion
+	data.BookingLogicJS = template.JS(bookingLogicJS)
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Content-Security-Policy", publicCSP(track))
