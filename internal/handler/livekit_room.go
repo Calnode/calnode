@@ -19,8 +19,15 @@ var liveKitRoomHTML []byte
 //go:embed assets/livekit-client.umd.min.js
 var liveKitSDK []byte
 
+//go:embed assets/room-logic.js
+var liveKitRoomLogicJS []byte
+
 //go:embed assets/livekit-room.js
-var liveKitRoomJS []byte
+var liveKitRoomAppJS []byte
+
+// Served as ONE asset: the pure, unit-tested logic module (room-logic.js — attaches `RoomLogic`
+// to the page) concatenated ahead of the room app. One <script>, one content hash.
+var liveKitRoomJS = append(append(append([]byte{}, liveKitRoomLogicJS...), '\n'), liveKitRoomAppJS...)
 
 var liveKitSDKETag = etagOf(liveKitSDK)
 var liveKitRoomJSETag = etagOf(liveKitRoomJS)

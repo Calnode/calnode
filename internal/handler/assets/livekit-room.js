@@ -128,29 +128,31 @@
     if (!room) return;
     var meta = {};
     try { meta = JSON.parse(room.metadata || '{}'); } catch (e) {}
-    var host = amHost();
-    recording = !!meta.recording;
-    $('lk-rec-banner').classList.toggle('hidden', !recording);
-    var btn = $('lk-record-btn');
-    if (btn) {
-      btn.classList.toggle('hidden', !(host && recordingAvailable)); // visible only while host
-      btn.classList.toggle('recording', recording);
-      btn.title = recording ? 'Stop recording' : 'Record meeting';
-    }
-    // Recording consent (notice + consent-or-leave): attendees acknowledge; the host's record
-    // click is itself consent, so they only see the banner. Once decided, never re-prompt.
-    if (recording && !consentDecided && !host) showConsentModal();
-    else if (!recording && !consentDecided) $('lk-consent-modal').classList.add('hidden');
-
+    recording = !!meta.recording;          // banner + record-button state
     allowShare = meta.allowShare === true; // default off — host opts attendees in
+    $('lk-rec-banner').classList.toggle('hidden', !recording);
+    applyHostUi();
+  }
+
+  // applyHostUi paints every host/consent/screen-share control from one derived snapshot — the
+  // single place the DOM is updated for that state (RoomLogic.hostUi holds the rules, tested).
+  function applyHostUi() {
+    var ui = RoomLogic.hostUi(snapshot());
+    var rb = $('lk-record-btn');
+    if (rb) {
+      rb.classList.toggle('hidden', !ui.recordVisible);
+      rb.classList.toggle('recording', recording);
+      rb.title = recording ? 'Stop recording' : 'Record meeting';
+    }
     var sc = $('lk-screen');
-    if (sc) sc.classList.toggle('hidden', !host && !allowShare); // host always; attendees only when allowed
-    // Show the gear to whoever's host now (durable or reassigned); the owner also keeps it after
-    // stepping down so they can reclaim.
+    if (sc) sc.classList.toggle('hidden', !ui.screenVisible);
     var wrap = $('lk-host-menu-wrap');
-    if (wrap) wrap.classList.toggle('hidden', !(hostCapable || host));
+    if (wrap) wrap.classList.toggle('hidden', !ui.gearVisible);
+    // Recording consent: attendees acknowledge; a host's record click is itself consent.
+    if (ui.consentPrompt) showConsentModal();
+    else if (!recording && !consentDecided) $('lk-consent-modal').classList.add('hidden');
     var menu = $('lk-host-menu');
-    if (menu && !menu.classList.contains('hidden')) renderHostMenu(); // keep the toggle label live
+    if (menu && !menu.classList.contains('hidden')) renderHostMenu(); // keep the menu live while open
   }
   async function toggleSharePerm() {
     await postLK('room/screenshare', { allow: !allowShare });
@@ -172,13 +174,13 @@
   // ----- Host controls menu (gear popover) -----
   function openHostMenu() { renderHostMenu(); $('lk-host-menu').classList.toggle('hidden'); }
   function renderHostMenu() {
-    var active = amHost();
+    var ui = RoomLogic.hostUi(snapshot());
     var share = $('lk-hm-share');
-    share.classList.toggle('hidden', !active);
+    share.classList.toggle('hidden', !ui.hostActions);
     share.textContent = (allowShare ? '✓ Guests can share screen' : 'Allow guests to share screen');
-    $('lk-hm-makehost').classList.toggle('hidden', !active);
+    $('lk-hm-makehost').classList.toggle('hidden', !ui.hostActions);
     var list = $('lk-hm-participants'); list.innerHTML = '';
-    if (active) {
+    if (ui.hostActions) {
       var others = room ? Array.from(room.remoteParticipants.values()) : [];
       if (others.length === 0) {
         var none = document.createElement('div'); none.className = 'hm-empty';
@@ -192,7 +194,7 @@
       });
     }
     // Reclaim: shown to the owner once they've stepped down (capable but not currently host).
-    $('lk-hm-reclaim').classList.toggle('hidden', !(hostCapable && !active));
+    $('lk-hm-reclaim').classList.toggle('hidden', !ui.reclaimVisible);
   }
   async function makeHost(identity) {
     $('lk-host-menu').classList.add('hidden');
@@ -285,9 +287,17 @@
   }
 
   // ----- Host controls: leave / end-for-all / reassign -----
-  function amHost() {
-    return isHost || (room && room.localParticipant && room.localParticipant.metadata === 'host');
+  // snapshot gathers the host/consent/screen-share flags into a plain object for RoomLogic — the
+  // single source the pure (tested) decision functions read from.
+  function snapshot() {
+    var meta = (room && room.localParticipant) ? room.localParticipant.metadata : '';
+    return {
+      isHost: isHost, hostMeta: meta === 'host', hostCapable: hostCapable,
+      recordingAvailable: recordingAvailable, recording: recording,
+      consentDecided: consentDecided, allowShare: allowShare
+    };
   }
+  function amHost() { return RoomLogic.amHost(snapshot()); }
   function leaveOrPrompt() {
     // Non-hosts just leave. Hosts always get the modal (end / pass host / just leave); the
     // pass-host option only appears when there's someone else to hand off to.
@@ -449,10 +459,7 @@
         // Reflect the host badge for whoever this is (newly-promoted host, or a demoted one).
         setHostBadge(participant.identity, m === 'host');
         if (participant.identity === room.localParticipant.identity) {
-          // Upgrade on "host" (reassigned/promoted); downgrade only on the explicit "attendee"
-          // demote (single-host takeover). A transient/empty value must NOT strip our controls.
-          if (m === 'host') isHost = true;
-          else if (m === 'attendee') isHost = false;
+          isHost = RoomLogic.nextIsHost(isHost, m); // see room-logic.js (tested)
           applyRoomMeta(); // refresh record + screen buttons + host menu for the new status
         }
       })
