@@ -281,6 +281,8 @@ body {
   <a href="https://calnode.com" target="_blank" rel="noopener noreferrer">Calnode</a>
 </footer>
 
+<!-- Shared booking-calendar logic (booking-logic.js), inlined ahead of the page script -->
+<script>{{.BookingLogicJS}}</script>
 <script>
 (function () {
   'use strict';
@@ -346,9 +348,7 @@ body {
     nameEl.textContent = defaultName;
   }
 
-  function fmtTime(iso) {
-    return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', timeZone: TZ });
-  }
+  function fmtTime(iso) { return BookingLogic.formatTime(iso, TZ); }
   function fmtDate(d) {
     return d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
   }
@@ -428,10 +428,7 @@ body {
   // Week starts Monday (index 1). Days: Mo Tu We Th Fr Sa Su
   const DOW_LABELS = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
 
-  function dowIndex(date) {
-    // Convert JS 0=Sun…6=Sat → 0=Mon…6=Sun
-    return (date.getDay() + 6) % 7;
-  }
+  function dowIndex(date) { return BookingLogic.dowIndex(date); } // 0=Mon…6=Sun
 
   async function loadMonthAvailability(y, m) {
     // Render immediately, treating every in-window day as available, so the
@@ -447,15 +444,11 @@ body {
       if (!r.ok) throw new Error(r.status);
       const data = await r.json();
       Object.assign(hostMeta, data.hosts || {});
-      // Cache the whole month's slots grouped by local day so clicking a day is
-      // instant (no extra request); availableDates falls out of the keys.
-      const byDay = {};
-      (data.slots || []).forEach(s => {
-        const k = new Date(s.start).toLocaleDateString('en-CA');
-        (byDay[k] = byDay[k] || []).push(s);
-      });
-      slotsByDay = byDay;
-      availableDates = new Set(Object.keys(byDay));
+      // Cache the whole month's slots grouped by the SELECTED-timezone day (BookingLogic — tested,
+      // and tz-correct: the old new Date().toLocaleDateString keyed off the browser tz) so clicking
+      // a day is instant; availableDates falls out of the keys.
+      slotsByDay = BookingLogic.groupSlotsByDay(data.slots, TZ);
+      availableDates = new Set(Object.keys(slotsByDay));
     } catch {
       slotsByDay = {};
       availableDates = new Set();

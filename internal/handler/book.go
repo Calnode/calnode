@@ -20,6 +20,12 @@ import (
 //go:embed templates/book.html
 var bookTmplSrc string
 
+// bookingLogicJS is the shared pure date/slot/format module (booking-logic.js), inlined into the
+// book + manage pages and prepended to embed.js so all three booking surfaces share one tested copy.
+//
+//go:embed assets/booking-logic.js
+var bookingLogicJS string
+
 var bookTmpl = template.Must(template.New("book").Parse(bookTmplSrc))
 
 type bookQuestion struct {
@@ -50,6 +56,8 @@ type bookPageData struct {
 	AssistantEnabled bool
 	// CSSVersion cache-busts the /booking.css link (content hash).
 	CSSVersion string
+	// BookingLogicJS is the shared booking-calendar logic module, inlined ahead of the page script.
+	BookingLogicJS template.JS
 	// Tracking
 	HeadHTML         template.HTML // operator-configured <head> code injection (trusted)
 	GTMContainerID   string        // native GTM container (validated GTM-XXXX); "" = off
@@ -394,6 +402,7 @@ func (h *Handler) BookPage(w http.ResponseWriter, r *http.Request) {
 		Currency:      currency,
 		MaxFutureDays:    maxDays,
 		Questions:        questions,
+		BookingLogicJS:   template.JS(bookingLogicJS),
 		AssistantEnabled: h.getLLM() != nil,
 		CSSVersion:       bookingCSSVersion,
 
