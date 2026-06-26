@@ -156,6 +156,7 @@ domains, Resend email, Google & Microsoft OAuth, Litestream backups, troubleshoo
 - **Conversational booking** ("Book by chat" on the booking page + embed widget; BYO-LLM, off by default)
 - **Paid bookings** — Stripe Checkout (pay-then-book: the slot is held, confirmed on the payment webhook, auto-refunded on cancel)
 - **Zoom** — per-host OAuth; a Zoom-located booking mints a meeting under the assigned host's account
+- **Built-in video meetings (LiveKit)** — in-browser rooms as a booking location (no app or account for guests); host controls (mute, end-for-all, hand-off **and reclaim** host, attendee screen-share toggle) and **meeting recording** straight to your own backup bucket with in-app downloads. BYO LiveKit endpoint (Cloud or self-hosted); configured in Settings → Video
 - Embeddable booking widget (Shadow-DOM web component; inline + popup)
 - Members, roles (owner/admin/member), email-token invitations
 - `Idempotency-Key` on booking creation; transactional double-booking guard

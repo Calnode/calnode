@@ -198,7 +198,28 @@ unverified backup isn't a backup.
 
 ---
 
-## 7. First run
+## 7. Built-in video & recording (LiveKit)
+
+Optional — only if you want Calnode-hosted in-browser meetings as a booking location.
+
+- **Credentials live in the app, not env vars.** Create a project at
+  [cloud.livekit.io](https://cloud.livekit.io) (or self-host LiveKit), then enter the
+  **Server URL** (`wss://…`), **API Key**, and **API Secret** in **Settings → Video**.
+  "Calnode Video (LiveKit)" then becomes selectable as an event-type location.
+- **Recording reuses your Litestream bucket.** If `LITESTREAM_*` (§6) is configured,
+  meeting recordings are written to that same bucket under a `recordings/` prefix — no
+  extra storage to set up. Turn recording on in **Settings → Video / Storage**; downloads
+  appear on the **Recordings** page (presigned, short-lived URLs).
+- **Register the webhook (recommended).** In **Settings → Video**, copy the webhook URL
+  (`https://<your-domain>/v1/livekit/webhook`) into **LiveKit Cloud → Project → Settings →
+  Webhooks**, and attach the **same API key** you entered above (it signs the events).
+  Recordings still finalize without it — the webhook just adds accurate duration and a
+  clean "room closed" backstop. A healthy hit shows `POST /v1/livekit/webhook → 200`; a
+  `403` means the webhook's API key doesn't match the one in Settings → Video.
+
+---
+
+## 8. First run
 
 Open `https://<your-domain>/` → it redirects to `/admin/`. On a fresh database
 you'll be guided through **first-run setup** (create the owner account). Then:
@@ -207,7 +228,7 @@ first event type + availability.
 
 ---
 
-## 8. Troubleshooting
+## 9. Troubleshooting
 
 | Symptom | Likely cause |
 |---|---|
