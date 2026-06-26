@@ -4,6 +4,9 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
+	"io"
+	"net/http"
 	"sort"
 	"strconv"
 	"strings"
@@ -12,11 +15,40 @@ import (
 	"github.com/calnode/calnode/internal/livekit"
 )
 
-// presignS3Get returns a presigned (AWS SigV4) HTTPS URL to GET an object, valid for `expires`.
-// Path-style addressing (host/bucket/key) is used so it works for AWS S3 and S3-compatible
-// stores (Cloudflare R2, Backblaze B2, MinIO, Wasabi, …) alike — the same bucket Litestream and
-// the recordings egress use. No S3 SDK; just the standard signing steps.
+// presignS3Get returns a presigned SigV4 URL to GET an object.
 func presignS3Get(s3 livekit.S3Config, key string, expires time.Duration, now time.Time) string {
+	return presignS3("GET", s3, key, expires, now)
+}
+
+// deleteS3Object permanently deletes one object from the bucket via a presigned SigV4 DELETE.
+// A 404/NoSuchKey counts as success (already gone). Only ever called with a specific recording
+// object_key — never a prefix — so it cannot touch the Litestream DB backups in the same bucket.
+func deleteS3Object(s3 livekit.S3Config, key string) error {
+	if strings.TrimSpace(key) == "" {
+		return nil
+	}
+	req, err := http.NewRequest(http.MethodDelete, presignS3("DELETE", s3, key, 2*time.Minute, time.Now()), nil)
+	if err != nil {
+		return err
+	}
+	resp, err := (&http.Client{Timeout: 30 * time.Second}).Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
+	switch resp.StatusCode {
+	case http.StatusOK, http.StatusNoContent, http.StatusNotFound:
+		return nil
+	default:
+		return fmt.Errorf("s3 delete %q: status %d: %s", key, resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+}
+
+// presignS3 builds a presigned (AWS SigV4) HTTPS URL for `method` on an object, valid for
+// `expires`. Path-style addressing (host/bucket/key) works for AWS S3 and S3-compatible stores
+// (Cloudflare R2, Backblaze B2, MinIO, Wasabi, …) alike. No S3 SDK; just the standard signing.
+func presignS3(method string, s3 livekit.S3Config, key string, expires time.Duration, now time.Time) string {
 	scheme, host := s3SchemeHost(s3)
 	region := s3.Region
 	if region == "" {
@@ -39,7 +71,7 @@ func presignS3Get(s3 livekit.S3Config, key string, expires time.Duration, now ti
 	canonQuery := s3CanonicalQuery(params)
 
 	canonReq := strings.Join([]string{
-		"GET", canonURI, canonQuery,
+		method, canonURI, canonQuery,
 		"host:" + host + "\n", "host", "UNSIGNED-PAYLOAD",
 	}, "\n")
 	strToSign := strings.Join([]string{

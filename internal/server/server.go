@@ -425,7 +425,9 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	mux.HandleFunc("POST /v1/livekit/webhook", h.LiveKitWebhook)
 	mux.HandleFunc("POST /v1/livekit/egress-webhook", h.LiveKitWebhook) // legacy alias — keep old LiveKit registrations working
 	mux.HandleFunc("GET /v1/recordings", h.RequireAuth(h.ListRecordings))
+	mux.HandleFunc("DELETE /v1/recordings", h.RequireAuth(h.DeleteAllRecordings))
 	mux.HandleFunc("GET /v1/recordings/{id}/download", h.RequireAuth(h.DownloadRecording))
+	mux.HandleFunc("DELETE /v1/recordings/{id}", h.RequireAuth(h.DeleteRecording))
 
 	// Manage booking (reschedule / cancel via token link)
 	mux.HandleFunc("GET /manage/{token}", manageRL(h.ManagePage))

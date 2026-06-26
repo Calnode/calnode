@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -271,6 +272,101 @@ func (h *Handler) DownloadRecording(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, presignS3Get(s3, key, 15*time.Minute, timeNow()), http.StatusFound)
+}
+
+// deleteRecordingArtifacts removes a recording's file from the bucket (strict — if the file
+// delete fails, the DB rows are kept so nothing is silently orphaned) then its transcript, the
+// booking's notes (cascade), and the recording row.
+func (h *Handler) deleteRecordingArtifacts(ctx context.Context, id, objectKey string, bookingID sql.NullString) error {
+	if objectKey != "" {
+		s3, ok := recordingStorage()
+		if !ok {
+			return fmt.Errorf("recording storage is not configured")
+		}
+		if err := deleteS3Object(s3, objectKey); err != nil {
+			return err
+		}
+	}
+	_, _ = h.db.ExecContext(ctx, `DELETE FROM transcripts WHERE recording_id = ?`, id)
+	if bookingID.Valid && bookingID.String != "" {
+		_, _ = h.db.ExecContext(ctx, `DELETE FROM notes WHERE booking_id = ?`, bookingID.String)
+	}
+	_, err := h.db.ExecContext(ctx, `DELETE FROM recordings WHERE id = ?`, id)
+	return err
+}
+
+// DeleteRecording handles DELETE /v1/recordings/{id} (admin) — file + row + transcript + the
+// booking's notes. Blocks a recording that's still in progress.
+func (h *Handler) DeleteRecording(w http.ResponseWriter, r *http.Request) {
+	user, ok := userFromContext(r.Context())
+	if !ok || !user.IsAdmin {
+		h.writeError(w, http.StatusForbidden, "admin access required")
+		return
+	}
+	id := r.PathValue("id")
+	var status, objectKey string
+	var bookingID sql.NullString
+	switch err := h.db.QueryRowContext(r.Context(),
+		`SELECT status, COALESCE(object_key,''), booking_id FROM recordings WHERE id = ?`, id).
+		Scan(&status, &objectKey, &bookingID); err {
+	case nil:
+	case sql.ErrNoRows:
+		h.writeError(w, http.StatusNotFound, "recording not found")
+		return
+	default:
+		h.writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	if status == "active" {
+		h.writeError(w, http.StatusConflict, "this recording is still in progress — stop it first")
+		return
+	}
+	if err := h.deleteRecordingArtifacts(r.Context(), id, objectKey, bookingID); err != nil {
+		h.logger.ErrorContext(r.Context(), "recordings: delete", "error", err, "id", id)
+		h.writeError(w, http.StatusBadGateway, "could not delete the recording file")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// DeleteAllRecordings handles DELETE /v1/recordings (admin) — deletes every NON-active recording
+// (each by its own object_key; never a prefix wipe). In-progress recordings are left alone.
+func (h *Handler) DeleteAllRecordings(w http.ResponseWriter, r *http.Request) {
+	user, ok := userFromContext(r.Context())
+	if !ok || !user.IsAdmin {
+		h.writeError(w, http.StatusForbidden, "admin access required")
+		return
+	}
+	// Materialize first — the DB pool is MaxOpenConns(1), so don't delete inside an open cursor.
+	rows, err := h.db.QueryContext(r.Context(),
+		`SELECT id, COALESCE(object_key,''), booking_id FROM recordings WHERE status != 'active'`)
+	if err != nil {
+		h.writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	type rec struct {
+		id, key string
+		booking sql.NullString
+	}
+	var list []rec
+	for rows.Next() {
+		var x rec
+		if rows.Scan(&x.id, &x.key, &x.booking) == nil {
+			list = append(list, x)
+		}
+	}
+	rows.Close()
+
+	deleted, failed := 0, 0
+	for _, x := range list {
+		if err := h.deleteRecordingArtifacts(r.Context(), x.id, x.key, x.booking); err != nil {
+			h.logger.ErrorContext(r.Context(), "recordings: delete all (one)", "error", err, "id", x.id)
+			failed++
+			continue
+		}
+		deleted++
+	}
+	h.writeJSON(w, http.StatusOK, map[string]any{"deleted": deleted, "failed": failed})
 }
 
 // timeNow is a tiny seam so the presign is testable with a fixed clock.

@@ -64,13 +64,53 @@
 			notesLoading = false;
 		}
 	}
+
+	let deleting = $state(false);
+
+	async function deleteRecording(r: Recording) {
+		if (!confirm('Delete this recording? This permanently removes the video file, its transcript, and the booking notes. This cannot be undone.')) return;
+		try {
+			await api.del(`/v1/recordings/${r.id}`);
+			recordings = recordings.filter((x) => x.id !== r.id);
+			if (openNotes === r.id) openNotes = null;
+			toast.success('Recording deleted');
+		} catch (e: any) {
+			toast.error(e.message || 'Could not delete recording');
+		}
+	}
+
+	async function deleteAll() {
+		const n = recordings.filter((r) => r.status !== 'active').length;
+		if (n === 0) { toast.info('Nothing to delete (any in-progress recordings are kept).'); return; }
+		if (!confirm(`Permanently delete all ${n} recording${n === 1 ? '' : 's'} — files, transcripts and notes? In-progress recordings are kept. This cannot be undone.`)) return;
+		deleting = true;
+		try {
+			const res = await api.del<{ deleted: number; failed: number }>('/v1/recordings');
+			const reloaded = await api.get<{ recordings: Recording[] }>('/v1/recordings');
+			recordings = reloaded.recordings ?? [];
+			openNotes = null;
+			if (res.failed) toast.error(`Deleted ${res.deleted}; ${res.failed} could not be deleted.`);
+			else toast.success(`Deleted ${res.deleted} recording${res.deleted === 1 ? '' : 's'}.`);
+		} catch (e: any) {
+			toast.error(e.message || 'Could not delete recordings');
+		} finally {
+			deleting = false;
+		}
+	}
 </script>
 
 <svelte:head><title>Recordings — Calnode</title></svelte:head>
 
-<div class="mb-8">
-	<h1 class="text-2xl font-semibold tracking-tight">Recordings</h1>
-	<p class="mt-1 text-sm text-muted-foreground">Meeting recordings captured from Calnode video calls. Files live in your storage bucket; links below are short-lived.</p>
+<div class="mb-8 flex items-start justify-between gap-4">
+	<div>
+		<h1 class="text-2xl font-semibold tracking-tight">Recordings</h1>
+		<p class="mt-1 text-sm text-muted-foreground">Meeting recordings captured from Calnode video calls. Files live in your storage bucket; links below are short-lived.</p>
+	</div>
+	{#if $currentUser?.is_admin && recordings.length > 0}
+		<Button variant="destructive" size="sm" class="shrink-0" disabled={deleting} onclick={deleteAll}>
+			{deleting ? 'Deleting…' : 'Delete all'}
+		</Button>
+	{/if}
 </div>
 
 {#if !$currentUser?.is_admin}
@@ -99,6 +139,7 @@
 						<Button variant="outline" size="sm" disabled={!r.has_file} onclick={() => download(r)}>
 							{r.has_file ? 'Download' : 'Not ready'}
 						</Button>
+						<Button variant="destructive" size="sm" disabled={r.status === 'active'} onclick={() => deleteRecording(r)}>Delete</Button>
 					</div>
 				</div>
 				{#if openNotes === r.id}
