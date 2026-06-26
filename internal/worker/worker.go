@@ -27,7 +27,15 @@ type Worker struct {
 	mailer     mailer.Mailer
 	logger     *slog.Logger
 	httpClient *http.Client
+	handlers   map[string]func(context.Context, string) error // custom job types (e.g. notetaker)
 	done       chan struct{}
+}
+
+// RegisterHandler registers a processor for a custom job type whose logic lives outside this
+// package (e.g. the notetaker jobs in the handler package, which need LLM/S3/encKey). Call before
+// Run; processJob falls back to these for any type it doesn't handle natively.
+func (w *Worker) RegisterHandler(typ string, fn func(context.Context, string) error) {
+	w.handlers[typ] = fn
 }
 
 // WithHTTPClient overrides the default SSRF-safe HTTP client. Intended for testing only.
@@ -67,10 +75,11 @@ func New(db *sql.DB, svc *webhook.Service, logger *slog.Logger, opts ...func(*Wo
 		},
 	}
 	w := &Worker{
-		db:     db,
-		svc:    svc,
-		mailer: &mailer.Noop{},
-		logger: logger,
+		db:       db,
+		svc:      svc,
+		mailer:   &mailer.Noop{},
+		logger:   logger,
+		handlers: map[string]func(context.Context, string) error{},
 		httpClient: &http.Client{
 			Timeout:   10 * time.Second,
 			Transport: transport,
@@ -233,6 +242,9 @@ func backoff(attempt int) time.Duration {
 }
 
 func (w *Worker) processJob(ctx context.Context, typ, payload string) error {
+	if fn, ok := w.handlers[typ]; ok {
+		return fn(ctx, payload)
+	}
 	switch typ {
 	case "webhook.deliver":
 		return w.deliverWebhook(ctx, payload)

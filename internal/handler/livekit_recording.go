@@ -345,6 +345,12 @@ func (h *Handler) LiveKitWebhook(w http.ResponseWriter, r *http.Request) {
 		if info.RoomName != "" {
 			h.mergeRoomMeta(r.Context(), info.RoomName, "recording", false) // clear the banner (no-op if the room is gone)
 		}
+		// Notetaker: the file is ready in S3 now — transcribe + summarise it (no-op unless enabled).
+		if status == "complete" {
+			var recID string
+			_ = h.db.QueryRowContext(r.Context(), `SELECT id FROM recordings WHERE egress_id = ?`, info.EgressID).Scan(&recID)
+			h.maybeStartNotetaker(r.Context(), recID)
+		}
 	}
 	w.WriteHeader(http.StatusOK)
 }

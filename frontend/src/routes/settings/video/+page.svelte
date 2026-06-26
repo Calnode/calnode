@@ -5,6 +5,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
+	import { Switch } from '$lib/components/ui/switch';
 	import { toast } from 'svelte-sonner';
 	import { saveOnCmdS } from '$lib/save-shortcut';
 
@@ -14,6 +15,7 @@
 		api_secret_set: boolean;
 		configured: boolean;
 	};
+	type NotetakerSettings = { enabled: boolean; stt_api_key_set: boolean };
 
 	let loading = $state(true);
 	let saving = $state(false);
@@ -24,18 +26,40 @@
 	let apiSecret = $state('');
 	let webhookUrl = $state('');
 
+	let notetaker: NotetakerSettings | null = $state(null);
+	let notetakerEnabled = $state(false);
+	let deepgramKey = $state('');
+
 	onMount(async () => {
 		webhookUrl = `${window.location.origin}/v1/livekit/webhook`;
 		try {
 			settings = await api.get<LiveKitSettings>('/v1/settings/livekit');
 			url = settings.url;
 			apiKey = settings.api_key;
+			notetaker = await api.get<NotetakerSettings>('/v1/settings/notetaker');
+			notetakerEnabled = notetaker.enabled;
 		} catch (e: any) {
 			toast.error(e.message || 'Could not load video settings');
 		} finally {
 			loading = false;
 		}
 	});
+
+	async function saveNotetaker() {
+		saving = true;
+		try {
+			const body: Record<string, unknown> = { enabled: notetakerEnabled };
+			if (deepgramKey.trim()) body.stt_api_key = deepgramKey.trim();
+			notetaker = await api.patch<NotetakerSettings>('/v1/settings/notetaker', body);
+			notetakerEnabled = notetaker.enabled;
+			deepgramKey = '';
+			toast.success('Notetaker settings saved');
+		} catch (e: any) {
+			toast.error(e.message || 'Could not save notetaker settings');
+		} finally {
+			saving = false;
+		}
+	}
 
 	async function save() {
 		saving = true;
@@ -174,6 +198,31 @@
 					<li>2. Add a webhook with the URL above, and attach the <span class="font-medium">same API key</span> you entered here — it signs the events so Calnode can verify them.</li>
 					<li>3. Save. LiveKit sends all project events to this one URL; Calnode verifies each signature and uses the recording-related ones.</li>
 				</ol>
+			</div>
+
+			<div class="rounded-lg border bg-card p-6">
+				<div class="mb-3 flex items-start justify-between gap-3">
+					<div>
+						<h2 class="text-sm font-semibold">AI meeting notes (notetaker)</h2>
+						<p class="mt-0.5 text-xs text-muted-foreground">
+							After a meeting is recorded, transcribe it and summarize it into notes on the booking
+							(using your configured LLM). Needs recording on, an LLM configured, and a Deepgram key.
+						</p>
+					</div>
+					<Switch bind:checked={notetakerEnabled} />
+				</div>
+				<div class="space-y-1.5">
+					<Label for="dg-key">Deepgram API key</Label>
+					<Input id="dg-key" type="password"
+						placeholder={notetaker?.stt_api_key_set ? '•••••••• (stored)' : 'Enter Deepgram API key'}
+						bind:value={deepgramKey} />
+					<p class="text-xs text-muted-foreground">
+						Get one at <a href="https://console.deepgram.com" target="_blank" rel="noopener noreferrer" class="text-primary underline">console.deepgram.com</a>.{#if notetaker?.stt_api_key_set} Stored — leave blank to keep it.{/if}
+					</p>
+				</div>
+				<div class="mt-5">
+					<Button onclick={saveNotetaker} disabled={saving}>{saving ? 'Saving…' : 'Save'}</Button>
+				</div>
 			</div>
 		{/if}
 	</div>

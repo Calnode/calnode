@@ -47,6 +47,23 @@
 		// The endpoint redirects to a short-lived presigned URL; open it directly.
 		window.location.href = `/v1/recordings/${r.id}/download`;
 	}
+
+	let openNotes = $state<string | null>(null);
+	let notesContent = $state('');
+	let notesLoading = $state(false);
+
+	async function viewNotes(r: Recording) {
+		if (openNotes === r.id) { openNotes = null; return; }
+		openNotes = r.id; notesContent = ''; notesLoading = true;
+		try {
+			const res = await api.get<{ exists: boolean; content?: string }>(`/v1/bookings/${r.booking_id}/notes`);
+			notesContent = res.exists ? (res.content ?? '') : '';
+		} catch (e: any) {
+			toast.error(e.message || 'Could not load notes');
+		} finally {
+			notesLoading = false;
+		}
+	}
 </script>
 
 <svelte:head><title>Recordings — Calnode</title></svelte:head>
@@ -68,17 +85,33 @@
 {:else}
 	<div class="divide-y rounded-lg border bg-card">
 		{#each recordings as r (r.id)}
-			<div class="flex items-center justify-between gap-4 p-4">
-				<div class="min-w-0">
-					<p class="truncate font-medium">{r.booking_id ? `Booking ${r.booking_id.slice(0, 8)}` : r.room}</p>
-					<p class="mt-0.5 text-xs text-muted-foreground">{fmtDate(r.created_at)} · {fmtDuration(r.duration_s)}</p>
+			<div class="p-4">
+				<div class="flex items-center justify-between gap-4">
+					<div class="min-w-0">
+						<p class="truncate font-medium">{r.booking_id ? `Booking ${r.booking_id.slice(0, 8)}` : r.room}</p>
+						<p class="mt-0.5 text-xs text-muted-foreground">{fmtDate(r.created_at)} · {fmtDuration(r.duration_s)}</p>
+					</div>
+					<div class="flex shrink-0 items-center gap-3">
+						<span class="rounded-full px-2 py-0.5 text-xs font-medium {statusStyle[r.status] ?? 'bg-muted text-muted-foreground'}">{r.status}</span>
+						{#if r.booking_id}
+							<Button variant="ghost" size="sm" onclick={() => viewNotes(r)}>{openNotes === r.id ? 'Hide notes' : 'Notes'}</Button>
+						{/if}
+						<Button variant="outline" size="sm" disabled={!r.has_file} onclick={() => download(r)}>
+							{r.has_file ? 'Download' : 'Not ready'}
+						</Button>
+					</div>
 				</div>
-				<div class="flex shrink-0 items-center gap-3">
-					<span class="rounded-full px-2 py-0.5 text-xs font-medium {statusStyle[r.status] ?? 'bg-muted text-muted-foreground'}">{r.status}</span>
-					<Button variant="outline" size="sm" disabled={!r.has_file} onclick={() => download(r)}>
-						{r.has_file ? 'Download' : 'Not ready'}
-					</Button>
-				</div>
+				{#if openNotes === r.id}
+					<div class="mt-3 rounded-md border bg-muted/40 p-3">
+						{#if notesLoading}
+							<p class="text-xs text-muted-foreground">Loading notes…</p>
+						{:else if notesContent}
+							<div class="whitespace-pre-wrap text-sm leading-relaxed">{notesContent}</div>
+						{:else}
+							<p class="text-xs text-muted-foreground">No notes yet — they appear a few minutes after a recorded meeting (needs the notetaker enabled in Settings → Video).</p>
+						{/if}
+					</div>
+				{/if}
 			</div>
 		{/each}
 	</div>

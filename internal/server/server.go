@@ -85,6 +85,9 @@ func BuildHandler(ctx context.Context, cfg *config.Config, db *sql.DB, logger *s
 		h.SetWebhookSvc(whs)
 		// Pass live so the worker picks up SMTP changes automatically.
 		wrk := worker.New(db, whs, logger, worker.WithMailer(live))
+		// Notetaker jobs live in the handler package (they need LLM/S3/encKey).
+		wrk.RegisterHandler("notetaker.transcribe", h.JobNotetakerTranscribe)
+		wrk.RegisterHandler("notetaker.summarize", h.JobNotetakerSummarize)
 		go wrk.Run(ctx)
 		drain = wrk.Wait
 		logger.Info("webhook worker started")
@@ -323,6 +326,10 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	mux.HandleFunc("PATCH /v1/settings/livekit", settingsRL(h.RequireAuth(h.PatchLiveKitSettings)))
 	mux.HandleFunc("GET /v1/settings/storage", h.RequireAuth(h.GetStorageSettings))
 	mux.HandleFunc("PATCH /v1/settings/storage", settingsRL(h.RequireAuth(h.PatchStorageSettings)))
+	mux.HandleFunc("GET /v1/settings/notetaker", h.RequireAuth(h.GetNotetakerSettings))
+	mux.HandleFunc("PATCH /v1/settings/notetaker", settingsRL(h.RequireAuth(h.PatchNotetakerSettings)))
+	mux.HandleFunc("GET /v1/bookings/{id}/notes", h.RequireAuth(h.GetBookingNotes))
+	mux.HandleFunc("GET /v1/bookings/{id}/transcript", h.RequireAuth(h.GetBookingTranscript))
 	mux.HandleFunc("GET /v1/settings/stripe", h.RequireAuth(h.GetStripeSettings))
 	mux.HandleFunc("PATCH /v1/settings/stripe", settingsRL(h.RequireAuth(h.PatchStripeSettings)))
 	mux.HandleFunc("GET /v1/settings/tracking", h.RequireAuth(h.GetTrackingSettings))
