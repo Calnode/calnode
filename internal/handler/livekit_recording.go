@@ -229,9 +229,13 @@ func (h *Handler) DownloadRecording(w http.ResponseWriter, r *http.Request) {
 // timeNow is a tiny seam so the presign is testable with a fixed clock.
 var timeNow = func() time.Time { return time.Now() }
 
-// EgressWebhook handles POST /v1/livekit/egress-webhook (public; verified by the LiveKit
-// signature). On egress completion it finalizes the recordings row with the object key + duration.
-func (h *Handler) EgressWebhook(w http.ResponseWriter, r *http.Request) {
+// LiveKitWebhook is the single sink for ALL LiveKit project webhook events (LiveKit only allows
+// one URL per project), at POST /v1/livekit/webhook. Public, but every event is signature-verified
+// with the API key/secret. Today it acts only on the recording-relevant events — egress_started/
+// ended/failed (banner flag + finalize the recordings row) and room_finished (stop a straggling
+// egress) — and 200-ACKs everything else (room_started, participant_joined/left, track_*, …)
+// without acting on them. Lifecycle events (attendance, duration, etc.) are not yet wired up.
+func (h *Handler) LiveKitWebhook(w http.ResponseWriter, r *http.Request) {
 	lk := h.getLiveKit()
 	if lk == nil {
 		w.WriteHeader(http.StatusOK)

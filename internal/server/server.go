@@ -414,7 +414,8 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	mux.HandleFunc("POST /v1/livekit/room/screenshare", bookingRL(h.ScreenShareToggle))
 	mux.HandleFunc("POST /v1/livekit/record/start", bookingRL(h.RecordStart))
 	mux.HandleFunc("POST /v1/livekit/record/stop", bookingRL(h.RecordStop))
-	mux.HandleFunc("POST /v1/livekit/egress-webhook", h.EgressWebhook)
+	mux.HandleFunc("POST /v1/livekit/webhook", h.LiveKitWebhook)
+	mux.HandleFunc("POST /v1/livekit/egress-webhook", h.LiveKitWebhook) // legacy alias — keep old LiveKit registrations working
 	mux.HandleFunc("GET /v1/recordings", h.RequireAuth(h.ListRecordings))
 	mux.HandleFunc("GET /v1/recordings/{id}/download", h.RequireAuth(h.DownloadRecording))
 

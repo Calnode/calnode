@@ -22,8 +22,10 @@
 	let url = $state('');
 	let apiKey = $state('');
 	let apiSecret = $state('');
+	let webhookUrl = $state('');
 
 	onMount(async () => {
+		webhookUrl = `${window.location.origin}/v1/livekit/webhook`;
 		try {
 			settings = await api.get<LiveKitSettings>('/v1/settings/livekit');
 			url = settings.url;
@@ -47,6 +49,15 @@
 			toast.error(e.message || 'Could not save video settings');
 		} finally {
 			saving = false;
+		}
+	}
+
+	async function copyWebhook() {
+		try {
+			await navigator.clipboard.writeText(webhookUrl);
+			toast.success('Webhook URL copied');
+		} catch {
+			toast.error('Could not copy — select and copy manually');
 		}
 	}
 
@@ -143,5 +154,27 @@
 				{/if}
 			</div>
 		</div>
+
+		{#if settings?.configured}
+			<div class="rounded-lg border bg-card p-6">
+				<h2 class="text-sm font-semibold">Webhook (recommended)</h2>
+				<p class="mt-0.5 text-xs text-muted-foreground">
+					Register this URL in LiveKit so recordings finalize with accurate duration and end cleanly
+					when a meeting closes. Recordings still work without it — this just makes them reliable.
+				</p>
+				<div class="mt-3 flex items-center gap-2">
+					<code class="min-w-0 flex-1 truncate rounded bg-muted px-2 py-1.5 text-xs">{webhookUrl}</code>
+					<Button variant="outline" size="sm" onclick={copyWebhook}>Copy</Button>
+				</div>
+				<ol class="mt-4 space-y-2 text-xs text-muted-foreground">
+					<li>
+						1. In LiveKit Cloud, open <span class="font-medium">Project → Settings → Webhooks</span>
+						(<a href="https://docs.livekit.io/home/server/webhooks/" target="_blank" rel="noopener noreferrer" class="text-primary underline">docs</a>).
+					</li>
+					<li>2. Add a webhook with the URL above, and attach the <span class="font-medium">same API key</span> you entered here — it signs the events so Calnode can verify them.</li>
+					<li>3. Save. LiveKit sends all project events to this one URL; Calnode verifies each signature and uses the recording-related ones.</li>
+				</ol>
+			</div>
+		{/if}
 	</div>
 {/if}
