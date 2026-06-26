@@ -2,7 +2,9 @@
 	import { onMount } from 'svelte';
 	import { api } from '$lib/api';
 	import { currentUser } from '$lib/stores';
-	import { Button } from '$lib/components/ui/button';
+	import { Button, buttonVariants } from '$lib/components/ui/button';
+	import { ConfirmDialog } from '$lib/components/ui/confirm-dialog';
+	import * as Tooltip from '$lib/components/ui/tooltip';
 	import { toast } from 'svelte-sonner';
 
 	type Recording = {
@@ -66,9 +68,19 @@
 	}
 
 	let deleting = $state(false);
+	let deleteOneOpen = $state(false);
+	let pendingDelete = $state<Recording | null>(null);
+	let deleteAllOpen = $state(false);
+	const deletableCount = $derived(recordings.filter((r) => r.status !== 'active').length);
 
-	async function deleteRecording(r: Recording) {
-		if (!confirm('Delete this recording? This permanently removes the video file, its transcript, and the booking notes. This cannot be undone.')) return;
+	function askDelete(r: Recording) {
+		pendingDelete = r;
+		deleteOneOpen = true;
+	}
+
+	async function doDeleteOne() {
+		const r = pendingDelete;
+		if (!r) return;
 		try {
 			await api.del(`/v1/recordings/${r.id}`);
 			recordings = recordings.filter((x) => x.id !== r.id);
@@ -79,10 +91,15 @@
 		}
 	}
 
-	async function deleteAll() {
-		const n = recordings.filter((r) => r.status !== 'active').length;
-		if (n === 0) { toast.info('Nothing to delete (any in-progress recordings are kept).'); return; }
-		if (!confirm(`Permanently delete all ${n} recording${n === 1 ? '' : 's'} — files, transcripts and notes? In-progress recordings are kept. This cannot be undone.`)) return;
+	function askDeleteAll() {
+		if (deletableCount === 0) {
+			toast.info('Nothing to delete (any in-progress recordings are kept).');
+			return;
+		}
+		deleteAllOpen = true;
+	}
+
+	async function doDeleteAll() {
 		deleting = true;
 		try {
 			const res = await api.del<{ deleted: number; failed: number }>('/v1/recordings');
@@ -107,7 +124,7 @@
 		<p class="mt-1 text-sm text-muted-foreground">Meeting recordings captured from Calnode video calls. Files live in your storage bucket; links below are short-lived.</p>
 	</div>
 	{#if $currentUser?.is_admin && recordings.length > 0}
-		<Button variant="destructive" size="sm" class="shrink-0" disabled={deleting} onclick={deleteAll}>
+		<Button variant="outline" size="sm" class="shrink-0" disabled={deleting} onclick={askDeleteAll}>
 			{deleting ? 'Deleting…' : 'Delete all'}
 		</Button>
 	{/if}
@@ -139,7 +156,19 @@
 						<Button variant="outline" size="sm" disabled={!r.has_file} onclick={() => download(r)}>
 							{r.has_file ? 'Download' : 'Not ready'}
 						</Button>
-						<Button variant="destructive" size="sm" disabled={r.status === 'active'} onclick={() => deleteRecording(r)}>Delete</Button>
+						<Tooltip.Provider>
+							<Tooltip.Root>
+								<Tooltip.Trigger
+									class={buttonVariants({ variant: 'ghost', size: 'icon' })}
+									disabled={r.status === 'active'}
+									onclick={() => askDelete(r)}
+								>
+									<!-- Trash icon -->
+									<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+								</Tooltip.Trigger>
+								<Tooltip.Content>Delete</Tooltip.Content>
+							</Tooltip.Root>
+						</Tooltip.Provider>
 					</div>
 				</div>
 				{#if openNotes === r.id}
@@ -157,3 +186,21 @@
 		{/each}
 	</div>
 {/if}
+
+<ConfirmDialog
+	bind:open={deleteOneOpen}
+	title="Delete recording?"
+	description="This permanently removes the video file, its transcript, and the booking's notes. This cannot be undone."
+	confirmText="Delete"
+	destructive
+	onConfirm={doDeleteOne}
+/>
+
+<ConfirmDialog
+	bind:open={deleteAllOpen}
+	title="Delete all recordings?"
+	description={`This permanently deletes ${deletableCount} recording${deletableCount === 1 ? '' : 's'} — files, transcripts and notes. In-progress recordings are kept. This cannot be undone.`}
+	confirmText="Delete all"
+	destructive
+	onConfirm={doDeleteAll}
+/>
