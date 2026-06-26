@@ -225,6 +225,16 @@
     <div id="lk-status" class="hidden"></div>
     <div id="lk-rec-banner" class="rec-banner hidden"><span class="rec-dot"></span>Recording</div>
 
+    <!-- Recording consent — notice + consent-or-leave (shown to attendees when recording starts) -->
+    <div id="lk-consent-modal" class="modal-overlay hidden">
+      <div class="modal">
+        <h2>This meeting is being recorded</h2>
+        <p style="margin:0 0 6px;color:var(--muted);font-size:.9rem;">By continuing you consent to being recorded. If you don't consent, you can leave the meeting.</p>
+        <button id="lk-consent-continue" class="modal-btn">Continue</button>
+        <button id="lk-consent-leave" class="modal-btn ghost">Leave</button>
+      </div>
+    </div>
+
     <!-- Host-only leave modal -->
     <div id="lk-leave-modal" class="modal-overlay hidden">
       <div class="modal">

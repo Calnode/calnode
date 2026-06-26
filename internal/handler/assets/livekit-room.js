@@ -119,6 +119,7 @@
   var isHost = false; // current live host status; can change as host is reassigned/reclaimed
   var hostCapable = false; // held host capability at join (host link / owner) — enables the menu + reclaim
   var recordingAvailable = false, recording = false; // instance can record / is recording now
+  var consentDecided = false, consentAnnounced = false; // recording-consent (notice + consent-or-leave)
   var canScreenShare = false, allowShare = false; // me / attendees-in-general (host opts in)
 
   // applyRoomMeta reflects shared room state (recording + screen-share permission) to everyone:
@@ -136,6 +137,10 @@
       btn.classList.toggle('recording', recording);
       btn.title = recording ? 'Stop recording' : 'Record meeting';
     }
+    // Recording consent (notice + consent-or-leave): attendees acknowledge; the host's record
+    // click is itself consent, so they only see the banner. Once decided, never re-prompt.
+    if (recording && !consentDecided && !host) showConsentModal();
+    else if (!recording && !consentDecided) $('lk-consent-modal').classList.add('hidden');
 
     allowShare = meta.allowShare === true; // default off — host opts attendees in
     var sc = $('lk-screen');
@@ -150,6 +155,18 @@
   async function toggleSharePerm() {
     await postLK('room/screenshare', { allow: !allowShare });
     allowShare = !allowShare; applyRoomMeta(); // optimistic; the room-metadata event also reconciles
+  }
+
+  // showConsentModal — the Zoom-style notice: an audio announcement (once) + a Continue/Leave
+  // prompt. Idempotent; the buttons (setupControls) record the decision and stop the re-prompt.
+  function showConsentModal() {
+    var m = $('lk-consent-modal');
+    if (!m || !m.classList.contains('hidden')) return; // already up
+    if (!consentAnnounced) {
+      consentAnnounced = true;
+      try { window.speechSynthesis.speak(new SpeechSynthesisUtterance('This meeting is being recorded.')); } catch (e) {}
+    }
+    m.classList.remove('hidden');
   }
 
   // ----- Host controls menu (gear popover) -----
@@ -499,6 +516,17 @@
     $('lk-reassign-leave').onclick = reassignAndLeave;
     $('lk-just-leave').onclick = async function () { await stopRecIfHosting(); if (room) room.disconnect(); };
     $('lk-leave-cancel').onclick = closeLeaveModal;
+    $('lk-consent-continue').onclick = function () {
+      consentDecided = true;
+      $('lk-consent-modal').classList.add('hidden');
+      postLK('consent', { decision: 'continue', name: myName });
+    };
+    $('lk-consent-leave').onclick = function () {
+      consentDecided = true;
+      $('lk-consent-modal').classList.add('hidden');
+      postLK('consent', { decision: 'leave', name: myName });
+      if (room) room.disconnect();
+    };
     if (recordingAvailable) {
       // Wire the button; applyRoomMeta shows it only while we're host (durable or reassigned).
       var rb = $('lk-record-btn');

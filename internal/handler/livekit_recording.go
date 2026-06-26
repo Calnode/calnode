@@ -157,6 +157,53 @@ func (h *Handler) finalizeActiveRecording(ctx context.Context, room string) {
 	}
 }
 
+// RecordConsent handles POST /v1/livekit/consent — a participant's response to the recording
+// notice (Zoom-style notice + consent-or-leave). It's an AUDIT LOG only: it records who
+// acknowledged, but never gates recording. The caller's identity is proven by their LiveKit
+// access token (`at`); the room comes from that token, not client-asserted.
+func (h *Handler) RecordConsent(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Token    string `json:"t"`
+		At       string `json:"at"`
+		Decision string `json:"decision"` // continue | leave
+		Name     string `json:"name"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&req); err != nil {
+		h.writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	lk := h.getLiveKit()
+	if lk == nil {
+		h.writeError(w, http.StatusNotFound, "video meetings are not configured")
+		return
+	}
+	room, identity, err := lk.VerifyAccessToken(req.At)
+	if err != nil || room == "" || identity == "" {
+		h.writeError(w, http.StatusForbidden, "invalid meeting token")
+		return
+	}
+	decision := "continue"
+	if req.Decision == "leave" {
+		decision = "leave"
+	}
+	name := strings.TrimSpace(req.Name)
+	if len(name) > 120 {
+		name = name[:120]
+	}
+	if _, err := h.db.ExecContext(r.Context(), `
+		INSERT INTO meeting_consents (room, participant_identity, name, decision)
+		VALUES (?, ?, ?, ?)
+		ON CONFLICT(room, participant_identity) DO UPDATE SET
+			name = excluded.name, decision = excluded.decision,
+			decided_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')`,
+		room, identity, name, decision); err != nil {
+		h.logger.ErrorContext(r.Context(), "livekit: record consent", "error", err, "room", room)
+		h.writeError(w, http.StatusInternalServerError, "could not record consent")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // ListRecordings handles GET /v1/recordings (admin) — newest first, for the Recordings page.
 func (h *Handler) ListRecordings(w http.ResponseWriter, r *http.Request) {
 	user, ok := userFromContext(r.Context())
