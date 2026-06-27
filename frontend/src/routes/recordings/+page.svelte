@@ -72,13 +72,15 @@
 
 	let openNotes = $state<string | null>(null);
 	let notesContent = $state('');
+	let notesStatus = $state('');
 	let notesLoading = $state(false);
 
 	async function loadNotes(r: Recording) {
-		notesContent = ''; notesLoading = true;
+		notesContent = ''; notesStatus = ''; notesLoading = true;
 		try {
-			const res = await api.get<{ exists: boolean; content?: string }>(`/v1/bookings/${r.booking_id}/notes`);
+			const res = await api.get<{ exists: boolean; content?: string; status?: string }>(`/v1/bookings/${r.booking_id}/notes`);
 			notesContent = res.exists ? (res.content ?? '') : '';
+			notesStatus = res.status ?? '';
 		} catch (e: any) {
 			toast.error(e.message || 'Could not load notes');
 		} finally {
@@ -88,8 +90,40 @@
 
 	async function viewNotes(r: Recording) {
 		if (openNotes === r.id) { openNotes = null; return; }
-		openNotes = r.id; openConsent = null;
+		openNotes = r.id; openConsent = null; openTranscript = null;
 		await loadNotes(r);
+	}
+
+	// Re-run just the LLM summary over the existing Deepgram transcript (no re-recording).
+	async function regenNotes(r: Recording) {
+		notesLoading = true;
+		try {
+			await api.post(`/v1/bookings/${r.booking_id}/notes/regenerate`, {});
+			toast.success('Regenerating notes — checking back shortly…');
+		} catch (e: any) {
+			toast.error(e.message || 'Could not regenerate notes');
+			notesLoading = false;
+			return;
+		}
+		setTimeout(() => loadNotes(r), 5000); // give the worker a moment, then refetch
+	}
+
+	// Raw Deepgram transcript (separate from the LLM notes).
+	let openTranscript = $state<string | null>(null);
+	let transcriptContent = $state('');
+	let transcriptLoading = $state(false);
+
+	async function viewTranscript(r: Recording) {
+		if (openTranscript === r.id) { openTranscript = null; return; }
+		openTranscript = r.id; openNotes = null; openConsent = null; transcriptContent = ''; transcriptLoading = true;
+		try {
+			const res = await api.get<{ exists: boolean; text?: string }>(`/v1/bookings/${r.booking_id}/transcript`);
+			transcriptContent = res.exists ? (res.text ?? '') : '';
+		} catch (e: any) {
+			toast.error(e.message || 'Could not load transcript');
+		} finally {
+			transcriptLoading = false;
+		}
 	}
 
 	type Consent = { identity: string; name: string; decision: string; decided_at: string };
@@ -99,7 +133,7 @@
 
 	async function viewConsent(r: Recording) {
 		if (openConsent === r.id) { openConsent = null; return; }
-		openConsent = r.id; openNotes = null; consentRows = []; consentLoading = true;
+		openConsent = r.id; openNotes = null; openTranscript = null; consentRows = []; consentLoading = true;
 		try {
 			const res = await api.get<{ consents: Consent[] }>(`/v1/recordings/${r.id}/consent`);
 			consentRows = res.consents ?? [];
@@ -129,6 +163,7 @@
 			recordings = recordings.filter((x) => x.id !== r.id);
 			if (openNotes === r.id) openNotes = null;
 			if (openConsent === r.id) openConsent = null;
+			if (openTranscript === r.id) openTranscript = null;
 			toast.success('Recording deleted');
 		} catch (e: any) {
 			toast.error(e.message || 'Could not delete recording');
@@ -149,7 +184,7 @@
 			const res = await api.del<{ deleted: number; failed: number }>('/v1/recordings');
 			const reloaded = await api.get<{ recordings: Recording[] }>('/v1/recordings');
 			recordings = reloaded.recordings ?? [];
-			openNotes = null; openConsent = null;
+			openNotes = null; openConsent = null; openTranscript = null;
 			if (res.failed) toast.error(`Deleted ${res.deleted}; ${res.failed} could not be deleted.`);
 			else toast.success(`Deleted ${res.deleted} recording${res.deleted === 1 ? '' : 's'}.`);
 		} catch (e: any) {
@@ -204,6 +239,7 @@
 						<span class="rounded-full px-2 py-0.5 text-xs font-medium {statusStyle[r.status] ?? 'bg-muted text-muted-foreground'}">{r.status}</span>
 						{#if r.booking_id}
 							<Button variant="ghost" size="sm" onclick={() => viewNotes(r)}>{openNotes === r.id ? 'Hide notes' : 'Notes'}</Button>
+							<Button variant="ghost" size="sm" onclick={() => viewTranscript(r)}>{openTranscript === r.id ? 'Hide transcript' : 'Transcript'}</Button>
 						{/if}
 						<Button variant="ghost" size="sm" onclick={() => viewConsent(r)}>{openConsent === r.id ? 'Hide consent' : 'Consent'}</Button>
 						<Button variant="outline" size="sm" disabled={!r.has_file} onclick={() => download(r)}>
@@ -227,18 +263,38 @@
 				{#if openNotes === r.id}
 					<div class="mt-3 rounded-md border bg-muted/40 p-3">
 						<div class="mb-2 flex items-center justify-between gap-2">
-							<p class="text-xs font-medium text-muted-foreground">Notes</p>
-							<Button variant="ghost" size="sm" class="h-7 gap-1.5 px-2 text-xs" disabled={notesLoading} onclick={() => loadNotes(r)}>
-								<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class={notesLoading ? 'animate-spin' : ''}><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg>
-								{notesLoading ? 'Checking…' : 'Refresh'}
-							</Button>
+							<p class="text-xs font-medium text-muted-foreground">Notes <span class="text-muted-foreground/70">(AI summary)</span></p>
+							<div class="flex items-center gap-1">
+								<Button variant="ghost" size="sm" class="h-7 gap-1.5 px-2 text-xs" disabled={notesLoading} onclick={() => regenNotes(r)}>
+									<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v4"/><path d="M12 3a9 9 0 1 0 9 9"/><polyline points="16 3 21 3 21 8"/></svg>
+									Regenerate
+								</Button>
+								<Button variant="ghost" size="sm" class="h-7 gap-1.5 px-2 text-xs" disabled={notesLoading} onclick={() => loadNotes(r)}>
+									<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class={notesLoading ? 'animate-spin' : ''}><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg>
+									{notesLoading ? 'Checking…' : 'Refresh'}
+								</Button>
+							</div>
 						</div>
 						{#if notesLoading}
 							<p class="text-xs text-muted-foreground">Loading notes…</p>
 						{:else if notesContent}
 							<div class="whitespace-pre-wrap text-sm leading-relaxed">{notesContent}</div>
+						{:else if notesStatus === 'empty'}
+							<p class="text-xs text-muted-foreground">The AI summary came back empty (the model returned no usable notes). Try <strong>Regenerate</strong>, or open the <strong>Transcript</strong> for the raw record.</p>
 						{:else}
 							<p class="text-xs text-muted-foreground">No notes yet — they appear a few minutes after a recorded meeting (needs the notetaker enabled in Settings → Video). Use Refresh to check again.</p>
+						{/if}
+					</div>
+				{/if}
+				{#if openTranscript === r.id}
+					<div class="mt-3 rounded-md border bg-muted/40 p-3">
+						<p class="mb-2 text-xs font-medium text-muted-foreground">Transcript <span class="text-muted-foreground/70">(Deepgram)</span></p>
+						{#if transcriptLoading}
+							<p class="text-xs text-muted-foreground">Loading transcript…</p>
+						{:else if transcriptContent}
+							<div class="max-h-80 overflow-y-auto whitespace-pre-wrap text-sm leading-relaxed">{transcriptContent}</div>
+						{:else}
+							<p class="text-xs text-muted-foreground">No transcript yet — it's created right after a recorded meeting (needs the notetaker enabled + a Deepgram key in Settings → Video).</p>
 						{/if}
 					</div>
 				{/if}

@@ -172,20 +172,32 @@ func (h *Handler) JobNotetakerSummarize(ctx context.Context, payload string) err
 			{Role: "system", Content: notetakerSummaryPrompt},
 			{Role: "user", Content: transcript},
 		},
-		MaxTokens: 1500,
+		// Generous budget: reasoning models (e.g. minimax) spend most of the completion inside
+		// <think>; too small a cap means the output is all reasoning and stripReasoning empties it.
+		MaxTokens: 8000,
 	})
 	if err != nil {
 		return err // transient — retry
 	}
 	content := strings.TrimSpace(stripReasoning(res.Message.Content))
 	if content == "" {
+		// Don't fail silently: the transcript was fine but the model returned nothing usable
+		// (commonly: all reasoning, no final answer / truncated). Surfaced via the warn log and the
+		// notes status below so the UI can offer a regenerate.
+		h.logger.WarnContext(ctx, "notetaker: summary empty after stripping reasoning",
+			"booking_id", p.BookingID, "raw_chars", len(res.Message.Content))
+		_, _ = h.db.ExecContext(ctx, `
+			INSERT INTO notes (id, booking_id, content, status)
+			VALUES (?, ?, '', 'empty')
+			ON CONFLICT(booking_id) DO UPDATE SET status = 'empty', updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')`,
+			uid.New(), p.BookingID)
 		return nil
 	}
 	if _, err := h.db.ExecContext(ctx, `
 		INSERT INTO notes (id, booking_id, content, status)
 		VALUES (?, ?, ?, 'complete')
 		ON CONFLICT(booking_id) DO UPDATE SET
-			content = excluded.content, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')`,
+			content = excluded.content, status = 'complete', updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')`,
 		uid.New(), p.BookingID, content); err != nil {
 		return err
 	}

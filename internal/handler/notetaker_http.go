@@ -100,6 +100,33 @@ func (h *Handler) GetBookingNotes(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// RegenerateBookingNotes handles POST /v1/bookings/{id}/notes/regenerate (admin) — re-runs the LLM
+// summary over the booking's existing transcript(s). 409 if there's no transcript yet, 424 if no LLM.
+func (h *Handler) RegenerateBookingNotes(w http.ResponseWriter, r *http.Request) {
+	user, ok := userFromContext(r.Context())
+	if !ok || !user.IsAdmin {
+		h.writeError(w, http.StatusForbidden, "admin access required")
+		return
+	}
+	bookingID := r.PathValue("id")
+	var n int
+	_ = h.db.QueryRowContext(r.Context(),
+		`SELECT COUNT(*) FROM transcripts WHERE booking_id = ? AND status = 'complete'`, bookingID).Scan(&n)
+	if n == 0 {
+		h.writeError(w, http.StatusConflict, "no transcript to summarise yet")
+		return
+	}
+	if h.getLLM() == nil {
+		h.writeError(w, http.StatusFailedDependency, "no LLM configured")
+		return
+	}
+	if err := h.enqueueJob(r.Context(), "notetaker.summarize", map[string]string{"booking_id": bookingID}); err != nil {
+		h.writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	w.WriteHeader(http.StatusAccepted)
+}
+
 // GetBookingTranscript handles GET /v1/bookings/{id}/transcript (admin) — the raw transcript.
 func (h *Handler) GetBookingTranscript(w http.ResponseWriter, r *http.Request) {
 	user, ok := userFromContext(r.Context())

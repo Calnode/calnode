@@ -329,6 +329,7 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	mux.HandleFunc("GET /v1/settings/notetaker", h.RequireAuth(h.GetNotetakerSettings))
 	mux.HandleFunc("PATCH /v1/settings/notetaker", settingsRL(h.RequireAuth(h.PatchNotetakerSettings)))
 	mux.HandleFunc("GET /v1/bookings/{id}/notes", h.RequireAuth(h.GetBookingNotes))
+	mux.HandleFunc("POST /v1/bookings/{id}/notes/regenerate", h.RequireAuth(h.RegenerateBookingNotes))
 	mux.HandleFunc("GET /v1/bookings/{id}/transcript", h.RequireAuth(h.GetBookingTranscript))
 	mux.HandleFunc("GET /v1/settings/stripe", h.RequireAuth(h.GetStripeSettings))
 	mux.HandleFunc("PATCH /v1/settings/stripe", settingsRL(h.RequireAuth(h.PatchStripeSettings)))
