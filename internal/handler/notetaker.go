@@ -52,12 +52,19 @@ func (h *Handler) deepgramKey(ctx context.Context) string {
 	return key
 }
 
-// enqueueJob inserts a background job for the worker.
+// enqueueJob inserts a background job for the worker. The jobs table has a UNIQUE(type, payload)
+// index for dedup, so re-queuing the same (type, payload) — e.g. re-summarising a booking on a new
+// recording or a manual regenerate — would otherwise fail the constraint. Instead, re-queue it:
+// reset an existing matching job back to pending so the worker runs it again. (Notetaker-only;
+// reminders/webhooks enqueue via their own paths.)
 func (h *Handler) enqueueJob(ctx context.Context, typ string, payload any) error {
 	b, _ := json.Marshal(payload)
 	_, err := h.db.ExecContext(ctx, `
 		INSERT INTO jobs (id, type, payload, run_at, status, attempts, max_attempts)
-		VALUES (?, ?, ?, datetime('now'), 'pending', 0, 3)`,
+		VALUES (?, ?, ?, datetime('now'), 'pending', 0, 3)
+		ON CONFLICT(type, payload) DO UPDATE SET
+			status = 'pending', run_at = datetime('now'), attempts = 0,
+			last_error = NULL, locked_until = NULL`,
 		uid.New(), typ, string(b))
 	return err
 }
