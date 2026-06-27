@@ -254,9 +254,11 @@ func (h *Handler) ListRecordingConsent(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusForbidden, "admin access required")
 		return
 	}
-	var room string
+	var room, createdAt, status string
+	var durationS int
 	switch err := h.db.QueryRowContext(r.Context(),
-		`SELECT room FROM recordings WHERE id = ?`, r.PathValue("id")).Scan(&room); err {
+		`SELECT room, created_at, duration_s, status FROM recordings WHERE id = ?`,
+		r.PathValue("id")).Scan(&room, &createdAt, &durationS, &status); err {
 	case nil:
 	case sql.ErrNoRows:
 		h.writeError(w, http.StatusNotFound, "recording not found")
@@ -265,15 +267,12 @@ func (h *Handler) ListRecordingConsent(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	rows, err := h.db.QueryContext(r.Context(), `
-		SELECT participant_identity, name, decision, decided_at
-		FROM meeting_consents WHERE room = ? ORDER BY decided_at`, room)
-	if err != nil {
-		h.logger.ErrorContext(r.Context(), "recordings: consent list", "error", err)
-		h.writeError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-	defer rows.Close()
+	// Consent rows are keyed only by room, and a room (= booking) is re-joined across many
+	// sessions — so we MUST scope to THIS recording's time window, else every consent the room
+	// ever saw shows up. Window = [start-5s, start+duration+60s]; an active recording has no
+	// duration yet, so open the upper bound wide. Both timestamps are UTC ISO (fixed width), so a
+	// lexicographic string comparison is correct and timezone-safe.
+	lo, hi, scoped := consentWindow(createdAt, durationS, status)
 	type consent struct {
 		Identity  string `json:"identity"`
 		Name      string `json:"name"`
@@ -281,6 +280,26 @@ func (h *Handler) ListRecordingConsent(w http.ResponseWriter, r *http.Request) {
 		DecidedAt string `json:"decided_at"`
 	}
 	out := []consent{}
+	var rows *sql.Rows
+	var err error
+	if scoped {
+		rows, err = h.db.QueryContext(r.Context(), `
+			SELECT participant_identity, name, decision, decided_at
+			FROM meeting_consents
+			WHERE room = ? AND decided_at >= ? AND decided_at <= ?
+			ORDER BY decided_at`, room, lo, hi)
+	} else {
+		// created_at unparseable (shouldn't happen) — fall back to all rows for the room.
+		rows, err = h.db.QueryContext(r.Context(), `
+			SELECT participant_identity, name, decision, decided_at
+			FROM meeting_consents WHERE room = ? ORDER BY decided_at`, room)
+	}
+	if err != nil {
+		h.logger.ErrorContext(r.Context(), "recordings: consent list", "error", err)
+		h.writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	defer rows.Close()
 	for rows.Next() {
 		var c consent
 		if err := rows.Scan(&c.Identity, &c.Name, &c.Decision, &c.DecidedAt); err != nil {
@@ -339,17 +358,42 @@ func recordingFilename(booker, createdAtISO string) string {
 	if name == "" {
 		name = "recording"
 	}
-	stamp := ""
-	for _, layout := range []string{time.RFC3339Nano, time.RFC3339, "2006-01-02T15:04:05.999Z", "2006-01-02 15:04:05"} {
-		if t, err := time.Parse(layout, createdAtISO); err == nil {
-			stamp = t.UTC().Format("2006-01-02-1504")
-			break
-		}
-	}
-	if stamp == "" {
+	t, ok := parseRecordingTime(createdAtISO)
+	if !ok {
 		return name + ".mp4"
 	}
-	return name + "-" + stamp + ".mp4"
+	return name + "-" + t.Format("2006-01-02-1504") + ".mp4"
+}
+
+// consentWindow returns the inclusive [lo, hi] UTC-ISO bounds for consents that belong to a
+// recording starting at createdAtISO and running durationS seconds. Consents are written just
+// after recording flips on (and as late joiners arrive), so the window is [start-5s,
+// start+duration+60s]; an active/zero-duration recording gets a wide upper bound. ok=false when
+// the start can't be parsed, signalling the caller to fall back to all rows for the room.
+func consentWindow(createdAtISO string, durationS int, status string) (lo, hi string, ok bool) {
+	start, parsed := parseRecordingTime(createdAtISO)
+	if !parsed {
+		return "", "", false
+	}
+	const tsLayout = "2006-01-02T15:04:05.000Z"
+	lo = start.Add(-5 * time.Second).Format(tsLayout)
+	if status == "active" || durationS <= 0 {
+		hi = start.Add(24 * time.Hour).Format(tsLayout)
+	} else {
+		hi = start.Add(time.Duration(durationS)*time.Second + 60*time.Second).Format(tsLayout)
+	}
+	return lo, hi, true
+}
+
+// parseRecordingTime parses a stored recording/consent timestamp (UTC ISO, possibly with
+// millisecond fraction) into a UTC time, trying the formats SQLite/Go produce.
+func parseRecordingTime(iso string) (time.Time, bool) {
+	for _, layout := range []string{time.RFC3339Nano, time.RFC3339, "2006-01-02T15:04:05.999Z", "2006-01-02 15:04:05"} {
+		if t, err := time.Parse(layout, iso); err == nil {
+			return t.UTC(), true
+		}
+	}
+	return time.Time{}, false
 }
 
 // sanitizeFilenamePart reduces an arbitrary name to ASCII letters/digits with single dashes for
