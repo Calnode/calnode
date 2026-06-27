@@ -53,6 +53,16 @@
 		const m = Math.floor(s / 60), sec = s % 60;
 		return `${m}:${String(sec).padStart(2, '0')}`;
 	}
+
+	async function copyText(text: string, label: string) {
+		if (!text) return;
+		try {
+			await navigator.clipboard.writeText(text);
+			toast.success(`${label} copied`);
+		} catch {
+			toast.error('Could not copy to clipboard');
+		}
+	}
 	function fmtDay(iso: string) {
 		try { return new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }); } catch { return iso; }
 	}
@@ -265,6 +275,10 @@
 						<div class="mb-2 flex items-center justify-between gap-2">
 							<p class="text-xs font-medium text-muted-foreground">Notes <span class="text-muted-foreground/70">(AI summary)</span></p>
 							<div class="flex items-center gap-1">
+								<Button variant="ghost" size="sm" class="h-7 gap-1.5 px-2 text-xs" disabled={!notesContent} onclick={() => copyText(notesContent, 'Notes')}>
+									<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+									Copy
+								</Button>
 								<Button variant="ghost" size="sm" class="h-7 gap-1.5 px-2 text-xs" disabled={notesLoading} onclick={() => regenNotes(r)}>
 									<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v4"/><path d="M12 3a9 9 0 1 0 9 9"/><polyline points="16 3 21 3 21 8"/></svg>
 									Regenerate
@@ -288,7 +302,13 @@
 				{/if}
 				{#if openTranscript === r.id}
 					<div class="mt-3 rounded-md border bg-muted/40 p-3">
-						<p class="mb-2 text-xs font-medium text-muted-foreground">Transcript <span class="text-muted-foreground/70">(Deepgram)</span></p>
+						<div class="mb-2 flex items-center justify-between gap-2">
+							<p class="text-xs font-medium text-muted-foreground">Transcript <span class="text-muted-foreground/70">(Deepgram)</span></p>
+							<Button variant="ghost" size="sm" class="h-7 gap-1.5 px-2 text-xs" disabled={!transcriptContent} onclick={() => copyText(transcriptContent, 'Transcript')}>
+								<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+								Copy
+							</Button>
+						</div>
 						{#if transcriptLoading}
 							<p class="text-xs text-muted-foreground">Loading transcript…</p>
 						{:else if transcriptContent}
