@@ -31,7 +31,7 @@
 						(r.booker_name || '').toLowerCase().includes(q) ||
 						r.room.toLowerCase().includes(q) ||
 						r.booking_id.toLowerCase().includes(q) ||
-						fmtDate(r.created_at).toLowerCase().includes(q)
+						fmtDay(r.created_at).toLowerCase().includes(q)
 					);
 				})
 			: recordings
@@ -53,8 +53,11 @@
 		const m = Math.floor(s / 60), sec = s % 60;
 		return `${m}:${String(sec).padStart(2, '0')}`;
 	}
-	function fmtDate(iso: string) {
-		try { return new Date(iso).toLocaleString(); } catch { return iso; }
+	function fmtDay(iso: string) {
+		try { return new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }); } catch { return iso; }
+	}
+	function fmtTime(iso: string) {
+		try { return new Date(iso).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }); } catch { return ''; }
 	}
 	const statusStyle: Record<string, string> = {
 		complete: 'bg-green-50 text-green-700',
@@ -194,8 +197,8 @@
 			<div class="p-4">
 				<div class="flex items-center justify-between gap-4">
 					<div class="min-w-0">
-						<p class="truncate font-medium">{r.booker_name || r.room}</p>
-						<p class="mt-0.5 text-xs text-muted-foreground">{fmtDate(r.created_at)} · {fmtDuration(r.duration_s)}</p>
+						<p class="truncate font-medium">{r.booker_name || r.room} · {fmtDay(r.created_at)}</p>
+						<p class="mt-0.5 text-xs text-muted-foreground">{fmtTime(r.created_at)} · {fmtDuration(r.duration_s)}</p>
 					</div>
 					<div class="flex shrink-0 items-center gap-3">
 						<span class="rounded-full px-2 py-0.5 text-xs font-medium {statusStyle[r.status] ?? 'bg-muted text-muted-foreground'}">{r.status}</span>
