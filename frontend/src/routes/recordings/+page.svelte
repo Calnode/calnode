@@ -56,7 +56,7 @@
 
 	async function viewNotes(r: Recording) {
 		if (openNotes === r.id) { openNotes = null; return; }
-		openNotes = r.id; notesContent = ''; notesLoading = true;
+		openNotes = r.id; openConsent = null; notesContent = ''; notesLoading = true;
 		try {
 			const res = await api.get<{ exists: boolean; content?: string }>(`/v1/bookings/${r.booking_id}/notes`);
 			notesContent = res.exists ? (res.content ?? '') : '';
@@ -64,6 +64,24 @@
 			toast.error(e.message || 'Could not load notes');
 		} finally {
 			notesLoading = false;
+		}
+	}
+
+	type Consent = { identity: string; name: string; decision: string; decided_at: string };
+	let openConsent = $state<string | null>(null);
+	let consentRows = $state<Consent[]>([]);
+	let consentLoading = $state(false);
+
+	async function viewConsent(r: Recording) {
+		if (openConsent === r.id) { openConsent = null; return; }
+		openConsent = r.id; openNotes = null; consentRows = []; consentLoading = true;
+		try {
+			const res = await api.get<{ consents: Consent[] }>(`/v1/recordings/${r.id}/consent`);
+			consentRows = res.consents ?? [];
+		} catch (e: any) {
+			toast.error(e.message || 'Could not load consent log');
+		} finally {
+			consentLoading = false;
 		}
 	}
 
@@ -85,6 +103,7 @@
 			await api.del(`/v1/recordings/${r.id}`);
 			recordings = recordings.filter((x) => x.id !== r.id);
 			if (openNotes === r.id) openNotes = null;
+			if (openConsent === r.id) openConsent = null;
 			toast.success('Recording deleted');
 		} catch (e: any) {
 			toast.error(e.message || 'Could not delete recording');
@@ -105,7 +124,7 @@
 			const res = await api.del<{ deleted: number; failed: number }>('/v1/recordings');
 			const reloaded = await api.get<{ recordings: Recording[] }>('/v1/recordings');
 			recordings = reloaded.recordings ?? [];
-			openNotes = null;
+			openNotes = null; openConsent = null;
 			if (res.failed) toast.error(`Deleted ${res.deleted}; ${res.failed} could not be deleted.`);
 			else toast.success(`Deleted ${res.deleted} recording${res.deleted === 1 ? '' : 's'}.`);
 		} catch (e: any) {
@@ -153,6 +172,7 @@
 						{#if r.booking_id}
 							<Button variant="ghost" size="sm" onclick={() => viewNotes(r)}>{openNotes === r.id ? 'Hide notes' : 'Notes'}</Button>
 						{/if}
+						<Button variant="ghost" size="sm" onclick={() => viewConsent(r)}>{openConsent === r.id ? 'Hide consent' : 'Consent'}</Button>
 						<Button variant="outline" size="sm" disabled={!r.has_file} onclick={() => download(r)}>
 							{r.has_file ? 'Download' : 'Not ready'}
 						</Button>
@@ -179,6 +199,28 @@
 							<div class="whitespace-pre-wrap text-sm leading-relaxed">{notesContent}</div>
 						{:else}
 							<p class="text-xs text-muted-foreground">No notes yet — they appear a few minutes after a recorded meeting (needs the notetaker enabled in Settings → Video).</p>
+						{/if}
+					</div>
+				{/if}
+				{#if openConsent === r.id}
+					<div class="mt-3 rounded-md border bg-muted/40 p-3">
+						{#if consentLoading}
+							<p class="text-xs text-muted-foreground">Loading consent log…</p>
+						{:else if consentRows.length > 0}
+							<p class="mb-2 text-xs font-medium text-muted-foreground">Recording notice — who acknowledged</p>
+							<ul class="divide-y divide-border/60">
+								{#each consentRows as c (c.identity)}
+									<li class="flex items-center justify-between gap-3 py-1.5 text-sm">
+										<span class="truncate">{c.name || 'Guest'}</span>
+										<span class="flex shrink-0 items-center gap-2">
+											<span class="rounded-full px-2 py-0.5 text-xs font-medium {c.decision === 'leave' ? 'bg-destructive/10 text-destructive' : 'bg-green-50 text-green-700'}">{c.decision === 'leave' ? 'Left' : 'Continued'}</span>
+											<span class="text-xs text-muted-foreground">{fmtDate(c.decided_at)}</span>
+										</span>
+									</li>
+								{/each}
+							</ul>
+						{:else}
+							<p class="text-xs text-muted-foreground">No consent responses recorded for this meeting. Acknowledgements are captured only while recording is on.</p>
 						{/if}
 					</div>
 				{/if}

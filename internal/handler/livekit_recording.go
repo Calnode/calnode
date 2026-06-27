@@ -243,6 +243,51 @@ func (h *Handler) ListRecordings(w http.ResponseWriter, r *http.Request) {
 	h.writeJSON(w, http.StatusOK, map[string]any{"recordings": out})
 }
 
+// ListRecordingConsent handles GET /v1/recordings/{id}/consent (admin) — the recording-notice
+// acknowledgements (continue/leave) captured for that recording's room. Read-only audit view.
+func (h *Handler) ListRecordingConsent(w http.ResponseWriter, r *http.Request) {
+	user, ok := userFromContext(r.Context())
+	if !ok || !user.IsAdmin {
+		h.writeError(w, http.StatusForbidden, "admin access required")
+		return
+	}
+	var room string
+	switch err := h.db.QueryRowContext(r.Context(),
+		`SELECT room FROM recordings WHERE id = ?`, r.PathValue("id")).Scan(&room); err {
+	case nil:
+	case sql.ErrNoRows:
+		h.writeError(w, http.StatusNotFound, "recording not found")
+		return
+	default:
+		h.writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	rows, err := h.db.QueryContext(r.Context(), `
+		SELECT participant_identity, name, decision, decided_at
+		FROM meeting_consents WHERE room = ? ORDER BY decided_at`, room)
+	if err != nil {
+		h.logger.ErrorContext(r.Context(), "recordings: consent list", "error", err)
+		h.writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	defer rows.Close()
+	type consent struct {
+		Identity  string `json:"identity"`
+		Name      string `json:"name"`
+		Decision  string `json:"decision"`
+		DecidedAt string `json:"decided_at"`
+	}
+	out := []consent{}
+	for rows.Next() {
+		var c consent
+		if err := rows.Scan(&c.Identity, &c.Name, &c.Decision, &c.DecidedAt); err != nil {
+			continue
+		}
+		out = append(out, c)
+	}
+	h.writeJSON(w, http.StatusOK, map[string]any{"consents": out})
+}
+
 // DownloadRecording handles GET /v1/recordings/{id}/download (admin) — redirects to a short-lived
 // presigned URL for the object in the bucket.
 func (h *Handler) DownloadRecording(w http.ResponseWriter, r *http.Request) {
