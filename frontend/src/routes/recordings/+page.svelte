@@ -157,7 +157,7 @@
 <div class="mb-8 flex items-start justify-between gap-4">
 	<div>
 		<h1 class="text-2xl font-semibold tracking-tight">Recordings</h1>
-		<p class="mt-1 text-sm text-muted-foreground">Meeting recordings captured from Calnode video calls. Files live in your storage bucket; links below are short-lived.</p>
+		<p class="mt-1 text-sm text-muted-foreground">Meeting recordings captured from Calnode video calls. Files live in your storage bucket; links below are short-lived. Download filenames use the meeting's date in UTC.</p>
 	</div>
 	{#if $currentUser?.is_admin && recordings.length > 0}
 		<Button variant="outline" size="sm" class="shrink-0" disabled={deleting} onclick={askDeleteAll}>
