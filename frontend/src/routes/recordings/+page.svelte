@@ -71,9 +71,8 @@
 	let notesContent = $state('');
 	let notesLoading = $state(false);
 
-	async function viewNotes(r: Recording) {
-		if (openNotes === r.id) { openNotes = null; return; }
-		openNotes = r.id; openConsent = null; notesContent = ''; notesLoading = true;
+	async function loadNotes(r: Recording) {
+		notesContent = ''; notesLoading = true;
 		try {
 			const res = await api.get<{ exists: boolean; content?: string }>(`/v1/bookings/${r.booking_id}/notes`);
 			notesContent = res.exists ? (res.content ?? '') : '';
@@ -82,6 +81,12 @@
 		} finally {
 			notesLoading = false;
 		}
+	}
+
+	async function viewNotes(r: Recording) {
+		if (openNotes === r.id) { openNotes = null; return; }
+		openNotes = r.id; openConsent = null;
+		await loadNotes(r);
 	}
 
 	type Consent = { identity: string; name: string; decision: string; decided_at: string };
@@ -218,12 +223,19 @@
 				</div>
 				{#if openNotes === r.id}
 					<div class="mt-3 rounded-md border bg-muted/40 p-3">
+						<div class="mb-2 flex items-center justify-between gap-2">
+							<p class="text-xs font-medium text-muted-foreground">Notes</p>
+							<Button variant="ghost" size="sm" class="h-7 gap-1.5 px-2 text-xs" disabled={notesLoading} onclick={() => loadNotes(r)}>
+								<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class={notesLoading ? 'animate-spin' : ''}><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg>
+								{notesLoading ? 'Checking…' : 'Refresh'}
+							</Button>
+						</div>
 						{#if notesLoading}
 							<p class="text-xs text-muted-foreground">Loading notes…</p>
 						{:else if notesContent}
 							<div class="whitespace-pre-wrap text-sm leading-relaxed">{notesContent}</div>
 						{:else}
-							<p class="text-xs text-muted-foreground">No notes yet — they appear a few minutes after a recorded meeting (needs the notetaker enabled in Settings → Video).</p>
+							<p class="text-xs text-muted-foreground">No notes yet — they appear a few minutes after a recorded meeting (needs the notetaker enabled in Settings → Video). Use Refresh to check again.</p>
 						{/if}
 					</div>
 				{/if}
