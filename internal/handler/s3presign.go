@@ -20,6 +20,18 @@ func presignS3Get(s3 livekit.S3Config, key string, expires time.Duration, now ti
 	return presignS3("GET", s3, key, expires, now)
 }
 
+// presignS3GetAttachment is presignS3Get that forces a download filename via
+// response-content-disposition (honored by S3, R2, B2, MinIO). filename must be pre-sanitized;
+// the stored object key is unchanged. Empty filename → behaves like presignS3Get.
+func presignS3GetAttachment(s3 livekit.S3Config, key, filename string, expires time.Duration, now time.Time) string {
+	if strings.TrimSpace(filename) == "" {
+		return presignS3("GET", s3, key, expires, now)
+	}
+	return presignS3WithParams("GET", s3, key, expires, now, map[string]string{
+		"response-content-disposition": `attachment; filename="` + filename + `"`,
+	})
+}
+
 // deleteS3Object permanently deletes one object from the bucket via a presigned SigV4 DELETE.
 // A 404/NoSuchKey counts as success (already gone). Only ever called with a specific recording
 // object_key — never a prefix — so it cannot touch the Litestream DB backups in the same bucket.
@@ -49,6 +61,12 @@ func deleteS3Object(s3 livekit.S3Config, key string) error {
 // `expires`. Path-style addressing (host/bucket/key) works for AWS S3 and S3-compatible stores
 // (Cloudflare R2, Backblaze B2, MinIO, Wasabi, …) alike. No S3 SDK; just the standard signing.
 func presignS3(method string, s3 livekit.S3Config, key string, expires time.Duration, now time.Time) string {
+	return presignS3WithParams(method, s3, key, expires, now, nil)
+}
+
+// presignS3WithParams is presignS3 with extra response-override query params (e.g.
+// response-content-disposition) folded into the signed canonical query.
+func presignS3WithParams(method string, s3 livekit.S3Config, key string, expires time.Duration, now time.Time, extra map[string]string) string {
 	scheme, host := s3SchemeHost(s3)
 	region := s3.Region
 	if region == "" {
@@ -67,6 +85,9 @@ func presignS3(method string, s3 livekit.S3Config, key string, expires time.Dura
 		"X-Amz-Date":          amzDate,
 		"X-Amz-Expires":       strconv.Itoa(int(expires.Seconds())),
 		"X-Amz-SignedHeaders": "host",
+	}
+	for k, v := range extra {
+		params[k] = v
 	}
 	canonQuery := s3CanonicalQuery(params)
 

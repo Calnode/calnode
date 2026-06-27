@@ -213,8 +213,10 @@ func (h *Handler) ListRecordings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rows, err := h.db.QueryContext(r.Context(), `
-		SELECT id, COALESCE(booking_id,''), room, status, duration_s, COALESCE(object_key,''), created_at
-		FROM recordings ORDER BY created_at DESC LIMIT 200`)
+		SELECT r.id, COALESCE(r.booking_id,''), r.room, r.status, r.duration_s, COALESCE(r.object_key,''), r.created_at,
+		       COALESCE((SELECT name FROM booking_attendees
+		                 WHERE booking_id = r.booking_id AND is_organizer = 1 LIMIT 1), '')
+		FROM recordings r ORDER BY r.created_at DESC LIMIT 200`)
 	if err != nil {
 		h.logger.ErrorContext(r.Context(), "recordings: list", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal error")
@@ -222,19 +224,20 @@ func (h *Handler) ListRecordings(w http.ResponseWriter, r *http.Request) {
 	}
 	defer rows.Close()
 	type rec struct {
-		ID        string `json:"id"`
-		BookingID string `json:"booking_id"`
-		Room      string `json:"room"`
-		Status    string `json:"status"`
-		DurationS int    `json:"duration_s"`
-		HasFile   bool   `json:"has_file"`
-		CreatedAt string `json:"created_at"`
+		ID         string `json:"id"`
+		BookingID  string `json:"booking_id"`
+		Room       string `json:"room"`
+		Status     string `json:"status"`
+		DurationS  int    `json:"duration_s"`
+		HasFile    bool   `json:"has_file"`
+		CreatedAt  string `json:"created_at"`
+		BookerName string `json:"booker_name"`
 	}
 	out := []rec{}
 	for rows.Next() {
 		var x rec
 		var key string
-		if err := rows.Scan(&x.ID, &x.BookingID, &x.Room, &x.Status, &x.DurationS, &key, &x.CreatedAt); err != nil {
+		if err := rows.Scan(&x.ID, &x.BookingID, &x.Room, &x.Status, &x.DurationS, &key, &x.CreatedAt, &x.BookerName); err != nil {
 			continue
 		}
 		x.HasFile = key != ""
@@ -296,9 +299,10 @@ func (h *Handler) DownloadRecording(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusForbidden, "admin access required")
 		return
 	}
-	var key string
+	var key, bookingID, createdAt string
 	switch err := h.db.QueryRowContext(r.Context(),
-		`SELECT COALESCE(object_key,'') FROM recordings WHERE id = ?`, r.PathValue("id")).Scan(&key); err {
+		`SELECT COALESCE(object_key,''), COALESCE(booking_id,''), created_at FROM recordings WHERE id = ?`,
+		r.PathValue("id")).Scan(&key, &bookingID, &createdAt); err {
 	case nil:
 	case sql.ErrNoRows:
 		h.writeError(w, http.StatusNotFound, "recording not found")
@@ -316,7 +320,60 @@ func (h *Handler) DownloadRecording(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusFailedDependency, "recording storage is not configured")
 		return
 	}
-	http.Redirect(w, r, presignS3Get(s3, key, 15*time.Minute, timeNow()), http.StatusFound)
+	// Friendly download name: "<Booker>-<date>.mp4" via response-content-disposition (the stored
+	// object key is left untouched). The booker is the organizer attendee.
+	var booker string
+	if bookingID != "" {
+		_ = h.db.QueryRowContext(r.Context(),
+			`SELECT name FROM booking_attendees WHERE booking_id = ? AND is_organizer = 1 LIMIT 1`,
+			bookingID).Scan(&booker)
+	}
+	dl := presignS3GetAttachment(s3, key, recordingFilename(booker, createdAt), 15*time.Minute, timeNow())
+	http.Redirect(w, r, dl, http.StatusFound)
+}
+
+// recordingFilename builds a friendly download name "<Booker>-<YYYY-MM-DD-HHMM>.mp4" (UTC) from the
+// booker's name and the recording's created_at. Falls back to "recording" when the name is unknown.
+func recordingFilename(booker, createdAtISO string) string {
+	name := sanitizeFilenamePart(booker)
+	if name == "" {
+		name = "recording"
+	}
+	stamp := ""
+	for _, layout := range []string{time.RFC3339Nano, time.RFC3339, "2006-01-02T15:04:05.999Z", "2006-01-02 15:04:05"} {
+		if t, err := time.Parse(layout, createdAtISO); err == nil {
+			stamp = t.UTC().Format("2006-01-02-1504")
+			break
+		}
+	}
+	if stamp == "" {
+		return name + ".mp4"
+	}
+	return name + "-" + stamp + ".mp4"
+}
+
+// sanitizeFilenamePart reduces an arbitrary name to ASCII letters/digits with single dashes for
+// runs of spaces/dashes/underscores — safe in a Content-Disposition filename. Capped at 60 chars.
+func sanitizeFilenamePart(s string) string {
+	var b strings.Builder
+	prevDash := false
+	for _, r := range strings.TrimSpace(s) {
+		switch {
+		case (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9'):
+			b.WriteRune(r)
+			prevDash = false
+		case r == ' ' || r == '-' || r == '_':
+			if !prevDash && b.Len() > 0 {
+				b.WriteByte('-')
+				prevDash = true
+			}
+		}
+	}
+	out := strings.Trim(b.String(), "-")
+	if len(out) > 60 {
+		out = strings.Trim(out[:60], "-")
+	}
+	return out
 }
 
 // deleteRecordingArtifacts removes a recording's file from the bucket (strict — if the file

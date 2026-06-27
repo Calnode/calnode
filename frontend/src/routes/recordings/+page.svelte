@@ -4,6 +4,7 @@
 	import { currentUser } from '$lib/stores';
 	import { Button, buttonVariants } from '$lib/components/ui/button';
 	import { ConfirmDialog } from '$lib/components/ui/confirm-dialog';
+	import { Input } from '$lib/components/ui/input';
 	import * as Tooltip from '$lib/components/ui/tooltip';
 	import { toast } from 'svelte-sonner';
 
@@ -15,10 +16,26 @@
 		duration_s: number;
 		has_file: boolean;
 		created_at: string;
+		booker_name: string;
 	};
 
 	let loading = $state(true);
 	let recordings = $state<Recording[]>([]);
+	let query = $state('');
+
+	const filtered = $derived(
+		query.trim()
+			? recordings.filter((r) => {
+					const q = query.toLowerCase();
+					return (
+						(r.booker_name || '').toLowerCase().includes(q) ||
+						r.room.toLowerCase().includes(q) ||
+						r.booking_id.toLowerCase().includes(q) ||
+						fmtDate(r.created_at).toLowerCase().includes(q)
+					);
+				})
+			: recordings
+	);
 
 	onMount(async () => {
 		try {
@@ -159,12 +176,20 @@
 		<p class="mt-1 text-sm text-muted-foreground">When a host records a video meeting, it'll appear here.</p>
 	</div>
 {:else}
+	<div class="mb-4">
+		<Input type="search" placeholder="Search by booker, room, or date…" bind:value={query} class="max-w-sm" />
+	</div>
+	{#if filtered.length === 0}
+		<div class="rounded-lg border bg-card p-8 text-center">
+			<p class="text-sm text-muted-foreground">No recordings match “{query}”.</p>
+		</div>
+	{:else}
 	<div class="divide-y rounded-lg border bg-card">
-		{#each recordings as r (r.id)}
+		{#each filtered as r (r.id)}
 			<div class="p-4">
 				<div class="flex items-center justify-between gap-4">
 					<div class="min-w-0">
-						<p class="truncate font-medium">{r.booking_id ? `Booking ${r.booking_id.slice(0, 8)}` : r.room}</p>
+						<p class="truncate font-medium">{r.booker_name || r.room}</p>
 						<p class="mt-0.5 text-xs text-muted-foreground">{fmtDate(r.created_at)} · {fmtDuration(r.duration_s)}</p>
 					</div>
 					<div class="flex shrink-0 items-center gap-3">
@@ -227,6 +252,7 @@
 			</div>
 		{/each}
 	</div>
+	{/if}
 {/if}
 
 <ConfirmDialog
