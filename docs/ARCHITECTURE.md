@@ -167,8 +167,9 @@ the platform/recovery secret doesn't expose secrets.
   `auth_oauth.go` (`newOAuthState`/`verifyOAuthState`/`finishOAuthLogin`), map a user
   **by email**, and **cannot create users** (unknown email → `no_account`). Microsoft
   needs its own redirect URI registered in Azure (`/v1/auth/microsoft/callback`),
-  distinct from the calendar one. (Magic-link/OTP is a planned alternative; the
-  shipped fallback is password auth.) The actual user-creation path for non-first
+  distinct from the calendar one. (Magic-link login is also shipped —
+  `POST /v1/auth/magic-link/request` + `GET …/verify`, `magic_link.go`, migration
+  00040 — alongside password auth.) The actual user-creation path for non-first
   users is **invites** (`invite_tokens`), not OAuth self-registration.
 - **CSRF:** cookie sessions are `SameSite=Lax` (blocks the classic cross-site write),
   plus a `SameOriginCheck` middleware (`internal/server`) that rejects a state-changing

@@ -148,7 +148,8 @@ domains, Resend email, Google & Microsoft OAuth, Litestream backups, troubleshoo
 - **Google Calendar & Microsoft 365 / Outlook** — native free/busy conflict checks
   behind one provider abstraction; auto **Google Meet / Teams** links, minted only
   when the host's connected calendar matches the platform (else a manual link is used)
-- **Sign in with Google or Microsoft** (OAuth) or email + password
+- **Sign in with Google or Microsoft** (OAuth), email + password, or **passwordless magic-link**
+- **CalDAV calendars** — iCloud / Fastmail / Nextcloud via app-password (free/busy + event write-back)
 - Public booking + self-serve **reschedule/cancel** via signed manage links
 - HTML branded email (logo, business name, size/opacity) with add-to-calendar links
 - REST API (88 endpoints) + API keys; **HMAC webhooks** with per-webhook payloads + delivery log
@@ -164,7 +165,7 @@ domains, Resend email, Google & Microsoft OAuth, Litestream backups, troubleshoo
 - Optional analytics: `<head>` code injection + `window.dataLayer` events (GTM/GA4)
 
 **On the roadmap**
-- Apple / CalDAV calendars · magic-link auth · OpenAPI spec · multi-domain (one instance, many hostnames)
+- OpenAPI spec · `/metrics` · multi-domain (one instance, many hostnames)
 
 ---
 
