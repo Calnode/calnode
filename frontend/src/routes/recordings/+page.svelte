@@ -330,7 +330,7 @@
 										<span class="truncate">{c.name || 'Guest'}</span>
 										<span class="flex shrink-0 items-center gap-2">
 											<span class="rounded-full px-2 py-0.5 text-xs font-medium {c.decision === 'leave' ? 'bg-destructive/10 text-destructive' : 'bg-green-50 text-green-700'}">{c.decision === 'leave' ? 'Left' : 'Continued'}</span>
-											<span class="text-xs text-muted-foreground">{fmtDate(c.decided_at)}</span>
+											<span class="text-xs text-muted-foreground">{fmtDay(c.decided_at)} · {fmtTime(c.decided_at)}</span>
 										</span>
 									</li>
 								{/each}
