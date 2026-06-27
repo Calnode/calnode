@@ -104,18 +104,24 @@
 		await loadNotes(r);
 	}
 
-	// Re-run just the LLM summary over the existing Deepgram transcript (no re-recording).
+	// Re-run just the LLM summary over the existing Deepgram transcript (no re-recording). The
+	// endpoint runs it inline and returns the notes, so they appear immediately — no refetch.
 	async function regenNotes(r: Recording) {
 		notesLoading = true;
 		try {
-			await api.post(`/v1/bookings/${r.booking_id}/notes/regenerate`, {});
-			toast.success('Regenerating notes — checking back shortly…');
+			const res = await api.post<{ exists: boolean; content?: string; status?: string }>(
+				`/v1/bookings/${r.booking_id}/notes/regenerate`,
+				{}
+			);
+			notesContent = res.content ?? '';
+			notesStatus = res.status ?? '';
+			if (notesContent) toast.success('Notes regenerated');
+			else toast.info('The summary came back empty — see the transcript.');
 		} catch (e: any) {
 			toast.error(e.message || 'Could not regenerate notes');
+		} finally {
 			notesLoading = false;
-			return;
 		}
-		setTimeout(() => loadNotes(r), 5000); // give the worker a moment, then refetch
 	}
 
 	// Raw Deepgram transcript (separate from the LLM notes).

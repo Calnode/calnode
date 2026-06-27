@@ -143,8 +143,8 @@ func (h *Handler) JobNotetakerTranscribe(ctx context.Context, payload string) er
 	return nil
 }
 
-// JobNotetakerSummarize (worker job) summarises a booking's transcript(s) into Markdown notes via
-// the configured BYO-LLM. One notes doc per booking, regenerable.
+// JobNotetakerSummarize (worker job) summarises a booking's transcript(s) into notes. Thin wrapper
+// over summarizeBooking, which is shared with the manual regenerate endpoint.
 func (h *Handler) JobNotetakerSummarize(ctx context.Context, payload string) error {
 	var p struct {
 		BookingID string `json:"booking_id"`
@@ -152,16 +152,25 @@ func (h *Handler) JobNotetakerSummarize(ctx context.Context, payload string) err
 	if err := json.Unmarshal([]byte(payload), &p); err != nil {
 		return err
 	}
+	_, err := h.summarizeBooking(ctx, p.BookingID)
+	return err
+}
+
+// summarizeBooking concatenates the booking's transcript(s), runs the configured BYO-LLM to produce
+// Markdown notes, and persists them (status 'complete', or 'empty' when the model returns nothing
+// usable). Returns the generated notes ("" if empty/none) so the regenerate endpoint can hand them
+// straight back to the UI without a refetch. One notes doc per booking, regenerable.
+func (h *Handler) summarizeBooking(ctx context.Context, bookingID string) (string, error) {
 	client := h.getLLM()
 	if client == nil {
-		return nil
+		return "", nil
 	}
 	// Concatenate the booking's transcripts (usually one). Materialize before any further query —
 	// the DB pool is MaxOpenConns(1), so don't hold a cursor open.
 	rows, err := h.db.QueryContext(ctx,
-		`SELECT text FROM transcripts WHERE booking_id = ? AND status = 'complete' ORDER BY created_at`, p.BookingID)
+		`SELECT text FROM transcripts WHERE booking_id = ? AND status = 'complete' ORDER BY created_at`, bookingID)
 	if err != nil {
-		return err
+		return "", err
 	}
 	var sb strings.Builder
 	for rows.Next() {
@@ -174,7 +183,7 @@ func (h *Handler) JobNotetakerSummarize(ctx context.Context, payload string) err
 	rows.Close()
 	transcript := strings.TrimSpace(sb.String())
 	if transcript == "" {
-		return nil
+		return "", nil
 	}
 	res, err := client.Chat(ctx, llm.ChatRequest{
 		Messages: []llm.Message{
@@ -186,30 +195,30 @@ func (h *Handler) JobNotetakerSummarize(ctx context.Context, payload string) err
 		MaxTokens: 8000,
 	})
 	if err != nil {
-		return err // transient — retry
+		return "", err // transient — retry
 	}
 	content := strings.TrimSpace(stripReasoning(res.Message.Content))
 	if content == "" {
 		// Don't fail silently: the transcript was fine but the model returned nothing usable
 		// (commonly: all reasoning, no final answer / truncated). Surfaced via the warn log and the
-		// notes status below so the UI can offer a regenerate.
+		// notes status so the UI can offer a regenerate.
 		h.logger.WarnContext(ctx, "notetaker: summary empty after stripping reasoning",
-			"booking_id", p.BookingID, "raw_chars", len(res.Message.Content))
+			"booking_id", bookingID, "raw_chars", len(res.Message.Content))
 		_, _ = h.db.ExecContext(ctx, `
 			INSERT INTO notes (id, booking_id, content, status)
 			VALUES (?, ?, '', 'empty')
 			ON CONFLICT(booking_id) DO UPDATE SET status = 'empty', updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')`,
-			uid.New(), p.BookingID)
-		return nil
+			uid.New(), bookingID)
+		return "", nil
 	}
 	if _, err := h.db.ExecContext(ctx, `
 		INSERT INTO notes (id, booking_id, content, status)
 		VALUES (?, ?, ?, 'complete')
 		ON CONFLICT(booking_id) DO UPDATE SET
 			content = excluded.content, status = 'complete', updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')`,
-		uid.New(), p.BookingID, content); err != nil {
-		return err
+		uid.New(), bookingID, content); err != nil {
+		return "", err
 	}
-	h.logger.InfoContext(ctx, "notetaker: notes generated", "booking_id", p.BookingID, "chars", len(content))
-	return nil
+	h.logger.InfoContext(ctx, "notetaker: notes generated", "booking_id", bookingID, "chars", len(content))
+	return content, nil
 }

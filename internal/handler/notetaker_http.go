@@ -1,10 +1,12 @@
 package handler
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/calnode/calnode/internal/secret"
 )
@@ -120,12 +122,26 @@ func (h *Handler) RegenerateBookingNotes(w http.ResponseWriter, r *http.Request)
 		h.writeError(w, http.StatusFailedDependency, "no LLM configured")
 		return
 	}
-	if err := h.enqueueJob(r.Context(), "notetaker.summarize", map[string]string{"booking_id": bookingID}); err != nil {
-		h.logger.ErrorContext(r.Context(), "notetaker: enqueue summarize (regenerate)", "error", err, "booking_id", bookingID)
-		h.writeError(w, http.StatusInternalServerError, "internal error")
+	// Run the summary inline (not via the worker job) so the freshly generated notes go straight
+	// back in the response — the panel fills in immediately, no refetch. Bounded so a slow model
+	// can't hold the request open indefinitely.
+	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
+	defer cancel()
+	content, err := h.summarizeBooking(ctx, bookingID)
+	if err != nil {
+		h.logger.ErrorContext(r.Context(), "notetaker: regenerate summary", "error", err, "booking_id", bookingID)
+		h.writeError(w, http.StatusBadGateway, "the summary model could not be reached — try again")
 		return
 	}
-	w.WriteHeader(http.StatusAccepted)
+	status := "complete"
+	if content == "" {
+		status = "empty"
+	}
+	h.writeJSON(w, http.StatusOK, map[string]any{
+		"exists":  content != "",
+		"content": content,
+		"status":  status,
+	})
 }
 
 // GetBookingTranscript handles GET /v1/bookings/{id}/transcript (admin) — the raw transcript.
