@@ -128,7 +128,9 @@ func (h *Handler) JobNotetakerTranscribe(ctx context.Context, payload string) er
 		return err
 	}
 	if bookingID.Valid && bookingID.String != "" {
-		_ = h.enqueueJob(ctx, "notetaker.summarize", map[string]string{"booking_id": bookingID.String})
+		if err := h.enqueueJob(ctx, "notetaker.summarize", map[string]string{"booking_id": bookingID.String}); err != nil {
+			h.logger.ErrorContext(ctx, "notetaker: enqueue summarize", "error", err, "booking_id", bookingID.String)
+		}
 	}
 	h.logger.InfoContext(ctx, "notetaker: transcribed", "recording_id", p.RecordingID, "chars", len(res.Text))
 	return nil

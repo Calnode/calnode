@@ -121,6 +121,7 @@ func (h *Handler) RegenerateBookingNotes(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	if err := h.enqueueJob(r.Context(), "notetaker.summarize", map[string]string{"booking_id": bookingID}); err != nil {
+		h.logger.ErrorContext(r.Context(), "notetaker: enqueue summarize (regenerate)", "error", err, "booking_id", bookingID)
 		h.writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
