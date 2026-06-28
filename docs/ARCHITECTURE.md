@@ -490,7 +490,9 @@ as the desired state:
   (not exponential), `max_attempts` 3. Atomic claim via
   `UPDATE … WHERE status='pending'` + RowsAffected.
 - `internal/webhook`: enqueues `booking.created` / `.cancelled` / `.rescheduled`
-  (there is **no** `booking.reminder` webhook event). Deliveries are signed
+  plus the notetaker events `recording.completed` / `transcript.ready` / `notes.ready`
+  (reference payloads — booking-shaped, keyed by id; consumers fetch the artifact body
+  via REST/MCP). There is **no** `booking.reminder` webhook event. Deliveries are signed
   **HMAC-SHA256**, header `X-Calnode-Signature` (+ `X-Calnode-Event`/`-Delivery`),
   secret stored encrypted. The worker's HTTP client is **SSRF-guarded** (resolves
   DNS, blocks private/loopback/CGNAT/ULA IPs, dials the resolved IP to avoid
@@ -832,8 +834,9 @@ matching section in the same PR. Notable rounds:
   page intentionally excluded. New §20.
 
 - **2026-06-22 — Native MCP server + OAuth "Connect".** A Model Context Protocol
-  server compiled into the binary (official Go SDK) with 8 tools over **stdio**
-  (`calnode mcp`) and **Streamable HTTP** (`/mcp`); tools reuse the REST services via
+  server compiled into the binary (official Go SDK) with 10 tools over **stdio**
+  (`calnode mcp`) and **Streamable HTTP** (`/mcp`) — the 8 booking-lifecycle tools plus
+  `get_meeting_notes`/`get_transcript` (notetaker outputs, host-scoped read-only); tools reuse the REST services via
   extracted shared cores (no parallel code path). Calnode is its own **OAuth 2.1 AS**
   (discovery + DCR + PKCE auth-code/refresh + consent reusing the existing SSO login;
   migration 00033) so agents connect by URL + click Connect; a `cno_` API key still
