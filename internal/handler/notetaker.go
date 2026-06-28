@@ -138,6 +138,9 @@ func (h *Handler) JobNotetakerTranscribe(ctx context.Context, payload string) er
 		if err := h.enqueueJob(ctx, "notetaker.summarize", map[string]string{"booking_id": bookingID.String}); err != nil {
 			h.logger.ErrorContext(ctx, "notetaker: enqueue summarize", "error", err, "booking_id", bookingID.String)
 		}
+		if err := h.webhookSvc.Enqueue(ctx, "transcript.ready", h.bookingWebhookPayload(ctx, bookingID.String)); err != nil {
+			h.logger.ErrorContext(ctx, "enqueue transcript.ready webhook", "error", err, "booking_id", bookingID.String)
+		}
 	}
 	h.logger.InfoContext(ctx, "notetaker: transcribed", "recording_id", p.RecordingID, "chars", len(res.Text))
 	return nil
@@ -220,5 +223,8 @@ func (h *Handler) summarizeBooking(ctx context.Context, bookingID string) (strin
 		return "", err
 	}
 	h.logger.InfoContext(ctx, "notetaker: notes generated", "booking_id", bookingID, "chars", len(content))
+	if err := h.webhookSvc.Enqueue(ctx, "notes.ready", h.bookingWebhookPayload(ctx, bookingID)); err != nil {
+		h.logger.ErrorContext(ctx, "enqueue notes.ready webhook", "error", err, "booking_id", bookingID)
+	}
 	return content, nil
 }

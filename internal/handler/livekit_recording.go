@@ -13,7 +13,22 @@ import (
 
 	"github.com/calnode/calnode/internal/livekit"
 	"github.com/calnode/calnode/internal/uid"
+	"github.com/calnode/calnode/internal/webhook"
 )
+
+// bookingWebhookPayload loads a booking's core fields for an outbound webhook (recording.completed /
+// transcript.ready / notes.ready). The webhook service enriches host/attendee/event details from the
+// same id; the consumer fetches the artifact body via the REST endpoints using the booking id.
+func (h *Handler) bookingWebhookPayload(ctx context.Context, bookingID string) webhook.BookingPayload {
+	p := webhook.BookingPayload{ID: bookingID}
+	_ = h.db.QueryRowContext(ctx, `
+		SELECT COALESCE(et.slug,''), b.host_id, b.start_at, b.end_at, b.status,
+		       COALESCE(b.location_value,''), b.created_at
+		FROM bookings b JOIN event_types et ON et.id = b.event_type_id
+		WHERE b.id = ?`, bookingID).Scan(
+		&p.EventTypeSlug, &p.HostID, &p.StartAt, &p.EndAt, &p.Status, &p.LocationValue, &p.CreatedAt)
+	return p
+}
 
 // recordingStorage derives the recordings S3 destination from the Litestream backup env, so
 // recordings reuse the same bucket (under a recordings/ prefix). ok=false when not configured.
@@ -598,9 +613,15 @@ func (h *Handler) LiveKitWebhook(w http.ResponseWriter, r *http.Request) {
 		h.logger.InfoContext(r.Context(), "livekit: egress finished", "egress_id", info.EgressID, "status", status)
 		// Notetaker: the file is ready in S3 now — transcribe + summarise it (no-op unless enabled).
 		if status == "complete" {
-			var recID string
-			_ = h.db.QueryRowContext(r.Context(), `SELECT id FROM recordings WHERE egress_id = ?`, info.EgressID).Scan(&recID)
+			var recID, bID string
+			_ = h.db.QueryRowContext(r.Context(),
+				`SELECT id, COALESCE(booking_id,'') FROM recordings WHERE egress_id = ?`, info.EgressID).Scan(&recID, &bID)
 			h.maybeStartNotetaker(r.Context(), recID)
+			if bID != "" {
+				if err := h.webhookSvc.Enqueue(r.Context(), "recording.completed", h.bookingWebhookPayload(r.Context(), bID)); err != nil {
+					h.logger.ErrorContext(r.Context(), "enqueue recording.completed webhook", "error", err, "booking_id", bID)
+				}
+			}
 		}
 	}
 	w.WriteHeader(http.StatusOK)

@@ -2,9 +2,11 @@ package handler
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -64,6 +66,16 @@ func (h *Handler) MCPServer() *mcp.Server {
 		Name:        "cancel_booking",
 		Description: "Cancel a booking by id, with an optional reason. Removes the calendar event(s) and notifies attendee and hosts.",
 	}, h.mcpCancelBooking)
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "get_meeting_notes",
+		Description: "Get the AI-generated meeting notes (Markdown) for a booking's built-in video call, produced by the notetaker after a recorded meeting. exists=false if the meeting wasn't recorded or notes aren't ready. NOTE: contains the meeting's spoken content.",
+	}, h.mcpGetMeetingNotes)
+
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "get_transcript",
+		Description: "Get the raw speech-to-text transcript for a booking's built-in video call (speakers labelled Speaker 0, Speaker 1, …). exists=false if the meeting wasn't recorded/transcribed. NOTE: contains the meeting's spoken content.",
+	}, h.mcpGetTranscript)
 
 	return s
 }
@@ -487,4 +499,64 @@ func (h *Handler) mcpCancelBooking(ctx context.Context, _ *mcp.CallToolRequest, 
 	out.EventTypeSlug = h.slugForEventTypeID(ctx, b.EventTypeID)
 	go h.cancelSideEffects(*b)
 	return nil, out, nil
+}
+
+// ── get_meeting_notes ─────────────────────────────────────────────────────────
+
+type getMeetingNotesIn struct {
+	BookingID string `json:"booking_id" jsonschema:"the booking's id (as returned by list_bookings)"`
+}
+
+type meetingNotesOut struct {
+	Exists  bool   `json:"exists"`
+	Content string `json:"content,omitempty"`
+	Status  string `json:"status,omitempty"`
+}
+
+func (h *Handler) mcpGetMeetingNotes(ctx context.Context, _ *mcp.CallToolRequest, in getMeetingNotesIn) (*mcp.CallToolResult, meetingNotesOut, error) {
+	// A member may only read meetings they host; don't reveal others' meeting content.
+	if userID, fullAccess := mcpCallerScope(ctx); !fullAccess && !h.userHostsBooking(ctx, userID, in.BookingID) {
+		return nil, meetingNotesOut{}, fmt.Errorf("booking not found: %s", in.BookingID)
+	}
+	var content, status string
+	switch err := h.db.QueryRowContext(ctx,
+		`SELECT content, status FROM notes WHERE booking_id = ?`, in.BookingID).Scan(&content, &status); err {
+	case nil:
+	case sql.ErrNoRows:
+		return nil, meetingNotesOut{Exists: false}, nil
+	default:
+		return nil, meetingNotesOut{}, fmt.Errorf("get notes: %w", err)
+	}
+	return nil, meetingNotesOut{Exists: content != "", Content: content, Status: status}, nil
+}
+
+// ── get_transcript ────────────────────────────────────────────────────────────
+
+type getTranscriptIn struct {
+	BookingID string `json:"booking_id" jsonschema:"the booking's id (as returned by list_bookings)"`
+}
+
+type transcriptOut struct {
+	Exists bool   `json:"exists"`
+	Text   string `json:"text,omitempty"`
+}
+
+func (h *Handler) mcpGetTranscript(ctx context.Context, _ *mcp.CallToolRequest, in getTranscriptIn) (*mcp.CallToolResult, transcriptOut, error) {
+	if userID, fullAccess := mcpCallerScope(ctx); !fullAccess && !h.userHostsBooking(ctx, userID, in.BookingID) {
+		return nil, transcriptOut{}, fmt.Errorf("booking not found: %s", in.BookingID)
+	}
+	rows, err := h.db.QueryContext(ctx,
+		`SELECT text FROM transcripts WHERE booking_id = ? AND status = 'complete' ORDER BY created_at`, in.BookingID)
+	if err != nil {
+		return nil, transcriptOut{}, fmt.Errorf("get transcript: %w", err)
+	}
+	var parts []string
+	for rows.Next() {
+		var t string
+		if rows.Scan(&t) == nil && t != "" {
+			parts = append(parts, t)
+		}
+	}
+	rows.Close()
+	return nil, transcriptOut{Exists: len(parts) > 0, Text: strings.Join(parts, "\n\n")}, nil
 }

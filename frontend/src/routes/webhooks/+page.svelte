@@ -14,7 +14,14 @@
 	let error = $state('');
 	let showCreate = $state(false);
 
-	const allEvents = ['booking.created', 'booking.cancelled', 'booking.rescheduled'];
+	const allEvents = [
+		'booking.created',
+		'booking.cancelled',
+		'booking.rescheduled',
+		'recording.completed',
+		'transcript.ready',
+		'notes.ready'
+	];
 
 	// Payload field catalog (keys must match the backend's webhook field keys).
 	// `pii` flags personal data so the operator chooses consciously what leaves the system.
