@@ -65,21 +65,24 @@
 	}
 
 	async function addBlock(day: DayState) {
-		const newBlock: DayBlock = { id: '', start_time: '09:00', end_time: '17:00', saving: true, error: '' };
-		day.blocks.push(newBlock);
+		day.blocks.push({ id: '', start_time: '09:00', end_time: '17:00', saving: true, error: '' });
+		// Operate on the element AS STORED in the reactive array (a proxy), not the literal we
+		// pushed — Svelte 5 proxies pushed objects, so mutating the local literal wouldn't update
+		// the UI (the "saving…" stuck-until-refresh bug).
+		const block = day.blocks[day.blocks.length - 1];
 		try {
 			const r = await api.post<AvailabilityRule>('/v1/availability-rules', {
 				day_of_week: day.day_of_week,
 				start_time: '09:00',
 				end_time: '17:00'
 			});
-			newBlock.id = r.id;
+			block.id = r.id;
 		} catch (e: any) {
-			const idx = day.blocks.indexOf(newBlock);
+			const idx = day.blocks.indexOf(block);
 			if (idx !== -1) day.blocks.splice(idx, 1);
 			day.error = e.message;
 		} finally {
-			newBlock.saving = false;
+			block.saving = false;
 		}
 	}
 
