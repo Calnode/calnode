@@ -15,7 +15,10 @@ import (
 	"github.com/calnode/calnode/internal/webhook"
 )
 
-var validWebhookEvents = []string{"booking.created", "booking.cancelled", "booking.rescheduled"}
+var validWebhookEvents = []string{
+	"booking.created", "booking.cancelled", "booking.rescheduled",
+	"recording.completed", "transcript.ready", "notes.ready",
+}
 
 func (h *Handler) CreateWebhook(w http.ResponseWriter, r *http.Request) {
 	user, _ := userFromContext(r.Context())
