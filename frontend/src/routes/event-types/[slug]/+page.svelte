@@ -580,7 +580,21 @@
 		<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
 		Event Types
 	</a>
-	<h1 class="text-2xl font-semibold tracking-tight">{et?.name ?? slug}</h1>
+	<div class="flex items-center gap-1">
+		<h1 class="text-2xl font-semibold tracking-tight">{et?.name ?? slug}</h1>
+		<Tooltip.Provider>
+			<Tooltip.Root>
+				<Tooltip.Trigger
+					class={buttonVariants({ variant: 'ghost', size: 'icon' })}
+					onclick={() => window.open(`/book/${slug}`, '_blank')}
+				>
+					<!-- External link icon (matches the event-types list) -->
+					<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+				</Tooltip.Trigger>
+				<Tooltip.Content>Preview booking page</Tooltip.Content>
+			</Tooltip.Root>
+		</Tooltip.Provider>
+	</div>
 </div>
 
 {#if etLoading}
