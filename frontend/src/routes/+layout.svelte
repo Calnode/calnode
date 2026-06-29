@@ -181,6 +181,17 @@
 
 			<!-- Footer -->
 			<div class="border-t border-sidebar-border p-2">
+				<a
+					href="https://github.com/Calnode/calnode/issues/new"
+					target="_blank"
+					rel="noopener noreferrer"
+					class="flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-sidebar-foreground/45 transition-colors hover:bg-sidebar-accent/60 hover:text-sidebar-foreground/70"
+				>
+					<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="shrink-0">
+						<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+					</svg>
+					Report an issue
+				</a>
 				<button
 					onclick={logout}
 					class="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium text-sidebar-foreground/60 transition-colors hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground"
