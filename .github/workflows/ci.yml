@@ -1,0 +1,53 @@
+name: CI
+
+# Type-checks the SvelteKit admin app (svelte-check) and builds + tests the Go backend on every
+# push to main and on PRs. The Go binary go:embeds frontend/build, so the frontend is built first
+# (otherwise `go build` fails on the missing embed dir). modernc SQLite is pure-Go → no CGO/C
+# toolchain needed.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.32.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install frontend deps
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: svelte-check (frontend types)
+        working-directory: frontend
+        run: pnpm check
+
+      - name: Build frontend (required by the Go embed)
+        working-directory: frontend
+        run: pnpm build
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: go build
+        run: go build ./...
+
+      - name: go test
+        run: go test ./...
