@@ -325,3 +325,27 @@
   .asst-panel { right: 8px; left: 8px; bottom: 8px; width: auto; max-width: none; height: 72vh; }
   .asst-fab-btn { right: 12px; bottom: 12px; }
 }
+
+/* ── Cookie consent banner ─────────────────────────── */
+.cookie-banner {
+  position: fixed; z-index: 1000; left: 1rem; right: 1rem; bottom: 1rem;
+  max-width: 30rem; margin: 0 auto;
+  display: flex; flex-direction: column; gap: .75rem;
+  padding: 1rem 1.25rem;
+  border: 1px solid #e5e7eb; border-radius: .75rem; background: #fff;
+  box-shadow: 0 10px 30px rgba(0,0,0,.12);
+}
+.cookie-text { margin: 0; font-size: .8125rem; line-height: 1.5; color: #4b5563; }
+.cookie-actions { display: flex; justify-content: flex-end; gap: .5rem; }
+.cookie-btn {
+  cursor: pointer; padding: .4rem .9rem; font-size: .8125rem; font-weight: 500;
+  border: 1px solid #d1d5db; border-radius: .5rem; background: #fff; color: #374151;
+}
+.cookie-btn:hover { background: #f9fafb; }
+.cookie-btn-primary { background: #111827; border-color: #111827; color: #fff; }
+.cookie-btn-primary:hover { background: #1f2937; }
+.cookie-link {
+  cursor: pointer; border: none; background: none; padding: 0; margin-left: .75rem;
+  font: inherit; font-size: inherit; color: inherit; opacity: .65; text-decoration: underline;
+}
+.cookie-link:hover { opacity: 1; }
