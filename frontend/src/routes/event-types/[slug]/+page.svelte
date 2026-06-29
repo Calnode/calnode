@@ -46,6 +46,14 @@
 
 	// ── Event type ───────────────────────────────────────────────────────────────
 	let et = $state<EventType | null>(null);
+	const TABS = [
+		{ id: 'general', label: 'General' },
+		{ id: 'hosts', label: 'Hosts' },
+		{ id: 'notifications', label: 'Notifications' },
+		{ id: 'questions', label: 'Questions' },
+		{ id: 'embed', label: 'Embed' }
+	] as const;
+	let activeTab = $state<(typeof TABS)[number]['id']>('general');
 	let etLoading = $state(true);
 	let etError = $state('');
 	let etSaving = $state(false);
@@ -606,6 +614,19 @@
 
 {:else}
 
+<div class="mb-6 flex gap-1 overflow-x-auto border-b">
+	{#each TABS as t}
+		<button
+			type="button"
+			onclick={() => (activeTab = t.id)}
+			class="-mb-px shrink-0 border-b-2 px-3 py-2 text-sm font-medium transition-colors {activeTab === t.id ? 'border-foreground text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'}"
+		>
+			{t.label}
+		</button>
+	{/each}
+</div>
+
+{#if activeTab === 'general'}
 <!-- General Settings -->
 <div class="mb-8">
 	<h2 class="mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">General</h2>
@@ -752,9 +773,16 @@
 			</div>
 		</div>
 
-		<!-- Hosts -->
-		<div class="mt-6 border-t pt-5">
-			<p class="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Hosts</p>
+	</div>
+</div>
+{/if}
+
+{#if activeTab === 'hosts'}
+<div class="mb-8">
+	<h2 class="mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">Hosts</h2>
+	<div class="rounded-lg border bg-card p-6">
+		<div>
+			<p class="-mt-1 mb-4 text-sm text-muted-foreground">Who can host this event, and how meetings are staffed.</p>
 
 			<!-- Q1 — who can host -->
 			<div class="space-y-1.5">
@@ -898,13 +926,11 @@
 				{/if}
 			{/if}
 		</div>
-
-		<Button onclick={saveET} disabled={etSaving} class="mt-6">
-			{etSaving ? 'Saving…' : 'Save changes'}
-		</Button>
 	</div>
 </div>
+{/if}
 
+{#if activeTab === 'notifications'}
 <!-- Notifications -->
 <div class="mb-8">
 	<h2 class="mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">Notifications</h2>
@@ -1056,12 +1082,11 @@
 			</div>
 		</div>
 
-		<Button onclick={saveET} disabled={etSaving}>
-			{etSaving ? 'Saving…' : 'Save changes'}
-		</Button>
 	</div>
 </div>
+{/if}
 
+{#if activeTab === 'questions'}
 <!-- Intake Questions -->
 <div>
 	<h2 class="mb-1 text-sm font-semibold uppercase tracking-wider text-muted-foreground">Intake Questions</h2>
@@ -1213,7 +1238,9 @@
 		</div>
 	</div>
 </div>
+{/if}
 
+{#if activeTab === 'embed'}
 <!-- Embed -->
 <div class="mt-8">
 	<h2 class="mb-1 text-sm font-semibold uppercase tracking-wider text-muted-foreground">Embed</h2>
@@ -1236,5 +1263,14 @@
 		<p class="text-xs text-muted-foreground">The widget calls this instance's public booking API. To restrict which sites may embed it, set <code>EMBED_ALLOWED_ORIGINS</code>.</p>
 	</div>
 </div>
+{/if}
+
+{#if activeTab === 'general' || activeTab === 'hosts' || activeTab === 'notifications'}
+	<div class="sticky bottom-0 mt-4 flex justify-end border-t bg-background/90 py-3 backdrop-blur">
+		<Button onclick={saveET} disabled={etSaving}>
+			{etSaving ? 'Saving…' : 'Save changes'}
+		</Button>
+	</div>
+{/if}
 
 {/if}
