@@ -7,11 +7,17 @@
 	import { currentUser } from '$lib/stores';
 	import { prefs, prefsFromUser } from '$lib/prefs';
 	import { Toaster } from '$lib/components/ui/sonner';
+	import { buttonVariants } from '$lib/components/ui/button';
+	import * as Dialog from '$lib/components/ui/dialog';
 	import type { Snippet } from 'svelte';
 
 	let { children }: { children: Snippet } = $props();
 
 	let checking = $state(true);
+	let reportOpen = $state(false);
+
+	const ISSUES_URL = 'https://github.com/Calnode/calnode/issues';
+	const NEW_ISSUE_URL = 'https://github.com/Calnode/calnode/issues/new/choose';
 
 	const isLogin = $derived($page.route.id === '/login');
 	const isPublicRoute = $derived(
@@ -181,17 +187,15 @@
 
 			<!-- Footer -->
 			<div class="border-t border-sidebar-border p-2">
-				<a
-					href="https://github.com/Calnode/calnode/issues/new"
-					target="_blank"
-					rel="noopener noreferrer"
+				<button
+					onclick={() => (reportOpen = true)}
 					class="flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-sidebar-foreground/45 transition-colors hover:bg-sidebar-accent/60 hover:text-sidebar-foreground/70"
 				>
 					<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="shrink-0">
 						<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
 					</svg>
 					Report an issue
-				</a>
+				</button>
 				<button
 					onclick={logout}
 					class="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium text-sidebar-foreground/60 transition-colors hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground"
@@ -213,4 +217,37 @@
 			</div>
 		</main>
 	</div>
+
+	<Dialog.Root bind:open={reportOpen}>
+		<Dialog.Content class="max-w-md">
+			<Dialog.Header>
+				<Dialog.Title>Report an issue</Dialog.Title>
+				<Dialog.Description>
+					Please <strong>search the existing issues first</strong> — it may already be reported or being
+					worked on. The tracker is for <strong>reproducible bugs</strong> in Calnode; for setup help or
+					“how do I…” questions, please use Discussions instead.
+				</Dialog.Description>
+			</Dialog.Header>
+			<Dialog.Footer class="gap-2 sm:justify-between">
+				<a
+					href={ISSUES_URL}
+					target="_blank"
+					rel="noopener noreferrer"
+					onclick={() => (reportOpen = false)}
+					class={buttonVariants({ variant: 'outline' })}
+				>
+					Search existing issues
+				</a>
+				<a
+					href={NEW_ISSUE_URL}
+					target="_blank"
+					rel="noopener noreferrer"
+					onclick={() => (reportOpen = false)}
+					class={buttonVariants()}
+				>
+					Report a bug
+				</a>
+			</Dialog.Footer>
+		</Dialog.Content>
+	</Dialog.Root>
 {/if}

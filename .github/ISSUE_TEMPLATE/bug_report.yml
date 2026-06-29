@@ -1,0 +1,60 @@
+name: 🐞 Bug report
+description: Report a reproducible bug in Calnode (not a setup question or feature request).
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Before you start, please [search existing issues](https://github.com/Calnode/calnode/issues?q=is%3Aissue) —** it may already be reported or fixed.
+
+        This tracker is for **reproducible bugs in Calnode**. For setup help, deployment questions, or "how do I…", please use [Discussions](https://github.com/Calnode/calnode/discussions) instead — those won't be actioned here.
+  - type: checkboxes
+    id: prechecks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I've searched existing issues and this isn't a duplicate.
+          required: true
+        - label: This is a reproducible bug in Calnode — not a configuration/setup question or a feature request.
+          required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What's the bug?
+      description: What happened, and what did you expect to happen instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Exact steps so a maintainer can reproduce it.
+      placeholder: |
+        1. Go to …
+        2. Click …
+        3. Observe …
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Calnode version / commit
+      description: Shown at /version, or the commit you deployed.
+    validations:
+      required: true
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: How are you running Calnode?
+      options:
+        - Self-hosted — Docker
+        - Self-hosted — binary
+        - Railway / other PaaS
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: Logs, screenshots, or anything else
+      description: Optional, but it speeds up a fix.

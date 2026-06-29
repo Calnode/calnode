@@ -1,0 +1,10 @@
+# No blank issues — everything goes through the structured Bug report form (or the links below).
+# Keeps the tracker to real, reproducible bugs instead of setup questions and "how do I…" support.
+blank_issues_enabled: false
+contact_links:
+  - name: 📖 Documentation & setup guide
+    url: https://github.com/Calnode/calnode#readme
+    about: Installation, configuration and how-to. Most questions are answered here — please check first.
+  - name: 💬 Questions, setup help & ideas
+    url: https://github.com/Calnode/calnode/discussions
+    about: For "how do I…", deployment help, or feature ideas, use Discussions. The issue tracker is for confirmed bugs only.
