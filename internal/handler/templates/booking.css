@@ -327,6 +327,8 @@
 }
 
 /* ── Cookie consent banner ─────────────────────────── */
+/* [hidden] must beat the display:flex below, or the banner never dismisses. */
+.cookie-banner[hidden] { display: none; }
 .cookie-banner {
   position: fixed; z-index: 1000; left: 1rem; right: 1rem; bottom: 1rem;
   max-width: 30rem; margin: 0 auto;
