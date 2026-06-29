@@ -10,7 +10,14 @@
 	import { saveOnCmdS } from '$lib/save-shortcut';
 	import type CropperType from 'cropperjs';
 
-	type Branding = { business_name: string; logo_url: string; logo_height: number; logo_opacity: number };
+	type Branding = {
+		business_name: string;
+		logo_url: string;
+		logo_height: number;
+		logo_opacity: number;
+		privacy_url: string;
+		terms_url: string;
+	};
 
 	let loading = $state(true);
 	let saving = $state(false);
@@ -19,6 +26,8 @@
 	let logoUrl = $state('');
 	let logoHeight = $state(28);
 	let logoOpacity = $state(100);
+	let privacyUrl = $state('');
+	let termsUrl = $state('');
 	let fileInput: HTMLInputElement | undefined = $state();
 
 	// Crop dialog — Cropper is lazy-loaded client-side only to avoid SSR failures.
@@ -53,6 +62,8 @@
 			logoUrl = b.logo_url ?? '';
 			logoHeight = b.logo_height || 28;
 			logoOpacity = b.logo_opacity || 100;
+			privacyUrl = b.privacy_url ?? '';
+			termsUrl = b.terms_url ?? '';
 		} catch (e: any) {
 			toast.error(e.message || 'Could not load branding settings');
 		} finally {
@@ -123,11 +134,15 @@
 			const b = await api.patch<Branding>('/v1/settings/branding', {
 				business_name: businessName,
 				logo_height: logoHeight,
-				logo_opacity: logoOpacity
+				logo_opacity: logoOpacity,
+				privacy_url: privacyUrl,
+				terms_url: termsUrl
 			});
 			businessName = b.business_name ?? '';
 			logoHeight = b.logo_height || 28;
 			logoOpacity = b.logo_opacity || 100;
+			privacyUrl = b.privacy_url ?? '';
+			termsUrl = b.terms_url ?? '';
 			toast.success('Branding saved');
 		} catch (e: any) {
 			toast.error(e.message || 'Could not save branding settings');
@@ -198,6 +213,26 @@
 					Click the box to upload. PNG with a transparent background works best, on a light background. Any
 					shape — you can crop it next. Max 5 MB. Adjust size and opacity (preview updates live), then Save.
 				</p>
+			</div>
+		</div>
+
+		<div class="rounded-lg border bg-card p-6">
+			<h2 class="text-sm font-semibold">Legal links</h2>
+			<p class="mt-0.5 text-xs text-muted-foreground">
+				Links to your own privacy policy and terms. They appear in your public booking page footer, and
+				your privacy policy is linked from the cookie-consent banner. You're the data controller for
+				bookings made through your Calnode — these just point visitors to your policies.
+			</p>
+
+			<div class="mt-4 space-y-1.5">
+				<Label for="privacy-url">Privacy policy URL</Label>
+				<Input id="privacy-url" type="url" bind:value={privacyUrl} placeholder="https://example.com/privacy" maxlength={500} />
+			</div>
+
+			<div class="mt-4 space-y-1.5">
+				<Label for="terms-url">Terms URL</Label>
+				<Input id="terms-url" type="url" bind:value={termsUrl} placeholder="https://example.com/terms" maxlength={500} />
+				<p class="text-xs text-muted-foreground">Leave a field blank to hide that link. Must be a full http(s):// URL.</p>
 			</div>
 		</div>
 

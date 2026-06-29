@@ -65,6 +65,13 @@ body {
   gap: 1.25rem;
 }
 
+.powered-by {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: .9rem;
+}
 .powered-by a {
   display: inline-flex;
   align-items: center;
@@ -284,8 +291,10 @@ body {
 </div>
 
 <footer class="powered-by">
-  <a href="https://calnode.com" target="_blank" rel="noopener noreferrer">Calnode</a>
+  {{if .PrivacyURL}}<a href="{{.PrivacyURL}}" target="_blank" rel="noopener noreferrer">Privacy</a>{{end}}
+  {{if .TermsURL}}<a href="{{.TermsURL}}" target="_blank" rel="noopener noreferrer">Terms</a>{{end}}
   {{if or .GTMContainerID .GA4MeasurementID}}<button type="button" class="cookie-link" onclick="window.__calnodeOpenConsent && window.__calnodeOpenConsent()">Cookie settings</button>{{end}}
+  <a href="https://calnode.com" target="_blank" rel="noopener noreferrer">Calnode</a>
 </footer>
 
 <!-- Shared booking-calendar logic (booking-logic.js), inlined ahead of the page script -->
@@ -864,7 +873,7 @@ body {
 {{end}}
 {{if or .GTMContainerID .GA4MeasurementID}}
 <div id="cookie-banner" class="cookie-banner" hidden role="dialog" aria-label="Cookie consent">
-  <p class="cookie-text">We use analytics cookies to understand how this booking page is used — set only if you accept.</p>
+  <p class="cookie-text">We use analytics cookies to understand how this booking page is used — set only if you accept.{{if .PrivacyURL}} <a href="{{.PrivacyURL}}" target="_blank" rel="noopener noreferrer">Privacy policy</a>.{{end}}</p>
   <div class="cookie-actions">
     <button id="cookie-decline" type="button" class="cookie-btn">Decline</button>
     <button id="cookie-accept" type="button" class="cookie-btn cookie-btn-primary">Accept</button>

@@ -338,6 +338,7 @@
   box-shadow: 0 10px 30px rgba(0,0,0,.12);
 }
 .cookie-text { margin: 0; font-size: .8125rem; line-height: 1.5; color: #4b5563; }
+.cookie-text a { color: inherit; text-decoration: underline; }
 .cookie-actions { display: flex; justify-content: flex-end; gap: .5rem; }
 .cookie-btn {
   cursor: pointer; padding: .4rem .9rem; font-size: .8125rem; font-weight: 500;
@@ -346,8 +347,9 @@
 .cookie-btn:hover { background: #f9fafb; }
 .cookie-btn-primary { background: #111827; border-color: #111827; color: #fff; }
 .cookie-btn-primary:hover { background: #1f2937; }
+/* Footer "Cookie settings" link — matches the .powered-by footer links. */
 .cookie-link {
-  cursor: pointer; border: none; background: none; padding: 0; margin-left: .75rem;
-  font: inherit; font-size: inherit; color: inherit; opacity: .65; text-decoration: underline;
+  cursor: pointer; border: none; background: none; padding: 0;
+  font-size: .75rem; font-weight: 600; color: #111827; transition: opacity .12s;
 }
-.cookie-link:hover { opacity: 1; }
+.cookie-link:hover { opacity: .6; }

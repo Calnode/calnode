@@ -10,6 +10,7 @@ import (
 	_ "image/jpeg"
 	"image/png"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -32,6 +33,8 @@ type brandingSettings struct {
 	LogoURL      string // served path (relative), e.g. "/branding/logo?v=123"; empty = no logo
 	LogoHeight   int    // email logo height in px (pages scale up); see pageLogoHeight
 	LogoOpacity  int    // 20–100; CSS opacity for a subtle logo. 100 = fully opaque
+	PrivacyURL   string // operator's Privacy Policy URL (absolute http[s]); "" = hidden
+	TermsURL     string // operator's Terms URL (absolute http[s]); "" = hidden
 }
 
 // loadBranding reads the brand identity from the singleton settings row.
@@ -39,8 +42,9 @@ func (h *Handler) loadBranding(ctx context.Context) brandingSettings {
 	var b brandingSettings
 	_ = h.db.QueryRowContext(ctx, `
 		SELECT COALESCE(business_name,''), COALESCE(logo_url,''),
-		       COALESCE(logo_height,28), COALESCE(logo_opacity,100)
-		FROM server_settings WHERE id = 1`).Scan(&b.BusinessName, &b.LogoURL, &b.LogoHeight, &b.LogoOpacity)
+		       COALESCE(logo_height,28), COALESCE(logo_opacity,100),
+		       COALESCE(privacy_url,''), COALESCE(terms_url,'')
+		FROM server_settings WHERE id = 1`).Scan(&b.BusinessName, &b.LogoURL, &b.LogoHeight, &b.LogoOpacity, &b.PrivacyURL, &b.TermsURL)
 	if b.LogoHeight <= 0 {
 		b.LogoHeight = 28
 	}
@@ -57,6 +61,23 @@ func pageLogoHeight(emailPx int) int {
 		emailPx = 28
 	}
 	return (emailPx*13 + 5) / 10
+}
+
+// validatedLegalURL trims and validates an operator-supplied legal link. Empty is
+// allowed (the link is hidden). Non-empty must be an absolute http(s) URL with a host.
+func validatedLegalURL(raw string) (string, bool) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", true
+	}
+	if len(raw) > 500 {
+		return "", false
+	}
+	u, err := url.Parse(raw)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return "", false
+	}
+	return raw, true
 }
 
 // opacityCSS turns a 20–100 percentage into a CSS opacity value ("1", "0.6", …).
@@ -96,6 +117,8 @@ func (h *Handler) GetBranding(w http.ResponseWriter, r *http.Request) {
 		"logo_url":      b.LogoURL,
 		"logo_height":   b.LogoHeight,
 		"logo_opacity":  b.LogoOpacity,
+		"privacy_url":   b.PrivacyURL,
+		"terms_url":     b.TermsURL,
 	})
 }
 
@@ -112,6 +135,8 @@ func (h *Handler) PatchBranding(w http.ResponseWriter, r *http.Request) {
 		BusinessName string `json:"business_name"`
 		LogoHeight   int    `json:"logo_height"`
 		LogoOpacity  int    `json:"logo_opacity"`
+		PrivacyURL   string `json:"privacy_url"`
+		TermsURL     string `json:"terms_url"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.writeError(w, http.StatusBadRequest, "invalid JSON")
@@ -120,6 +145,16 @@ func (h *Handler) PatchBranding(w http.ResponseWriter, r *http.Request) {
 	req.BusinessName = strings.TrimSpace(req.BusinessName)
 	if len(req.BusinessName) > 200 {
 		h.writeError(w, http.StatusBadRequest, "business name is too long")
+		return
+	}
+	privacyURL, ok := validatedLegalURL(req.PrivacyURL)
+	if !ok {
+		h.writeError(w, http.StatusBadRequest, "privacy policy must be a full http(s) URL")
+		return
+	}
+	termsURL, ok := validatedLegalURL(req.TermsURL)
+	if !ok {
+		h.writeError(w, http.StatusBadRequest, "terms link must be a full http(s) URL")
 		return
 	}
 	// Clamp logo height to a sane range; 0/omitted falls back to the small default.
@@ -143,8 +178,9 @@ func (h *Handler) PatchBranding(w http.ResponseWriter, r *http.Request) {
 		req.LogoOpacity = 100
 	}
 	if _, err := h.db.ExecContext(r.Context(), `
-		UPDATE server_settings SET business_name = ?, logo_height = ?, logo_opacity = ?, updated_at = datetime('now')
-		WHERE id = 1`, req.BusinessName, req.LogoHeight, req.LogoOpacity); err != nil {
+		UPDATE server_settings SET business_name = ?, logo_height = ?, logo_opacity = ?,
+		       privacy_url = ?, terms_url = ?, updated_at = datetime('now')
+		WHERE id = 1`, req.BusinessName, req.LogoHeight, req.LogoOpacity, privacyURL, termsURL); err != nil {
 		h.logger.ErrorContext(r.Context(), "branding settings: update", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal error")
 		return
