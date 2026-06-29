@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { page } from '$app/stores';
 	import { base } from '$app/paths';
-	import { api, type EventType, type EventTypeHost, type Question, type User, type Team, type CalendarStatus, type ZoomStatus } from '$lib/api';
+	import { api, type EventType, type EventTypeHost, type Question, type TeamMember, type Team, type CalendarStatus, type ZoomStatus } from '$lib/api';
 	import { currentUser } from '$lib/stores';
 	import { Button, buttonVariants } from '$lib/components/ui/button';
 	import { ConfirmDialog } from '$lib/components/ui/confirm-dialog';
@@ -45,7 +45,7 @@
 	};
 
 	// ── Event type ───────────────────────────────────────────────────────────────
-	let et: EventType | null = $state(null);
+	let et = $state<EventType | null>(null);
 	let etLoading = $state(true);
 	let etError = $state('');
 	let etSaving = $state(false);
@@ -121,7 +121,7 @@
 	let rotationHosts = $state<Host[]>([]);
 	let togetherHosts = $state<TogetherHost[]>([]);
 	let hostsLoaded = $state(false);
-	let members = $state<User[]>([]);
+	let members = $state<TeamMember[]>([]);
 	let teams = $state<Team[]>([]);
 
 	// routing_mode is derived from the two answers — never set directly.
@@ -147,7 +147,7 @@
 	async function loadMembers() {
 		if (members.length > 0) return;
 		try {
-			members = await api.get<User[]>('/v1/users');
+			members = await api.get<TeamMember[]>('/v1/users');
 		} catch (e: any) {
 			toast.error(e.message || 'Could not load members');
 		}

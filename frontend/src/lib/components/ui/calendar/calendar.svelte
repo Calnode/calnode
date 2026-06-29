@@ -8,7 +8,9 @@
 		weekStartsOn = 1,
 		class: className,
 		...restProps
-	}: CalendarPrimitive.CalendarSingleRootProps & { class?: string } = $props();
+		// bits-ui v2 only exposes the union RootProps; this component is always type="single",
+		// so derive the single-date variant (drop `type`, which we set below).
+	}: Omit<Extract<CalendarPrimitive.RootProps, { type: 'single' }>, 'type'> & { class?: string } = $props();
 </script>
 
 <CalendarPrimitive.Root

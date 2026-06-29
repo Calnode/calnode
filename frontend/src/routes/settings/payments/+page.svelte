@@ -11,7 +11,7 @@
 	let loading = $state(true);
 	let saving = $state(false);
 
-	let settings: StripeSettings | null = $state(null);
+	let settings = $state<StripeSettings | null>(null);
 	let secretKey = $state('');
 	let publishableKey = $state('');
 	let webhookSecret = $state('');

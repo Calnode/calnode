@@ -11,7 +11,7 @@
 	let loading = $state(true);
 	let saving = $state(false);
 
-	let googleSettings: GoogleSettings | null = $state(null);
+	let googleSettings = $state<GoogleSettings | null>(null);
 	let clientID = $state('');
 	let clientSecret = $state('');
 

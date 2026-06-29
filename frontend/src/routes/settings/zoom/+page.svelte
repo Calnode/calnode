@@ -11,7 +11,7 @@
 	let loading = $state(true);
 	let saving = $state(false);
 
-	let settings: ZoomSettings | null = $state(null);
+	let settings = $state<ZoomSettings | null>(null);
 	let clientID = $state('');
 	let clientSecret = $state('');
 

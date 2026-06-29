@@ -60,7 +60,7 @@
 	}
 	const label = (p?: string) => (p ? PROVIDER_LABELS[p] ?? p : 'calendar');
 
-	let status: CalendarStatus | null = $state(null);
+	let status = $state<CalendarStatus | null>(null);
 	let loading = $state(true);
 	let error = $state('');
 	let busy = $state(false);
