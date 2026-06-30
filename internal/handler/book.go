@@ -28,7 +28,7 @@ var bookingLogicJS string
 
 // Shared chrome partials (consent/tracking/footer) are parsed first so book.html can
 // reference them via {{template "trackingHead" .}} etc.
-var bookTmpl = template.Must(template.Must(template.New("book").Parse(chromePartialsSrc)).Parse(bookTmplSrc))
+var bookTmpl = template.Must(template.Must(template.New("book").Parse(sharedPartialsSrc)).Parse(bookTmplSrc))
 
 type bookQuestion struct {
 	ID       string

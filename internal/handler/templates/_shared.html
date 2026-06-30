@@ -1,12 +1,17 @@
 {{/*
-  Shared public-page chrome — parsed into BOTH the book and manage template sets
-  (see book.go / manage_handler.go) so the consent/tracking/footer logic lives in
-  ONE place across the booking and manage surfaces. The embed widget (embed.js) is
-  deliberately NOT included: it runs inside customers' own sites, which own their
-  analytics + consent.
+  Partials SHARED by the book and manage public pages — parsed into BOTH template
+  sets (see book.go / manage_handler.go) so these pieces live in ONE place and the
+  two surfaces can't drift apart:
+    - chrome:     trackingHead, consentBanner, legalFooter (consent/analytics/footer)
+    - structural: calendarGrid  (month nav + the JS-filled day grid)
 
-  Every page that uses these must expose these fields on its template data:
-  GTMContainerID, GA4MeasurementID, PrivacyURL, TermsURL.
+  The embed widget (embed.js) is deliberately NOT included: it's a vanilla-JS web
+  component on customers' own sites (own analytics + consent), and it builds its
+  calendar DOM in JS rather than from these Go templates.
+
+  Pages using the chrome partials must expose: GTMContainerID, GA4MeasurementID,
+  PrivacyURL, TermsURL. calendarGrid needs no data (the grid is filled by
+  booking-logic.js at runtime).
 */}}
 
 {{define "trackingHead"}}{{if or .GTMContainerID .GA4MeasurementID}}
@@ -90,3 +95,17 @@
   {{if or .GTMContainerID .GA4MeasurementID}}<button type="button" class="cookie-link" onclick="window.__calnodeOpenConsent && window.__calnodeOpenConsent()">Cookie settings</button>{{end}}
   <a href="https://calnode.com" target="_blank" rel="noopener noreferrer">Calnode</a>
 </footer>{{end}}
+
+{{/* Month nav + the day grid. The grid (#cal) is empty here and filled by
+     booking-logic.js. Each page wraps this in its own <section> (book shows it
+     inline + a timezone picker; manage starts it hidden + adds a Back button). */}}
+{{define "calendarGrid"}}<div class="cal-nav">
+      <span id="month-label" class="month-label" aria-live="polite"></span>
+      <button id="prev-btn" aria-label="Previous month">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+      </button>
+      <button id="next-btn" aria-label="Next month">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+      </button>
+    </div>
+    <div id="cal" class="cal-grid" role="grid"></div>{{end}}

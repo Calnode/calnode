@@ -20,7 +20,7 @@ var manageTmplSrc string
 
 // Shared chrome partials (consent/tracking/footer) are parsed first so manage.html can
 // reference them via {{template "trackingHead" .}} etc. — same source as the booking page.
-var manageTmpl = template.Must(template.Must(template.New("manage").Parse(chromePartialsSrc)).Parse(manageTmplSrc))
+var manageTmpl = template.Must(template.Must(template.New("manage").Parse(sharedPartialsSrc)).Parse(manageTmplSrc))
 
 type managePageData struct {
 	Token           string
