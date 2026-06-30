@@ -72,17 +72,25 @@ body {
   align-items: center;
   gap: .9rem;
 }
-.powered-by a {
+.powered-by a,
+.powered-by .cookie-link {
   display: inline-flex;
   align-items: center;
   gap: .375rem;
-  color: #111827;
-  text-decoration: none;
+  font: inherit;          /* buttons don't inherit the page font by default */
   font-size: .75rem;
   font-weight: 600;
+  line-height: 1;
+  color: #111827;
+  text-decoration: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
   transition: opacity .12s;
 }
-.powered-by a:hover { opacity: .6; }
+.powered-by a:hover,
+.powered-by .cookie-link:hover { opacity: .6; }
 
 /* #tz-sizer is page-specific (the timezone <select> auto-sizer). */
 #tz-sizer {

@@ -347,9 +347,5 @@
 .cookie-btn:hover { background: #f9fafb; }
 .cookie-btn-primary { background: #111827; border-color: #111827; color: #fff; }
 .cookie-btn-primary:hover { background: #1f2937; }
-/* Footer "Cookie settings" link — matches the .powered-by footer links. */
-.cookie-link {
-  cursor: pointer; border: none; background: none; padding: 0;
-  font-size: .75rem; font-weight: 600; color: #111827; transition: opacity .12s;
-}
-.cookie-link:hover { opacity: .6; }
+/* The footer "Cookie settings" link (.cookie-link) is styled with the .powered-by
+   footer links in book.html, so all footer items stay visually identical. */
