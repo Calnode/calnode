@@ -109,3 +109,23 @@
       </button>
     </div>
     <div id="cal" class="cal-grid" role="grid"></div>{{end}}
+
+{{/* Event meta line (duration · location · price) for the info panel. Location and
+     price are omitted when their label is empty, so a page that doesn't set them
+     (e.g. manage has no price) simply doesn't render that row. The host header,
+     description, and assistant button stay page-specific — those genuinely differ
+     between the booking and manage surfaces. */}}
+{{define "eventMeta"}}<ul class="meta">
+      <li>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        {{.DurationLabel}}
+      </li>
+      {{if .LocationLabel}}<li>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+        {{.LocationLabel}}
+      </li>{{end}}
+      {{if .PriceLabel}}<li>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+        {{.PriceLabel}}
+      </li>{{end}}
+    </ul>{{end}}

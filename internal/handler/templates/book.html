@@ -124,22 +124,7 @@ body {
     </div>
     <p id="host-name" class="host-name">{{.HostsLabel}}</p>
     <h1 class="event-name">{{.Name}}</h1>
-    <ul class="meta">
-      <li>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-        {{.DurationLabel}}
-      </li>
-      <li>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-        {{.LocationLabel}}
-      </li>
-      {{if .PriceLabel}}
-      <li>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
-        {{.PriceLabel}}
-      </li>
-      {{end}}
-    </ul>
+    {{template "eventMeta" .}}
     {{if .AssistantEnabled}}
     <button type="button" class="asst-link" id="asst-open-inline">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.8L18.7 9.7l-4.8 1.9L12 16.4l-1.9-4.8L5.3 9.7l4.8-1.9L12 3z"/></svg>

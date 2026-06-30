@@ -32,6 +32,7 @@ type managePageData struct {
 	AvatarURL       string
 	DurationLabel   string
 	LocationLabel   string
+	PriceLabel      string // empty on manage → the eventMeta partial omits the price row
 	MaxFutureDays   int
 	DurationMinutes int
 	CurrentStartISO string // RFC3339 for JS

@@ -73,16 +73,18 @@ func TestConsentChromeSharedAcrossSurfaces(t *testing.T) {
 			}
 		})
 
-		// The calendarGrid partial renders on both surfaces regardless of tracking —
-		// the JS hooks booking-logic.js depends on must be present and identical.
-		t.Run(s.name+"/calendar", func(t *testing.T) {
+		// The structural partials (calendarGrid, eventMeta) render on both surfaces
+		// regardless of tracking — the JS hooks booking-logic.js depends on must be
+		// present and identical.
+		t.Run(s.name+"/structural", func(t *testing.T) {
 			out := s.render(t, "", "", "")
 			for _, want := range []string{
-				`id="cal"`, `class="cal-grid"`, `id="month-label"`,
+				`id="cal"`, `class="cal-grid"`, `id="month-label"`, // calendarGrid
 				`id="prev-btn"`, `id="next-btn"`,
+				`class="meta"`, // eventMeta
 			} {
 				if !strings.Contains(out, want) {
-					t.Errorf("%s calendar: output missing %q", s.name, want)
+					t.Errorf("%s structural: output missing %q", s.name, want)
 				}
 			}
 		})
