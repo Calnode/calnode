@@ -26,7 +26,9 @@ var bookTmplSrc string
 //go:embed assets/booking-logic.js
 var bookingLogicJS string
 
-var bookTmpl = template.Must(template.New("book").Parse(bookTmplSrc))
+// Shared chrome partials (consent/tracking/footer) are parsed first so book.html can
+// reference them via {{template "trackingHead" .}} etc.
+var bookTmpl = template.Must(template.Must(template.New("book").Parse(chromePartialsSrc)).Parse(bookTmplSrc))
 
 type bookQuestion struct {
 	ID       string

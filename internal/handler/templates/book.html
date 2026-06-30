@@ -5,33 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <title>{{.Name}}</title>
-{{if or .GTMContainerID .GA4MeasurementID}}
-<!-- Analytics (GA4/GTM) is CONSENT-GATED: the Google scripts load only after the visitor accepts
-     analytics cookies via the banner near </body>. Nothing external loads, and no analytics
-     cookies are set, before then. -->
-<script>
-  window.dataLayer = window.dataLayer || [];
-  function gtag(){ dataLayer.push(arguments); }
-  window.__CALNODE_GA4 = "{{.GA4MeasurementID}}";
-  window.__CALNODE_TRACK = { gtm: "{{.GTMContainerID}}", ga4: "{{.GA4MeasurementID}}", loaded: false };
-  // GA4 conversion — only fires once tracking has been consented to and loaded.
-  window.ga4Convert = function (isPaid, value, currency, txnId) {
-    if (!window.__CALNODE_GA4 || !window.__CALNODE_TRACK.loaded) return;
-    gtag('event', isPaid ? 'purchase' : 'generate_lead', {
-      transaction_id: txnId || '',
-      value: value || 0,
-      currency: (currency || 'USD').toUpperCase()
-    });
-  };
-  // Injects the real GA4/GTM scripts. Called only on consent (banner Accept, or a stored prior
-  // Accept). Idempotent.
-  window.__calnodeLoadTracking = function () {
-    var t = window.__CALNODE_TRACK; if (!t || t.loaded) return; t.loaded = true;
-    if (t.gtm) { (function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src='https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);})(window,document,'script','dataLayer',t.gtm); }
-    if (t.ga4) { var s=document.createElement('script'); s.async=true; s.src='https://www.googletagmanager.com/gtag/js?id='+t.ga4; document.head.appendChild(s); gtag('js', new Date()); gtag('config', t.ga4); }
-  };
-</script>
-{{end}}
+{{template "trackingHead" .}}
 {{.HeadHTML}}
 {{if .DataLayerEnabled}}
 <script>
@@ -65,32 +39,8 @@ body {
   gap: 1.25rem;
 }
 
-.powered-by {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  align-items: center;
-  gap: .9rem;
-}
-.powered-by a,
-.powered-by .cookie-link {
-  display: inline-flex;
-  align-items: center;
-  gap: .375rem;
-  font: inherit;          /* buttons don't inherit the page font by default */
-  font-size: .75rem;
-  font-weight: 600;
-  line-height: 1;
-  color: #111827;
-  text-decoration: none;
-  background: none;
-  border: 0;
-  padding: 0;
-  cursor: pointer;
-  transition: opacity .12s;
-}
-.powered-by a:hover,
-.powered-by .cookie-link:hover { opacity: .6; }
+/* .powered-by footer (links + Cookie-settings button) is styled in booking.css so
+   the book and manage surfaces share one rule. */
 
 /* #tz-sizer is page-specific (the timezone <select> auto-sizer). */
 #tz-sizer {
@@ -298,12 +248,7 @@ body {
   </section>
 </div>
 
-<footer class="powered-by">
-  {{if .PrivacyURL}}<a href="{{.PrivacyURL}}" target="_blank" rel="noopener noreferrer">Privacy</a>{{end}}
-  {{if .TermsURL}}<a href="{{.TermsURL}}" target="_blank" rel="noopener noreferrer">Terms</a>{{end}}
-  {{if or .GTMContainerID .GA4MeasurementID}}<button type="button" class="cookie-link" onclick="window.__calnodeOpenConsent && window.__calnodeOpenConsent()">Cookie settings</button>{{end}}
-  <a href="https://calnode.com" target="_blank" rel="noopener noreferrer">Calnode</a>
-</footer>
+{{template "legalFooter" .}}
 
 <!-- Shared booking-calendar logic (booking-logic.js), inlined ahead of the page script -->
 <script>{{.BookingLogicJS}}</script>
@@ -879,51 +824,6 @@ body {
 }());
 </script>
 {{end}}
-{{if or .GTMContainerID .GA4MeasurementID}}
-<div id="cookie-banner" class="cookie-banner" hidden role="dialog" aria-label="Cookie consent">
-  <p class="cookie-text">We use analytics cookies to understand how this booking page is used — set only if you accept.{{if .PrivacyURL}} <a href="{{.PrivacyURL}}" target="_blank" rel="noopener noreferrer">Privacy policy</a>.{{end}}</p>
-  <div class="cookie-actions">
-    <button id="cookie-decline" type="button" class="cookie-btn">Decline</button>
-    <button id="cookie-accept" type="button" class="cookie-btn cookie-btn-primary">Accept</button>
-  </div>
-</div>
-<script>
-(function () {
-  var T = window.__CALNODE_TRACK;
-  if (!T || (!T.gtm && !T.ga4)) return;
-  var NAME = 'calnode_consent', VERSION = 1;
-  function read() {
-    var m = document.cookie.match(/(?:^|;\s*)calnode_consent=([^;]+)/);
-    if (!m) return null; try { return JSON.parse(decodeURIComponent(m[1])); } catch (e) { return null; }
-  }
-  function write(yes) {
-    var v = encodeURIComponent(JSON.stringify({ a: yes ? 1 : 0, v: VERSION, t: Date.now() }));
-    var exp = new Date(Date.now() + 1000 * 60 * 60 * 24 * 180).toUTCString();
-    document.cookie = NAME + '=' + v + '; expires=' + exp + '; path=/; SameSite=Lax' + (location.protocol === 'https:' ? '; Secure' : '');
-  }
-  function clearGA() {
-    document.cookie.split(';').forEach(function (c) {
-      var n = c.split('=')[0].trim();
-      if (/^_ga|^_gid|^_gat/.test(n)) {
-        document.cookie = n + '=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/';
-        document.cookie = n + '=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; domain=.' + location.hostname;
-      }
-    });
-  }
-  var banner = document.getElementById('cookie-banner');
-  window.__calnodeOpenConsent = function () { if (banner) banner.hidden = false; };
-  function hide() { if (banner) banner.hidden = true; }
-  var ok = document.getElementById('cookie-accept'), no = document.getElementById('cookie-decline');
-  if (ok) ok.onclick = function () { write(true); hide(); if (window.__calnodeLoadTracking) window.__calnodeLoadTracking(); };
-  if (no) no.onclick = function () { write(false); hide(); clearGA(); };
-  var c = read();
-  if (c && c.v === VERSION) {
-    if (c.a && window.__calnodeLoadTracking) window.__calnodeLoadTracking();
-  } else {
-    window.__calnodeOpenConsent();
-  }
-}());
-</script>
-{{end}}
+{{template "consentBanner" .}}
 </body>
 </html>

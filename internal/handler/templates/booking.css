@@ -347,5 +347,34 @@
 .cookie-btn:hover { background: #f9fafb; }
 .cookie-btn-primary { background: #111827; border-color: #111827; color: #fff; }
 .cookie-btn-primary:hover { background: #1f2937; }
-/* The footer "Cookie settings" link (.cookie-link) is styled with the .powered-by
-   footer links in book.html, so all footer items stay visually identical. */
+/* ── Public-page footer (.powered-by) ──────────────────
+   Shared by book.html + manage.html (the "legalFooter" partial). Links + the
+   "Cookie settings" button share one rule so all footer items stay identical;
+   `font: inherit` is what stops the <button> from rendering in the UA font.
+   (The embed widget uses its own .powered class, not this.) */
+.powered-by {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: .9rem;
+}
+.powered-by a,
+.powered-by .cookie-link {
+  display: inline-flex;
+  align-items: center;
+  gap: .375rem;
+  font: inherit;
+  font-size: .75rem;
+  font-weight: 600;
+  line-height: 1;
+  color: #111827;
+  text-decoration: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  transition: opacity .12s;
+}
+.powered-by a:hover,
+.powered-by .cookie-link:hover { opacity: .6; }

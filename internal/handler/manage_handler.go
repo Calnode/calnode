@@ -18,7 +18,9 @@ import (
 //go:embed templates/manage.html
 var manageTmplSrc string
 
-var manageTmpl = template.Must(template.New("manage").Parse(manageTmplSrc))
+// Shared chrome partials (consent/tracking/footer) are parsed first so manage.html can
+// reference them via {{template "trackingHead" .}} etc. — same source as the booking page.
+var manageTmpl = template.Must(template.Must(template.New("manage").Parse(chromePartialsSrc)).Parse(manageTmplSrc))
 
 type managePageData struct {
 	Token           string
@@ -40,11 +42,15 @@ type managePageData struct {
 	HeadHTML         template.HTML
 	DataLayerEnabled bool
 	DataLayerFields  template.JS
+	GTMContainerID   string // native GTM container; consent-gated (shared trackingHead/consentBanner)
+	GA4MeasurementID string // native GA4 id; consent-gated
 	// Branding
 	BusinessName string
 	LogoURL      string
 	LogoHeight   int
 	LogoOpacity  string // CSS opacity value, e.g. "1" or "0.6"
+	PrivacyURL   string // operator Privacy Policy URL (legalFooter + banner link)
+	TermsURL     string // operator Terms URL (legalFooter)
 	CSSVersion   string // cache-busts the /booking.css link (content hash)
 	// BookingLogicJS is the shared booking-calendar logic module, inlined ahead of the page script.
 	BookingLogicJS template.JS
@@ -124,11 +130,15 @@ func (h *Handler) renderManage(w http.ResponseWriter, r *http.Request, data mana
 	data.HeadHTML = template.HTML(track.HeadHTML)
 	data.DataLayerEnabled = track.DataLayerEnabled
 	data.DataLayerFields = template.JS(dlFields)
+	data.GTMContainerID = track.GTMContainerID
+	data.GA4MeasurementID = track.GA4MeasurementID
 	brand := h.loadBranding(r.Context())
 	data.BusinessName = brand.BusinessName
 	data.LogoURL = brand.LogoURL
 	data.LogoHeight = pageLogoHeight(brand.LogoHeight)
 	data.LogoOpacity = opacityCSS(brand.LogoOpacity)
+	data.PrivacyURL = brand.PrivacyURL
+	data.TermsURL = brand.TermsURL
 	data.CSSVersion = bookingCSSVersion
 	data.BookingLogicJS = template.JS(bookingLogicJS)
 

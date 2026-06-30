@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <title>Manage booking — {{.EventTypeName}}</title>
+{{template "trackingHead" .}}
 {{.HeadHTML}}
 {{if .DataLayerEnabled}}
 <script>
@@ -38,12 +39,7 @@ body {
   gap: 1.25rem;
 }
 
-.powered-by a {
-  display: inline-flex; align-items: center; gap: .375rem;
-  color: #111827; text-decoration: none; font-size: .75rem; font-weight: 600;
-  transition: opacity .12s;
-}
-.powered-by a:hover { opacity: .6; }
+/* .powered-by footer styles live in booking.css (shared with the booking page). */
 
 /* Page-specific id hooks + tweaks layered on the shared sheet. */
 #month-label { flex: 1; font-size: .9375rem; font-weight: 600; color: #111827; }
@@ -260,9 +256,8 @@ body {
 </div>
 {{end}}
 
-<footer class="powered-by">
-  <a href="https://calnode.com" target="_blank" rel="noopener noreferrer">Calnode</a>
-</footer>
+{{template "legalFooter" .}}
+{{template "consentBanner" .}}
 
 {{if not .TokenInvalid}}{{if ne .Status "cancelled"}}
 <!-- Shared booking-calendar logic (booking-logic.js), inlined ahead of the page script -->
