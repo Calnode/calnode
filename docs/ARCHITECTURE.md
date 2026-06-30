@@ -816,6 +816,23 @@ LLM summary) — the next build; consent-gated (§8.11/§15 of the PRD).
 This doc tracks the code; when you change behaviour in an area above, update the
 matching section in the same PR. Notable rounds:
 
+- **2026-06-30 — Cookie consent + legal links + shared book/manage partials.** Native
+  GA4/GTM (Settings → Tracking) is now consent-gated on book.html **and** manage.html:
+  nothing loads, no `_ga*` cookies are set, until the visitor Accepts a banner
+  (180-day `calnode_consent` cookie; footer "Cookie settings" reopens it; Decline
+  clears `_ga*`). Operator Privacy/Terms URLs (Settings → Branding → Legal links,
+  migration 00046) render in both pages' footers and from the banner. The
+  operator-injected Head HTML path stays ungated (trusted code, unchanged); the embed
+  widget has neither — it runs inside the customer's own site, which owns its own
+  analytics/consent. Landed alongside a shared-partials refactor:
+  `internal/handler/templates/_shared.html` ({{define}}s parsed into BOTH the book
+  and manage template sets) now holds the consent/tracking/footer chrome, the
+  `calendarGrid` partial (month-nav + day grid), and `eventMeta` (duration/location/
+  price) — one source instead of copy-pasted markup. A cross-surface contract test
+  (`booking_surfaces_contract_test.go`) additionally pins the structural hooks shared
+  with **embed.js** (a separate vanilla-JS web component the Go partials can't reach)
+  so CI fails if the three booking surfaces drift apart.
+
 - **2026-06-25/26 — Built-in video (LiveKit).** Full subsystem (see §22): SDK-free hand-signed
   tokens, vanilla-JS room app, host controls (end-for-all, single-host reassign/reclaim, attendee
   screen-share toggle), recording (Egress→S3, finalize-on-stop + startup sweep, presigned
