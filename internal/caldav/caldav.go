@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/calnode/calnode/internal/calendar"
+	"github.com/calnode/calnode/internal/secret"
 	"github.com/calnode/calnode/internal/uid"
 )
 
@@ -259,14 +260,20 @@ func (c *Client) saveConnection(ctx context.Context, userID, accountEmail, passw
 	return tx.Commit()
 }
 
-// ----- AES-GCM helpers (same scheme as gcal/microsoft) -----
+// ----- AES-GCM helpers -----
 
+// encrypt/decrypt (credential storage, StdEncoding) delegate to the shared
+// internal/secret package — same AES-256-GCM/nonce-prepended/base64.StdEncoding
+// scheme, so existing stored credentials keep decrypting unchanged.
+// encryptEncoding/decryptEncoding below remain for EncryptState/DecryptState
+// (OAuth CSRF state, base64.URLEncoding), which secret.Encrypt/Decrypt doesn't support.
 func (c *Client) encrypt(plaintext []byte) (string, error) {
-	return c.encryptEncoding(plaintext, base64.StdEncoding)
+	return secret.Encrypt(c.key, string(plaintext))
 }
 
 func (c *Client) decrypt(ciphertext string) ([]byte, error) {
-	return c.decryptEncoding(ciphertext, base64.StdEncoding)
+	s, err := secret.Decrypt(c.key, ciphertext)
+	return []byte(s), err
 }
 
 func (c *Client) encryptEncoding(plaintext []byte, enc *base64.Encoding) (string, error) {

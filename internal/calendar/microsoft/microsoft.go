@@ -1,9 +1,8 @@
 // Package microsoft implements calendar.Provider for Microsoft 365 / Outlook via
-// the Microsoft Graph API. It mirrors the structure of internal/gcal.
-//
-// NOTE: the token store + AES helpers below intentionally mirror internal/gcal.
-// A future cleanup can extract a shared calendar token store; kept separate here
-// to avoid destabilising the working Google path while adding Graph.
+// the Microsoft Graph API. It mirrors the structure of internal/gcal — both share
+// the internal/secret crypto helpers and the internal/oauthstore refresh-persistence
+// wrapper; the connection-loading/upsert flow is still separate per-provider (see
+// saveToken, loadConn below).
 package microsoft
 
 import (
@@ -26,6 +25,8 @@ import (
 	"golang.org/x/oauth2/microsoft"
 
 	"github.com/calnode/calnode/internal/calendar"
+	"github.com/calnode/calnode/internal/oauthstore"
+	"github.com/calnode/calnode/internal/secret"
 	"github.com/calnode/calnode/internal/uid"
 )
 
@@ -223,12 +224,15 @@ func (c *Client) buildClient(ctx context.Context, userID, accessEnc, refreshEnc,
 		expiry = time.Now().Add(-time.Second) // force refresh of a stale/unknown token
 	}
 	tok := &oauth2.Token{AccessToken: string(access), RefreshToken: refresh, Expiry: expiry}
-	saving := &savingTokenSource{
-		inner:        oauth2.ReuseTokenSource(nil, c.config.TokenSource(ctx, tok)),
-		client:       c,
-		userID:       userID,
-		calID:        calID,
-		accountEmail: accountEmail,
+	saving := &oauthstore.SavingTokenSource{
+		Inner: oauth2.ReuseTokenSource(nil, c.config.TokenSource(ctx, tok)),
+		// kind="" → preserve the account_kind + flags already stored (refresh has no id_token).
+		Save: func(ctx context.Context, t *oauth2.Token) error {
+			return c.saveToken(ctx, userID, calID, accountEmail, "", t)
+		},
+		Logger: c.logger,
+		LogMsg: "microsoft: failed to persist refreshed token",
+		UserID: userID,
 	}
 	return oauth2.NewClient(ctx, saving), nil
 }
@@ -370,41 +374,20 @@ func (c *Client) saveToken(ctx context.Context, userID, calID, accountEmail, kin
 	return tx.Commit()
 }
 
-// savingTokenSource persists refreshed tokens to the DB when the access token changes.
-type savingTokenSource struct {
-	inner        oauth2.TokenSource
-	client       *Client
-	userID       string
-	calID        string
-	accountEmail string
-	last         string
-}
+// ----- AES-GCM helpers -----
 
-func (s *savingTokenSource) Token() (*oauth2.Token, error) {
-	tok, err := s.inner.Token()
-	if err != nil {
-		return nil, err
-	}
-	if tok.AccessToken != s.last {
-		s.last = tok.AccessToken
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		// kind="" → preserve the account_kind + flags already stored (refresh has no id_token).
-		if err := s.client.saveToken(ctx, s.userID, s.calID, s.accountEmail, "", tok); err != nil {
-			s.client.logger.Error("microsoft: failed to persist refreshed token", "error", err, "user_id", s.userID)
-		}
-	}
-	return tok, nil
-}
-
-// ----- AES-GCM helpers (mirror internal/gcal) -----
-
+// encrypt/decrypt (token storage, StdEncoding) delegate to the shared internal/secret
+// package — same AES-256-GCM/nonce-prepended/base64.StdEncoding scheme, so existing
+// stored tokens keep decrypting unchanged. encryptEncoding/decryptEncoding below are
+// kept only for EncryptState/DecryptState (OAuth CSRF state, base64.URLEncoding),
+// which secret.Encrypt/Decrypt doesn't support.
 func (c *Client) encrypt(plaintext []byte) (string, error) {
-	return c.encryptEncoding(plaintext, base64.StdEncoding)
+	return secret.Encrypt(c.key, string(plaintext))
 }
 
 func (c *Client) decrypt(ciphertext string) ([]byte, error) {
-	return c.decryptEncoding(ciphertext, base64.StdEncoding)
+	s, err := secret.Decrypt(c.key, ciphertext)
+	return []byte(s), err
 }
 
 func (c *Client) encryptEncoding(plaintext []byte, enc *base64.Encoding) (string, error) {

@@ -20,6 +20,7 @@ import (
 
 	"golang.org/x/oauth2"
 
+	"github.com/calnode/calnode/internal/oauthstore"
 	"github.com/calnode/calnode/internal/secret"
 )
 
@@ -168,32 +169,14 @@ func (c *Client) authedClient(ctx context.Context, userID string) (*http.Client,
 	}
 	tok := &oauth2.Token{AccessToken: access, RefreshToken: refresh, Expiry: expiry}
 	src := oauth2.ReuseTokenSource(nil, c.config.TokenSource(ctx, tok))
-	saving := &savingTokenSource{inner: src, client: c, userID: userID}
+	saving := &oauthstore.SavingTokenSource{
+		Inner:  src,
+		Save:   func(ctx context.Context, t *oauth2.Token) error { return c.saveToken(ctx, userID, t) },
+		Logger: c.logger,
+		LogMsg: "zoom: persist refreshed token",
+		UserID: userID,
+	}
 	return oauth2.NewClient(ctx, saving), nil
-}
-
-// savingTokenSource persists a refreshed (rotated) token whenever the access token changes.
-type savingTokenSource struct {
-	inner  oauth2.TokenSource
-	client *Client
-	userID string
-	last   string
-}
-
-func (s *savingTokenSource) Token() (*oauth2.Token, error) {
-	tok, err := s.inner.Token()
-	if err != nil {
-		return nil, err
-	}
-	if tok.AccessToken != s.last {
-		s.last = tok.AccessToken
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		if err := s.client.saveToken(ctx, s.userID, tok); err != nil {
-			s.client.logger.Error("zoom: persist refreshed token", "error", err, "user_id", s.userID)
-		}
-	}
-	return tok, nil
 }
 
 // MeetingParams describes a meeting to create.
