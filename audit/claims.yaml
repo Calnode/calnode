@@ -54,12 +54,19 @@ claims:
 
   - id: meeting-content-egress
     claim: >
-      Meeting CONTENT — recorded audio and transcripts — never leaves your
-      infrastructure except to Deepgram, and only when you explicitly enable the
-      optional notetaker feature.
+      Meeting CONTENT — recorded audio and transcripts — only ever leaves your
+      infrastructure to services you explicitly configure: Deepgram (audio, if you
+      enable the notetaker) and your own BYO-LLM endpoint (transcript text, for the
+      same notetaker's summary step). Nothing carries meeting content by default.
     verify:
       - "grep -rn 'api.deepgram.com' internal/ — the single outbound call site
-         that receives recorded audio (internal/stt/deepgram.go)."
+         that receives recorded audio (internal/stt/deepgram.go). Calnode hands
+         Deepgram a presigned, time-limited GET URL into your own bucket rather
+         than uploading the file itself — Deepgram's servers fetch it."
+      - "internal/handler/notetaker.go — the summarize step sends the full
+         transcript text to h.getLLM() (your configured BYO-LLM endpoint), the same
+         client used by the conversational booking assistant. See
+         internal/llm/client.go."
       - "Recordings themselves go to YOUR OWN S3-compatible bucket (LITESTREAM_*
          env vars), never to Calnode or any third party — see
          internal/handler/livekit_recording.go and migration 00043."
@@ -73,16 +80,23 @@ claims:
       that carry no meeting content:
         - Calendar sync: Google Calendar, Microsoft Graph/Teams, CalDAV providers
           (iCloud, Fastmail, Nextcloud, etc.) — internal/gcal, internal/calendar.
-        - Meeting links: Zoom (per-host OAuth), LiveKit — either self-hosted or
-          LiveKit Cloud, an operator choice, not a Calnode-run service.
+        - Meeting links: Zoom (per-host OAuth) — meeting metadata only (topic,
+          time); Zoom's own infrastructure handles Zoom-call audio, outside
+          Calnode's process entirely.
         - Payments: Stripe, for paid bookings.
         - Optional analytics: GA4/GTM, native and consent-gated (see
           cookie-consent-gated-analytics below) — off by default, and even when on,
           carries no meeting content.
-        - BYO-LLM: your configured LLM endpoint (default api.openai.com, fully
-          swappable to any OpenAI-compatible provider) receives booking constraints
-          and, for the notetaker, transcript text to summarize — never raw calendar
-          data. See llm-no-raw-calendar-data below.
+      LiveKit (built-in video) is the one integration where "leaves your
+      infrastructure" depends entirely on an operator choice made at setup, not a
+      Calnode default: if you point it at a self-hosted LiveKit server, live
+      meeting audio/video never leaves infrastructure you control. If you point it
+      at LiveKit Cloud instead, live meeting media transits LiveKit Cloud's
+      infrastructure for the duration of the call — a third party beyond Deepgram/
+      your BYO-LLM, and beyond what this claim's headline sentence alone would
+      suggest. This is exactly analogous to choosing a self-hosted vs. managed
+      database: Calnode's code path is identical either way, but the trust boundary
+      is drawn by your own infrastructure choice, not by the code.
       A skeptical reader should verify this list is exhaustive themselves — that's
       exactly what the adversarial prompt above is for.
 
