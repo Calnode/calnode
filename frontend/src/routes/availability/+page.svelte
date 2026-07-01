@@ -135,7 +135,7 @@
 	let addingOv = $state(false);
 	let ovAddError = $state('');
 
-	let editingOvId: string | null = $state(null);
+	let editingOvId = $state<string | null>(null);
 	let deleteOvOpen = $state(false);
 	let deleteOvId = $state('');
 	let editOvForm = $state({ reason: 'day_off' as OverrideReason, start_time: '09:00', end_time: '17:00' });

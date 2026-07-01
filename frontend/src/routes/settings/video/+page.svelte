@@ -20,13 +20,13 @@
 	let loading = $state(true);
 	let saving = $state(false);
 
-	let settings: LiveKitSettings | null = $state(null);
+	let settings = $state<LiveKitSettings | null>(null);
 	let url = $state('');
 	let apiKey = $state('');
 	let apiSecret = $state('');
 	let webhookUrl = $state('');
 
-	let notetaker: NotetakerSettings | null = $state(null);
+	let notetaker = $state<NotetakerSettings | null>(null);
 	let notetakerEnabled = $state(false);
 	let deepgramKey = $state('');
 

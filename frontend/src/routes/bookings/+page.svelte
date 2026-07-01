@@ -18,7 +18,7 @@
 	const isAdmin = $derived($currentUser?.is_admin ?? false);
 	let scope = $state<'mine' | 'all'>('mine');
 
-	let reschedulingId: string | null = $state(null);
+	let reschedulingId = $state<string | null>(null);
 	let reschedulingSlug = $state('');
 	let rescheduleDate = $state('');
 	let slots: { start: string; end: string }[] = $state([]);
@@ -29,7 +29,7 @@
 	let rescheduleError = $state('');
 
 	type AnswerItem = { label: string; type: string; value: string };
-	let expandedId: string | null = $state(null);
+	let expandedId = $state<string | null>(null);
 	let answersCache: Record<string, AnswerItem[]> = $state({});
 	let answersLoading: Record<string, boolean> = $state({});
 
@@ -80,7 +80,7 @@
 	onMount(load);
 
 	let confirmOpen = $state(false);
-	let pendingCancelId: string | null = $state(null);
+	let pendingCancelId = $state<string | null>(null);
 
 	function requestCancel(id: string) {
 		pendingCancelId = id;

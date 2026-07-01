@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/calnode/calnode/internal/llm"
@@ -97,31 +98,25 @@ func (h *Handler) PatchLLMSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Apply only the provided fields (PATCH semantics).
+	// Apply only the provided fields (PATCH semantics) in one combined UPDATE, rather
+	// than one round-trip per field.
+	var set []string
+	var args []any
 	if req.Endpoint != nil {
-		if _, err := h.db.ExecContext(r.Context(),
-			`UPDATE server_settings SET llm_endpoint = ?, updated_at = datetime('now') WHERE id = 1`, *req.Endpoint); err != nil {
-			h.llmDBError(w, r, err)
-			return
-		}
+		set = append(set, "llm_endpoint = ?")
+		args = append(args, *req.Endpoint)
 	}
 	if req.Model != nil {
-		if _, err := h.db.ExecContext(r.Context(),
-			`UPDATE server_settings SET llm_model = ?, updated_at = datetime('now') WHERE id = 1`, *req.Model); err != nil {
-			h.llmDBError(w, r, err)
-			return
-		}
+		set = append(set, "llm_model = ?")
+		args = append(args, *req.Model)
 	}
 	if req.Enabled != nil {
 		v := 0
 		if *req.Enabled {
 			v = 1
 		}
-		if _, err := h.db.ExecContext(r.Context(),
-			`UPDATE server_settings SET llm_enabled = ?, updated_at = datetime('now') WHERE id = 1`, v); err != nil {
-			h.llmDBError(w, r, err)
-			return
-		}
+		set = append(set, "llm_enabled = ?")
+		args = append(args, v)
 	}
 	if req.APIKey != nil && *req.APIKey != "" {
 		enc, err := secret.Encrypt(h.encKey, *req.APIKey)
@@ -130,19 +125,20 @@ func (h *Handler) PatchLLMSettings(w http.ResponseWriter, r *http.Request) {
 			h.writeError(w, http.StatusInternalServerError, "internal error")
 			return
 		}
-		if _, err := h.db.ExecContext(r.Context(),
-			`UPDATE server_settings SET llm_api_key_enc = ?, updated_at = datetime('now') WHERE id = 1`, enc); err != nil {
-			h.llmDBError(w, r, err)
-			return
-		}
+		set = append(set, "llm_api_key_enc = ?")
+		args = append(args, enc)
 	}
 	if req.ExtraInstructions != nil {
 		v := *req.ExtraInstructions
 		if len(v) > 4000 {
 			v = v[:4000]
 		}
+		set = append(set, "llm_extra_instructions = ?")
+		args = append(args, v)
+	}
+	if len(set) > 0 {
 		if _, err := h.db.ExecContext(r.Context(),
-			`UPDATE server_settings SET llm_extra_instructions = ?, updated_at = datetime('now') WHERE id = 1`, v); err != nil {
+			`UPDATE server_settings SET `+strings.Join(set, ", ")+`, updated_at = datetime('now') WHERE id = 1`, args...); err != nil {
 			h.llmDBError(w, r, err)
 			return
 		}

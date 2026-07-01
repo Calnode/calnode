@@ -24,6 +24,7 @@ func (h *Handler) GetNotetakerSettings(w http.ResponseWriter, r *http.Request) {
 		`SELECT COALESCE(notetaker_enabled,0), COALESCE(stt_api_key_enc,'') FROM server_settings WHERE id = 1`).
 		Scan(&enabled, &keyEnc)
 	if err != nil && err != sql.ErrNoRows {
+		h.logger.ErrorContext(r.Context(), "notetaker settings: query", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
@@ -57,6 +58,7 @@ func (h *Handler) PatchNotetakerSettings(w http.ResponseWriter, r *http.Request)
 		}
 		if _, err := h.db.ExecContext(r.Context(),
 			`UPDATE server_settings SET notetaker_enabled = ?, updated_at = datetime('now') WHERE id = 1`, v); err != nil {
+			h.logger.ErrorContext(r.Context(), "notetaker settings: update enabled", "error", err)
 			h.writeError(w, http.StatusInternalServerError, "internal error")
 			return
 		}
@@ -65,11 +67,13 @@ func (h *Handler) PatchNotetakerSettings(w http.ResponseWriter, r *http.Request)
 		if k := strings.TrimSpace(*req.STTKey); k != "" {
 			enc, err := secret.Encrypt(h.encKey, k)
 			if err != nil {
+				h.logger.ErrorContext(r.Context(), "notetaker settings: encrypt key", "error", err)
 				h.writeError(w, http.StatusInternalServerError, "internal error")
 				return
 			}
 			if _, err := h.db.ExecContext(r.Context(),
 				`UPDATE server_settings SET stt_api_key_enc = ?, updated_at = datetime('now') WHERE id = 1`, enc); err != nil {
+				h.logger.ErrorContext(r.Context(), "notetaker settings: update key", "error", err)
 				h.writeError(w, http.StatusInternalServerError, "internal error")
 				return
 			}

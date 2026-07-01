@@ -3,7 +3,9 @@
 	import { api } from '$lib/api';
 	import { currentUser } from '$lib/stores';
 	import { Button } from '$lib/components/ui/button';
+	import { Switch } from '$lib/components/ui/switch';
 	import { toast } from 'svelte-sonner';
+	import { saveOnCmdS } from '$lib/save-shortcut';
 
 	type StorageSettings = {
 		backups_configured: boolean;
@@ -16,7 +18,7 @@
 
 	let loading = $state(true);
 	let saving = $state(false);
-	let settings: StorageSettings | null = $state(null);
+	let settings = $state<StorageSettings | null>(null);
 	let recordingsEnabled = $state(false);
 
 	onMount(async () => {
@@ -46,6 +48,8 @@
 		return { text: ok ? on : off, cls: ok ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700', dot: ok ? 'bg-green-500' : 'bg-amber-400' };
 	}
 </script>
+
+<svelte:window onkeydown={saveOnCmdS(save, () => !saving)} />
 
 {#if !$currentUser?.is_admin}
 	<p class="text-sm text-muted-foreground">Admin access required.</p>
@@ -94,7 +98,7 @@
 				{/if}
 			</div>
 			<label class="flex cursor-pointer items-start gap-3">
-				<input type="checkbox" class="mt-0.5" bind:checked={recordingsEnabled} disabled={!settings?.recordings_storage_ready} />
+				<Switch class="mt-0.5" bind:checked={recordingsEnabled} disabled={!settings?.recordings_storage_ready} />
 				<span>
 					<span class="text-sm font-medium">Allow hosts to record meetings</span>
 					<span class="mt-0.5 block text-xs text-muted-foreground">

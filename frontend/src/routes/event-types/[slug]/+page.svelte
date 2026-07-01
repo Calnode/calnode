@@ -424,7 +424,7 @@
 	let qForm = $state({ label: '', type: 'text' as 'text'|'select'|'checkbox', options: '', required: false });
 	let qAdding = $state(false);
 
-	let editingQId: string | null = $state(null);
+	let editingQId = $state<string | null>(null);
 	let deleteQOpen = $state(false);
 	let pendingQ = $state<Question | null>(null);
 	let editQForm = $state({ label: '', type: 'text' as 'text'|'select'|'checkbox', options: '', required: false });

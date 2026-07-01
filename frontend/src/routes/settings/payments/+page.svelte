@@ -5,11 +5,13 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
+	import { ConfirmDialog } from '$lib/components/ui/confirm-dialog';
 	import { toast } from 'svelte-sonner';
 	import { saveOnCmdS } from '$lib/save-shortcut';
 
 	let loading = $state(true);
 	let saving = $state(false);
+	let confirmDisconnectOpen = $state(false);
 
 	let settings = $state<StripeSettings | null>(null);
 	let secretKey = $state('');
@@ -47,7 +49,6 @@
 	}
 
 	async function disconnect() {
-		if (!confirm('Remove Stripe credentials? Paid event types will stop being bookable.')) return;
 		saving = true;
 		try {
 			settings = await api.patch<StripeSettings>('/v1/settings/stripe', { clear: true });
@@ -156,11 +157,20 @@
 			<div class="mt-5 flex items-center gap-2">
 				<Button onclick={save} disabled={saving}>{saving ? 'Saving…' : 'Save'}</Button>
 				{#if settings?.configured}
-					<Button variant="outline" onclick={disconnect} disabled={saving}>Disconnect</Button>
+					<Button variant="outline" onclick={() => (confirmDisconnectOpen = true)} disabled={saving}>Disconnect</Button>
 				{/if}
 			</div>
 		</div>
 	</div>
 {/if}
 
+
+<ConfirmDialog
+	bind:open={confirmDisconnectOpen}
+	title="Remove Stripe credentials?"
+	description="Paid event types will stop being bookable."
+	confirmText="Remove"
+	destructive
+	onConfirm={disconnect}
+/>
 {/if}

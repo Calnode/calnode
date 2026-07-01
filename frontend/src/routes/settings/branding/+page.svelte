@@ -28,12 +28,12 @@
 	let logoOpacity = $state(100);
 	let privacyUrl = $state('');
 	let termsUrl = $state('');
-	let fileInput: HTMLInputElement | undefined = $state();
+	let fileInput = $state<HTMLInputElement | undefined>();
 
 	// Crop dialog — Cropper is lazy-loaded client-side only to avoid SSR failures.
 	let cropOpen = $state(false);
 	let cropSrc = $state('');
-	let cropperEl: HTMLImageElement | undefined = $state();
+	let cropperEl = $state<HTMLImageElement | undefined>();
 	let cropperInstance: CropperType | null = null;
 	let CropperClass: typeof CropperType | null = null;
 

@@ -14,12 +14,12 @@
 	import { saveOnCmdS } from '$lib/save-shortcut';
 	import type CropperType from 'cropperjs';
 
-	let user: User | null = $state(null);
+	let user = $state<User | null>(null);
 	let loading = $state(true);
 	let saving = $state(false);
 	let uploading = $state(false);
 	let avatarUrl = $state('');
-	let fileInput: HTMLInputElement | undefined = $state(undefined);
+	let fileInput = $state<HTMLInputElement | undefined>(undefined);
 
 	let timezone = $state('UTC');
 	let time_format = $state<'12h' | '24h'>('12h');
@@ -29,7 +29,7 @@
 	// Crop dialog state — Cropper is lazy-loaded client-side only to avoid SSR failures
 	let cropOpen = $state(false);
 	let cropSrc = $state('');
-	let cropperEl: HTMLImageElement | undefined = $state(undefined);
+	let cropperEl = $state<HTMLImageElement | undefined>(undefined);
 	let hasExistingAvatar = $state(false);
 	let cropperInstance: CropperType | null = null;
 	let CropperClass: (typeof CropperType) | null = null;

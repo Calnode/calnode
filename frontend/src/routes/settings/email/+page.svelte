@@ -13,7 +13,7 @@
 	let saving = $state(false);
 	let testing = $state(false);
 
-	let emailSettings: EmailSettings | null = $state(null);
+	let emailSettings = $state<EmailSettings | null>(null);
 	let smtpHost = $state('');
 	let smtpPort = $state('587');
 	let smtpUser = $state('');

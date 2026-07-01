@@ -14,7 +14,7 @@
 	let saving = $state(false);
 	let testing = $state(false);
 
-	let settings: LLMSettings | null = $state(null);
+	let settings = $state<LLMSettings | null>(null);
 	let enabled = $state(false);
 	let endpoint = $state('');
 	let model = $state('');

@@ -66,13 +66,13 @@
 	let busy = $state(false);
 	let justConnected = $state(false);
 	let disconnectOpen = $state(false);
-	let pendingDisconnectId: string | null = $state(null);
+	let pendingDisconnectId = $state<string | null>(null);
 
 	const providers = $derived(status?.providers ?? []);
 	const connections = $derived(status?.connections ?? []);
 
 	// Zoom is a separate, per-host meeting-link connection (not a calendar).
-	let zoom: ZoomStatus | null = $state(null);
+	let zoom = $state<ZoomStatus | null>(null);
 	let zoomJustConnected = $state(false);
 	let zoomDisconnecting = $state(false);
 	let zoomDisconnectOpen = $state(false);
