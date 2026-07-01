@@ -12,6 +12,8 @@ agents do the booking. Self-host the whole thing on a $5 box; nothing is paywall
 
 `Apache-2.0` · `Go 1.26` · `single static binary` · `SQLite + Litestream`
 
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/Calnode/calnode/badge)](https://securityscorecards.dev/viewer/?uri=github.com/Calnode/calnode) · [Audit it yourself](AUDIT.md)
+
 ---
 
 ## Why Calnode
@@ -191,6 +193,19 @@ A few load-bearing decisions (full detail in the the design docs):
   second datastore.
 - **Instance-per-tenant.** Each install is one workspace; isolation is a feature,
   and the self-host and cloud codepaths are identical.
+
+---
+
+## Audit it yourself in 10 minutes
+
+Calnode's backend is small enough to fit entirely in one LLM's context window —
+most scheduling software (cal.com included) can't say that. **[AUDIT.md](AUDIT.md)**
+turns that into a self-serve check: a copy-paste scanner block (govulncheck, gosec,
+gitleaks across full history, SBOM, semgrep — all neutral, standard tooling you run
+yourself), an adversarial LLM prompt-pack for your own coding agent, and
+**[a claims → verification manifest](audit/claims.yaml)** mapping every security
+claim we make to exactly how to check it in the source. Not a certification — a
+due-diligence accelerator.
 
 ---
 

@@ -1,0 +1,93 @@
+name: Audit
+
+# Publishes the objective, third-party signals that back AUDIT.md/audit/claims.yaml
+# (OpenSSF Scorecard + SBOM), and re-runs the deterministic half of claims.yaml as a
+# CI gate so a claim silently going false (a new Postgres/MySQL/Redis dependency, a
+# real vulnerability, a leaked secret) fails the build instead of quietly rotting.
+# This is separate from ci.yml (build/test) — audit signal, not correctness.
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '20 6 * * 1' # weekly, Monday — catches newly-disclosed CVEs even with no code changes
+  workflow_dispatch:
+
+permissions: read-all
+
+jobs:
+  scorecard:
+    name: OpenSSF Scorecard
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: ossf/scorecard-action@v2
+        with:
+          results_file: results.sarif
+          results_format: sarif
+          publish_results: true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: scorecard-sarif
+          path: results.sarif
+          retention-days: 30
+
+      - uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: results.sarif
+
+  sbom:
+    name: SBOM (syft)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: anchore/sbom-action@v0
+        with:
+          path: .
+          format: cyclonedx-json
+          output-file: calnode-sbom.cdx.json
+          artifact-name: calnode-sbom.cdx.json
+
+  claims-guard:
+    name: Deterministic claims guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # gitleaks needs full history
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: No server-DB driver (single-binary-no-server-db claim)
+        run: |
+          if grep -iE 'postgres|mysql|redis' go.mod; then
+            echo "::error::go.mod pulled in a server DB driver — this breaks the single-binary claim in audit/claims.yaml"
+            exit 1
+          fi
+
+      - name: No tenant/workspace column (instance-per-tenant-isolation claim)
+        run: |
+          if grep -rl 'tenant_id\|workspace_id' internal/db/migrations/*.sql; then
+            echo "::error::a tenant/workspace column appeared — re-check the instance-per-tenant claim in audit/claims.yaml"
+            exit 1
+          fi
+
+      - name: govulncheck (clean-security-scan claim)
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
+
+      - name: gitleaks (clean-security-scan claim)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

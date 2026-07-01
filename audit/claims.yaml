@@ -1,0 +1,206 @@
+# Calnode — Claims → Verification Manifest
+#
+# Every public claim we make about Calnode's architecture, security, and privacy,
+# mapped to exactly how to verify it against the actual source. This is not a
+# certification and not a substitute for your own review — it's a falsifiable index
+# so you (or your own LLM/agent) can check each claim in minutes instead of hours.
+#
+# How to use this file:
+#   1. Clone the repo at the commit/tag this file ships with.
+#   2. For each claim, run the `verify` commands and/or read the cited files.
+#   3. If a claim doesn't hold, it's a bug in our claims (or our code) — please open
+#      an issue: https://github.com/Calnode/calnode/issues
+#
+# See AUDIT.md for the full audit workflow (deterministic scanners + LLM prompt-pack).
+
+version: 1
+last_verified: "2026-07-01"
+last_verified_commit: "6817698"
+
+claims:
+  - id: single-binary-no-server-db
+    claim: >
+      Calnode ships as a single static Go binary with an embedded SQLite database.
+      No Postgres, MySQL, or Redis server is required — self-hosting is `docker run`
+      or one binary on a VPS.
+    verify:
+      - "grep -iE 'postgres|mysql|redis' go.mod — expect no matches. The only DB
+         driver is modernc.org/sqlite (pure Go, no CGO — the whole reason
+         CGO_ENABLED=0 cross-compiles cleanly)."
+      - "internal/db/ opens exactly one *sql.DB; see internal/db/db.go."
+    status: verified
+    caveat: null
+
+  - id: instance-per-tenant-isolation
+    claim: >
+      One Calnode deployment is one isolated workspace. There is no shared
+      multi-tenant database and no cross-tenant data path, because there is no
+      tenant model in the code at all — the isolation boundary is the deployment
+      itself (a separate binary + SQLite file per customer/workspace).
+    verify:
+      - "grep -rl 'tenant_id\\|workspace_id' internal/db/migrations/*.sql — expect
+         no matches. There's no column to isolate because there's no multi-tenant
+         schema in the first place."
+      - "Run the tenant-isolation prompt in audit/prompts/prompt-pack.md against
+         your own LLM to have it try to find a cross-tenant path and confirm it
+         can't."
+    status: verified
+    caveat: >
+      This is an architectural claim, not a runtime access-control claim — it's
+      true by the absence of a shared-tenancy code path, not by a permission check
+      you could theoretically misconfigure. If you run multiple Calnode instances
+      behind one reverse proxy, isolation is exactly as strong as your proxy/network
+      config, which is outside Calnode's code.
+
+  - id: meeting-content-egress
+    claim: >
+      Meeting CONTENT — recorded audio and transcripts — never leaves your
+      infrastructure except to Deepgram, and only when you explicitly enable the
+      optional notetaker feature.
+    verify:
+      - "grep -rn 'api.deepgram.com' internal/ — the single outbound call site
+         that receives recorded audio (internal/stt/deepgram.go)."
+      - "Recordings themselves go to YOUR OWN S3-compatible bucket (LITESTREAM_*
+         env vars), never to Calnode or any third party — see
+         internal/handler/livekit_recording.go and migration 00043."
+      - "Run the 'trace every outbound network call' prompt in
+         audit/prompts/prompt-pack.md for an exhaustive, adversarial check."
+    status: verified
+    caveat: >
+      This claim is scoped to MEETING CONTENT specifically — not to every outbound
+      network call an operator chooses to configure. Calnode also talks to other
+      third parties for separate, expected, operator/user-initiated integrations
+      that carry no meeting content:
+        - Calendar sync: Google Calendar, Microsoft Graph/Teams, CalDAV providers
+          (iCloud, Fastmail, Nextcloud, etc.) — internal/gcal, internal/calendar.
+        - Meeting links: Zoom (per-host OAuth), LiveKit — either self-hosted or
+          LiveKit Cloud, an operator choice, not a Calnode-run service.
+        - Payments: Stripe, for paid bookings.
+        - Optional analytics: GA4/GTM, native and consent-gated (see
+          cookie-consent-gated-analytics below) — off by default, and even when on,
+          carries no meeting content.
+        - BYO-LLM: your configured LLM endpoint (default api.openai.com, fully
+          swappable to any OpenAI-compatible provider) receives booking constraints
+          and, for the notetaker, transcript text to summarize — never raw calendar
+          data. See llm-no-raw-calendar-data below.
+      A skeptical reader should verify this list is exhaustive themselves — that's
+      exactly what the adversarial prompt above is for.
+
+  - id: envelope-encryption-at-rest
+    claim: >
+      Secrets at rest (OAuth refresh tokens, API credentials) use envelope
+      encryption — a per-secret data-encryption key wrapped by a root key-encryption
+      key — not flat single-key AES-GCM.
+    verify:
+      - "internal/keyvault/keyvault.go — the KEK/DEK implementation."
+      - "internal/db/migrations/00017_crypto_keystore.sql — the keystore schema."
+      - "CALNODE_ENCRYPTION_KEY / CALNODE_RECOVERY_SECRET env vars — rotation and
+         escrow support."
+    status: verified
+    caveat: null
+
+  - id: recording-consent-aware
+    claim: >
+      Built-in video recording is consent-aware: every participant gets a notice
+      (audio announcement + on-screen prompt) and a Continue/Leave choice when a
+      meeting is being recorded, and each decision is logged.
+    verify:
+      - "internal/db/migrations/00044_meeting_consents.sql — the consent audit log."
+      - "assets/livekit-room.js — the notice + Continue/Leave UI, triggered on the
+         recording metadata flag."
+    status: verified
+    caveat: >
+      This is a notice-and-choice model (the industry-standard Zoom/Teams/Meet
+      pattern), not an affirmative all-party consent GATE — recording is not
+      blocked from starting, and a participant who continues without explicitly
+      clicking Accept is not prevented from being recorded (they can only Leave).
+      This is a deliberate design choice, not an oversight; a stricter gate model
+      was considered and deferred pending real customer demand.
+
+  - id: cookie-consent-gated-analytics
+    claim: >
+      Native analytics (GA4/GTM) on the public booking pages is consent-gated:
+      nothing loads, and no `_ga*` cookies are set, until the visitor explicitly
+      accepts a cookie banner. Declining clears any analytics cookies already set.
+    verify:
+      - "internal/handler/templates/_shared.html — the trackingHead/consentBanner
+         partials shared by book.html and manage.html."
+      - "Load a booking page with GA4/GTM configured in an incognito window: the
+         banner shows, and DevTools → Application → Cookies shows no _ga* cookie
+         until you click Accept."
+    status: verified
+    caveat: >
+      This claim covers the NATIVE GA4/GTM integration only. The separate
+      operator-controlled 'Head HTML' code-injection field (Settings → Tracking) is
+      intentionally NOT gated — it's arbitrary trusted code the operator pastes in
+      themselves, equivalent to editing the template directly, and gating it isn't
+      meaningful. The embed widget (embed.js) has neither native tracking nor a
+      banner by design — it runs inside a customer's own website, which owns its
+      own analytics and consent.
+
+  - id: llm-no-raw-calendar-data
+    claim: >
+      The optional BYO-LLM layer (conversational booking, notetaker summaries) never
+      sees raw calendar data or does time math itself — it only sees pre-computed
+      availability/constraints and returns natural-language decisions that the
+      deterministic backend executes.
+    verify:
+      - "internal/db/migrations/00034_llm_settings.sql, 00035_llm_instructions.sql —
+         the BYO-LLM config (operator-supplied endpoint + key)."
+      - "internal/handler/booking_assistant.go — the tool-loop drives
+         computeSlots/createBookingForSlug (the same deterministic cores the REST
+         API and MCP tools use); the LLM never queries the calendar directly."
+    status: verified
+    caveat: null
+
+  - id: small-enough-to-audit
+    claim: >
+      Calnode's entire backend is small enough to fit in a single LLM context
+      window, which is the whole premise of this audit kit — a cal.com-scale
+      codebase can't do this.
+    verify:
+      - "Non-test Go source: ~24,000 lines / ~840KB across ~105 files (find . -name
+         '*.go' -not -name '*_test.go' -not -path './frontend/*' | xargs wc -l)."
+      - "Full repository (backend + SvelteKit admin frontend + tests): ~2.6MB
+         tracked (git ls-files -z | xargs -0 du -cb)."
+    status: verified
+    caveat: >
+      The frontend admin app (SvelteKit) and its ~219 npm packages are NOT included
+      in the 'fits in one context' claim — that's specifically about the Go backend,
+      which is the security-relevant surface (auth, data, integrations). The
+      lean-dependency-tree claim below is scoped the same way.
+
+  - id: lean-dependency-tree
+    claim: >
+      The Go backend has a lean dependency tree — 27 direct/indirect Go modules per
+      the current SBOM, not the sprawling transitive tree typical of larger
+      frameworks.
+    verify:
+      - "syft dir:. --exclude './frontend/**' --exclude './.git/**' -o table | grep
+         golang | wc -l"
+      - "go list -m all | wc -l"
+    status: verified
+    caveat: >
+      This claim is scoped to the Go backend. The SvelteKit admin frontend pulls in
+      ~219 npm packages via its build tooling (Vite, Tailwind, Vitest, etc.) — normal
+      for any modern frontend, but not itself a 'lean' differentiator, and not
+      blended into this claim's number.
+
+  - id: clean-security-scan
+    claim: >
+      As of the date/commit above, Calnode's Go backend has zero known
+      vulnerabilities in its dependencies (govulncheck), zero unresolved SAST
+      findings (gosec/semgrep — every finding is either fixed or documented inline
+      as a verified false positive), and zero secrets in its full git history
+      (gitleaks).
+    verify:
+      - "See AUDIT.md's scanner command block — run it yourself and compare."
+      - "gosec findings that remain are all annotated inline with `#nosec` +
+         reasoning at the exact line, or documented as false positives with
+         reasoning in the same commit — see commit 6817698."
+    status: verified
+    caveat: >
+      A clean scan today is not a permanent guarantee — dependencies gain new CVEs
+      over time. This is why the deterministic half of this claim (govulncheck,
+      gitleaks) is wired into CI (.github/workflows/audit.yml) rather than only
+      asserted here once.
