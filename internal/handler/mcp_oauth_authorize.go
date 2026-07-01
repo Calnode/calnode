@@ -23,6 +23,19 @@ import (
 
 const oauthReturnCookie = "calnode_oauth_return"
 
+// oauthCSRFCookie names the double-submit CSRF cookie set when the consent screen
+// renders (GET /oauth/authorize) and checked against the hidden form field on the
+// consent decision (POST /oauth/authorize). Without it, a cross-site page could
+// auto-submit a decision=allow POST using the client_id/redirect_uri of a client the
+// attacker registered themselves — since every other field on that form is either
+// attacker-supplied or echoed from the query string, a signed-in victim's browser
+// alone would be enough to mint an authorization code binding the attacker's client to
+// the victim's account. SameSite=Lax on the session cookie already blocks the naive
+// cross-site POST case in current browsers, but this is deliberate defense-in-depth:
+// a token tied to having actually been served the consent HTML, independent of
+// SameSite enforcement.
+const oauthCSRFCookie = "calnode_oauth_csrf"
+
 // authRequest is a validated /oauth/authorize request.
 type authRequest struct {
 	ResponseType  string
@@ -69,6 +82,7 @@ var consentTmpl = template.Must(template.New("consent").Parse(`<!doctype html>
     <input type="hidden" name="state" value="{{.AR.State}}">
     <input type="hidden" name="scope" value="{{.AR.Scope}}">
     <input type="hidden" name="resource" value="{{.AR.Resource}}">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
     <div class="row">
       <button class="deny" name="decision" value="deny" type="submit">Deny</button>
       <button class="allow" name="decision" value="allow" type="submit">Allow</button>
@@ -129,6 +143,11 @@ func (h *Handler) AuthorizeMCPDecision(w http.ResponseWriter, r *http.Request) {
 	userID, _, ok := h.sessionUser(r)
 	if !ok {
 		http.Error(w, "session expired — please retry the connection", http.StatusUnauthorized)
+		return
+	}
+
+	if !h.verifyConsentCSRF(w, r) {
+		http.Error(w, "your session has expired — please retry the connection", http.StatusBadRequest)
 		return
 	}
 
@@ -333,6 +352,11 @@ func (h *Handler) renderConsent(w http.ResponseWriter, r *http.Request, ar authR
 	if u, err := url.Parse(ar.RedirectURI); err == nil && u.Scheme != "" && u.Host != "" {
 		formAction += " " + u.Scheme + "://" + u.Host
 	}
+	csrf := randHex(16)
+	http.SetCookie(w, &http.Cookie{ // #nosec G124 -- HttpOnly/SameSite/Secure are all set; Secure is h.secureCookie (dynamic on BASE_URL scheme), which gosec's static check can't verify
+		Name: oauthCSRFCookie, Value: csrf, Path: "/oauth/authorize",
+		MaxAge: 600, HttpOnly: true, SameSite: http.SameSiteLaxMode, Secure: h.secureCookie,
+	})
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; form-action "+formAction+"; base-uri 'none'")
 	w.Header().Set("X-Frame-Options", "DENY")
@@ -341,7 +365,24 @@ func (h *Handler) renderConsent(w http.ResponseWriter, r *http.Request, ar authR
 		"ClientName": clientName,
 		"UserEmail":  email,
 		"AR":         ar,
+		"CSRF":       csrf,
 	})
+}
+
+// verifyConsentCSRF checks the double-submit CSRF token from the consent decision POST
+// against the cookie set when the consent screen was rendered, then clears the cookie
+// (single use). See oauthCSRFCookie for why this exists alongside SameSite.
+func (h *Handler) verifyConsentCSRF(w http.ResponseWriter, r *http.Request) bool {
+	c, err := r.Cookie(oauthCSRFCookie)
+	http.SetCookie(w, &http.Cookie{ // #nosec G124 -- HttpOnly/SameSite/Secure are all set; Secure is h.secureCookie (dynamic on BASE_URL scheme), which gosec's static check can't verify
+		Name: oauthCSRFCookie, Value: "", Path: "/oauth/authorize", MaxAge: -1,
+		HttpOnly: true, SameSite: http.SameSiteLaxMode, Secure: h.secureCookie,
+	})
+	if err != nil || c.Value == "" {
+		return false
+	}
+	submitted := r.PostForm.Get("csrf")
+	return submitted != "" && subtle.ConstantTimeCompare([]byte(c.Value), []byte(submitted)) == 1
 }
 
 func (h *Handler) redirectAuthError(w http.ResponseWriter, r *http.Request, ar authRequest, code, desc string) {

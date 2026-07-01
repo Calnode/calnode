@@ -74,15 +74,26 @@ func TestMCP_OAuthFlow(t *testing.T) {
 	if csp := grec.Header().Get("Content-Security-Policy"); !strings.Contains(csp, "https://claude.ai") {
 		t.Errorf("consent CSP form-action missing client origin: %q", csp)
 	}
+	var csrfCookie *http.Cookie
+	for _, c := range grec.Result().Cookies() {
+		if c.Name == "calnode_oauth_csrf" {
+			csrfCookie = c
+		}
+	}
+	if csrfCookie == nil || csrfCookie.Value == "" {
+		t.Fatalf("consent render: no csrf cookie set")
+	}
 
 	// 2b. Consent (decision=allow) → 302 back to the client with a code.
 	getCode := func(t *testing.T) string {
 		t.Helper()
 		form := authForm()
 		form.Set("decision", "allow")
+		form.Set("csrf", csrfCookie.Value)
 		req := httptest.NewRequest(http.MethodPost, "/oauth/authorize", strings.NewReader(form.Encode()))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		req.AddCookie(session)
+		req.AddCookie(csrfCookie)
 		rec := httptest.NewRecorder()
 		h.AuthorizeMCPDecision(rec, req)
 		if rec.Code != http.StatusFound {
@@ -203,6 +214,58 @@ func TestMCP_OAuthConnections(t *testing.T) {
 	}
 }
 
+// TestMCP_OAuthConsentCSRF verifies the consent decision POST is rejected when the
+// csrf form field doesn't match the cookie set when the consent screen was rendered —
+// closing the "cross-site page auto-submits decision=allow" consent-forgery gap.
+func TestMCP_OAuthConsentCSRF(t *testing.T) {
+	h, database, _, userID := setupWorkspaceWithDB(t)
+	const sessID = "oauth-csrf-session"
+	database.Exec(`INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)`,
+		sessID, userID, time.Now().Add(time.Hour).UTC().Format(time.RFC3339))
+	session := &http.Cookie{Name: "calnode_session", Value: sessID}
+
+	const redirectURI = "https://claude.ai/cb"
+	rec := httptest.NewRecorder()
+	h.RegisterOAuthClient(rec, httptest.NewRequest(http.MethodPost, "/oauth/register",
+		strings.NewReader(`{"client_name":"X","redirect_uris":["`+redirectURI+`"]}`)))
+	var reg struct {
+		ClientID string `json:"client_id"`
+	}
+	json.Unmarshal(rec.Body.Bytes(), &reg)
+
+	baseForm := func() url.Values {
+		return url.Values{
+			"response_type": {"code"}, "client_id": {reg.ClientID}, "redirect_uri": {redirectURI},
+			"code_challenge": {"abc"}, "code_challenge_method": {"S256"}, "state": {"s"}, "decision": {"allow"},
+		}
+	}
+
+	// No csrf cookie at all (never rendered the consent screen in this "browser").
+	form := baseForm()
+	form.Set("csrf", "guessed")
+	req := httptest.NewRequest(http.MethodPost, "/oauth/authorize", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(session)
+	rec = httptest.NewRecorder()
+	h.AuthorizeMCPDecision(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("no csrf cookie: code=%d; want 400", rec.Code)
+	}
+
+	// csrf cookie present but the form field doesn't match it.
+	form = baseForm()
+	form.Set("csrf", "wrong-value")
+	req = httptest.NewRequest(http.MethodPost, "/oauth/authorize", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(session)
+	req.AddCookie(&http.Cookie{Name: "calnode_oauth_csrf", Value: "actual-value"})
+	rec = httptest.NewRecorder()
+	h.AuthorizeMCPDecision(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("mismatched csrf: code=%d; want 400", rec.Code)
+	}
+}
+
 func TestMCP_OAuthDeny(t *testing.T) {
 	h, database, _, userID := setupWorkspaceWithDB(t)
 	const sessID = "oauth-deny-session"
@@ -221,10 +284,12 @@ func TestMCP_OAuthDeny(t *testing.T) {
 	form := url.Values{
 		"response_type": {"code"}, "client_id": {reg.ClientID}, "redirect_uri": {redirectURI},
 		"code_challenge": {"abc"}, "code_challenge_method": {"S256"}, "state": {"s"}, "decision": {"deny"},
+		"csrf": {"nonce"},
 	}
 	req := httptest.NewRequest(http.MethodPost, "/oauth/authorize", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.AddCookie(&http.Cookie{Name: "calnode_session", Value: sessID})
+	req.AddCookie(&http.Cookie{Name: "calnode_oauth_csrf", Value: "nonce"})
 	rec = httptest.NewRecorder()
 	h.AuthorizeMCPDecision(rec, req)
 	loc := rec.Header().Get("Location")
