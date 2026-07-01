@@ -124,10 +124,6 @@ func requestOriginHost(r *http.Request) string {
 	return ""
 }
 
-// RateLimit returns middleware that allows limit requests per period per remote IP.
-// Exceeding the limit returns 429 with a Retry-After header. The IP is taken
-// from X-Real-IP or X-Forwarded-For when present (set by a trusted reverse
-// proxy), falling back to the TCP remote address.
 // PublicCORS wraps a public, unauthenticated endpoint to allow cross-origin browser
 // access (for the embeddable booking widget). allowedOrigins empty ⇒ any origin
 // (`*`); otherwise only a request whose Origin is in the list gets an
@@ -164,6 +160,9 @@ func PublicCORS(allowedOrigins []string) func(http.HandlerFunc) http.HandlerFunc
 	}
 }
 
+// RateLimit returns middleware that allows limit requests per period per remote IP.
+// Exceeding the limit returns 429 with a Retry-After header. The IP is the TCP remote
+// address only — see remoteIP for why proxy headers are never trusted here.
 func RateLimit(limit int, period time.Duration) func(http.HandlerFunc) http.HandlerFunc {
 	rl := &rateLimiter{
 		windows: make(map[string]*rlWindow),
