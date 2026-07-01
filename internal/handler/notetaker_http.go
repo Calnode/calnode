@@ -165,7 +165,7 @@ func (h *Handler) GetBookingTranscript(w http.ResponseWriter, r *http.Request) {
 			parts = append(parts, t)
 		}
 	}
-	rows.Close()
+	rows.Close() // #nosec G104 -- rows already fully consumed above; nothing actionable on close error
 	h.writeJSON(w, http.StatusOK, map[string]any{
 		"exists": len(parts) > 0,
 		"text":   strings.Join(parts, "\n\n"),

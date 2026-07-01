@@ -516,7 +516,7 @@ func (h *Handler) DeleteAllRecordings(w http.ResponseWriter, r *http.Request) {
 			list = append(list, x)
 		}
 	}
-	rows.Close()
+	rows.Close() // #nosec G104 -- rows already fully consumed above; nothing actionable on close error
 
 	deleted, failed := 0, 0
 	for _, x := range list {

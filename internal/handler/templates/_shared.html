@@ -44,7 +44,10 @@
 
 {{define "consentBanner"}}{{if or .GTMContainerID .GA4MeasurementID}}
 <div id="cookie-banner" class="cookie-banner" hidden role="dialog" aria-label="Cookie consent">
-  <p class="cookie-text">We use analytics cookies to understand how this booking page is used — set only if you accept.{{if .PrivacyURL}} <a href="{{.PrivacyURL}}" target="_blank" rel="noopener noreferrer">Privacy policy</a>.{{end}}</p>
+  {{/* SAFE (generic.html-templates.security.var-in-href): .PrivacyURL is server-validated to
+       require an absolute http(s) scheme before it's ever stored (validatedLegalURL in
+       branding_settings.go) — a javascript: URI is rejected at write time, never at render time. */}}
+  <p class="cookie-text">We use analytics cookies to understand how this booking page is used — set only if you accept.{{if .PrivacyURL}} <a href="{{.PrivacyURL}}" target="_blank" rel="noopener noreferrer">Privacy policy</a>.{{end}}</p>  <!-- nosemgrep: generic.html-templates.security.var-in-href.var-in-href -->
   <div class="cookie-actions">
     <button id="cookie-decline" type="button" class="cookie-btn">Decline</button>
     <button id="cookie-accept" type="button" class="cookie-btn cookie-btn-primary">Accept</button>
@@ -89,9 +92,12 @@
 </script>
 {{end}}{{end}}
 
+{{/* SAFE (generic.html-templates.security.var-in-href, both links below): .PrivacyURL/.TermsURL
+     are server-validated to require an absolute http(s) scheme before storage (validatedLegalURL
+     in branding_settings.go) — a javascript: URI is rejected at write time, never at render time. */}}
 {{define "legalFooter"}}<footer class="powered-by">
-  {{if .PrivacyURL}}<a href="{{.PrivacyURL}}" target="_blank" rel="noopener noreferrer">Privacy</a>{{end}}
-  {{if .TermsURL}}<a href="{{.TermsURL}}" target="_blank" rel="noopener noreferrer">Terms</a>{{end}}
+  {{if .PrivacyURL}}<a href="{{.PrivacyURL}}" target="_blank" rel="noopener noreferrer">Privacy</a>{{end}}  <!-- nosemgrep: generic.html-templates.security.var-in-href.var-in-href -->
+  {{if .TermsURL}}<a href="{{.TermsURL}}" target="_blank" rel="noopener noreferrer">Terms</a>{{end}}  <!-- nosemgrep: generic.html-templates.security.var-in-href.var-in-href -->
   {{if or .GTMContainerID .GA4MeasurementID}}<button type="button" class="cookie-link" onclick="window.__calnodeOpenConsent && window.__calnodeOpenConsent()">Cookie settings</button>{{end}}
   <a href="https://calnode.com" target="_blank" rel="noopener noreferrer">Calnode</a>
 </footer>{{end}}

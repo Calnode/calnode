@@ -343,7 +343,7 @@ func (h *Handler) hostAvailability(ctx context.Context, userID, eventTypeID stri
 	for ownRows.Next() {
 		var startStr, endStr string
 		if err := ownRows.Scan(&startStr, &endStr); err != nil {
-			ownRows.Close()
+			ownRows.Close() // #nosec G104 -- already returning the scan error; nothing more actionable
 			return slots.HostAvailability{}, err
 		}
 		s, err1 := time.Parse(time.RFC3339Nano, startStr)
@@ -353,7 +353,7 @@ func (h *Handler) hostAvailability(ctx context.Context, userID, eventTypeID stri
 		}
 		ownEvents = append(ownEvents, slots.Interval{Start: s, End: e})
 	}
-	ownRows.Close()
+	ownRows.Close() // #nosec G104 -- rows already fully consumed above; nothing actionable on close error
 	if err := ownRows.Err(); err != nil {
 		return slots.HostAvailability{}, err
 	}

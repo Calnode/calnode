@@ -248,7 +248,7 @@ func (h *Handler) UploadBrandingLogo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	dir := h.brandingDir()
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		h.logger.ErrorContext(r.Context(), "logo: mkdir", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -263,9 +263,11 @@ func (h *Handler) UploadBrandingLogo(w http.ResponseWriter, r *http.Request) {
 	tmpPath := tmp.Name()
 	committed := false
 	defer func() {
-		tmp.Close()
+		tmp.Close() // #nosec G104 -- file already written/renamed by this point; nothing actionable
 		if !committed {
-			os.Remove(tmpPath)
+			if rerr := os.Remove(tmpPath); rerr != nil && !os.IsNotExist(rerr) {
+				h.logger.Warn("logo: cleanup temp file", "error", rerr, "path", tmpPath)
+			}
 		}
 	}()
 	if _, err := tmp.Write(out.Bytes()); err != nil {

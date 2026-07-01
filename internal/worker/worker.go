@@ -199,7 +199,7 @@ func (w *Worker) Poll(ctx context.Context) {
 		}
 		jobs = append(jobs, j)
 	}
-	rows.Close()
+	rows.Close() // #nosec G104 -- rows already fully consumed above; nothing actionable on close error
 
 	for _, j := range jobs {
 		lockedUntil := time.Now().UTC().Add(30 * time.Second).Format(time.RFC3339)
@@ -219,17 +219,23 @@ func (w *Worker) Poll(ctx context.Context) {
 		if err := w.processJob(ctx, j.typ, j.payload); err != nil {
 			w.logger.Error("worker: process job", "error", err, "job_id", j.id, "type", j.typ)
 			if j.attempts >= j.maxAttempts {
-				w.db.ExecContext(ctx,
+				if _, uerr := w.db.ExecContext(ctx,
 					`UPDATE jobs SET status = 'failed', last_error = ? WHERE id = ?`,
-					err.Error(), j.id)
+					err.Error(), j.id); uerr != nil {
+					w.logger.Error("worker: mark job failed", "error", uerr, "job_id", j.id)
+				}
 			} else {
 				runAt := time.Now().UTC().Add(backoff(j.attempts)).Format(time.RFC3339)
-				w.db.ExecContext(ctx,
+				if _, uerr := w.db.ExecContext(ctx,
 					`UPDATE jobs SET status = 'pending', last_error = ?, run_at = ? WHERE id = ?`,
-					err.Error(), runAt, j.id)
+					err.Error(), runAt, j.id); uerr != nil {
+					w.logger.Error("worker: requeue job", "error", uerr, "job_id", j.id)
+				}
 			}
 		} else {
-			w.db.ExecContext(ctx, `UPDATE jobs SET status = 'done' WHERE id = ?`, j.id)
+			if _, uerr := w.db.ExecContext(ctx, `UPDATE jobs SET status = 'done' WHERE id = ?`, j.id); uerr != nil {
+				w.logger.Error("worker: mark job done", "error", uerr, "job_id", j.id)
+			}
 		}
 	}
 }
@@ -385,25 +391,30 @@ func (w *Worker) deliverWebhook(ctx context.Context, jobPayload string) error {
 	resp, err := w.httpClient.Do(req)
 	now := time.Now().UTC().Format(time.RFC3339)
 	if err != nil {
-		w.db.ExecContext(ctx, `
+		if _, uerr := w.db.ExecContext(ctx, `
 			UPDATE webhook_deliveries
 			SET status = 'failed', attempt_count = attempt_count + 1, last_attempted_at = ?
-			WHERE id = ?`, now, p.WebhookDeliveryID)
+			WHERE id = ?`, now, p.WebhookDeliveryID); uerr != nil {
+			w.logger.Error("worker: mark webhook delivery failed", "error", uerr, "delivery_id", p.WebhookDeliveryID)
+		}
 		return fmt.Errorf("worker: http post: %w", err)
 	}
 	defer func() {
-		io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20)) //nolint:errcheck
-		resp.Body.Close()
+		// Draining/closing a response body we're done with — no action possible on either error.
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20)) // #nosec G104
+		resp.Body.Close()                                           // #nosec G104
 	}()
 
 	status := "success"
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		status = "failed"
 	}
-	w.db.ExecContext(ctx, `
+	if _, uerr := w.db.ExecContext(ctx, `
 		UPDATE webhook_deliveries
 		SET status = ?, response_status = ?, attempt_count = attempt_count + 1, last_attempted_at = ?
-		WHERE id = ?`, status, resp.StatusCode, now, p.WebhookDeliveryID)
+		WHERE id = ?`, status, resp.StatusCode, now, p.WebhookDeliveryID); uerr != nil {
+		w.logger.Error("worker: record webhook delivery result", "error", uerr, "delivery_id", p.WebhookDeliveryID)
+	}
 
 	if status == "failed" {
 		return fmt.Errorf("worker: endpoint returned HTTP %d", resp.StatusCode)

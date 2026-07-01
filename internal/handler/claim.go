@@ -31,8 +31,12 @@ func (h *Handler) AuthStatus(w http.ResponseWriter, r *http.Request) {
 		providers = append(providers, "microsoft")
 	}
 
+	// Best-effort status flag: on query error emailLoginCount simply stays 0 (treated
+	// as "no email-login users yet"), which is a safe default for this UI hint.
 	var emailLoginCount int
-	h.db.QueryRowContext(r.Context(), //nolint:errcheck
+	//nolint:errcheck
+	// #nosec G104
+	h.db.QueryRowContext(r.Context(),
 		`SELECT COUNT(*) FROM users WHERE email_login = 1`).Scan(&emailLoginCount)
 
 	h.writeJSON(w, http.StatusOK, map[string]any{

@@ -185,6 +185,10 @@ body {
           <label for="f-email">Email</label>
           <input id="f-email" name="email" type="email" required autocomplete="email" placeholder="you@example.com">
         </div>
+        {{/* SAFE (generic.html-templates.security.unquoted-attribute-var, this whole block):
+             .ID is the event type's own intake-question primary key (admin-configured, not
+             attacker-controlled at booking time), and Go's html/template context-aware-escapes
+             every {{.ID}} below regardless — there is no raw/unescaped output here. */}}
         {{range .Questions}}
         <div class="field" data-qid="{{.ID}}" data-required="{{if .Required}}true{{else}}false{{end}}">
           {{if eq .QType "checkbox"}}
@@ -194,13 +198,13 @@ body {
           </div>
           {{else if eq .QType "select"}}
           <label for="ans-{{.ID}}">{{.Label}}{{if .Required}} <span class="required-star">*</span>{{end}}</label>
-          <select id="ans-{{.ID}}" name="ans-{{.ID}}"{{if .Required}} required{{end}}>
+          <select id="ans-{{.ID}}" name="ans-{{.ID}}"{{if .Required}} required{{end}}>  <!-- nosemgrep: generic.html-templates.security.unquoted-attribute-var.unquoted-attribute-var -->
             <option value="">Choose an option</option>
             {{range .Options}}<option value="{{.}}">{{.}}</option>{{end}}
           </select>
           {{else}}
           <label for="ans-{{.ID}}">{{.Label}}{{if .Required}} <span class="required-star">*</span>{{end}}</label>
-          <input id="ans-{{.ID}}" name="ans-{{.ID}}" type="text"{{if .Required}} required{{end}}>
+          <input id="ans-{{.ID}}" name="ans-{{.ID}}" type="text"{{if .Required}} required{{end}}>  <!-- nosemgrep: generic.html-templates.security.unquoted-attribute-var.unquoted-attribute-var -->
           {{end}}
         </div>
         {{end}}
@@ -227,7 +231,10 @@ body {
 {{template "legalFooter" .}}
 
 <!-- Shared booking-calendar logic (booking-logic.js), inlined ahead of the page script -->
-<script>{{.BookingLogicJS}}</script>
+{{/* SAFE (generic.html-templates.security.var-in-script-tag): .BookingLogicJS is the static,
+     go:embed'd shared JS asset (assets/booking-logic.js) — a compile-time constant, never
+     request/database data. */}}
+<script>{{.BookingLogicJS}}</script>  <!-- nosemgrep: generic.html-templates.security.var-in-script-tag.var-in-script-tag -->
 <script>
 (function () {
   'use strict';

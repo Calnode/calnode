@@ -57,7 +57,7 @@ func (s *SMTP) Send(ctx context.Context, msg Message) error {
 		}
 		c, err = smtp.NewClient(conn, s.host)
 		if err != nil {
-			conn.Close()
+			conn.Close() // #nosec G104 -- already returning a more specific error; nothing actionable on close error
 			return fmt.Errorf("mailer: smtp client: %w", err)
 		}
 	} else {
@@ -68,12 +68,12 @@ func (s *SMTP) Send(ctx context.Context, msg Message) error {
 		}
 		c, err = smtp.NewClient(conn, s.host)
 		if err != nil {
-			conn.Close()
+			conn.Close() // #nosec G104 -- already returning a more specific error; nothing actionable on close error
 			return fmt.Errorf("mailer: smtp client: %w", err)
 		}
 		if s.startTLS {
 			if err := c.StartTLS(&tls.Config{ServerName: s.host}); err != nil {
-				c.Close()
+				c.Close() // #nosec G104 -- already returning a more specific error; nothing actionable on close error
 				return fmt.Errorf("mailer: starttls: %w", err)
 			}
 		}
@@ -103,7 +103,7 @@ func (s *SMTP) Send(ctx context.Context, msg Message) error {
 		return fmt.Errorf("mailer: DATA: %w", err)
 	}
 	if _, err := wc.Write(raw); err != nil {
-		wc.Close()
+		wc.Close() // #nosec G104 -- already returning a more specific error; nothing actionable on close error
 		return fmt.Errorf("mailer: write body: %w", err)
 	}
 	if err := wc.Close(); err != nil {

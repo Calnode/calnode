@@ -86,7 +86,7 @@ func (h *Handler) reconcileReschedules(ctx context.Context, gc *calendar.Service
 			items = append(items, d)
 		}
 	}
-	rows.Close()
+	rows.Close() // #nosec G104 -- rows already fully consumed above; nothing actionable on close error
 
 	for _, d := range items {
 		start, err1 := time.Parse(time.RFC3339Nano, d.startStr)
@@ -128,7 +128,7 @@ func (h *Handler) reconcileCancellations(ctx context.Context, gc *calendar.Servi
 			orphans = append(orphans, o)
 		}
 	}
-	rows.Close()
+	rows.Close() // #nosec G104 -- rows already fully consumed above; nothing actionable on close error
 
 	for _, o := range orphans {
 		if err := gc.CancelEvent(ctx, o.userID, o.eventID); err != nil {
@@ -181,7 +181,7 @@ func (h *Handler) reconcileCreations(ctx context.Context, gc *calendar.Service) 
 			items = append(items, m)
 		}
 	}
-	rows.Close()
+	rows.Close() // #nosec G104 -- rows already fully consumed above; nothing actionable on close error
 
 	for _, m := range items {
 		has, err := gc.HasDestination(ctx, m.userID)

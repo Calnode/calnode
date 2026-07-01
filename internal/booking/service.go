@@ -475,12 +475,12 @@ func (s *Service) Reschedule(ctx context.Context, bookingID string, newStart, ne
 	for hostRows.Next() {
 		var u string
 		if err := hostRows.Scan(&u); err != nil {
-			hostRows.Close()
+			hostRows.Close() // #nosec G104 -- already returning the scan error; nothing more actionable
 			return nil, fmt.Errorf("booking: reschedule hosts scan: %w", err)
 		}
 		hostIDs = append(hostIDs, u)
 	}
-	hostRows.Close()
+	hostRows.Close() // #nosec G104 -- rows already fully consumed above; nothing actionable on close error
 	if len(hostIDs) == 0 { // legacy booking with no booking_hosts rows
 		hostIDs = []string{b.HostID}
 	}

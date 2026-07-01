@@ -314,7 +314,7 @@ func (s *Service) enrich(ctx context.Context, p BookingPayload) enrichedBooking 
 				bd.answers = append(bd.answers, map[string]string{"question": label, "answer": value})
 			}
 		}
-		rows.Close()
+		rows.Close() // #nosec G104 -- rows already fully consumed above; nothing actionable on close error
 	}
 	return bd
 }
@@ -380,7 +380,7 @@ func (s *Service) Enqueue(ctx context.Context, event string, p BookingPayload) e
 		var id, eventsJSON string
 		var fieldsJSON sql.NullString
 		if err := rows.Scan(&id, &eventsJSON, &fieldsJSON); err != nil {
-			rows.Close()
+			rows.Close() // #nosec G104 -- already returning the scan error; nothing more actionable
 			return fmt.Errorf("webhook: scan: %w", err)
 		}
 		var events []string
@@ -401,7 +401,7 @@ func (s *Service) Enqueue(ctx context.Context, event string, p BookingPayload) e
 		}
 		matching = append(matching, wrow{id: id, fields: fields})
 	}
-	rows.Close()
+	rows.Close() // #nosec G104 -- rows already fully consumed above; nothing actionable on close error
 	if err := rows.Err(); err != nil {
 		return err
 	}

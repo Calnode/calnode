@@ -77,11 +77,11 @@ func (c *Client) freeBusyForClient(ctx context.Context, hc *http.Client, from, t
 		var cv calendarViewResp
 		if resp.StatusCode != http.StatusOK {
 			msg := graphErrBody(resp)
-			resp.Body.Close()
+			resp.Body.Close() // #nosec G104 -- already returning a more specific error; nothing actionable on close error
 			return nil, fmt.Errorf("microsoft: calendarView status %d: %s", resp.StatusCode, msg)
 		}
 		derr := json.NewDecoder(resp.Body).Decode(&cv)
-		resp.Body.Close()
+		resp.Body.Close() // #nosec G104 -- body already decoded above; nothing actionable on close error
 		if derr != nil {
 			return nil, fmt.Errorf("microsoft: calendarView decode: %w", derr)
 		}

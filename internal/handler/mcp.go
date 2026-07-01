@@ -557,6 +557,6 @@ func (h *Handler) mcpGetTranscript(ctx context.Context, _ *mcp.CallToolRequest, 
 			parts = append(parts, t)
 		}
 	}
-	rows.Close()
+	rows.Close() // #nosec G104 -- rows already fully consumed above; nothing actionable on close error
 	return nil, transcriptOut{Exists: len(parts) > 0, Text: strings.Join(parts, "\n\n")}, nil
 }

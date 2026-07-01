@@ -46,9 +46,13 @@ func (h *Handler) CreateInvite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Reject if a user with this email already exists.
+	// Reject if a user with this email already exists. This is a friendly pre-flight
+	// check only — users.email has a UNIQUE constraint (migration 00001), so a real
+	// duplicate is still rejected at the DB even if this query itself errors.
 	var exists int
-	h.db.QueryRowContext(r.Context(), //nolint:errcheck
+	//nolint:errcheck
+	// #nosec G104
+	h.db.QueryRowContext(r.Context(),
 		`SELECT COUNT(*) FROM users WHERE email = ?`, req.Email).Scan(&exists)
 	if exists > 0 {
 		h.writeError(w, http.StatusConflict, "a user with this email already exists")
@@ -76,8 +80,11 @@ func (h *Handler) CreateInvite(w http.ResponseWriter, r *http.Request) {
 // the link when SMTP is configured, and returns the invite URL + expiry. Shared by
 // CreateInvite and ResendInvite so the two never diverge.
 func (h *Handler) issueInvite(ctx context.Context, email, adminName, adminID string) (id, inviteURL, expiresAt string, err error) {
-	// Only one live link per email.
-	h.db.ExecContext(ctx, //nolint:errcheck
+	// Only one live link per email — best effort. If this fails, the worst case is
+	// more than one valid invite link existing briefly; not a security issue.
+	//nolint:errcheck
+	// #nosec G104
+	h.db.ExecContext(ctx,
 		`DELETE FROM invite_tokens WHERE email = ? AND used_at IS NULL`, email)
 
 	raw := make([]byte, 32)

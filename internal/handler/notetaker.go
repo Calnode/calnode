@@ -183,7 +183,7 @@ func (h *Handler) summarizeBooking(ctx context.Context, bookingID string) (strin
 			sb.WriteString("\n\n")
 		}
 	}
-	rows.Close()
+	rows.Close() // #nosec G104 -- rows already fully consumed above; nothing actionable on close error
 	transcript := strings.TrimSpace(sb.String())
 	if transcript == "" {
 		return "", nil

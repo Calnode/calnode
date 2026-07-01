@@ -97,7 +97,11 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 	// Only delete the session if the cookie value corresponds to an actual row,
 	// so a forged or empty cookie cannot be used to trigger arbitrary deletes.
 	if cookie, err := r.Cookie(sessionCookieName); err == nil && cookie.Value != "" {
-		h.db.ExecContext(r.Context(), //nolint:errcheck
+		// Best-effort: logout must proceed (cookie is cleared below) even if this fails;
+		// worst case is a harmless stale row that the session's own expiry cleans up.
+		//nolint:errcheck
+		// #nosec G104
+		h.db.ExecContext(r.Context(),
 			`DELETE FROM sessions WHERE id = ?`, cookie.Value)
 	}
 	http.SetCookie(w, &http.Cookie{

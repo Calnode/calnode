@@ -48,7 +48,7 @@ func (h *spaHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	f, err := h.fs.Open(r.URL.Path)
 	if err == nil {
 		st, statErr := f.Stat()
-		f.Close()
+		f.Close() // #nosec G104 -- handle already Stat()-ed above; nothing actionable on close error
 		// Treat directories as not-found so the SPA shell handles the route
 		// instead of http.FileServer rendering a directory listing.
 		if statErr == nil && st.IsDir() {

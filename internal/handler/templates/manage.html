@@ -243,7 +243,10 @@ body {
 
 {{if not .TokenInvalid}}{{if ne .Status "cancelled"}}
 <!-- Shared booking-calendar logic (booking-logic.js), inlined ahead of the page script -->
-<script>{{.BookingLogicJS}}</script>
+{{/* SAFE (generic.html-templates.security.var-in-script-tag): .BookingLogicJS is the static,
+     go:embed'd shared JS asset (assets/booking-logic.js) — a compile-time constant, never
+     request/database data. */}}
+<script>{{.BookingLogicJS}}</script>  <!-- nosemgrep: generic.html-templates.security.var-in-script-tag.var-in-script-tag -->
 <script>
 (function () {
   'use strict';
