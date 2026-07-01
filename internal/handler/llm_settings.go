@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -17,26 +16,19 @@ import (
 )
 
 // validateLLMEndpoint checks endpoint is an http(s) URL and, best-effort, that it
-// doesn't resolve to a cloud metadata address right now. Private/loopback
-// destinations are allowed on purpose — a self-hosted or local LLM runtime is a
-// documented, intended configuration for this field — only the metadata range is
-// never a legitimate chat-completions endpoint for anyone. A resolution failure
-// (offline endpoint, DNS not provisioned yet) doesn't block saving; the runtime
-// client (internal/llm/client.go, via netutil.MetadataSafeTransport) re-checks on
-// every real dial, which is the guard that actually matters once the endpoint is used.
+// doesn't resolve to a cloud metadata address right now (netutil.CheckHostnameNotMetadata).
+// Private/loopback destinations are allowed on purpose — a self-hosted or local LLM
+// runtime is a documented, intended configuration for this field — only the metadata
+// range is never a legitimate chat-completions endpoint for anyone. The runtime client
+// (internal/llm/client.go, via netutil.MetadataSafeTransport) re-checks on every real
+// dial, which is the guard that actually matters once the endpoint is used.
 func validateLLMEndpoint(ctx context.Context, endpoint string) error {
 	u, err := url.Parse(endpoint)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" {
 		return fmt.Errorf("endpoint must be a valid http(s) URL")
 	}
-	addrs, err := net.DefaultResolver.LookupIPAddr(ctx, u.Hostname())
-	if err != nil {
-		return nil
-	}
-	for _, a := range addrs {
-		if netutil.IsLinkLocal(a.IP) {
-			return fmt.Errorf("endpoint must not resolve to a cloud metadata address")
-		}
+	if err := netutil.CheckHostnameNotMetadata(ctx, u.Hostname()); err != nil {
+		return fmt.Errorf("endpoint must not resolve to a cloud metadata address")
 	}
 	return nil
 }

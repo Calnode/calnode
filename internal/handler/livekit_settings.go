@@ -4,11 +4,13 @@ import (
 	"database/sql"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"encoding/json"
 
 	"github.com/calnode/calnode/internal/livekit"
+	"github.com/calnode/calnode/internal/netutil"
 	"github.com/calnode/calnode/internal/secret"
 )
 
@@ -100,6 +102,16 @@ func (h *Handler) PatchLiveKitSettings(w http.ResponseWriter, r *http.Request) {
 		!strings.HasPrefix(req.URL, "ws://") && !strings.HasPrefix(req.URL, "http://") {
 		h.writeError(w, http.StatusBadRequest, "server URL must start with wss:// or https://")
 		return
+	}
+	// Best-effort SSRF check: self-hosted LiveKit on a private network is a legitimate,
+	// intended configuration (same reasoning as CalDAV/BYO-LLM), so only reject a
+	// confirmed cloud-metadata address — see netutil.CheckHostnameNotMetadata. The
+	// livekit.Client's own http.Client re-checks at dial time either way.
+	if u, err := url.Parse(req.URL); err == nil {
+		if err := netutil.CheckHostnameNotMetadata(r.Context(), u.Hostname()); err != nil {
+			h.writeError(w, http.StatusBadRequest, "server URL must not resolve to a cloud metadata address")
+			return
+		}
 	}
 
 	if req.APISecret != "" {

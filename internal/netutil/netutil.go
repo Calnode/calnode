@@ -67,6 +67,26 @@ func IsLinkLocal(ip net.IP) bool {
 	return ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast()
 }
 
+// CheckHostnameNotMetadata is a best-effort, save-time companion to
+// MetadataSafeTransport: it errors only when host definitely resolves to a cloud
+// metadata address right now. A resolution failure (offline endpoint, DNS not
+// provisioned yet, a transient blip) is not itself an error — it returns nil — because
+// the runtime dial-time guard is what actually enforces this once the endpoint is
+// used; a save-time DNS hiccup shouldn't block saving a setting. Shared by every
+// admin-configurable "bring your own server" field (BYO-LLM endpoint, LiveKit URL).
+func CheckHostnameNotMetadata(ctx context.Context, host string) error {
+	addrs, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	if err != nil {
+		return nil
+	}
+	for _, a := range addrs {
+		if IsLinkLocal(a.IP) {
+			return fmt.Errorf("%q resolves to a cloud metadata address", host)
+		}
+	}
+	return nil
+}
+
 // SafeTransport returns an http.RoundTripper that resolves every dial target through
 // ResolveSafe and connects to the resolved IP directly (never re-resolving the
 // hostname), closing the DNS-rebinding TOCTOU gap between validation and connection.

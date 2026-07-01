@@ -18,11 +18,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
 
+	"github.com/calnode/calnode/internal/netutil"
 	"github.com/calnode/calnode/internal/uid"
 )
 
@@ -44,7 +46,13 @@ func New(serverURL, apiKey, apiSecret string, roomKey [32]byte) *Client {
 		apiKey:    apiKey,
 		apiSecret: apiSecret,
 		roomKey:   roomKey,
-		hc:        &http.Client{Timeout: 15 * time.Second},
+		// serverURL is operator-configured and, per the package doc, legitimately
+		// self-hosted on a private network — only block cloud-metadata addresses,
+		// not private ranges (see netutil.MetadataSafeTransport).
+		hc: &http.Client{
+			Timeout:   15 * time.Second,
+			Transport: netutil.MetadataSafeTransport(slog.Default(), "livekit: SSRF block"),
+		},
 	}
 }
 
