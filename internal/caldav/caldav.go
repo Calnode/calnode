@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/calnode/calnode/internal/calendar"
+	"github.com/calnode/calnode/internal/connstore"
 	"github.com/calnode/calnode/internal/secret"
 	"github.com/calnode/calnode/internal/uid"
 )
@@ -140,15 +141,9 @@ func (c *Client) loadConn(ctx context.Context, userID string, checkConflicts, is
 	      FROM calendar_connections
 	      WHERE user_id = ? AND provider = 'caldav'`
 	args := []any{userID}
-	if checkConflicts >= 0 {
-		q += " AND check_conflicts = ?"
-		args = append(args, checkConflicts)
-	}
-	if isDestination >= 0 {
-		q += " AND is_destination = ?"
-		args = append(args, isDestination)
-	}
-	q += " LIMIT 1"
+	frag, fragArgs := connstore.WhereClause(checkConflicts, isDestination)
+	q += frag + " LIMIT 1"
+	args = append(args, fragArgs...)
 
 	var cn conn
 	var pwEnc string
@@ -222,26 +217,9 @@ func (c *Client) saveConnection(ctx context.Context, userID, accountEmail, passw
 	}
 	defer tx.Rollback() //nolint:errcheck
 
-	checkConflicts, isDest := 1, 0
-	var ec, ed int
-	switch err := tx.QueryRowContext(ctx,
-		`SELECT check_conflicts, is_destination FROM calendar_connections
-		 WHERE user_id = ? AND provider = 'caldav' AND account_email = ?`,
-		userID, accountEmail).Scan(&ec, &ed); err {
-	case nil:
-		checkConflicts, isDest = ec, ed // existing row → preserve flags
-	case sql.ErrNoRows:
-		var destCount int
-		if err := tx.QueryRowContext(ctx,
-			`SELECT COUNT(*) FROM calendar_connections WHERE user_id = ? AND is_destination = 1`,
-			userID).Scan(&destCount); err != nil {
-			return fmt.Errorf("caldav: save dest check: %w", err)
-		}
-		if destCount == 0 {
-			isDest = 1
-		}
-	default:
-		return fmt.Errorf("caldav: save flag lookup: %w", err)
+	checkConflicts, isDest, _, err := connstore.ResolveFlags(ctx, tx, userID, "caldav", accountEmail)
+	if err != nil {
+		return fmt.Errorf("caldav: save: %w", err)
 	}
 
 	if _, err := tx.ExecContext(ctx,

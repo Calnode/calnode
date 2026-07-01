@@ -19,6 +19,7 @@ import (
 	"golang.org/x/oauth2/google"
 
 	"github.com/calnode/calnode/internal/calendar"
+	"github.com/calnode/calnode/internal/connstore"
 	"github.com/calnode/calnode/internal/oauthstore"
 	"github.com/calnode/calnode/internal/secret"
 	"github.com/calnode/calnode/internal/uid"
@@ -188,15 +189,9 @@ func (c *Client) httpClient(ctx context.Context, userID string, checkConflicts, 
 	      FROM calendar_connections
 	      WHERE user_id = ? AND provider = 'google'`
 	args := []any{userID}
-	if checkConflicts >= 0 {
-		q += " AND check_conflicts = ?"
-		args = append(args, checkConflicts)
-	}
-	if isDestination >= 0 {
-		q += " AND is_destination = ?"
-		args = append(args, isDestination)
-	}
-	q += " LIMIT 1"
+	frag, fragArgs := connstore.WhereClause(checkConflicts, isDestination)
+	q += frag + " LIMIT 1"
+	args = append(args, fragArgs...)
 
 	var accessEnc, refreshEnc, calID, expiryStr, accountEmail string
 	err := c.db.QueryRowContext(ctx, q, args...).Scan(&accessEnc, &refreshEnc, &calID, &expiryStr, &accountEmail)
@@ -307,28 +302,9 @@ func (c *Client) saveToken(ctx context.Context, userID, calID, accountEmail stri
 	}
 	defer tx.Rollback() //nolint:errcheck
 
-	// Resolve the flags: preserve them if this account already has a row (refresh); otherwise
-	// it's new — checked for conflicts, and destination only if the user has no destination yet.
-	checkConflicts, isDest := 1, 0
-	var ec, ed int
-	switch err := tx.QueryRowContext(ctx,
-		`SELECT check_conflicts, is_destination FROM calendar_connections
-		 WHERE user_id = ? AND provider = 'google' AND account_email = ?`,
-		userID, accountEmail).Scan(&ec, &ed); err {
-	case nil:
-		checkConflicts, isDest = ec, ed // existing row → preserve
-	case sql.ErrNoRows:
-		var destCount int
-		if err := tx.QueryRowContext(ctx,
-			`SELECT COUNT(*) FROM calendar_connections WHERE user_id = ? AND is_destination = 1`,
-			userID).Scan(&destCount); err != nil {
-			return fmt.Errorf("gcal: save token dest check: %w", err)
-		}
-		if destCount == 0 {
-			isDest = 1
-		}
-	default:
-		return fmt.Errorf("gcal: save token flag lookup: %w", err)
+	checkConflicts, isDest, _, err := connstore.ResolveFlags(ctx, tx, userID, "google", accountEmail)
+	if err != nil {
+		return fmt.Errorf("gcal: save token: %w", err)
 	}
 
 	if _, err := tx.ExecContext(ctx,

@@ -1,8 +1,9 @@
 // Package microsoft implements calendar.Provider for Microsoft 365 / Outlook via
 // the Microsoft Graph API. It mirrors the structure of internal/gcal — both share
-// the internal/secret crypto helpers and the internal/oauthstore refresh-persistence
-// wrapper; the connection-loading/upsert flow is still separate per-provider (see
-// saveToken, loadConn below).
+// internal/secret (crypto), internal/oauthstore (refresh-persistence), and
+// internal/connstore (the "-1 means any" filter convention + destination-claiming
+// flag resolution). account_kind is Microsoft-specific and layered on top of
+// connstore.ResolveFlags rather than baked into it.
 package microsoft
 
 import (
@@ -25,6 +26,7 @@ import (
 	"golang.org/x/oauth2/microsoft"
 
 	"github.com/calnode/calnode/internal/calendar"
+	"github.com/calnode/calnode/internal/connstore"
 	"github.com/calnode/calnode/internal/oauthstore"
 	"github.com/calnode/calnode/internal/secret"
 	"github.com/calnode/calnode/internal/uid"
@@ -244,15 +246,9 @@ func (c *Client) httpClient(ctx context.Context, userID string, checkConflicts, 
 	q := `SELECT access_token_enc, COALESCE(refresh_token_enc,''), calendar_id, COALESCE(expiry_at,''), COALESCE(account_email,'')
 	      FROM calendar_connections WHERE user_id = ? AND provider = ?`
 	args := []any{userID, providerName}
-	if checkConflicts >= 0 {
-		q += " AND check_conflicts = ?"
-		args = append(args, checkConflicts)
-	}
-	if isDestination >= 0 {
-		q += " AND is_destination = ?"
-		args = append(args, isDestination)
-	}
-	q += " LIMIT 1"
+	frag, fragArgs := connstore.WhereClause(checkConflicts, isDestination)
+	q += frag + " LIMIT 1"
+	args = append(args, fragArgs...)
 
 	var accessEnc, refreshEnc, calID, expiryStr, accountEmail string
 	err := c.db.QueryRowContext(ctx, q, args...).Scan(&accessEnc, &refreshEnc, &calID, &expiryStr, &accountEmail)
@@ -330,32 +326,17 @@ func (c *Client) saveToken(ctx context.Context, userID, calID, accountEmail, kin
 	}
 	defer tx.Rollback() //nolint:errcheck
 
-	// Resolve flags + account_kind: preserve from the existing account row (refresh); else new
-	// connection — checked for conflicts, destination only if the user has none yet.
-	checkConflicts, isDest := 1, 0
-	var ec, ed int
-	var existingKind string
-	switch err := tx.QueryRowContext(ctx,
-		`SELECT check_conflicts, is_destination, COALESCE(account_kind,'') FROM calendar_connections
-		 WHERE user_id = ? AND provider = ? AND account_email = ?`,
-		userID, providerName, accountEmail).Scan(&ec, &ed, &existingKind); err {
-	case nil:
-		checkConflicts, isDest = ec, ed
-		if kind == "" {
-			kind = existingKind // refresh carries no id_token → keep stored kind
-		}
-	case sql.ErrNoRows:
-		var destCount int
-		if err := tx.QueryRowContext(ctx,
-			`SELECT COUNT(*) FROM calendar_connections WHERE user_id = ? AND is_destination = 1`,
-			userID).Scan(&destCount); err != nil {
-			return fmt.Errorf("microsoft: save token dest check: %w", err)
-		}
-		if destCount == 0 {
-			isDest = 1
-		}
-	default:
-		return fmt.Errorf("microsoft: save token flag lookup: %w", err)
+	checkConflicts, isDest, existing, err := connstore.ResolveFlags(ctx, tx, userID, providerName, accountEmail)
+	if err != nil {
+		return fmt.Errorf("microsoft: save token: %w", err)
+	}
+	// account_kind isn't part of the shared flag set (Google/CalDAV don't have it) — on a
+	// refresh (no id_token, so kind==""), fetch and keep whatever kind is already stored.
+	if existing && kind == "" {
+		_ = tx.QueryRowContext(ctx,
+			`SELECT COALESCE(account_kind,'') FROM calendar_connections
+			 WHERE user_id = ? AND provider = ? AND account_email = ?`,
+			userID, providerName, accountEmail).Scan(&kind)
 	}
 
 	if _, err := tx.ExecContext(ctx,
