@@ -240,11 +240,15 @@ func (h *Handler) rescheduleSideEffects(bCopy booking.Booking, capturedEtID stri
 
 	// Move the calendar event(s) to the new time (all hosts, for Group bookings).
 	h.moveCalendarEvents(ctx, bCopy.ID, bCopy.StartAt, bCopy.EndAt)
+	// Update the Zoom meeting time too (the join URL is unchanged).
+	h.rescheduleZoomMeeting(ctx, &bCopy)
 
 	// Rotate the token so the original confirmation-email link is invalidated.
 	if tok, err := h.bookingSvc.RotateManageToken(ctx, bCopy.ID); err == nil {
 		d.ManageURL = h.publicURL() + "/manage/" + tok
 	}
+	d.AttachICS = h.noConnectedDestination(ctx, bCopy.HostID)
+	d.ICSSequence = int(bCopy.UpdatedAt.Unix())
 
 	prefs := allOnPrefs
 	if p, err := h.loadHostPrefs(ctx, bCopy.HostID); err != nil {
@@ -272,19 +276,21 @@ func (h *Handler) rescheduleSideEffects(bCopy booking.Booking, capturedEtID stri
 		}
 	}
 
-	if err := h.webhookSvc.Enqueue(ctx, "booking.rescheduled", webhook.BookingPayload{
-		ID:              bCopy.ID,
-		EventTypeSlug:   d.EventTypeSlug,
-		HostID:          bCopy.HostID,
-		StartAt:         bCopy.StartAt.UTC().Format(time.RFC3339),
-		EndAt:           bCopy.EndAt.UTC().Format(time.RFC3339),
-		Status:          bCopy.Status,
-		LocationValue:   bCopy.LocationValue,
-		CreatedAt:       bCopy.CreatedAt.UTC().Format(time.RFC3339),
-		PreviousStartAt: previousStart.UTC().Format(time.RFC3339),
-		PreviousEndAt:   previousEnd.UTC().Format(time.RFC3339),
-	}); err != nil {
-		h.logger.Error("enqueue booking.rescheduled webhook", "error", err, "booking_id", bCopy.ID)
+	if h.webhookSvc != nil {
+		if err := h.webhookSvc.Enqueue(ctx, "booking.rescheduled", webhook.BookingPayload{
+			ID:              bCopy.ID,
+			EventTypeSlug:   d.EventTypeSlug,
+			HostID:          bCopy.HostID,
+			StartAt:         bCopy.StartAt.UTC().Format(time.RFC3339),
+			EndAt:           bCopy.EndAt.UTC().Format(time.RFC3339),
+			Status:          bCopy.Status,
+			LocationValue:   bCopy.LocationValue,
+			CreatedAt:       bCopy.CreatedAt.UTC().Format(time.RFC3339),
+			PreviousStartAt: previousStart.UTC().Format(time.RFC3339),
+			PreviousEndAt:   previousEnd.UTC().Format(time.RFC3339),
+		}); err != nil {
+			h.logger.Error("enqueue booking.rescheduled webhook", "error", err, "booking_id", bCopy.ID)
+		}
 	}
 
 	if err := h.replaceReminderJobs(ctx, bCopy.ID, capturedEtID, bCopy.StartAt); err != nil {

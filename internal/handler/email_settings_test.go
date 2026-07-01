@@ -55,6 +55,22 @@ func TestGetEmailSettings_requiresAuth(t *testing.T) {
 	}
 }
 
+func TestGetEmailSettings_nonAdminForbidden(t *testing.T) {
+	h, db, _, _ := setupWorkspaceWithDB(t)
+
+	rawKey := "non-admin-get-email-test-key"
+	hash := sha256HexForTest(rawKey)
+	db.Exec(`INSERT INTO users (id, email, name, iana_timezone, is_admin) VALUES ('u4','other3@example.com','Other3','UTC',0)`)
+	db.Exec(`INSERT INTO api_keys (id, user_id, name, key_hash, created_at) VALUES ('k4','u4','test',?,datetime('now'))`, hash)
+
+	req := authReq(http.MethodGet, "/v1/settings/email", "", rawKey)
+	rec := httptest.NewRecorder()
+	h.RequireAuth(h.GetEmailSettings)(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("non-admin GET: got %d; want 403", rec.Code)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // PATCH /v1/settings/email
 // ---------------------------------------------------------------------------

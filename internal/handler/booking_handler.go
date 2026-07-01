@@ -270,14 +270,18 @@ func (h *Handler) createBookingForSlug(ctx context.Context, slug string, startAt
 		RoutingMode       string
 		RRStrategy        string
 		IsActive          int
+		IsPublic          int
 		MaxActiveBookings int
 		PriceCents        int
 	}
 	err := h.db.QueryRowContext(ctx, `
-		SELECT id, name, duration_minutes, location_type, location_value, routing_mode, rr_strategy, is_active, max_active_bookings, price_cents
+		SELECT id, name, duration_minutes, location_type, location_value, routing_mode, rr_strategy, is_active, is_public, max_active_bookings, price_cents
 		FROM event_types WHERE slug = ?`, slug).
-		Scan(&et.ID, &et.Name, &et.DurationMinutes, &et.LocationType, &et.LocationValue, &et.RoutingMode, &et.RRStrategy, &et.IsActive, &et.MaxActiveBookings, &et.PriceCents)
-	if err != nil || et.IsActive == 0 {
+		Scan(&et.ID, &et.Name, &et.DurationMinutes, &et.LocationType, &et.LocationValue, &et.RoutingMode, &et.RRStrategy, &et.IsActive, &et.IsPublic, &et.MaxActiveBookings, &et.PriceCents)
+	// is_public gates bookability the same as the direct booking page (book.go) — an
+	// operator who unchecks "Public" in the admin UI expects the event type to stop
+	// being bookable everywhere, not just hidden from its own page.
+	if err != nil || et.IsActive == 0 || et.IsPublic == 0 {
 		return nil, errEventTypeNotFound
 	}
 	// Paid events require the Stripe Checkout flow (booking page only) — agents/assistant
@@ -522,19 +526,27 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 		RoutingMode       string
 		RRStrategy        string
 		IsActive          int
+		IsPublic          int
 		MaxActiveBookings int
 		PriceCents        int
 		Currency          string
 	}
 	err = h.db.QueryRowContext(r.Context(), `
-		SELECT id, user_id, name, duration_minutes, location_type, location_value, routing_mode, rr_strategy, is_active, max_active_bookings, price_cents, currency
+		SELECT id, user_id, name, duration_minutes, location_type, location_value, routing_mode, rr_strategy, is_active, is_public, max_active_bookings, price_cents, currency
 		FROM event_types WHERE slug = ?`, req.EventTypeSlug).
-		Scan(&et.ID, &et.UserID, &et.Name, &et.DurationMinutes, &et.LocationType, &et.LocationValue, &et.RoutingMode, &et.RRStrategy, &et.IsActive, &et.MaxActiveBookings, &et.PriceCents, &et.Currency)
+		Scan(&et.ID, &et.UserID, &et.Name, &et.DurationMinutes, &et.LocationType, &et.LocationValue, &et.RoutingMode, &et.RRStrategy, &et.IsActive, &et.IsPublic, &et.MaxActiveBookings, &et.PriceCents, &et.Currency)
 	if err != nil {
 		h.writeError(w, http.StatusNotFound, "event type not found")
 		return
 	}
 	if et.IsActive == 0 {
+		h.writeError(w, http.StatusNotFound, "event type not found")
+		return
+	}
+	// is_public gates bookability the same as the direct booking page (book.go) — an
+	// operator who unchecks "Public" in the admin UI expects the event type to stop
+	// being bookable everywhere, not just hidden from its own page.
+	if et.IsPublic == 0 {
 		h.writeError(w, http.StatusNotFound, "event type not found")
 		return
 	}
@@ -926,20 +938,22 @@ func (h *Handler) dispatchBookingConfirmation(b *booking.Booking, in bookingConf
 			h.logger.Error("booking confirmation email (attendee)", "error", err, "booking_id", b.ID)
 		}
 	}
-	if err := h.webhookSvc.Enqueue(ctx, "booking.created", webhook.BookingPayload{
-		ID:                 b.ID,
-		EventTypeSlug:      in.EventTypeSlug,
-		HostID:             b.HostID,
-		StartAt:            b.StartAt.UTC().Format(time.RFC3339),
-		EndAt:              b.EndAt.UTC().Format(time.RFC3339),
-		Status:             b.Status,
-		LocationValue:      b.LocationValue,
-		CreatedAt:          b.CreatedAt.UTC().Format(time.RFC3339),
-		PaymentStatus:      paymentStatusForWebhook(b.PaymentStatus),
-		AmountPaidCents:    b.AmountPaidCents,
-		AmountPaidCurrency: b.AmountPaidCurrency,
-	}); err != nil {
-		h.logger.Error("enqueue booking.created webhook", "error", err, "booking_id", b.ID)
+	if h.webhookSvc != nil {
+		if err := h.webhookSvc.Enqueue(ctx, "booking.created", webhook.BookingPayload{
+			ID:                 b.ID,
+			EventTypeSlug:      in.EventTypeSlug,
+			HostID:             b.HostID,
+			StartAt:            b.StartAt.UTC().Format(time.RFC3339),
+			EndAt:              b.EndAt.UTC().Format(time.RFC3339),
+			Status:             b.Status,
+			LocationValue:      b.LocationValue,
+			CreatedAt:          b.CreatedAt.UTC().Format(time.RFC3339),
+			PaymentStatus:      paymentStatusForWebhook(b.PaymentStatus),
+			AmountPaidCents:    b.AmountPaidCents,
+			AmountPaidCurrency: b.AmountPaidCurrency,
+		}); err != nil {
+			h.logger.Error("enqueue booking.created webhook", "error", err, "booking_id", b.ID)
+		}
 	}
 	if err := h.enqueueBookingReminders(ctx, b.EventTypeID, b.ID, b.StartAt); err != nil {
 		h.logger.Error("enqueue reminders", "error", err, "booking_id", b.ID)
@@ -1220,21 +1234,23 @@ func (h *Handler) cancelSideEffects(b booking.Booking) {
 	_ = h.db.QueryRowContext(ctx,
 		`SELECT payment_status, amount_paid_cents, amount_paid_currency FROM bookings WHERE id = ?`, b.ID).
 		Scan(&payStatus, &payAmt, &payCur)
-	if err := h.webhookSvc.Enqueue(ctx, "booking.cancelled", webhook.BookingPayload{
-		ID:                 b.ID,
-		EventTypeSlug:      d.EventTypeSlug,
-		HostID:             b.HostID,
-		StartAt:            b.StartAt.UTC().Format(time.RFC3339),
-		EndAt:              b.EndAt.UTC().Format(time.RFC3339),
-		Status:             b.Status,
-		CancellationReason: b.CancellationReason,
-		LocationValue:      b.LocationValue,
-		CreatedAt:          b.CreatedAt.UTC().Format(time.RFC3339),
-		PaymentStatus:      paymentStatusForWebhook(payStatus),
-		AmountPaidCents:    payAmt,
-		AmountPaidCurrency: payCur,
-	}); err != nil {
-		h.logger.Error("enqueue booking.cancelled webhook", "error", err, "booking_id", b.ID)
+	if h.webhookSvc != nil {
+		if err := h.webhookSvc.Enqueue(ctx, "booking.cancelled", webhook.BookingPayload{
+			ID:                 b.ID,
+			EventTypeSlug:      d.EventTypeSlug,
+			HostID:             b.HostID,
+			StartAt:            b.StartAt.UTC().Format(time.RFC3339),
+			EndAt:              b.EndAt.UTC().Format(time.RFC3339),
+			Status:             b.Status,
+			CancellationReason: b.CancellationReason,
+			LocationValue:      b.LocationValue,
+			CreatedAt:          b.CreatedAt.UTC().Format(time.RFC3339),
+			PaymentStatus:      paymentStatusForWebhook(payStatus),
+			AmountPaidCents:    payAmt,
+			AmountPaidCurrency: payCur,
+		}); err != nil {
+			h.logger.Error("enqueue booking.cancelled webhook", "error", err, "booking_id", b.ID)
+		}
 	}
 }
 

@@ -1,6 +1,33 @@
 package netutil
 
-import "net"
+import (
+	"context"
+	"fmt"
+	"net"
+)
+
+// ResolveSafe resolves host and returns its addresses, or an error if it fails to
+// resolve, resolves to zero addresses, or resolves to any private/loopback/
+// link-local/CGNAT/ULA address (see IsPrivateIP) — the shared SSRF check used both
+// when an operator saves a webhook URL and when the worker actually dials it.
+// Callers that go on to make a real connection should dial one of the returned
+// addresses directly (not re-resolve the hostname) to avoid a DNS-rebinding gap
+// between this check and the connection.
+func ResolveSafe(ctx context.Context, host string) ([]net.IPAddr, error) {
+	addrs, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	if err != nil {
+		return nil, fmt.Errorf("resolve %q: %w", host, err)
+	}
+	if len(addrs) == 0 {
+		return nil, fmt.Errorf("%q resolved to no addresses", host)
+	}
+	for _, a := range addrs {
+		if IsPrivateIP(a.IP) {
+			return nil, fmt.Errorf("%q resolved to a private or loopback address", host)
+		}
+	}
+	return addrs, nil
+}
 
 // IsPrivateIP reports whether ip is a loopback, unspecified, link-local, or
 // private-use address. Used to block SSRF-prone webhook delivery targets.

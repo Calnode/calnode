@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net"
 	"net/http"
 	"net/url"
 	"slices"
@@ -203,19 +202,13 @@ func (h *Handler) ListWebhookDeliveries(w http.ResponseWriter, r *http.Request) 
 
 // validateWebhookURL resolves the URL host and rejects any address in a
 // loopback, link-local, or private range to prevent SSRF.
+// validateWebhookURL rejects a webhook URL whose host resolves (now) to a private/
+// loopback address — the same SSRF check the worker re-applies at actual delivery
+// time (netutil.ResolveSafe), since DNS can change between saving a URL and
+// delivering to it.
 func validateWebhookURL(ctx context.Context, u *url.URL) error {
-	host := u.Hostname()
-	addrs, err := net.DefaultResolver.LookupIPAddr(ctx, host)
-	if err != nil {
-		return fmt.Errorf("cannot resolve webhook host: %w", err)
-	}
-	if len(addrs) == 0 {
-		return fmt.Errorf("webhook host %q resolved to no addresses", host)
-	}
-	for _, a := range addrs {
-		if netutil.IsPrivateIP(a.IP) {
-			return fmt.Errorf("webhook URL must not resolve to a private or loopback address")
-		}
+	if _, err := netutil.ResolveSafe(ctx, u.Hostname()); err != nil {
+		return fmt.Errorf("webhook URL must not resolve to a private or loopback address: %w", err)
 	}
 	return nil
 }

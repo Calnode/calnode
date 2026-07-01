@@ -59,6 +59,11 @@ func LoadEmailSettingsFromDB(db *sql.DB, encKey [32]byte) (*SMTPConfig, error) {
 // Returns current SMTP configuration. The password is never returned;
 // smtp_pass_set indicates whether one is stored.
 func (h *Handler) GetEmailSettings(w http.ResponseWriter, r *http.Request) {
+	caller, ok := userFromContext(r.Context())
+	if !ok || !caller.IsAdmin {
+		h.writeError(w, http.StatusForbidden, "admin access required")
+		return
+	}
 	var host, port, user, passEnc, from, fromName string
 	var smtpTLS, startTLS int
 	err := h.db.QueryRowContext(r.Context(), `

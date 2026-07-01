@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -9,8 +8,6 @@ import (
 	"time"
 
 	"github.com/calnode/calnode/internal/booking"
-	"github.com/calnode/calnode/internal/mailer"
-	"github.com/calnode/calnode/internal/webhook"
 )
 
 // RescheduleBooking handles PATCH /v1/bookings/{id}/reschedule (admin — host only).
@@ -108,80 +105,10 @@ func (h *Handler) RescheduleBooking(w http.ResponseWriter, r *http.Request) {
 
 	h.writeJSON(w, http.StatusOK, toBookingJSON(updated))
 
-	bCopy := *updated
-	prevStart := previousStart
-	prevEnd := previousEnd
-	capturedEtID := etID
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-
-		d, err := h.loadCancellationData(ctx, &bCopy)
-		if err != nil {
-			h.logger.Error("reschedule booking: load email data", "error", err, "booking_id", bCopy.ID)
-			return
-		}
-		d.BaseURL = h.publicURL()
-		d.PreviousStartAt = prevStart
-		d.PreviousEndAt = prevEnd
-
-		// Move the calendar event(s) to the new time (all hosts, for Group bookings).
-		h.moveCalendarEvents(ctx, bCopy.ID, bCopy.StartAt, bCopy.EndAt)
-		// Update the Zoom meeting time too (the join URL is unchanged).
-		h.rescheduleZoomMeeting(ctx, &bCopy)
-
-		if tok, err := h.bookingSvc.RotateManageToken(ctx, bCopy.ID); err == nil {
-			d.ManageURL = h.publicURL() + "/manage/" + tok
-		}
-
-		prefs := allOnPrefs
-		if p, err := h.loadHostPrefs(ctx, bCopy.HostID); err != nil {
-			h.logger.Error("reschedule booking: load host prefs", "error", err, "booking_id", bCopy.ID)
-		} else {
-			prefs = p
-		}
-		var msgNote, subjNote sql.NullString
-		_ = h.db.QueryRowContext(ctx, `SELECT msg_reschedule, subj_reschedule FROM event_types WHERE id = ?`, capturedEtID).
-			Scan(&msgNote, &subjNote)
-		if msgNote.Valid {
-			d.CustomNote = msgNote.String
-		}
-		if subjNote.Valid {
-			d.SubjectOverride = subjNote.String
-		}
-		d.AttachICS = h.noConnectedDestination(ctx, bCopy.HostID)
-		d.ICSSequence = int(bCopy.UpdatedAt.Unix())
-		if prefs.NotifyReschedule {
-			if err := mailer.SendRescheduleToAttendee(ctx, h.mailer, d); err != nil {
-				h.logger.Error("reschedule booking: send email (attendee)", "error", err, "booking_id", bCopy.ID)
-			}
-		}
-		if prefs.NotifyHostReschedule {
-			if err := mailer.SendRescheduleToHost(ctx, h.mailer, d); err != nil {
-				h.logger.Error("reschedule booking: send email (host)", "error", err, "booking_id", bCopy.ID)
-			}
-		}
-
-		if h.webhookSvc != nil {
-			if err := h.webhookSvc.Enqueue(ctx, "booking.rescheduled", webhook.BookingPayload{
-				ID:              bCopy.ID,
-				EventTypeSlug:   etSlug,
-				HostID:          bCopy.HostID,
-				StartAt:         bCopy.StartAt.UTC().Format(time.RFC3339),
-				EndAt:           bCopy.EndAt.UTC().Format(time.RFC3339),
-				Status:          bCopy.Status,
-				LocationValue:   bCopy.LocationValue,
-				CreatedAt:       bCopy.CreatedAt.UTC().Format(time.RFC3339),
-				PreviousStartAt: prevStart.UTC().Format(time.RFC3339),
-				PreviousEndAt:   prevEnd.UTC().Format(time.RFC3339),
-			}); err != nil {
-				h.logger.Error("reschedule booking: enqueue webhook", "error", err, "booking_id", bCopy.ID)
-			}
-		}
-
-		if err := h.replaceReminderJobs(ctx, bCopy.ID, capturedEtID, bCopy.StartAt); err != nil {
-			h.logger.Error("reschedule booking: replace reminder jobs", "error", err, "booking_id", bCopy.ID)
-		}
-	}()
+	// Side effects (calendar move, Zoom update, emails, webhook, reminders) are shared
+	// with the manage-token reschedule flow — see rescheduleSideEffects in
+	// manage_handler.go. etSlug is unused here now; it's re-derived inside the helper
+	// via loadCancellationData's own join, which is equivalent.
+	go h.rescheduleSideEffects(*updated, etID, previousStart, previousEnd)
 }
 

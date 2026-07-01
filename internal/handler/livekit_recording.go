@@ -617,7 +617,7 @@ func (h *Handler) LiveKitWebhook(w http.ResponseWriter, r *http.Request) {
 			_ = h.db.QueryRowContext(r.Context(),
 				`SELECT id, COALESCE(booking_id,'') FROM recordings WHERE egress_id = ?`, info.EgressID).Scan(&recID, &bID)
 			h.maybeStartNotetaker(r.Context(), recID)
-			if bID != "" {
+			if bID != "" && h.webhookSvc != nil {
 				if err := h.webhookSvc.Enqueue(r.Context(), "recording.completed", h.bookingWebhookPayload(r.Context(), bID)); err != nil {
 					h.logger.ErrorContext(r.Context(), "enqueue recording.completed webhook", "error", err, "booking_id", bID)
 				}

@@ -56,20 +56,15 @@ func New(db *sql.DB, svc *webhook.Service, logger *slog.Logger, opts ...func(*Wo
 			if err != nil {
 				return nil, fmt.Errorf("worker: split addr: %w", err)
 			}
-			addrs, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+			// Shared with the admin-time webhook-URL validator (netutil.ResolveSafe) —
+			// same SSRF check, one definition. Dial the address it resolved to directly
+			// (not the hostname again) so there's no DNS-rebinding gap between this
+			// check and the actual connection.
+			addrs, err := netutil.ResolveSafe(ctx, host)
 			if err != nil {
-				return nil, fmt.Errorf("worker: resolve %q: %w", host, err)
-			}
-			if len(addrs) == 0 {
-				return nil, fmt.Errorf("worker: no addresses for %q", host)
-			}
-			for _, a := range addrs {
-				if netutil.IsPrivateIP(a.IP) {
-					// Log the specific IP internally; return a generic message so
-					// the blocked address is not disclosed to webhook owners.
-					logger.Warn("worker: webhook SSRF block", "host", host, "resolved_ip", a.IP)
-					return nil, fmt.Errorf("worker: webhook target resolved to a blocked address")
-				}
+				// Generic message: don't disclose the blocked address to webhook owners.
+				logger.Warn("worker: webhook SSRF block", "host", host, "error", err)
+				return nil, fmt.Errorf("worker: webhook target resolved to a blocked address")
 			}
 			return baseDialer.DialContext(ctx, network, net.JoinHostPort(addrs[0].IP.String(), port))
 		},
