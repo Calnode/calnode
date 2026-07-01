@@ -35,6 +35,7 @@ func makeRoundRobin(t *testing.T, h *handler.Handler, slug, key string, hostIDs 
 func TestRoundRobin_evenDistribution(t *testing.T) {
 	h, database, key, ownerID := setupWorkspaceWithDB(t)
 	database.Exec(`INSERT INTO users (id,email,name,iana_timezone,is_admin) VALUES ('u2','u2@example.com','Two','UTC',0)`)
+	seedFullAvailabilityDB(t, database, "u2")
 	slug, etID := seedEventTypeHTTP(t, h, key)
 	makeRoundRobin(t, h, slug, key, ownerID, "u2")
 
@@ -66,10 +67,11 @@ func TestRoundRobin_evenDistribution(t *testing.T) {
 func TestRoundRobin_skipsBusyHost(t *testing.T) {
 	h, database, key, ownerID := setupWorkspaceWithDB(t)
 	database.Exec(`INSERT INTO users (id,email,name,iana_timezone,is_admin) VALUES ('u2','u2@example.com','Two','UTC',0)`)
+	seedFullAvailabilityDB(t, database, "u2")
 	slug, _ := seedEventTypeHTTP(t, h, key)
 	makeRoundRobin(t, h, slug, key, ownerID, "u2")
 
-	const slot = "2027-06-01T10:00:00Z"
+	const slot = "2027-05-15T10:00:00Z"
 	// First booking at the slot → owner (tie, priority order).
 	if rec := postBooking(t, h, slug, slot, "Alice", "alice@example.com"); rec.Code != http.StatusCreated {
 		t.Fatalf("booking 1: %d — %s", rec.Code, rec.Body.String())

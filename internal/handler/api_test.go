@@ -59,8 +59,10 @@ func seedEventTypeHTTP(t *testing.T, h *handler.Handler, apiKey string) (slug, i
 	slug = "test-meeting-" + uid.New()[:8]
 	// max_active_bookings:0 = unlimited, so the many tests that create several
 	// bookings for one invitee aren't tripped by the per-invitee cap (default 1).
-	// The cap has its own dedicated test.
-	body := fmt.Sprintf(`{"slug":%q,"name":"Test Meeting","duration_minutes":30,"max_active_bookings":0}`, slug)
+	// The cap has its own dedicated test. max_future_days:0 = unlimited (capped at
+	// validateBookingTime's 365-day safety guard), so tests using far-future fixture
+	// dates aren't tripped by the 60-day default; that default has its own test too.
+	body := fmt.Sprintf(`{"slug":%q,"name":"Test Meeting","duration_minutes":30,"max_active_bookings":0,"max_future_days":0}`, slug)
 	req := authReq(http.MethodPost, "/v1/event-types", body, apiKey)
 	rec := httptest.NewRecorder()
 	h.RequireAuth(h.CreateEventType)(rec, req)
@@ -71,7 +73,28 @@ func seedEventTypeHTTP(t *testing.T, h *handler.Handler, apiKey string) (slug, i
 		ID string `json:"id"`
 	}
 	json.Unmarshal(rec.Body.Bytes(), &resp)
+	seedFullAvailability(t, h, apiKey)
 	return slug, resp.ID
+}
+
+// seedFullAvailability gives the workspace owner a wide-open weekly schedule (every
+// day, 00:00-23:59, global — no event_type_id) so booking-creation tests that aren't
+// specifically about availability rules don't also have to reason about day-of-week/
+// hour matching. validateBookingTime (internal/handler/booking_handler.go) requires a
+// host to have SOME configured availability before they're bookable, matching what
+// /slots would ever have offered — a fresh host with zero rules is correctly
+// unbookable in both places, but that's not what most of these tests are about.
+func seedFullAvailability(t *testing.T, h *handler.Handler, apiKey string) {
+	t.Helper()
+	for day := 0; day < 7; day++ {
+		body := fmt.Sprintf(`{"day_of_week":%d,"start_time":"00:00","end_time":"23:59"}`, day)
+		req := authReq(http.MethodPost, "/v1/availability-rules", body, apiKey)
+		rec := httptest.NewRecorder()
+		h.RequireAuth(h.CreateAvailabilityRule)(rec, req)
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("seed availability day %d: %d — %s", day, rec.Code, rec.Body.String())
+		}
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -430,12 +453,24 @@ func TestGetSlots_noRules_returnsEmpty(t *testing.T) {
 
 func TestGetSlots_withRules_returnsSlots(t *testing.T) {
 	h, key, userID := setupWorkspace(t)
-	slug, etID := seedEventTypeHTTP(t, h, key)
+	// This test asserts the exact narrow window (09:00-17:00 Monday) a scoped rule
+	// produces, so it deliberately does NOT use seedEventTypeHTTP — that helper also
+	// seeds a wide-open global rule, which would union with the narrow one below and
+	// widen the effective window past what this test is asserting.
+	slug := "test-meeting-" + uid.New()[:8]
+	etBody := fmt.Sprintf(`{"slug":%q,"name":"Test Meeting","duration_minutes":30,"max_active_bookings":0,"max_future_days":0}`, slug)
+	etReq := authReq(http.MethodPost, "/v1/event-types", etBody, key)
+	etRec := httptest.NewRecorder()
+	h.RequireAuth(h.CreateEventType)(etRec, etReq)
+	if etRec.Code != http.StatusCreated {
+		t.Fatalf("create event type: %d — %s", etRec.Code, etRec.Body.String())
+	}
+	var etResp struct {
+		ID string `json:"id"`
+	}
+	json.Unmarshal(etRec.Body.Bytes(), &etResp)
+	etID := etResp.ID
 
-	// Get the underlying DB via a round-trip. We need direct DB access to seed
-	// availability rules (the HTTP seed helper uses the DB). Use newTestHandler's
-	// DB by creating a parallel handler and borrowing its DB from the booking path.
-	// Simpler: create the rule through the HTTP endpoint.
 	body := fmt.Sprintf(`{"event_type_id":%q,"day_of_week":1,"start_time":"09:00","end_time":"17:00"}`, etID)
 	ruleReq := authReq(http.MethodPost, "/v1/availability-rules", body, key)
 	ruleRec := httptest.NewRecorder()

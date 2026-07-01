@@ -41,10 +41,11 @@ func TestBookingAssistant_findThenBook(t *testing.T) {
 	// Event type (active + public by default).
 	erec := httptest.NewRecorder()
 	h.RequireAuth(h.CreateEventType)(erec, authReq(http.MethodPost, "/v1/event-types",
-		`{"slug":"ai-call","name":"AI Call","duration_minutes":30,"location_type":"phone","location_value":"+1 555 000 1111"}`, apiKey))
+		`{"slug":"ai-call","name":"AI Call","duration_minutes":30,"location_type":"phone","location_value":"+1 555 000 1111","max_future_days":0}`, apiKey))
 	if erec.Code != http.StatusCreated {
 		t.Fatalf("create event type: %d — %s", erec.Code, erec.Body.String())
 	}
+	seedFullAvailability(t, h, apiKey)
 
 	// Turn on the LLM, pointed at the scripted mock.
 	prec := httptest.NewRecorder()

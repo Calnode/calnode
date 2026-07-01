@@ -393,7 +393,7 @@ func (h *Handler) mcpCreateBooking(ctx context.Context, _ *mcp.CallToolRequest, 
 		switch {
 		case errors.Is(err, errEventTypeNotFound):
 			return nil, bookingJSON{}, fmt.Errorf("event type not found: %s", in.EventTypeID)
-		case errors.Is(err, booking.ErrDoubleBooked), errors.Is(err, errNoHostAvailable):
+		case errors.Is(err, booking.ErrDoubleBooked), errors.Is(err, errNoHostAvailable), errors.Is(err, errSlotUnavailable):
 			return nil, bookingJSON{}, fmt.Errorf("this slot is no longer available")
 		case errors.Is(err, booking.ErrBookingLimitReached):
 			return nil, bookingJSON{}, fmt.Errorf("the attendee already holds the maximum number of upcoming bookings for this event")

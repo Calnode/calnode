@@ -404,7 +404,7 @@ func assistantBookError(err error) string {
 	switch {
 	case errors.Is(err, errEventTypeNotFound):
 		return "this event type is no longer available"
-	case errors.Is(err, booking.ErrDoubleBooked), errors.Is(err, errNoHostAvailable):
+	case errors.Is(err, booking.ErrDoubleBooked), errors.Is(err, errNoHostAvailable), errors.Is(err, errSlotUnavailable):
 		return "that time was just taken — please choose another slot"
 	case errors.Is(err, booking.ErrBookingLimitReached):
 		return "you already have the maximum number of upcoming bookings for this event"

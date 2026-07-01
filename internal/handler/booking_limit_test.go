@@ -16,12 +16,13 @@ import (
 func seedEventTypeWithCap(t *testing.T, h *handler.Handler, apiKey string, cap int) string {
 	t.Helper()
 	slug := "cap-meeting-" + uid.New()[:8]
-	body := fmt.Sprintf(`{"slug":%q,"name":"Cap Meeting","duration_minutes":30,"max_active_bookings":%d}`, slug, cap)
+	body := fmt.Sprintf(`{"slug":%q,"name":"Cap Meeting","duration_minutes":30,"max_active_bookings":%d,"max_future_days":0}`, slug, cap)
 	rec := httptest.NewRecorder()
 	h.RequireAuth(h.CreateEventType)(rec, authReq(http.MethodPost, "/v1/event-types", body, apiKey))
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("seed event type w/ cap %d: got %d — %s", cap, rec.Code, rec.Body.String())
 	}
+	seedFullAvailability(t, h, apiKey)
 	return slug
 }
 

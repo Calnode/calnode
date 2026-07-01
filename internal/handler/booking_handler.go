@@ -15,6 +15,7 @@ import (
 	"github.com/calnode/calnode/internal/booking"
 	"github.com/calnode/calnode/internal/calendar"
 	"github.com/calnode/calnode/internal/mailer"
+	"github.com/calnode/calnode/internal/slots"
 	"github.com/calnode/calnode/internal/uid"
 	"github.com/calnode/calnode/internal/webhook"
 	"github.com/calnode/calnode/internal/zoom"
@@ -245,6 +246,156 @@ func resolveBookingHostPool(hosts []EventHost, routingMode string) (candidates, 
 	return candidates, required, optional
 }
 
+// errSlotUnavailable means the requested start_at fails one of the deterministic
+// booking-creation checks below (too soon, too far out, or outside every relevant
+// host's configured hours) — surfaced the same way as a double-booked slot, since from
+// the caller's perspective it's the same "this time doesn't work" outcome.
+var errSlotUnavailable = errors.New("this slot is no longer available")
+
+// bookingNow is validateBookingTime's clock, a tiny seam (matching
+// internal/handler/livekit_recording.go's timeNow) so tests can pin "now" rather than
+// relying on hardcoded fixture dates staying in the future forever.
+var bookingNow = func() time.Time { return time.Now() }
+
+// validateBookingTime enforces, at creation time, the deterministic rules the public
+// /slots listing already enforces when deciding what to offer (min_notice_minutes,
+// max_future_days, and each host's weekly availability/overrides) — computeSlots and
+// booking.Service.Create previously diverged here: computeSlots applied all three,
+// Create applied none of them, so a raw POST /v1/bookings (or the MCP/assistant
+// equivalents, which share this same call) could submit a start_at that was never
+// actually offered. Double-booking overlap is a separate, atomic check already inside
+// booking.Service.Create; this only covers the parts that don't need a live calendar
+// free/busy fetch, so it stays cheap on the hot path (no external API calls).
+// routingMode/candidates/required must be exactly what will be passed to
+// booking.CreateParams — see resolveBookingHostPool.
+func (h *Handler) validateBookingTime(ctx context.Context, et *bookableEventType, routingMode string, candidates, required []string, startAt, endAt time.Time) error {
+	now := bookingNow().UTC()
+	if startAt.Before(now.Add(time.Duration(et.MinNoticeMinutes) * time.Minute)) {
+		return errSlotUnavailable
+	}
+	maxFuture := now.Add(365 * 24 * time.Hour) // 0 = no configured limit; mirrors internal/slots/generate.go
+	if et.MaxFutureDays > 0 {
+		maxFuture = now.Add(time.Duration(et.MaxFutureDays) * 24 * time.Hour)
+	}
+	if startAt.After(maxFuture) {
+		return errSlotUnavailable
+	}
+
+	// Required hosts (round_robin's fixed attendees, or all of fixed/collective's
+	// candidates when routingMode != round_robin — see resolveBookingHostPool) must
+	// every one be within their own hours.
+	checkAll := required
+	if routingMode != "round_robin" {
+		checkAll = candidates
+	}
+	for _, hostID := range checkAll {
+		ok, err := h.hostAvailableAt(ctx, hostID, et.ID, startAt, endAt)
+		if err != nil {
+			return fmt.Errorf("check host availability: %w", err)
+		}
+		if !ok {
+			return errSlotUnavailable
+		}
+	}
+	if routingMode != "round_robin" {
+		return nil
+	}
+	// Round-robin's rotation pool: at least one candidate must be within their hours
+	// (mirrors slots.pickHosts' round_robin branch — the assignment itself happens
+	// later, inside booking.Service.Create).
+	for _, hostID := range candidates {
+		ok, err := h.hostAvailableAt(ctx, hostID, et.ID, startAt, endAt)
+		if err != nil {
+			return fmt.Errorf("check host availability: %w", err)
+		}
+		if ok {
+			return nil
+		}
+	}
+	return errSlotUnavailable
+}
+
+// hostAvailableAt reports whether [startAt, endAt) falls entirely within one of
+// userID's configured availability windows (weekly rules, or a date override) for
+// eventTypeID, per internal/slots' own per-date resolution (slots.ResolveDayWindows).
+// Checks the UTC calendar date on each side of startAt too, since a host's local day
+// can straddle a UTC date boundary (the same reasoning as slots_handler.go's busy-
+// window widening).
+func (h *Handler) hostAvailableAt(ctx context.Context, userID, eventTypeID string, startAt, endAt time.Time) (bool, error) {
+	var hostTZName string
+	if err := h.db.QueryRowContext(ctx,
+		`SELECT iana_timezone FROM users WHERE id = ?`, userID).Scan(&hostTZName); err != nil {
+		return false, err
+	}
+	hostLoc, err := time.LoadLocation(hostTZName)
+	if err != nil {
+		hostLoc = time.UTC
+	}
+
+	ruleRows, err := h.db.QueryContext(ctx, `
+		SELECT day_of_week, start_time, end_time
+		FROM availability_rules
+		WHERE user_id = ? AND (event_type_id = ? OR event_type_id IS NULL)
+		ORDER BY day_of_week, start_time`, userID, eventTypeID)
+	if err != nil {
+		return false, err
+	}
+	var rules []slots.AvailabilityRule
+	for ruleRows.Next() {
+		var dow int
+		var start, end string
+		if err := ruleRows.Scan(&dow, &start, &end); err != nil {
+			ruleRows.Close() // #nosec G104 -- already returning the scan error; nothing more actionable
+			return false, err
+		}
+		rules = append(rules, slots.AvailabilityRule{DayOfWeek: time.Weekday(dow), StartTime: start, EndTime: end})
+	}
+	ruleRows.Close() // #nosec G104 -- rows already fully consumed above; nothing actionable on close error
+	if err := ruleRows.Err(); err != nil {
+		return false, err
+	}
+
+	ovRows, err := h.db.QueryContext(ctx, `
+		SELECT date, is_available, COALESCE(start_time,''), COALESCE(end_time,'')
+		FROM availability_overrides WHERE user_id = ?`, userID)
+	if err != nil {
+		return false, err
+	}
+	var overrides []slots.AvailabilityOverride
+	for ovRows.Next() {
+		var dateStr string
+		var isAvail int
+		var startT, endT string
+		if err := ovRows.Scan(&dateStr, &isAvail, &startT, &endT); err != nil {
+			ovRows.Close() // #nosec G104 -- already returning the scan error; nothing more actionable
+			return false, err
+		}
+		date, err := time.Parse("2006-01-02", dateStr)
+		if err != nil {
+			continue
+		}
+		overrides = append(overrides, slots.AvailabilityOverride{Date: date, IsAvailable: isAvail != 0, StartTime: startT, EndTime: endT})
+	}
+	ovRows.Close() // #nosec G104 -- rows already fully consumed above; nothing actionable on close error
+	if err := ovRows.Err(); err != nil {
+		return false, err
+	}
+
+	startUTCDay := startAt.UTC().Truncate(24 * time.Hour)
+	for _, d := range []time.Time{startUTCDay.AddDate(0, 0, -1), startUTCDay, startUTCDay.AddDate(0, 0, 1)} {
+		windows, err := slots.ResolveDayWindows(hostLoc, d, rules, overrides)
+		if err != nil {
+			return false, err
+		}
+		for _, w := range windows {
+			if !startAt.Before(w.Start) && !endAt.After(w.End) {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
+}
+
 // errNoHostAvailable means no active host can take a booking (e.g. the configured host
 // was archived) — surfaced to callers as "this slot is no longer available".
 var errNoHostAvailable = errors.New("no active host can take this booking")
@@ -335,6 +486,9 @@ func (h *Handler) createBookingForSlug(ctx context.Context, slug string, startAt
 	candidates, required, optional := resolveBookingHostPool(hosts, et.RoutingMode)
 	if len(candidates) == 0 {
 		return nil, errNoHostAvailable
+	}
+	if err := h.validateBookingTime(ctx, et, et.RoutingMode, candidates, required, startAt.UTC(), endAt); err != nil {
+		return nil, err
 	}
 	b, err := h.bookingSvc.Create(ctx, booking.CreateParams{
 		EventTypeID:         et.ID,
@@ -596,6 +750,10 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 	candidates, required, optional := resolveBookingHostPool(hosts, et.RoutingMode)
 	if len(candidates) == 0 {
 		// No active host can take this booking (e.g. the configured host was archived).
+		h.writeError(w, http.StatusConflict, "this slot is no longer available")
+		return
+	}
+	if err := h.validateBookingTime(r.Context(), et, et.RoutingMode, candidates, required, startAt.UTC(), endAt); err != nil {
 		h.writeError(w, http.StatusConflict, "this slot is no longer available")
 		return
 	}

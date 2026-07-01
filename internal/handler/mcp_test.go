@@ -157,12 +157,13 @@ func decodeBooking(t *testing.T, res *mcp.CallToolResult) bookingResult {
 
 func TestMCP_createRescheduleCancel(t *testing.T) {
 	h, apiKey, _ := setupWorkspace(t)
-	body := `{"slug":"mcp-call","name":"MCP Call","duration_minutes":30,"location_type":"phone","location_value":"+1 555 000 1111"}`
+	body := `{"slug":"mcp-call","name":"MCP Call","duration_minutes":30,"location_type":"phone","location_value":"+1 555 000 1111","max_future_days":0}`
 	rec := httptest.NewRecorder()
 	h.RequireAuth(h.CreateEventType)(rec, authReq(http.MethodPost, "/v1/event-types", body, apiKey))
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("create event type: %d — %s", rec.Code, rec.Body.String())
 	}
+	seedFullAvailability(t, h, apiKey)
 
 	cs := connectMCP(t, h)
 	ctx := context.Background()

@@ -27,6 +27,15 @@ type AvailabilityOverride struct {
 	EndTime     string // "HH:MM"; only used when IsAvailable
 }
 
+// ResolveDayWindows is resolveDay exported for callers outside this package that need
+// to check a single candidate interval against a host's configured hours without
+// running the full Generate pipeline (e.g. validating a booking-creation request's
+// start_at actually falls within the host's availability, independent of the
+// external-calendar free/busy fetch Generate also does).
+func ResolveDayWindows(loc *time.Location, date time.Time, rules []AvailabilityRule, overrides []AvailabilityOverride) ([]Interval, error) {
+	return resolveDay(loc, date, rules, overrides)
+}
+
 // resolveDay returns the UTC availability windows for a single host on a single
 // calendar date, handling date-specific overrides and resolving wall-clock rules
 // to UTC per-date so DST transitions are correct (§6.3).

@@ -14,6 +14,7 @@ import (
 	"github.com/calnode/calnode/internal/booking"
 	"github.com/calnode/calnode/internal/db"
 	"github.com/calnode/calnode/internal/handler"
+	"github.com/calnode/calnode/internal/uid"
 )
 
 // newTestHandlerDB creates a test handler and returns both the handler and the
@@ -53,6 +54,20 @@ func setupWorkspaceWithDB(t *testing.T) (*handler.Handler, *sql.DB, string, stri
 		t.Fatalf("setup: decode: %v", err)
 	}
 	return h, database, resp.APIKey, resp.UserID
+}
+
+// seedFullAvailabilityDB is seedFullAvailability's DB-direct sibling, for secondary
+// hosts (e.g. a round-robin rotation member) inserted straight into the DB rather than
+// through /v1/setup — they have no API key of their own to call the HTTP endpoint with.
+func seedFullAvailabilityDB(t *testing.T, database *sql.DB, userID string) {
+	t.Helper()
+	for day := 0; day < 7; day++ {
+		if _, err := database.Exec(
+			`INSERT INTO availability_rules (id, user_id, day_of_week, start_time, end_time) VALUES (?, ?, ?, '00:00', '23:59')`,
+			uid.New(), userID, day); err != nil {
+			t.Fatalf("seed availability (db) day %d for %s: %v", day, userID, err)
+		}
+	}
 }
 
 // createBookingViaHTTP creates a booking via the HTTP handler and returns its ID.
