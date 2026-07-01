@@ -750,70 +750,19 @@ func (h *Handler) hostBookingData(ctx context.Context, base mailer.BookingData, 
 	return hd
 }
 
-// dispatchBookingConfirmation runs the post-create side effects for a booking:
-// calendar events on each assigned host's connected calendar (auto-generating a
-// Meet/Teams link only when the host's provider natively matches the platform),
-// confirmation emails to attendee and hosts, the booking.created webhook, and
-// reminder scheduling. Intended to run in its own goroutine; every failure is logged,
-// never fatal. Shared by the REST CreateBooking handler and the MCP create_booking tool.
-func (h *Handler) dispatchBookingConfirmation(b *booking.Booking, in bookingConfirmationInput) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	bData := mailer.BookingData{
-		BookingID:         b.ID,
-		EventTypeName:     in.EventTypeName,
-		EventTypeSlug:     in.EventTypeSlug,
-		OrganizerName:     in.OrganizerName,
-		OrganizerEmail:    in.OrganizerEmail,
-		OrganizerTimezone: in.OrganizerTimezone,
-		StartAt:           b.StartAt,
-		EndAt:             b.EndAt,
-		LocationValue:     b.LocationValue,
-		BaseURL:           h.publicURL(),
-	}
-	h.applyBranding(ctx, &bData)
-	// Every assigned host attends (Group books several; round-robin/Normal one).
-	hosts, err := h.assignedHosts(ctx, b.ID)
-	if err != nil || len(hosts) == 0 {
-		h.logger.Error("booking confirmation: load assigned hosts", "error", err, "booking_id", b.ID)
-		// Fall back to the primary host so notifications still go out.
-		fb := assignedHost{UserID: b.HostID, IsPrimary: true}
-		_ = h.db.QueryRowContext(ctx, `SELECT name, email FROM users WHERE id = ?`, b.HostID).
-			Scan(&fb.Name, &fb.Email)
-		hosts = []assignedHost{fb}
-	}
-	if tok, err := h.bookingSvc.IssueManageToken(ctx, b.ID); err != nil {
-		h.logger.Error("issue manage token", "error", err, "booking_id", b.ID)
-	} else {
-		bData.ManageURL = h.publicURL() + "/manage/" + tok
-	}
-	var msgNote, subjNote sql.NullString
-	_ = h.db.QueryRowContext(ctx, `SELECT msg_confirmation, subj_confirmation FROM event_types WHERE id = ?`, b.EventTypeID).
-		Scan(&msgNote, &subjNote)
-	if msgNote.Valid {
-		bData.CustomNote = msgNote.String
-	}
-	if subjNote.Valid {
-		bData.SubjectOverride = subjNote.String
-	}
-
+// mintMeetingLink resolves the join link for this booking's location type, minting one
+// where the platform requires it. Google Meet / Microsoft Teams links are only auto-generated
+// (autoGenMeet) when the primary host's connected calendar natively matches the chosen
+// platform — never a link of the wrong kind; the organizer's manual link is used otherwise.
+// Zoom mints under the primary host's own connected account if any, else falls back to the
+// manual link. LiveKit always mints an instance-hosted room (no per-host connection). Zoom and
+// LiveKit resolve here and mutate b/bData in place; a Meet/Teams link is instead captured
+// later from the calendar event Google/Microsoft actually creates (see
+// createHostEventsAndNotify), since only the calendar API call itself produces it.
+func (h *Handler) mintMeetingLink(ctx context.Context, b *booking.Booking, in bookingConfirmationInput, bData *mailer.BookingData, hosts []assignedHost) (meetURL string, autoGenMeet bool, livekitHostURL string) {
 	gc := h.getCal()
-	// For online-meeting event types (Google Meet / Teams) we auto-generate the
-	// link ONLY when the primary host's connected calendar natively matches the
-	// chosen platform (Meet↔Google, Teams↔Microsoft). Otherwise we never fabricate
-	// a link of the wrong kind — the organizer's manually-entered link is used as
-	// the location instead. The generated link (if any) is captured, stored on the
-	// booking, surfaced in emails, and passed to secondary hosts' events.
-	autoGenMeet := false
 	if gc != nil && onlineMeetingLocation(in.LocationType) {
-		primaryHostID := b.HostID
-		for _, host := range hosts {
-			if host.IsPrimary {
-				primaryHostID = host.UserID
-				break
-			}
-		}
-		if _, primaryProvider, perr := gc.Connected(ctx, primaryHostID); perr == nil {
+		if _, primaryProvider, perr := gc.Connected(ctx, primaryHost(hosts).UserID); perr == nil {
 			autoGenMeet = providerMintsPlatform(in.LocationType, primaryProvider)
 		} else {
 			h.logger.Error("booking confirmation: primary host provider lookup", "error", perr, "booking_id", b.ID)
@@ -821,7 +770,6 @@ func (h *Handler) dispatchBookingConfirmation(b *booking.Booking, in bookingConf
 	}
 	// Seed the propagated location with the organizer's manual link when we won't
 	// auto-generate, so the calendar events and emails still carry a join link.
-	meetURL := ""
 	if onlineMeetingLocation(in.LocationType) && !autoGenMeet {
 		meetURL = b.LocationValue
 	}
@@ -832,13 +780,7 @@ func (h *Handler) dispatchBookingConfirmation(b *booking.Booking, in bookingConf
 	if in.LocationType == "zoom" {
 		meetURL = b.LocationValue
 		if zc := h.getZoom(); zc != nil {
-			primaryHostID := b.HostID
-			for _, host := range hosts {
-				if host.IsPrimary {
-					primaryHostID = host.UserID
-					break
-				}
-			}
+			primaryHostID := primaryHost(hosts).UserID
 			if connected, cerr := zc.Connected(ctx, primaryHostID); cerr != nil {
 				h.logger.Error("zoom: connection lookup", "error", cerr, "booking_id", b.ID)
 			} else if connected {
@@ -866,7 +808,6 @@ func (h *Handler) dispatchBookingConfirmation(b *booking.Booking, in bookingConf
 	// LiveKit: instance-level built-in video. Mint a room + an expiring, signed join URL
 	// (no per-host connection, no manual link — the room is always generated). If LiveKit was
 	// disabled after the event type was created, meetURL stays empty (booking still succeeds).
-	var livekitHostURL string // the host (controls-enabled) link, for host calendar events + host emails
 	if in.LocationType == "livekit" {
 		if lk := h.getLiveKit(); lk != nil {
 			room := "booking-" + b.ID
@@ -886,7 +827,19 @@ func (h *Handler) dispatchBookingConfirmation(b *booking.Booking, in bookingConf
 			}
 		}
 	}
-	var primaryPrefs hostPrefs = allOnPrefs
+	return meetURL, autoGenMeet, livekitHostURL
+}
+
+// createHostEventsAndNotify creates a calendar event on each assigned host's connected
+// calendar (Group bookings put several hosts on the meeting; round-robin/Normal has one) and
+// emails each host that has host-booking notifications on. For the primary host, a
+// successfully-created Google Meet/Teams link is captured into meetURL/bData.LocationValue —
+// the only place such a link becomes available, since minting it is a side effect of the
+// calendar API call itself (see mintMeetingLink's doc comment). Returns the primary host's
+// notification prefs, for the caller's single attendee-confirmation send.
+func (h *Handler) createHostEventsAndNotify(ctx context.Context, b *booking.Booking, in bookingConfirmationInput, bData *mailer.BookingData, hosts []assignedHost, meetURL string, autoGenMeet bool, livekitHostURL string) hostPrefs {
+	gc := h.getCal()
+	primaryPrefs := allOnPrefs
 	for _, host := range hosts {
 		// Create a calendar event on each host's connected calendar and record
 		// the per-host event ID so it can be cancelled later. The primary's id
@@ -936,7 +889,7 @@ func (h *Handler) dispatchBookingConfirmation(b *booking.Booking, in bookingConf
 			primaryPrefs = prefs
 		}
 		if prefs.NotifyHostBooking {
-			hd := h.hostBookingData(ctx, bData, host, b.UpdatedAt)
+			hd := h.hostBookingData(ctx, *bData, host, b.UpdatedAt)
 			if livekitHostURL != "" {
 				hd.LocationValue = livekitHostURL // host email gets the controls-enabled link
 			}
@@ -945,6 +898,58 @@ func (h *Handler) dispatchBookingConfirmation(b *booking.Booking, in bookingConf
 			}
 		}
 	}
+	return primaryPrefs
+}
+
+// dispatchBookingConfirmation runs the post-create side effects for a booking:
+// calendar events on each assigned host's connected calendar (auto-generating a
+// Meet/Teams link only when the host's provider natively matches the platform),
+// confirmation emails to attendee and hosts, the booking.created webhook, and
+// reminder scheduling. Intended to run in its own goroutine; every failure is logged,
+// never fatal. Shared by the REST CreateBooking handler and the MCP create_booking tool.
+func (h *Handler) dispatchBookingConfirmation(b *booking.Booking, in bookingConfirmationInput) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	bData := mailer.BookingData{
+		BookingID:         b.ID,
+		EventTypeName:     in.EventTypeName,
+		EventTypeSlug:     in.EventTypeSlug,
+		OrganizerName:     in.OrganizerName,
+		OrganizerEmail:    in.OrganizerEmail,
+		OrganizerTimezone: in.OrganizerTimezone,
+		StartAt:           b.StartAt,
+		EndAt:             b.EndAt,
+		LocationValue:     b.LocationValue,
+		BaseURL:           h.publicURL(),
+	}
+	h.applyBranding(ctx, &bData)
+	// Every assigned host attends (Group books several; round-robin/Normal one).
+	hosts, err := h.assignedHosts(ctx, b.ID)
+	if err != nil || len(hosts) == 0 {
+		h.logger.Error("booking confirmation: load assigned hosts", "error", err, "booking_id", b.ID)
+		// Fall back to the primary host so notifications still go out.
+		fb := assignedHost{UserID: b.HostID, IsPrimary: true}
+		_ = h.db.QueryRowContext(ctx, `SELECT name, email FROM users WHERE id = ?`, b.HostID).
+			Scan(&fb.Name, &fb.Email)
+		hosts = []assignedHost{fb}
+	}
+	if tok, err := h.bookingSvc.IssueManageToken(ctx, b.ID); err != nil {
+		h.logger.Error("issue manage token", "error", err, "booking_id", b.ID)
+	} else {
+		bData.ManageURL = h.publicURL() + "/manage/" + tok
+	}
+	var msgNote, subjNote sql.NullString
+	_ = h.db.QueryRowContext(ctx, `SELECT msg_confirmation, subj_confirmation FROM event_types WHERE id = ?`, b.EventTypeID).
+		Scan(&msgNote, &subjNote)
+	if msgNote.Valid {
+		bData.CustomNote = msgNote.String
+	}
+	if subjNote.Valid {
+		bData.SubjectOverride = subjNote.String
+	}
+
+	meetURL, autoGenMeet, livekitHostURL := h.mintMeetingLink(ctx, b, in, &bData, hosts)
+	primaryPrefs := h.createHostEventsAndNotify(ctx, b, in, &bData, hosts, meetURL, autoGenMeet, livekitHostURL)
 
 	// Attendee confirmation, once. "With:" names the primary host; gated on the
 	// primary host's notification preference (matches prior behaviour).
