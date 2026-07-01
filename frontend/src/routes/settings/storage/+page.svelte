@@ -97,8 +97,7 @@
 					</span>
 				{/if}
 			</div>
-			<label class="flex cursor-pointer items-start gap-3">
-				<Switch class="mt-0.5" bind:checked={recordingsEnabled} disabled={!settings?.recordings_storage_ready} />
+			<label class="flex cursor-pointer items-start justify-between gap-3">
 				<span>
 					<span class="text-sm font-medium">Allow hosts to record meetings</span>
 					<span class="mt-0.5 block text-xs text-muted-foreground">
@@ -106,6 +105,7 @@
 						{#if !settings?.recordings_storage_ready}<span class="text-amber-700"> Configure backups first — recordings need a bucket.</span>{/if}
 					</span>
 				</span>
+				<Switch class="mt-0.5 shrink-0" bind:checked={recordingsEnabled} disabled={!settings?.recordings_storage_ready} />
 			</label>
 			<div class="mt-5"><Button onclick={save} disabled={saving}>{saving ? 'Saving…' : 'Save'}</Button></div>
 		</div>
