@@ -11,11 +11,10 @@ import (
 	"github.com/calnode/calnode/internal/slots"
 )
 
-
 type freeBusyReq struct {
-	TimeMin string               `json:"timeMin"`
-	TimeMax string               `json:"timeMax"`
-	Items   []map[string]string  `json:"items"`
+	TimeMin string              `json:"timeMin"`
+	TimeMax string              `json:"timeMax"`
+	Items   []map[string]string `json:"items"`
 }
 
 type freeBusyResp struct {

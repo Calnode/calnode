@@ -480,7 +480,7 @@ func (s *Service) Reschedule(ctx context.Context, bookingID string, newStart, ne
 		}
 		hostIDs = append(hostIDs, u)
 	}
-	hostRows.Close() // #nosec G104 -- rows already fully consumed above; nothing actionable on close error
+	hostRows.Close()       // #nosec G104 -- rows already fully consumed above; nothing actionable on close error
 	if len(hostIDs) == 0 { // legacy booking with no booking_hosts rows
 		hostIDs = []string{b.HostID}
 	}

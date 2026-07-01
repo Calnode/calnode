@@ -123,13 +123,13 @@ func (h *Handler) GetTrackingSettings(w http.ResponseWriter, r *http.Request) {
 		t.DataLayerFields = []string{}
 	}
 	h.writeJSON(w, http.StatusOK, map[string]any{
-		"head_html":           t.HeadHTML,
-		"csp_allow":           t.CSPAllow,
-		"datalayer_enabled":   t.DataLayerEnabled,
-		"datalayer_fields":    t.DataLayerFields,
-		"available_fields":    dataLayerFields,
-		"gtm_container_id":    t.GTMContainerID,
-		"ga4_measurement_id":  t.GA4MeasurementID,
+		"head_html":          t.HeadHTML,
+		"csp_allow":          t.CSPAllow,
+		"datalayer_enabled":  t.DataLayerEnabled,
+		"datalayer_fields":   t.DataLayerFields,
+		"available_fields":   dataLayerFields,
+		"gtm_container_id":   t.GTMContainerID,
+		"ga4_measurement_id": t.GA4MeasurementID,
 	})
 }
 

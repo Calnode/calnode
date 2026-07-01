@@ -35,12 +35,12 @@ func TestProviderMintsPlatform(t *testing.T) {
 		want     bool
 	}{
 		{"google_meet", "google", true},     // Meet auto-generates on Google
-		{"google_meet", "microsoft", false},  // never fabricate Meet on Microsoft
-		{"teams", "microsoft", true},          // Teams auto-generates on Microsoft (work accts)
-		{"teams", "google", false},            // never fabricate Teams on Google (the reported bug)
-		{"google_meet", "", false},            // no connection → use manual link
-		{"teams", "", false},                  // no connection → use manual link
-		{"phone", "google", false},            // non-online type never auto-generates
+		{"google_meet", "microsoft", false}, // never fabricate Meet on Microsoft
+		{"teams", "microsoft", true},        // Teams auto-generates on Microsoft (work accts)
+		{"teams", "google", false},          // never fabricate Teams on Google (the reported bug)
+		{"google_meet", "", false},          // no connection → use manual link
+		{"teams", "", false},                // no connection → use manual link
+		{"phone", "google", false},          // non-online type never auto-generates
 		{"in_person", "microsoft", false},
 	}
 	for _, tc := range cases {
@@ -60,11 +60,11 @@ func TestValidMeetingLink(t *testing.T) {
 		{"teams", "https://gov.teams.microsoft.us/l/x", true},
 		{"teams", "https://meet.google.com/abc-defg-hij", false}, // wrong platform
 		{"teams", "https://example.com/call", false},
-		{"teams", "http://teams.microsoft.com/x", false},          // not https
+		{"teams", "http://teams.microsoft.com/x", false}, // not https
 		{"google_meet", "https://meet.google.com/abc-defg-hij", true},
 		{"google_meet", "https://teams.microsoft.com/x", false},
 		{"google_meet", "not-a-url", false},
-		{"link", "https://anything.example.com/x", true},          // non-online: not platform-checked
+		{"link", "https://anything.example.com/x", true}, // non-online: not platform-checked
 	}
 	for _, tc := range cases {
 		if got := validMeetingLink(tc.locType, tc.link); got != tc.want {
@@ -83,8 +83,8 @@ func TestValidVideoURL(t *testing.T) {
 		{"zoom", "https://acme.zoomgov.com/j/1", true},
 		{"zoom", "https://meet.google.com/x", false}, // wrong host in zoom field
 		{"zoom", "https://example.com/room", false},
-		{"link", "https://example.com/room", true},   // any https host
-		{"link", "http://example.com/room", false},   // not https
+		{"link", "https://example.com/room", true}, // any https host
+		{"link", "http://example.com/room", false}, // not https
 		{"custom_video", "https://whereby.com/x", true},
 		{"link", "not-a-url", false},
 	}
@@ -104,9 +104,9 @@ func TestValidPhone(t *testing.T) {
 		{"021 555 1234", true},
 		{"555-1234 x123", true},
 		{"+64211234567", true},
-		{"12345", false},          // too few digits
+		{"12345", false}, // too few digits
 		{"", false},
-		{"call me maybe", false},  // letters
+		{"call me maybe", false}, // letters
 		{"https://x.com", false},
 	}
 	for _, tc := range cases {

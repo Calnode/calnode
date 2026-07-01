@@ -104,7 +104,7 @@ func (h *Handler) PatchEmailSettings(w http.ResponseWriter, r *http.Request) {
 		SMTPHost      string `json:"smtp_host"`
 		SMTPPort      string `json:"smtp_port"`
 		SMTPUser      string `json:"smtp_user"`
-		SMTPPass      string `json:"smtp_pass"`      // optional; omit to keep existing
+		SMTPPass      string `json:"smtp_pass"` // optional; omit to keep existing
 		SMTPTLS       bool   `json:"smtp_tls"`
 		SMTPStartTLS  bool   `json:"smtp_starttls"`
 		EmailFrom     string `json:"email_from"`

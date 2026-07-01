@@ -217,7 +217,9 @@ func TestCreateQuestion_autoPosition(t *testing.T) {
 	h.ListQuestions(rec, req)
 
 	var resp struct {
-		Items []struct{ Position int `json:"position"` } `json:"items"`
+		Items []struct {
+			Position int `json:"position"`
+		} `json:"items"`
 	}
 	json.Unmarshal(rec.Body.Bytes(), &resp)
 	if len(resp.Items) != 3 {
@@ -249,7 +251,9 @@ func TestUpdateQuestion_label(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("update: got %d — %s", rec.Code, rec.Body.String())
 	}
-	var resp struct{ Label string `json:"label"` }
+	var resp struct {
+		Label string `json:"label"`
+	}
 	json.Unmarshal(rec.Body.Bytes(), &resp)
 	if resp.Label != "New label" {
 		t.Errorf("label = %q; want 'New label'", resp.Label)
@@ -393,7 +397,9 @@ func TestCreateBooking_withRequiredAnswer(t *testing.T) {
 
 	// Verify the answer was stored.
 	var bookingID string
-	json.Unmarshal(rec2.Body.Bytes(), &struct{ ID *string `json:"id"` }{&bookingID})
+	json.Unmarshal(rec2.Body.Bytes(), &struct {
+		ID *string `json:"id"`
+	}{&bookingID})
 	var count int
 	database.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM booking_answers WHERE booking_id = ?`, bookingID).Scan(&count)
@@ -463,7 +469,9 @@ func TestGetBookingAnswers_success(t *testing.T) {
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("create booking: %d — %s", rec.Code, rec.Body.String())
 	}
-	var bResp struct{ ID string `json:"id"` }
+	var bResp struct {
+		ID string `json:"id"`
+	}
 	json.Unmarshal(rec.Body.Bytes(), &bResp)
 
 	// Retrieve answers.

@@ -33,10 +33,10 @@ func TestCanAutoGenerate(t *testing.T) {
 			t.Fatalf("seed connection: %v", err)
 		}
 	}
-	seed("g", "google", "")           // Google → Meet capable
-	seed("mw", "microsoft", "work")   // MS work → Teams capable
+	seed("g", "google", "")             // Google → Meet capable
+	seed("mw", "microsoft", "work")     // MS work → Teams capable
 	seed("mp", "microsoft", "personal") // MS personal → not Teams capable
-	seed("mu", "microsoft", "")       // unknown kind → treated as capable
+	seed("mu", "microsoft", "")         // unknown kind → treated as capable
 
 	cases := []struct {
 		user, locType string

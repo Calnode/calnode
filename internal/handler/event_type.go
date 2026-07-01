@@ -18,35 +18,35 @@ const (
 )
 
 type eventTypeJSON struct {
-	ID                  string   `json:"id"`
-	Slug                string   `json:"slug"`
-	Name                string   `json:"name"`
-	Description         *string  `json:"description"`
-	DurationMinutes     int      `json:"duration_minutes"`
-	SlotIntervalMinutes int      `json:"slot_interval_minutes"`
-	LocationType        string   `json:"location_type"`
-	LocationValue       *string  `json:"location_value"`
-	RoutingMode         string   `json:"routing_mode"`
-	RRStrategy          string   `json:"rr_strategy"`
-	BufferBeforeMinutes int      `json:"buffer_before_minutes"`
-	BufferAfterMinutes  int      `json:"buffer_after_minutes"`
-	MinNoticeMinutes    int      `json:"min_notice_minutes"`
-	MaxFutureDays       int      `json:"max_future_days"`
-	MaxActiveBookings   int      `json:"max_active_bookings"`
-	IsActive            bool     `json:"is_active"`
-	IsPublic            bool     `json:"is_public"`
-	CreatedAt           string   `json:"created_at"`
-	MsgConfirmation     *string  `json:"msg_confirmation"`
-	MsgCancellation     *string  `json:"msg_cancellation"`
-	MsgReschedule       *string  `json:"msg_reschedule"`
-	MsgReminder         *string  `json:"msg_reminder"`
-	SubjConfirmation    *string  `json:"subj_confirmation"`
-	SubjCancellation    *string  `json:"subj_cancellation"`
-	SubjReschedule      *string  `json:"subj_reschedule"`
-	SubjReminder        *string  `json:"subj_reminder"`
-	PriceCents          int      `json:"price_cents"` // 0 = free
-	Currency            string   `json:"currency"`    // ISO 4217, lowercase (e.g. "usd")
-	Reminders           []int    `json:"reminders"` // hours_before values
+	ID                  string  `json:"id"`
+	Slug                string  `json:"slug"`
+	Name                string  `json:"name"`
+	Description         *string `json:"description"`
+	DurationMinutes     int     `json:"duration_minutes"`
+	SlotIntervalMinutes int     `json:"slot_interval_minutes"`
+	LocationType        string  `json:"location_type"`
+	LocationValue       *string `json:"location_value"`
+	RoutingMode         string  `json:"routing_mode"`
+	RRStrategy          string  `json:"rr_strategy"`
+	BufferBeforeMinutes int     `json:"buffer_before_minutes"`
+	BufferAfterMinutes  int     `json:"buffer_after_minutes"`
+	MinNoticeMinutes    int     `json:"min_notice_minutes"`
+	MaxFutureDays       int     `json:"max_future_days"`
+	MaxActiveBookings   int     `json:"max_active_bookings"`
+	IsActive            bool    `json:"is_active"`
+	IsPublic            bool    `json:"is_public"`
+	CreatedAt           string  `json:"created_at"`
+	MsgConfirmation     *string `json:"msg_confirmation"`
+	MsgCancellation     *string `json:"msg_cancellation"`
+	MsgReschedule       *string `json:"msg_reschedule"`
+	MsgReminder         *string `json:"msg_reminder"`
+	SubjConfirmation    *string `json:"subj_confirmation"`
+	SubjCancellation    *string `json:"subj_cancellation"`
+	SubjReschedule      *string `json:"subj_reschedule"`
+	SubjReminder        *string `json:"subj_reminder"`
+	PriceCents          int     `json:"price_cents"` // 0 = free
+	Currency            string  `json:"currency"`    // ISO 4217, lowercase (e.g. "usd")
+	Reminders           []int   `json:"reminders"`   // hours_before values
 	// Owned is true when the requesting user owns this event type; false when they
 	// only see it as an assigned host (read-only — only the owner can edit).
 	Owned bool `json:"owned"`
@@ -390,32 +390,32 @@ func (h *Handler) PatchEventType(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 32<<10)
 
 	var req struct {
-		Name                *string  `json:"name"`
-		Description         *string  `json:"description"`
-		DurationMinutes     *int     `json:"duration_minutes"`
-		SlotIntervalMinutes *int     `json:"slot_interval_minutes"`
-		LocationType        *string  `json:"location_type"`
-		LocationValue       *string  `json:"location_value"`
-		RoutingMode         *string  `json:"routing_mode"`
-		RRStrategy          *string  `json:"rr_strategy"`
-		BufferBeforeMinutes *int     `json:"buffer_before_minutes"`
-		BufferAfterMinutes  *int     `json:"buffer_after_minutes"`
-		MinNoticeMinutes    *int     `json:"min_notice_minutes"`
-		MaxFutureDays       *int     `json:"max_future_days"`
-		MaxActiveBookings   *int     `json:"max_active_bookings"`
-		IsActive            *bool    `json:"is_active"`
-		IsPublic            *bool    `json:"is_public"`
-		MsgConfirmation     *string  `json:"msg_confirmation"`
-		MsgCancellation     *string  `json:"msg_cancellation"`
-		MsgReschedule       *string  `json:"msg_reschedule"`
-		MsgReminder         *string  `json:"msg_reminder"`
-		SubjConfirmation    *string  `json:"subj_confirmation"`
-		SubjCancellation    *string  `json:"subj_cancellation"`
-		SubjReschedule      *string  `json:"subj_reschedule"`
-		SubjReminder        *string  `json:"subj_reminder"`
-		PriceCents          *int     `json:"price_cents"`
-		Currency            *string  `json:"currency"`
-		Reminders           []int    `json:"reminders"` // nil = don't touch; [] = clear all
+		Name                *string `json:"name"`
+		Description         *string `json:"description"`
+		DurationMinutes     *int    `json:"duration_minutes"`
+		SlotIntervalMinutes *int    `json:"slot_interval_minutes"`
+		LocationType        *string `json:"location_type"`
+		LocationValue       *string `json:"location_value"`
+		RoutingMode         *string `json:"routing_mode"`
+		RRStrategy          *string `json:"rr_strategy"`
+		BufferBeforeMinutes *int    `json:"buffer_before_minutes"`
+		BufferAfterMinutes  *int    `json:"buffer_after_minutes"`
+		MinNoticeMinutes    *int    `json:"min_notice_minutes"`
+		MaxFutureDays       *int    `json:"max_future_days"`
+		MaxActiveBookings   *int    `json:"max_active_bookings"`
+		IsActive            *bool   `json:"is_active"`
+		IsPublic            *bool   `json:"is_public"`
+		MsgConfirmation     *string `json:"msg_confirmation"`
+		MsgCancellation     *string `json:"msg_cancellation"`
+		MsgReschedule       *string `json:"msg_reschedule"`
+		MsgReminder         *string `json:"msg_reminder"`
+		SubjConfirmation    *string `json:"subj_confirmation"`
+		SubjCancellation    *string `json:"subj_cancellation"`
+		SubjReschedule      *string `json:"subj_reschedule"`
+		SubjReminder        *string `json:"subj_reminder"`
+		PriceCents          *int    `json:"price_cents"`
+		Currency            *string `json:"currency"`
+		Reminders           []int   `json:"reminders"` // nil = don't touch; [] = clear all
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.writeError(w, http.StatusBadRequest, "invalid JSON")

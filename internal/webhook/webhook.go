@@ -273,11 +273,11 @@ func (s *Service) Delete(ctx context.Context, userID, id string) error {
 // enrichedBooking is the full set of values available to a webhook payload,
 // gathered once per Enqueue and then filtered per-webhook by its field list.
 type enrichedBooking struct {
-	core                                     BookingPayload
-	eventTypeName                            string
-	hostName, hostEmail                      string
-	attendeeName, attendeeEmail, attendeeTZ  string
-	answers                                  []map[string]string
+	core                                    BookingPayload
+	eventTypeName                           string
+	hostName, hostEmail                     string
+	attendeeName, attendeeEmail, attendeeTZ string
+	answers                                 []map[string]string
 }
 
 // enrich loads the data not carried in BookingPayload (host name/email, event-type

@@ -146,9 +146,9 @@ func TestRotatePrimary(t *testing.T) {
 func TestRecoverPrimary(t *testing.T) {
 	database := newTestDB(t)
 	const (
-		platformSecret  = "platform-secret"
-		recoverySecret  = "recovery-secret"
-		newSecret       = "new-platform-secret"
+		platformSecret = "platform-secret"
+		recoverySecret = "recovery-secret"
+		newSecret      = "new-platform-secret"
 	)
 
 	v1, err := keyvault.Open(database, platformSecret, recoverySecret, false)

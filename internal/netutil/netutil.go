@@ -54,7 +54,7 @@ var privateRanges []*net.IPNet
 
 func init() {
 	for _, s := range []string{
-		"0.0.0.0/8",     // "This" network; routes to loopback on Linux
+		"0.0.0.0/8", // "This" network; routes to loopback on Linux
 		"10.0.0.0/8",
 		"172.16.0.0/12",
 		"192.168.0.0/16",

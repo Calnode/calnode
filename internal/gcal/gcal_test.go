@@ -202,7 +202,7 @@ func TestSaveToken_upsertReplacesExisting(t *testing.T) {
 	c := newTestClient(t)
 	ctx := context.Background()
 	seedUser(t, c.db, "user-1")
-	c.saveToken(ctx, "user-1", "primary", "", &oauth2.Token{AccessToken: "old"})          //nolint:errcheck
+	c.saveToken(ctx, "user-1", "primary", "", &oauth2.Token{AccessToken: "old"})                    //nolint:errcheck
 	c.saveToken(ctx, "user-1", "primary", "", &oauth2.Token{AccessToken: "new", RefreshToken: "r"}) //nolint:errcheck
 
 	var n int
@@ -219,7 +219,7 @@ func TestSaveToken_multiAccountDestinationInvariants(t *testing.T) {
 	seedUser(t, c.db, "user-1")
 
 	// First account connected → becomes the destination.
-	c.saveToken(ctx, "user-1", "primary", "work@x.test", &oauth2.Token{AccessToken: "a1", RefreshToken: "r1"})    //nolint:errcheck
+	c.saveToken(ctx, "user-1", "primary", "work@x.test", &oauth2.Token{AccessToken: "a1", RefreshToken: "r1"}) //nolint:errcheck
 	// Second account → checked for conflicts but NOT the destination.
 	c.saveToken(ctx, "user-1", "primary", "personal@x.test", &oauth2.Token{AccessToken: "a2", RefreshToken: "r2"}) //nolint:errcheck
 
@@ -244,9 +244,9 @@ func TestSaveToken_multiAccountDestinationInvariants(t *testing.T) {
 	// A token refresh of the SECOND account must NOT steal the destination or wipe the first.
 	c.saveToken(ctx, "user-1", "primary", "personal@x.test", &oauth2.Token{AccessToken: "a2b", RefreshToken: "r2"}) //nolint:errcheck
 	var workDest, personalDest, total int
-	c.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM calendar_connections WHERE user_id='user-1'`).Scan(&total)                                  //nolint:errcheck
-	c.db.QueryRowContext(ctx, `SELECT is_destination FROM calendar_connections WHERE account_email='work@x.test'`).Scan(&workDest)             //nolint:errcheck
-	c.db.QueryRowContext(ctx, `SELECT is_destination FROM calendar_connections WHERE account_email='personal@x.test'`).Scan(&personalDest)     //nolint:errcheck
+	c.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM calendar_connections WHERE user_id='user-1'`).Scan(&total)                             //nolint:errcheck
+	c.db.QueryRowContext(ctx, `SELECT is_destination FROM calendar_connections WHERE account_email='work@x.test'`).Scan(&workDest)         //nolint:errcheck
+	c.db.QueryRowContext(ctx, `SELECT is_destination FROM calendar_connections WHERE account_email='personal@x.test'`).Scan(&personalDest) //nolint:errcheck
 	if total != 2 || workDest != 1 || personalDest != 0 {
 		t.Errorf("after refresh: total=%d work.dest=%d personal.dest=%d; want 2,1,0", total, workDest, personalDest)
 	}

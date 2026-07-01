@@ -19,10 +19,10 @@ func testClient() *Client {
 
 func TestNormalizeWS(t *testing.T) {
 	cases := map[string]string{
-		"https://x.livekit.cloud":  "wss://x.livekit.cloud",
-		"http://localhost:7880":    "ws://localhost:7880",
-		"wss://x.livekit.cloud/":   "wss://x.livekit.cloud",
-		"wss://x.livekit.cloud":    "wss://x.livekit.cloud",
+		"https://x.livekit.cloud": "wss://x.livekit.cloud",
+		"http://localhost:7880":   "ws://localhost:7880",
+		"wss://x.livekit.cloud/":  "wss://x.livekit.cloud",
+		"wss://x.livekit.cloud":   "wss://x.livekit.cloud",
 	}
 	for in, want := range cases {
 		if got := normalizeWS(in); got != want {

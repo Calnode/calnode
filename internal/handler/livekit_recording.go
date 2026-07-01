@@ -551,8 +551,8 @@ func (h *Handler) LiveKitWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var ev struct {
-		Event      string `json:"event"`
-		Room       struct {
+		Event string `json:"event"`
+		Room  struct {
 			Name string `json:"name"`
 		} `json:"room"`
 		EgressInfo struct {

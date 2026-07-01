@@ -50,8 +50,8 @@ type CreateParams struct {
 	// ONE free candidate (least-loaded for this event type; the slice order breaks
 	// ties). For any other mode every candidate must be free and host_id is set to
 	// the first. For Phase A there is a single candidate for fixed.
-	HostIDs       []string
-	RoutingMode   string
+	HostIDs     []string
+	RoutingMode string
 	// RequiredHosts always attend and must all be free, in ADDITION to the normal
 	// host selection. Used for round_robin "fixed hosts" — a host who joins every
 	// booking alongside the rotation pick. (For fixed/collective the attending
@@ -60,7 +60,7 @@ type CreateParams struct {
 	// RRStrategy chooses the rotation pick for RoutingMode "round_robin":
 	// "even" (least-loaded; default), "priority" (lowest-priority-number free host),
 	// or "soonest" (falls back to even at assignment time — the slot is already fixed).
-	RRStrategy    string
+	RRStrategy string
 	// OptionalHosts attend only if free at booking time; they never block the
 	// booking (Group/collective "optional" hosts). Busy ones are simply omitted.
 	OptionalHosts []string

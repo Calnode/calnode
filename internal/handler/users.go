@@ -38,16 +38,16 @@ func (h *Handler) ListUsers(w http.ResponseWriter, r *http.Request) {
 		Name string `json:"name"`
 	}
 	type userRow struct {
-		ID         string    `json:"id"`
-		Email      string    `json:"email"`
-		Name       string    `json:"name"`
-		Timezone   string    `json:"timezone"`
-		IsAdmin    bool      `json:"is_admin"`
-		IsOwner    bool      `json:"is_owner"`
-		Role       string    `json:"role"` // "owner" | "admin" | "member"
-		EmailLogin bool      `json:"email_login"`
-		Provider   string    `json:"provider,omitempty"`
-		AvatarURL  string    `json:"avatar_url,omitempty"`
+		ID             string    `json:"id"`
+		Email          string    `json:"email"`
+		Name           string    `json:"name"`
+		Timezone       string    `json:"timezone"`
+		IsAdmin        bool      `json:"is_admin"`
+		IsOwner        bool      `json:"is_owner"`
+		Role           string    `json:"role"` // "owner" | "admin" | "member"
+		EmailLogin     bool      `json:"email_login"`
+		Provider       string    `json:"provider,omitempty"`
+		AvatarURL      string    `json:"avatar_url,omitempty"`
 		CreatedAt      string    `json:"created_at"`
 		Archived       bool      `json:"archived"`
 		ArchivedAt     string    `json:"archived_at,omitempty"`

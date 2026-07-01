@@ -40,8 +40,8 @@ func etagOf(b []byte) string {
 // The room page injects these content-hash versions into its <script src="…?v=…"> tags so a
 // changed asset gets a brand-new URL — unservable from any stale browser/service-worker cache.
 var (
-	liveKitRoomTmpl = template.Must(template.New("lkroom").Parse(string(liveKitRoomHTML)))
-	liveKitSDKVer   = strings.Trim(liveKitSDKETag, `"`)
+	liveKitRoomTmpl  = template.Must(template.New("lkroom").Parse(string(liveKitRoomHTML)))
+	liveKitSDKVer    = strings.Trim(liveKitSDKETag, `"`)
 	liveKitRoomJSVer = strings.Trim(liveKitRoomJSETag, `"`)
 )
 

@@ -74,7 +74,6 @@ func seedEventTypeHTTP(t *testing.T, h *handler.Handler, apiKey string) (slug, i
 	return slug, resp.ID
 }
 
-
 // ---------------------------------------------------------------------------
 // Setup
 // ---------------------------------------------------------------------------
@@ -718,4 +717,3 @@ func TestListBookings_includesAttendeeAndSlug(t *testing.T) {
 		t.Errorf("attendee email = %q; want alice@example.com", b.Attendees[0].Email)
 	}
 }
-

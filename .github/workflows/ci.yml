@@ -46,6 +46,19 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: gofmt check
+        run: |
+          fmtout=$(gofmt -l .)
+          if [ -n "$fmtout" ]; then
+            echo "The following files are not gofmt'd:"
+            echo "$fmtout"
+            echo "Run: gofmt -w ."
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
       - name: go build
         run: go build ./...
 

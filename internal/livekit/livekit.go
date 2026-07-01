@@ -68,15 +68,15 @@ func normalizeWS(raw string) string {
 
 // videoGrant is the LiveKit "video" claim controlling what a participant may do.
 type videoGrant struct {
-	Room           string `json:"room,omitempty"`
-	RoomJoin       bool   `json:"roomJoin,omitempty"`
-	RoomAdmin      bool   `json:"roomAdmin,omitempty"`  // administer a specific room (update participants, metadata)
-	RoomCreate     bool   `json:"roomCreate,omitempty"` // server-level: create/delete rooms
-	RoomRecord     bool   `json:"roomRecord,omitempty"` // start/stop egress
-	RoomList       bool   `json:"roomList,omitempty"`
-	CanPublish       bool     `json:"canPublish,omitempty"`
-	CanSubscribe     bool     `json:"canSubscribe,omitempty"`
-	CanPublishData   bool     `json:"canPublishData,omitempty"`
+	Room              string   `json:"room,omitempty"`
+	RoomJoin          bool     `json:"roomJoin,omitempty"`
+	RoomAdmin         bool     `json:"roomAdmin,omitempty"`  // administer a specific room (update participants, metadata)
+	RoomCreate        bool     `json:"roomCreate,omitempty"` // server-level: create/delete rooms
+	RoomRecord        bool     `json:"roomRecord,omitempty"` // start/stop egress
+	RoomList          bool     `json:"roomList,omitempty"`
+	CanPublish        bool     `json:"canPublish,omitempty"`
+	CanSubscribe      bool     `json:"canSubscribe,omitempty"`
+	CanPublishData    bool     `json:"canPublishData,omitempty"`
 	CanPublishSources []string `json:"canPublishSources,omitempty"` // limit publishable sources; empty = all
 }
 

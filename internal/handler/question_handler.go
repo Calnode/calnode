@@ -15,13 +15,13 @@ import (
 
 // questionJSON is the API representation of an event-type intake question.
 type questionJSON struct {
-	ID            string   `json:"id"`
-	EventTypeID   string   `json:"event_type_id"`
-	Label         string   `json:"label"`
-	Type          string   `json:"type"`
-	Options       []string `json:"options,omitempty"`
-	Required      bool     `json:"required"`
-	Position      int      `json:"position"`
+	ID          string   `json:"id"`
+	EventTypeID string   `json:"event_type_id"`
+	Label       string   `json:"label"`
+	Type        string   `json:"type"`
+	Options     []string `json:"options,omitempty"`
+	Required    bool     `json:"required"`
+	Position    int      `json:"position"`
 }
 
 // answerJSON is the API representation of a booking answer.

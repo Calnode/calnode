@@ -200,7 +200,7 @@ func TestCreateEvent_onlyDestinationConnections(t *testing.T) {
 	seedUser(t, c.db, "user-1")
 	tok := &oauth2.Token{AccessToken: "tok", Expiry: time.Now().Add(time.Hour)}
 	c.saveToken(context.Background(), "user-1", "primary", "", tok) //nolint:errcheck
-	c.db.ExecContext(context.Background(),                       //nolint:errcheck
+	c.db.ExecContext(context.Background(),                          //nolint:errcheck
 		`UPDATE calendar_connections SET is_destination = 0 WHERE user_id = ?`, "user-1")
 
 	eventID, _, err := c.CreateEvent(context.Background(), "user-1", calendar.CreateEventParams{

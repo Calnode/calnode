@@ -29,8 +29,8 @@ type CreateEventParams struct {
 // by userID and resolve that user's stored credentials internally; they return
 // zero values (not errors) when the user has no matching connection.
 type Provider interface {
-	Name() string         // "google" | "microsoft"
-	InvitesGuests() bool  // provider emails guests itself → suppress our own .ics
+	Name() string        // "google" | "microsoft"
+	InvitesGuests() bool // provider emails guests itself → suppress our own .ics
 
 	// OAuth
 	AuthURL(state string) string

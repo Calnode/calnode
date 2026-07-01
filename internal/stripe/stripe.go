@@ -63,9 +63,9 @@ func (c *Client) VerifyWebhook(payload []byte, sigHeader string, now time.Time) 
 type CheckoutParams struct {
 	AmountCents   int64
 	Currency      string
-	ProductName   string            // shown on the Checkout page (e.g. "30-min consultation")
-	CustomerEmail string            // prefills the email field
-	SuccessURL    string            // Stripe appends ?session_id={CHECKOUT_SESSION_ID} if present as a template
+	ProductName   string // shown on the Checkout page (e.g. "30-min consultation")
+	CustomerEmail string // prefills the email field
+	SuccessURL    string // Stripe appends ?session_id={CHECKOUT_SESSION_ID} if present as a template
 	CancelURL     string
 	ExpiresAt     time.Time         // session expiry (Stripe requires 30 min – 24 h from now)
 	Metadata      map[string]string // e.g. booking_id — echoed back on the webhook
@@ -177,8 +177,8 @@ func (c *Client) do(ctx context.Context, method, path string, form url.Values, o
 
 // Event is a minimal Stripe webhook event envelope.
 type Event struct {
-	ID   string          `json:"id"`
-	Type string          `json:"type"`
+	ID   string `json:"id"`
+	Type string `json:"type"`
 	Data struct {
 		Object json.RawMessage `json:"object"`
 	} `json:"data"`

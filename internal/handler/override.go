@@ -12,11 +12,11 @@ import (
 
 type availOverrideJSON struct {
 	ID          string  `json:"id"`
-	Date        string  `json:"date"`        // YYYY-MM-DD
+	Date        string  `json:"date"` // YYYY-MM-DD
 	IsAvailable bool    `json:"is_available"`
-	Reason      string  `json:"reason"`      // "day_off" | "out_of_office" | "custom_hours"
-	StartTime   *string `json:"start_time"`  // HH:MM; only when IsAvailable
-	EndTime     *string `json:"end_time"`    // HH:MM; only when IsAvailable
+	Reason      string  `json:"reason"`     // "day_off" | "out_of_office" | "custom_hours"
+	StartTime   *string `json:"start_time"` // HH:MM; only when IsAvailable
+	EndTime     *string `json:"end_time"`   // HH:MM; only when IsAvailable
 }
 
 func validOverrideReason(r string) bool {

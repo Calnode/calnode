@@ -9,7 +9,11 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-func seedEmailUser(t *testing.T, h interface{ GetDB() interface{ Exec(string, ...any) (interface{ RowsAffected() (int64, error) }, error) } }) {
+func seedEmailUser(t *testing.T, h interface {
+	GetDB() interface {
+		Exec(string, ...any) (interface{ RowsAffected() (int64, error) }, error)
+	}
+}) {
 	t.Helper()
 }
 

@@ -86,22 +86,22 @@ func (h *Handler) SendTestEmail(w http.ResponseWriter, r *http.Request) {
 	end := start.Add(time.Duration(durationMinutes) * time.Minute)
 
 	d := mailer.BookingData{
-		BookingID:        "preview-test",
-		EventTypeName:    etName,
-		EventTypeSlug:    slug,
-		HostName:         user.Name,
-		HostEmail:        user.Email,
-		OrganizerName:    "Alex Johnson",
-		OrganizerEmail:   user.Email, // send to host so they can review it
+		BookingID:         "preview-test",
+		EventTypeName:     etName,
+		EventTypeSlug:     slug,
+		HostName:          user.Name,
+		HostEmail:         user.Email,
+		OrganizerName:     "Alex Johnson",
+		OrganizerEmail:    user.Email, // send to host so they can review it
 		OrganizerTimezone: user.IANATZ,
-		StartAt:          start,
-		EndAt:            end,
-		PreviousStartAt:  start.AddDate(0, 0, -1), // for reschedule preview
-		PreviousEndAt:    end.AddDate(0, 0, -1),
-		LocationValue:    locVal.String,
-		BaseURL:          h.publicURL(),
-		CustomNote:       customNote,
-		SubjectOverride:  customSubject,
+		StartAt:           start,
+		EndAt:             end,
+		PreviousStartAt:   start.AddDate(0, 0, -1), // for reschedule preview
+		PreviousEndAt:     end.AddDate(0, 0, -1),
+		LocationValue:     locVal.String,
+		BaseURL:           h.publicURL(),
+		CustomNote:        customNote,
+		SubjectOverride:   customSubject,
 	}
 	h.applyBranding(r.Context(), &d)
 

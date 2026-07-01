@@ -239,7 +239,9 @@ func TestDeleteAvailabilityOverride_success(t *testing.T) {
 	listReq := authReq(http.MethodGet, "/v1/availability-overrides", "", key)
 	listRec := httptest.NewRecorder()
 	h.RequireAuth(h.ListAvailabilityOverrides)(listRec, listReq)
-	var resp struct{ Items []any `json:"items"` }
+	var resp struct {
+		Items []any `json:"items"`
+	}
 	json.Unmarshal(listRec.Body.Bytes(), &resp)
 	if len(resp.Items) != 0 {
 		t.Errorf("after delete: len(items) = %d; want 0", len(resp.Items))
@@ -306,7 +308,9 @@ func TestGetSlots_blockedDayOverride_returnsNoSlots(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("slots (no override): %d — %s", rec.Code, rec.Body.String())
 	}
-	var resp struct{ Slots []any `json:"slots"` }
+	var resp struct {
+		Slots []any `json:"slots"`
+	}
 	json.Unmarshal(rec.Body.Bytes(), &resp)
 	if len(resp.Slots) == 0 {
 		t.Fatal("expected slots before override; got none")
@@ -328,7 +332,9 @@ func TestGetSlots_blockedDayOverride_returnsNoSlots(t *testing.T) {
 	if rec2.Code != http.StatusOK {
 		t.Fatalf("slots (blocked): %d — %s", rec2.Code, rec2.Body.String())
 	}
-	var resp2 struct{ Slots []any `json:"slots"` }
+	var resp2 struct {
+		Slots []any `json:"slots"`
+	}
 	json.Unmarshal(rec2.Body.Bytes(), &resp2)
 	if len(resp2.Slots) != 0 {
 		t.Errorf("expected 0 slots on blocked day; got %d", len(resp2.Slots))

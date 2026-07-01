@@ -111,4 +111,3 @@ func (h *Handler) RescheduleBooking(w http.ResponseWriter, r *http.Request) {
 	// via loadCancellationData's own join, which is equivalent.
 	go h.rescheduleSideEffects(*updated, etID, previousStart, previousEnd)
 }
-

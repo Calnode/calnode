@@ -14,7 +14,7 @@ import (
 // futureAt returns a UTC time that is daysFromNow days ahead at hour:min.
 // Using a date well in the future ensures tests don't break as time passes.
 func futureAt(daysFromNow, hour, min int) time.Time {
-	base := time.Now().UTC().Truncate(24 * time.Hour).AddDate(0, 0, daysFromNow)
+	base := time.Now().UTC().Truncate(24*time.Hour).AddDate(0, 0, daysFromNow)
 	return base.Add(time.Duration(hour)*time.Hour + time.Duration(min)*time.Minute)
 }
 

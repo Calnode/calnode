@@ -14,7 +14,7 @@ type Config struct {
 	RecoverySecret string // CALNODE_RECOVERY_SECRET — escrow key stored in keystore
 	BaseURL        string // identity host: OAuth callbacks, admin UI, team invites
 	PublicBaseURL  string // booker-facing host: booking links, emails; defaults to BaseURL
-	LogLevel      slog.Level
+	LogLevel       slog.Level
 
 	// Email / SMTP
 	SMTPHost      string
@@ -90,7 +90,6 @@ func Load() *Config {
 
 	return cfg
 }
-
 
 func parseLogLevel(s string) slog.Level {
 	switch s {

@@ -182,7 +182,7 @@ func (w *Worker) Poll(ctx context.Context) {
 	}
 
 	type job struct {
-		id, typ, payload    string
+		id, typ, payload      string
 		attempts, maxAttempts int
 	}
 	var jobs []job
@@ -397,7 +397,7 @@ func (w *Worker) deliverWebhook(ctx context.Context, jobPayload string) error {
 	defer func() {
 		// Draining/closing a response body we're done with — no action possible on either error.
 		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20)) // #nosec G104
-		resp.Body.Close()                                           // #nosec G104
+		resp.Body.Close()                                            // #nosec G104
 	}()
 
 	status := "success"
