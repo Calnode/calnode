@@ -199,10 +199,7 @@ func (h *Handler) ReassignBooking(w http.ResponseWriter, r *http.Request) {
 			h.logger.Error("reassign: load new host", "error", err, "booking_id", bCopy.ID)
 		}
 
-		prefs := allOnPrefs
-		if p, err := h.loadHostPrefs(ctx, newHostID); err == nil {
-			prefs = p
-		}
+		prefs := h.hostPrefsOrDefault(ctx, bCopy.ID, newHostID)
 		if prefs.NotifyConfirmation {
 			if err := mailer.SendConfirmationToAttendee(ctx, h.mailer, d); err != nil {
 				h.logger.Error("reassign: email attendee", "error", err, "booking_id", bCopy.ID)

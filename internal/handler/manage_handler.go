@@ -250,12 +250,7 @@ func (h *Handler) rescheduleSideEffects(bCopy booking.Booking, capturedEtID stri
 	d.AttachICS = h.noConnectedDestination(ctx, bCopy.HostID)
 	d.ICSSequence = int(bCopy.UpdatedAt.Unix())
 
-	prefs := allOnPrefs
-	if p, err := h.loadHostPrefs(ctx, bCopy.HostID); err != nil {
-		h.logger.Error("reschedule: load host prefs", "error", err, "booking_id", bCopy.ID)
-	} else {
-		prefs = p
-	}
+	prefs := h.hostPrefsOrDefault(ctx, bCopy.ID, bCopy.HostID)
 	var msgNote, subjNote sql.NullString
 	_ = h.db.QueryRowContext(ctx, `SELECT msg_reschedule, subj_reschedule FROM event_types WHERE id = ?`, capturedEtID).
 		Scan(&msgNote, &subjNote)

@@ -724,6 +724,32 @@ type bookingConfirmationInput struct {
 	OrganizerTimezone string
 }
 
+// hostPrefsOrDefault loads a host's notification prefs, defaulting to allOnPrefs and
+// logging on error — the load-or-default-and-log shape every per-host notify loop
+// (confirmation, cancellation, reschedule) needs before deciding whether to email that
+// host.
+func (h *Handler) hostPrefsOrDefault(ctx context.Context, bookingID, userID string) hostPrefs {
+	prefs := allOnPrefs
+	if p, err := h.loadHostPrefs(ctx, userID); err != nil {
+		h.logger.Error("notify hosts: load host prefs", "error", err, "booking_id", bookingID, "host", userID)
+	} else {
+		prefs = p
+	}
+	return prefs
+}
+
+// hostBookingData returns a per-host copy of base with the fields every host
+// notification email needs filled in: the host's own name/email (so "with <name>"
+// reads correctly), whether to attach an ICS (only when that host has no connected
+// destination calendar of their own), and the ICS sequence number.
+func (h *Handler) hostBookingData(ctx context.Context, base mailer.BookingData, host assignedHost, updatedAt time.Time) mailer.BookingData {
+	hd := base
+	hd.HostName, hd.HostEmail = host.Name, host.Email
+	hd.AttachICS = h.noConnectedDestination(ctx, host.UserID)
+	hd.ICSSequence = int(updatedAt.Unix())
+	return hd
+}
+
 // dispatchBookingConfirmation runs the post-create side effects for a booking:
 // calendar events on each assigned host's connected calendar (auto-generating a
 // Meet/Teams link only when the host's provider natively matches the platform),
@@ -905,23 +931,15 @@ func (h *Handler) dispatchBookingConfirmation(b *booking.Booking, in bookingConf
 			}
 		}
 
-		prefs := allOnPrefs
-		if p, err := h.loadHostPrefs(ctx, host.UserID); err != nil {
-			h.logger.Error("booking confirmation: load host prefs", "error", err, "booking_id", b.ID, "host", host.UserID)
-		} else {
-			prefs = p
-		}
+		prefs := h.hostPrefsOrDefault(ctx, b.ID, host.UserID)
 		if host.IsPrimary {
 			primaryPrefs = prefs
 		}
 		if prefs.NotifyHostBooking {
-			hd := bData
-			hd.HostName, hd.HostEmail = host.Name, host.Email
+			hd := h.hostBookingData(ctx, bData, host, b.UpdatedAt)
 			if livekitHostURL != "" {
 				hd.LocationValue = livekitHostURL // host email gets the controls-enabled link
 			}
-			hd.AttachICS = h.noConnectedDestination(ctx, host.UserID) // per-host: their own calendar
-			hd.ICSSequence = int(b.UpdatedAt.Unix())
 			if err := mailer.SendConfirmationToHost(ctx, h.mailer, hd); err != nil {
 				h.logger.Error("booking confirmation email (host)", "error", err, "booking_id", b.ID, "host", host.UserID)
 			}
@@ -1203,19 +1221,13 @@ func (h *Handler) cancelSideEffects(b booking.Booking) {
 				}
 			}
 		}
-		prefs := allOnPrefs
-		if p, err := h.loadHostPrefs(ctx, host.UserID); err == nil {
-			prefs = p
-		}
+		prefs := h.hostPrefsOrDefault(ctx, b.ID, host.UserID)
 		if host.IsPrimary {
 			primaryPrefs = prefs
 			d.HostName, d.HostEmail = host.Name, host.Email // attendee "With:" = primary host, not owner
 		}
 		if prefs.NotifyHostCancel {
-			hd := d
-			hd.HostName, hd.HostEmail = host.Name, host.Email
-			hd.AttachICS = h.noConnectedDestination(ctx, host.UserID) // per-host: their own calendar
-			hd.ICSSequence = int(b.UpdatedAt.Unix())
+			hd := h.hostBookingData(ctx, d, host, b.UpdatedAt)
 			if err := mailer.SendCancellationToHost(ctx, h.mailer, hd); err != nil {
 				h.logger.Error("booking cancellation email (host)", "error", err, "booking_id", b.ID, "host", host.UserID)
 			}
