@@ -134,7 +134,7 @@ func (h *Handler) PatchLLMSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(set) > 0 {
 		if _, err := h.db.ExecContext(r.Context(),
-			`UPDATE server_settings SET `+strings.Join(set, ", ")+`, updated_at = datetime('now') WHERE id = 1`, args...); err != nil {
+			`UPDATE server_settings SET `+strings.Join(set, ", ")+`, updated_at = datetime('now') WHERE id = 1`, args...); err != nil { // #nosec G202 -- set is built above from hardcoded "col = ?" literals only; every value is bound via args...
 			h.llmDBError(w, r, err)
 			return
 		}

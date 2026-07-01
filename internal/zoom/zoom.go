@@ -44,7 +44,7 @@ func New(db *sql.DB, clientID, clientSecret, redirectURL, encKeyHex string) (*Cl
 		config: &oauth2.Config{
 			ClientID:     clientID,
 			ClientSecret: clientSecret,
-			Endpoint: oauth2.Endpoint{
+			Endpoint: oauth2.Endpoint{ // #nosec G101 -- Zoom's own public, fixed OAuth endpoint URLs, not credentials
 				AuthURL:   "https://zoom.us/oauth/authorize",
 				TokenURL:  "https://zoom.us/oauth/token",
 				AuthStyle: oauth2.AuthStyleInHeader, // Zoom wants client creds in Basic auth

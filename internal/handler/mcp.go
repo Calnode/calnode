@@ -456,7 +456,7 @@ func (h *Handler) mcpRescheduleBooking(ctx context.Context, _ *mcp.CallToolReque
 	}
 	out := toBookingJSON(updated)
 	out.EventTypeSlug = h.slugForEventTypeID(ctx, updated.EventTypeID)
-	go h.rescheduleSideEffects(*updated, b.EventTypeID, previousStart, previousEnd)
+	go h.rescheduleSideEffects(*updated, b.EventTypeID, previousStart, previousEnd) // #nosec G118 -- deliberately its own context.Background(); see rescheduleSideEffects' doc comment
 	return nil, out, nil
 }
 
@@ -497,7 +497,7 @@ func (h *Handler) mcpCancelBooking(ctx context.Context, _ *mcp.CallToolRequest, 
 	}
 	out := toBookingJSON(b)
 	out.EventTypeSlug = h.slugForEventTypeID(ctx, b.EventTypeID)
-	go h.cancelSideEffects(*b)
+	go h.cancelSideEffects(*b) // #nosec G118 -- deliberately its own context.Background(); see cancelSideEffects' doc comment
 	return nil, out, nil
 }
 

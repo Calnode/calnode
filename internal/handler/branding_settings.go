@@ -195,7 +195,7 @@ func (h *Handler) UploadBrandingLogo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 5<<20+1024)
-	if err := r.ParseMultipartForm(5 << 20); err != nil {
+	if err := r.ParseMultipartForm(5 << 20); err != nil { // #nosec G120 -- bounded by the MaxBytesReader above; the body can't exceed ~5MB
 		h.writeError(w, http.StatusBadRequest, "logo must be ≤5 MB")
 		return
 	}
@@ -310,7 +310,7 @@ func (h *Handler) DeleteBrandingLogo(w http.ResponseWriter, r *http.Request) {
 // public pages and emails.
 func (h *Handler) ServeBrandingLogo(w http.ResponseWriter, r *http.Request) {
 	path := filepath.Join(h.brandingDir(), "logo.png")
-	f, err := os.Open(path)
+	f, err := os.Open(path) // #nosec G304 -- "logo.png" is a literal; h.brandingDir() derives from the server's own dataDir config, never user input
 	if err != nil {
 		http.Error(w, "not found", http.StatusNotFound)
 		return

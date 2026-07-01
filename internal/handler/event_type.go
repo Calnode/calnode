@@ -628,7 +628,7 @@ func (h *Handler) PatchEventType(w http.ResponseWriter, r *http.Request) {
 	if len(setClauses) > 0 {
 		args = append(args, slug, user.ID)
 		res, err := h.db.ExecContext(r.Context(),
-			"UPDATE event_types SET "+strings.Join(setClauses, ", ")+" WHERE slug = ? AND user_id = ?",
+			"UPDATE event_types SET "+strings.Join(setClauses, ", ")+" WHERE slug = ? AND user_id = ?", // #nosec G202 -- setClauses is built by set()/the literal col list above; every column name is a hardcoded string, every value is bound via args...
 			args...)
 		if err != nil {
 			if strings.Contains(err.Error(), "CHECK constraint failed") {

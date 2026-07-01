@@ -149,7 +149,7 @@ func (h *Handler) ReassignBooking(w http.ResponseWriter, r *http.Request) {
 	// Side effects: move the calendar event and notify attendee + new host.
 	bCopy := *updated
 	newHostID := req.HostID
-	go func() {
+	go func() { // #nosec G118 -- deliberately its own context.Background(); the request context is cancelled the moment this handler returns
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 

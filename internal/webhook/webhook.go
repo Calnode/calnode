@@ -211,7 +211,7 @@ func (s *Service) Update(ctx context.Context, userID, id string, events, fields 
 	}
 	args = append(args, id, userID)
 	res, err := s.db.ExecContext(ctx,
-		`UPDATE webhooks SET `+strings.Join(set, ", ")+` WHERE id = ? AND user_id = ?`, args...)
+		`UPDATE webhooks SET `+strings.Join(set, ", ")+` WHERE id = ? AND user_id = ?`, args...) // #nosec G202 -- set is built above from hardcoded "col = ?" literals only; every value is bound via args...
 	if err != nil {
 		return fmt.Errorf("webhook: update: %w", err)
 	}

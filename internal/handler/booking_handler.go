@@ -353,7 +353,7 @@ func (h *Handler) createBookingForSlug(ctx context.Context, slug string, startAt
 	if err != nil {
 		return nil, err
 	}
-	go h.dispatchBookingConfirmation(b, bookingConfirmationInput{
+	go h.dispatchBookingConfirmation(b, bookingConfirmationInput{ // #nosec G118 -- deliberately its own context.Background(); the request context is cancelled the moment this handler returns, which would abort these side effects immediately
 		EventTypeName:     et.Name,
 		EventTypeSlug:     slug,
 		LocationType:      et.LocationType,
@@ -703,7 +703,7 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 
 	// Run calendar/email/webhook side effects in the background — the booking is
 	// committed; a side-effect failure must not roll it back or change the response.
-	go h.dispatchBookingConfirmation(b, bookingConfirmationInput{
+	go h.dispatchBookingConfirmation(b, bookingConfirmationInput{ // #nosec G118 -- deliberately its own context.Background(); see dispatchBookingConfirmation's doc comment
 		EventTypeName:     et.Name,
 		EventTypeSlug:     req.EventTypeSlug,
 		LocationType:      et.LocationType,
@@ -1043,10 +1043,10 @@ func (h *Handler) ListBookings(w http.ResponseWriter, r *http.Request) {
 	ph = ph[:len(ph)-1]
 
 	// Fetch event type slugs via a single JOIN (payment fields already come from toBookingJSON).
-	etRows, err := h.db.QueryContext(r.Context(),
+	etRows, err := h.db.QueryContext(r.Context(), // #nosec G701 -- ph is a fixed string of "?," placeholders (strings.Repeat above); every value is bound via ids..., never concatenated into the SQL text
 		`SELECT b.id, COALESCE(et.slug, '') FROM bookings b
 		 LEFT JOIN event_types et ON et.id = b.event_type_id
-		 WHERE b.id IN (`+ph+`)`, ids...)
+		 WHERE b.id IN (`+ph+`)`, ids...) // #nosec G202 -- ph is a fixed string of "?," placeholders (strings.Repeat above); every value is bound via ids..., never concatenated into the SQL text
 	if err != nil {
 		h.logger.ErrorContext(r.Context(), "list bookings: slugs", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal error")
@@ -1071,10 +1071,10 @@ func (h *Handler) ListBookings(w http.ResponseWriter, r *http.Request) {
 	// In the admin "All bookings" view, label each row with its host's name so the
 	// admin can tell whose booking it is.
 	if allScope {
-		hRows, err := h.db.QueryContext(r.Context(),
+		hRows, err := h.db.QueryContext(r.Context(), // #nosec G701 -- ph is a fixed string of "?," placeholders (strings.Repeat above); every value is bound via ids..., never concatenated into the SQL text
 			`SELECT b.id, COALESCE(u.name, '') FROM bookings b
 			 LEFT JOIN users u ON u.id = b.host_id
-			 WHERE b.id IN (`+ph+`)`, ids...)
+			 WHERE b.id IN (`+ph+`)`, ids...) // #nosec G202 -- ph is a fixed string of "?," placeholders (strings.Repeat above); every value is bound via ids..., never concatenated into the SQL text
 		if err != nil {
 			h.logger.ErrorContext(r.Context(), "list bookings: host names", "error", err)
 			h.writeError(w, http.StatusInternalServerError, "internal error")
@@ -1093,9 +1093,9 @@ func (h *Handler) ListBookings(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Fetch organizer attendee for each booking.
-	aRows, err := h.db.QueryContext(r.Context(),
+	aRows, err := h.db.QueryContext(r.Context(), // #nosec G701 -- ph is a fixed string of "?," placeholders (strings.Repeat above); every value is bound via ids..., never concatenated into the SQL text
 		`SELECT booking_id, name, email FROM booking_attendees
-		 WHERE booking_id IN (`+ph+`) AND is_organizer = 1`, ids...)
+		 WHERE booking_id IN (`+ph+`) AND is_organizer = 1`, ids...) // #nosec G202 -- ph is a fixed string of "?," placeholders (strings.Repeat above); every value is bound via ids..., never concatenated into the SQL text
 	if err != nil {
 		h.logger.ErrorContext(r.Context(), "list bookings: attendees", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal error")
@@ -1162,7 +1162,7 @@ func (h *Handler) CancelBooking(w http.ResponseWriter, r *http.Request) {
 	h.writeJSON(w, http.StatusOK, toBookingJSON(b))
 
 	// Cancel calendar events and send cancellation emails in the background.
-	go h.cancelSideEffects(*b)
+	go h.cancelSideEffects(*b) // #nosec G118 -- deliberately its own context.Background(); see cancelSideEffects' doc comment
 }
 
 // cancelSideEffects removes every assigned host's calendar event, notifies each

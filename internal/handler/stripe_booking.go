@@ -125,7 +125,7 @@ func (h *Handler) confirmPaidBooking(ctx context.Context, bookingID, paymentInte
 	// Run the same side-effects a free booking gets (calendar, emails, Zoom/Meet, webhooks) in
 	// the background, so the webhook is acknowledged immediately (well under Stripe's timeout).
 	// dispatchBookingConfirmation manages its own context, so fire-and-forget is safe.
-	go h.dispatchBookingConfirmation(b, in)
+	go h.dispatchBookingConfirmation(b, in) // #nosec G118 -- deliberately its own context.Background(); see dispatchBookingConfirmation's doc comment
 }
 
 // releaseUnpaidHold cancels a still-pending booking whose Checkout session expired, freeing

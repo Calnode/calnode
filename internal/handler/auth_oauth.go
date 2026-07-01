@@ -16,7 +16,7 @@ func (h *Handler) newOAuthState(w http.ResponseWriter) (string, error) {
 		return "", err
 	}
 	state := hex.EncodeToString(b)
-	http.SetCookie(w, &http.Cookie{
+	http.SetCookie(w, &http.Cookie{ // #nosec G124 -- HttpOnly/SameSite/Secure are all set; Secure is h.secureCookie (dynamic on BASE_URL scheme), which gosec's static check can't verify
 		Name:     stateCookieName,
 		Value:    state,
 		Path:     "/",
@@ -33,7 +33,7 @@ func (h *Handler) newOAuthState(w http.ResponseWriter) (string, error) {
 func (h *Handler) verifyOAuthState(w http.ResponseWriter, r *http.Request) bool {
 	c, err := r.Cookie(stateCookieName)
 	ok := err == nil && c.Value != "" && r.URL.Query().Get("state") == c.Value
-	http.SetCookie(w, &http.Cookie{
+	http.SetCookie(w, &http.Cookie{ // #nosec G124 -- HttpOnly/SameSite/Secure are all set; Secure is h.secureCookie (dynamic on BASE_URL scheme), which gosec's static check can't verify
 		Name:     stateCookieName,
 		Value:    "",
 		Path:     "/",
@@ -69,7 +69,7 @@ func (h *Handler) finishOAuthLogin(w http.ResponseWriter, r *http.Request, email
 	// If this login was initiated by an MCP "Connect" flow, return to /oauth/authorize
 	// (the consent step) rather than the admin home.
 	if dest, ok := h.consumeOAuthReturn(w, r); ok {
-		http.Redirect(w, r, dest, http.StatusFound)
+		http.Redirect(w, r, dest, http.StatusFound) // #nosec G710 -- dest is validated by safeLocalPath (only "/oauth/authorize", never "//") both when set and when consumed; gosec's taint analysis can't trace through that check
 		return
 	}
 	http.Redirect(w, r, "/admin", http.StatusFound)

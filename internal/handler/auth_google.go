@@ -104,7 +104,7 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 		h.db.ExecContext(r.Context(),
 			`DELETE FROM sessions WHERE id = ?`, cookie.Value)
 	}
-	http.SetCookie(w, &http.Cookie{
+	http.SetCookie(w, &http.Cookie{ // #nosec G124 -- HttpOnly/SameSite/Secure are all set; Secure is h.secureCookie (dynamic on BASE_URL scheme), which gosec's static check can't verify
 		Name:     sessionCookieName,
 		Value:    "",
 		Path:     "/",

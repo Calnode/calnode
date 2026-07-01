@@ -128,9 +128,9 @@ func (h *Handler) ManagePage(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) renderManage(w http.ResponseWriter, r *http.Request, data managePageData) {
 	track := h.loadTrackingSettings(r.Context())
 	dlFields, _ := json.Marshal(track.DataLayerFields)
-	data.HeadHTML = template.HTML(track.HeadHTML)
+	data.HeadHTML = template.HTML(track.HeadHTML) // #nosec G203 -- admin-only "code injection" feature (Settings -> Tracking); intentionally raw, documented, gated by requireAdmin on the settings endpoint
 	data.DataLayerEnabled = track.DataLayerEnabled
-	data.DataLayerFields = template.JS(dlFields)
+	data.DataLayerFields = template.JS(dlFields) // #nosec G203 -- json.Marshal output, which escapes <,>,& by default; safe for embedding in a <script> block
 	data.GTMContainerID = track.GTMContainerID
 	data.GA4MeasurementID = track.GA4MeasurementID
 	brand := h.loadBranding(r.Context())
@@ -141,7 +141,7 @@ func (h *Handler) renderManage(w http.ResponseWriter, r *http.Request, data mana
 	data.PrivacyURL = brand.PrivacyURL
 	data.TermsURL = brand.TermsURL
 	data.CSSVersion = bookingCSSVersion
-	data.BookingLogicJS = template.JS(bookingLogicJS)
+	data.BookingLogicJS = template.JS(bookingLogicJS) // #nosec G203 -- our own bundled JS source constant, not user input
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Content-Security-Policy", publicCSP(track))
@@ -216,7 +216,7 @@ func (h *Handler) RescheduleByToken(w http.ResponseWriter, r *http.Request) {
 
 	h.writeJSON(w, http.StatusOK, toBookingJSON(updated))
 
-	go h.rescheduleSideEffects(*updated, b.EventTypeID, previousStart, previousEnd)
+	go h.rescheduleSideEffects(*updated, b.EventTypeID, previousStart, previousEnd) // #nosec G118 -- deliberately its own context.Background(); see rescheduleSideEffects' doc comment
 }
 
 // rescheduleSideEffects moves the calendar event(s) to the new time, rotates the
@@ -323,5 +323,5 @@ func (h *Handler) CancelByToken(w http.ResponseWriter, r *http.Request) {
 
 	// Same multi-host fan-out as the admin cancel path (Group bookings remove the
 	// event from every assigned host's calendar and notify each).
-	go h.cancelSideEffects(*b)
+	go h.cancelSideEffects(*b) // #nosec G118 -- deliberately its own context.Background(); see cancelSideEffects' doc comment
 }

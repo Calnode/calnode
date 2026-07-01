@@ -41,7 +41,7 @@ func (h *Handler) ConnectCalendar(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	http.Redirect(w, r, p.AuthURL(state), http.StatusFound)
+	http.Redirect(w, r, p.AuthURL(state), http.StatusFound) // #nosec G710 -- AuthURL is the provider's own fixed OAuth authorize endpoint (oauth2.Config.AuthCodeURL); only our own encrypted state is appended, no attacker-controlled destination
 }
 
 // CalendarCallback handles GET /v1/calendar/callback (public — browser redirect from the provider).

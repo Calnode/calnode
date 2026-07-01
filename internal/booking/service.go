@@ -426,11 +426,11 @@ func leastLoadedHost(ctx context.Context, tx *sql.Tx, eventTypeID string, candid
 		ph[i] = "?"
 		args = append(args, c)
 	}
-	rows, err := tx.QueryContext(ctx, `
-		SELECT host_id, COUNT(*) FROM bookings
+	rows, err := tx.QueryContext(ctx,
+		`SELECT host_id, COUNT(*) FROM bookings
 		WHERE event_type_id = ? AND status != 'cancelled' AND end_at > ?
 		  AND host_id IN (`+strings.Join(ph, ",")+`)
-		GROUP BY host_id`, args...)
+		GROUP BY host_id`, args...) // #nosec G202 -- ph is a fixed slice of literal "?" placeholders (one per candidate above); every value is bound via args..., never concatenated into the SQL text
 	if err != nil {
 		return "", fmt.Errorf("booking: load host loads: %w", err)
 	}

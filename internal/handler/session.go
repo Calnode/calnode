@@ -21,7 +21,7 @@ func (h *Handler) createSession(ctx context.Context, w http.ResponseWriter, user
 		sessID, userID, expiresAt); err != nil {
 		return err
 	}
-	http.SetCookie(w, &http.Cookie{
+	http.SetCookie(w, &http.Cookie{ // #nosec G124 -- HttpOnly/SameSite/Secure are all set; Secure is h.secureCookie (true whenever BASE_URL is https, false only for local http dev) rather than a literal, which gosec's static check can't verify
 		Name:     sessionCookieName,
 		Value:    sessID,
 		Path:     "/",

@@ -183,9 +183,9 @@ func renderMarkdown(src string) template.HTML {
 	}
 	var buf bytes.Buffer
 	if err := mdRenderer.Convert([]byte(src), &buf); err != nil {
-		return template.HTML(template.HTMLEscapeString(src))
+		return template.HTML(template.HTMLEscapeString(src)) // #nosec G203 -- explicitly HTML-escaped before wrapping; this is the fallback path when goldmark itself fails
 	}
-	return template.HTML(buf.String())
+	return template.HTML(buf.String()) // #nosec G203 -- goldmark renders raw HTML tags in the source as text (html.WithUnsafe() is not set), so the output is already safe; src is also operator-authored content (event description / custom message), not arbitrary visitor input
 }
 
 // formatPrice renders an amount in minor units for display, using a symbol for common
@@ -406,16 +406,16 @@ func (h *Handler) BookPage(w http.ResponseWriter, r *http.Request) {
 		Currency:         currency,
 		MaxFutureDays:    maxDays,
 		Questions:        questions,
-		BookingLogicJS:   template.JS(bookingLogicJS),
+		BookingLogicJS:   template.JS(bookingLogicJS), // #nosec G203 -- our own bundled JS source constant, not user input
 		AssistantEnabled: h.getLLM() != nil,
 		CSSVersion:       bookingCSSVersion,
 
-		HeadHTML:         template.HTML(track.HeadHTML),
+		HeadHTML:         template.HTML(track.HeadHTML), // #nosec G203 -- admin-only "code injection" feature (Settings -> Tracking); intentionally raw, documented, gated by requireAdmin on the settings endpoint
 		GTMContainerID:   track.GTMContainerID,
 		GA4MeasurementID: track.GA4MeasurementID,
 		DataLayerEnabled: track.DataLayerEnabled,
-		DataLayerFields:  template.JS(dlFields),
-		QuestionsJSON:    template.JS(qjson),
+		DataLayerFields:  template.JS(dlFields), // #nosec G203 -- json.Marshal output, which escapes <,>,& by default; safe for embedding in a <script> block
+		QuestionsJSON:    template.JS(qjson),    // #nosec G203 -- json.Marshal output, which escapes <,>,& by default; safe for embedding in a <script> block
 
 		BusinessName: brand.BusinessName,
 		LogoURL:      brand.LogoURL,

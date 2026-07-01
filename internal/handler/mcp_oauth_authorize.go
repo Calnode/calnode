@@ -379,7 +379,7 @@ func (h *Handler) setOAuthReturn(w http.ResponseWriter, path string) {
 	if !safeLocalPath(path) {
 		return
 	}
-	http.SetCookie(w, &http.Cookie{
+	http.SetCookie(w, &http.Cookie{ // #nosec G124 -- HttpOnly/SameSite/Secure are all set; Secure is h.secureCookie (dynamic on BASE_URL scheme), which gosec's static check can't verify
 		Name: oauthReturnCookie, Value: path, Path: "/",
 		MaxAge: 600, HttpOnly: true, SameSite: http.SameSiteLaxMode, Secure: h.secureCookie,
 	})
@@ -391,7 +391,7 @@ func (h *Handler) consumeOAuthReturn(w http.ResponseWriter, r *http.Request) (st
 	if err != nil || c.Value == "" || !safeLocalPath(c.Value) {
 		return "", false
 	}
-	http.SetCookie(w, &http.Cookie{
+	http.SetCookie(w, &http.Cookie{ // #nosec G124 -- HttpOnly/SameSite/Secure are all set; Secure is h.secureCookie (dynamic on BASE_URL scheme), which gosec's static check can't verify
 		Name: oauthReturnCookie, Value: "", Path: "/", MaxAge: -1,
 		HttpOnly: true, SameSite: http.SameSiteLaxMode, Secure: h.secureCookie,
 	})

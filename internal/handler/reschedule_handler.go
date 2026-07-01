@@ -109,5 +109,5 @@ func (h *Handler) RescheduleBooking(w http.ResponseWriter, r *http.Request) {
 	// with the manage-token reschedule flow — see rescheduleSideEffects in
 	// manage_handler.go. etSlug is unused here now; it's re-derived inside the helper
 	// via loadCancellationData's own join, which is equivalent.
-	go h.rescheduleSideEffects(*updated, etID, previousStart, previousEnd)
+	go h.rescheduleSideEffects(*updated, etID, previousStart, previousEnd) // #nosec G118 -- deliberately its own context.Background(); see rescheduleSideEffects' doc comment
 }

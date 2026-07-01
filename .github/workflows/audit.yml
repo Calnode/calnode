@@ -87,6 +87,11 @@ jobs:
           go install golang.org/x/vuln/cmd/govulncheck@latest
           govulncheck ./...
 
+      - name: gosec (clean-security-scan claim — AUDIT.md says every finding is annotated)
+        run: |
+          go install github.com/securego/gosec/v2/cmd/gosec@latest
+          gosec ./...
+
       - name: gitleaks (clean-security-scan claim)
         uses: gitleaks/gitleaks-action@v2
         env:

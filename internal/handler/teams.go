@@ -220,7 +220,7 @@ func (h *Handler) PatchTeam(w http.ResponseWriter, r *http.Request) {
 	}
 	args = append(args, id)
 	res, err := h.db.ExecContext(r.Context(),
-		"UPDATE teams SET "+strings.Join(sets, ", ")+" WHERE id = ?", args...)
+		"UPDATE teams SET "+strings.Join(sets, ", ")+" WHERE id = ?", args...) // #nosec G202 -- sets is built above from hardcoded "col = ?" literals only; every value is bound via args...
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE constraint failed") {
 			h.writeError(w, http.StatusConflict, "a team with that slug already exists")

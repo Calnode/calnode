@@ -29,7 +29,7 @@ func (h *Handler) UploadAvatar(w http.ResponseWriter, r *http.Request) {
 	user, _ := userFromContext(r.Context())
 	r.Body = http.MaxBytesReader(w, r.Body, 5<<20+1024)
 
-	if err := r.ParseMultipartForm(5 << 20); err != nil {
+	if err := r.ParseMultipartForm(5 << 20); err != nil { // #nosec G120 -- bounded by the MaxBytesReader above; the body can't exceed ~5MB
 		h.writeError(w, http.StatusBadRequest, "avatar must be ≤5 MB")
 		return
 	}
@@ -167,7 +167,7 @@ func (h *Handler) ServeAvatar(w http.ResponseWriter, r *http.Request) {
 	avatarDir := filepath.Join(h.dataDir, "avatars")
 	for _, ext := range avatarExts {
 		path := filepath.Join(avatarDir, userID+ext)
-		f, err := os.Open(path)
+		f, err := os.Open(path) // #nosec G304 -- userID is regex-validated (validUserID) and filepath.Base'd above; ext comes from the fixed avatarExts list, never user input
 		if err != nil {
 			continue
 		}
