@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"net"
 	"net/http"
 	"time"
 
@@ -46,26 +45,6 @@ func WithMailer(m mailer.Mailer) func(*Worker) {
 }
 
 func New(db *sql.DB, svc *webhook.Service, logger *slog.Logger, opts ...func(*Worker)) *Worker {
-	baseDialer := &net.Dialer{}
-	transport := &http.Transport{
-		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			host, port, err := net.SplitHostPort(addr)
-			if err != nil {
-				return nil, fmt.Errorf("worker: split addr: %w", err)
-			}
-			// Shared with the admin-time webhook-URL validator (netutil.ResolveSafe) —
-			// same SSRF check, one definition. Dial the address it resolved to directly
-			// (not the hostname again) so there's no DNS-rebinding gap between this
-			// check and the actual connection.
-			addrs, err := netutil.ResolveSafe(ctx, host)
-			if err != nil {
-				// Generic message: don't disclose the blocked address to webhook owners.
-				logger.Warn("worker: webhook SSRF block", "host", host, "error", err)
-				return nil, fmt.Errorf("worker: webhook target resolved to a blocked address")
-			}
-			return baseDialer.DialContext(ctx, network, net.JoinHostPort(addrs[0].IP.String(), port))
-		},
-	}
 	w := &Worker{
 		db:       db,
 		svc:      svc,
@@ -74,7 +53,7 @@ func New(db *sql.DB, svc *webhook.Service, logger *slog.Logger, opts ...func(*Wo
 		handlers: map[string]func(context.Context, string) error{},
 		httpClient: &http.Client{
 			Timeout:   10 * time.Second,
-			Transport: transport,
+			Transport: netutil.SafeTransport(logger, "worker: webhook SSRF block"),
 		},
 		done: make(chan struct{}),
 	}

@@ -3,7 +3,9 @@ package netutil
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net"
+	"net/http"
 )
 
 // ResolveSafe resolves host and returns its addresses, or an error if it fails to
@@ -27,6 +29,80 @@ func ResolveSafe(ctx context.Context, host string) ([]net.IPAddr, error) {
 		}
 	}
 	return addrs, nil
+}
+
+// ResolveNotMetadata resolves host and rejects it only if it maps to a link-local
+// address (169.254.0.0/16 / fe80::/10) — the range every major cloud provider (AWS,
+// GCP, Azure, DigitalOcean, Oracle) uses for its instance-metadata service, and which
+// is never a legitimate destination for anything Calnode dials. Unlike ResolveSafe,
+// this deliberately does NOT block loopback/RFC1918/CGNAT/ULA: CalDAV servers,
+// self-hosted LLM runtimes, and self-hosted LiveKit servers are all things an
+// operator legitimately points at their own private network or even localhost — a
+// self-hostable product can't treat "private network" as inherently suspicious for
+// features whose entire purpose is "bring your own server." Cloud metadata, by
+// contrast, is never a real chat-completions/CalDAV/LiveKit endpoint for anyone.
+func ResolveNotMetadata(ctx context.Context, host string) ([]net.IPAddr, error) {
+	addrs, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	if err != nil {
+		return nil, fmt.Errorf("resolve %q: %w", host, err)
+	}
+	if len(addrs) == 0 {
+		return nil, fmt.Errorf("%q resolved to no addresses", host)
+	}
+	for _, a := range addrs {
+		if IsLinkLocal(a.IP) {
+			return nil, fmt.Errorf("%q resolved to a link-local address (cloud metadata range)", host)
+		}
+	}
+	return addrs, nil
+}
+
+// IsLinkLocal reports whether ip is in the link-local range (169.254.0.0/16 /
+// fe80::/10) — the range cloud metadata services live in. Exposed separately from
+// ResolveNotMetadata for callers doing best-effort validation (e.g. at config-save
+// time) that want to treat "definitely metadata" and "failed to resolve right now"
+// differently — a save-time DNS hiccup shouldn't block saving a setting the way an
+// actual metadata address should.
+func IsLinkLocal(ip net.IP) bool {
+	return ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast()
+}
+
+// SafeTransport returns an http.RoundTripper that resolves every dial target through
+// ResolveSafe and connects to the resolved IP directly (never re-resolving the
+// hostname), closing the DNS-rebinding TOCTOU gap between validation and connection.
+// logMsg is the slog message used when a dial is blocked (callers should keep it
+// generic — don't disclose the blocked address to whoever configured the target).
+// Use this for targets that should never legitimately be private (webhook delivery —
+// a third party's receiving endpoint, not infrastructure the operator runs).
+func SafeTransport(logger *slog.Logger, logMsg string) http.RoundTripper {
+	return dialGuardTransport(ResolveSafe, logger, logMsg)
+}
+
+// MetadataSafeTransport is SafeTransport's narrower sibling: it blocks only cloud
+// metadata / link-local addresses (see ResolveNotMetadata), for admin-configured
+// "bring your own server" targets (CalDAV, the BYO-LLM endpoint, LiveKit) where
+// private-network and localhost destinations are an intended, self-hosting use case,
+// not a red flag — only the metadata range is universally illegitimate for these.
+func MetadataSafeTransport(logger *slog.Logger, logMsg string) http.RoundTripper {
+	return dialGuardTransport(ResolveNotMetadata, logger, logMsg)
+}
+
+func dialGuardTransport(resolve func(context.Context, string) ([]net.IPAddr, error), logger *slog.Logger, logMsg string) http.RoundTripper {
+	baseDialer := &net.Dialer{}
+	return &http.Transport{
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			host, port, err := net.SplitHostPort(addr)
+			if err != nil {
+				return nil, fmt.Errorf("netutil: split addr: %w", err)
+			}
+			addrs, err := resolve(ctx, host)
+			if err != nil {
+				logger.Warn(logMsg, "host", host, "error", err)
+				return nil, fmt.Errorf("netutil: target resolved to a blocked address")
+			}
+			return baseDialer.DialContext(ctx, network, net.JoinHostPort(addrs[0].IP.String(), port))
+		},
+	}
 }
 
 // IsPrivateIP reports whether ip is a loopback, unspecified, link-local, or

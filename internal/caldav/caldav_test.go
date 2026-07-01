@@ -35,6 +35,9 @@ func newTestClient(t *testing.T) *Client {
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
+	// Tests talk to a local httptest.Server, so bypass the production SSRF guard
+	// (same reasoning as internal/worker/worker_test.go's WithHTTPClient).
+	c.hc.Transport = nil
 	return c
 }
 

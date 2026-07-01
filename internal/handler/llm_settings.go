@@ -5,13 +5,41 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
 	"github.com/calnode/calnode/internal/llm"
+	"github.com/calnode/calnode/internal/netutil"
 	"github.com/calnode/calnode/internal/secret"
 )
+
+// validateLLMEndpoint checks endpoint is an http(s) URL and, best-effort, that it
+// doesn't resolve to a cloud metadata address right now. Private/loopback
+// destinations are allowed on purpose — a self-hosted or local LLM runtime is a
+// documented, intended configuration for this field — only the metadata range is
+// never a legitimate chat-completions endpoint for anyone. A resolution failure
+// (offline endpoint, DNS not provisioned yet) doesn't block saving; the runtime
+// client (internal/llm/client.go, via netutil.MetadataSafeTransport) re-checks on
+// every real dial, which is the guard that actually matters once the endpoint is used.
+func validateLLMEndpoint(ctx context.Context, endpoint string) error {
+	u, err := url.Parse(endpoint)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" {
+		return fmt.Errorf("endpoint must be a valid http(s) URL")
+	}
+	addrs, err := net.DefaultResolver.LookupIPAddr(ctx, u.Hostname())
+	if err != nil {
+		return nil
+	}
+	for _, a := range addrs {
+		if netutil.IsLinkLocal(a.IP) {
+			return fmt.Errorf("endpoint must not resolve to a cloud metadata address")
+		}
+	}
+	return nil
+}
 
 // LLMConfig holds decrypted LLM-layer settings loaded from the DB. Endpoint empty ⇒ not
 // configured; Enabled gates whether the optional AI features run.
@@ -94,6 +122,13 @@ func (h *Handler) PatchLLMSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if req.Endpoint != nil && *req.Endpoint != "" {
+		if err := validateLLMEndpoint(r.Context(), *req.Endpoint); err != nil {
+			h.writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
+
 	// Apply only the provided fields (PATCH semantics) in one combined UPDATE, rather
 	// than one round-trip per field.
 	var set []string
@@ -165,6 +200,10 @@ func (h *Handler) TestLLMSettings(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewDecoder(r.Body).Decode(&req)
 	if req.Endpoint == "" || req.Model == "" {
 		h.writeError(w, http.StatusBadRequest, "endpoint and model are required to test")
+		return
+	}
+	if err := validateLLMEndpoint(r.Context(), req.Endpoint); err != nil {
+		h.writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	// Empty key in the test request → reuse the stored key (so "test" works without

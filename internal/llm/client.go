@@ -10,9 +10,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/calnode/calnode/internal/netutil"
 )
 
 // Config points the client at an endpoint. Endpoint is the API base (e.g.
@@ -30,9 +33,15 @@ type Client struct {
 	http *http.Client
 }
 
-// New builds a client. timeout caps a single request.
+// New builds a client. timeout caps a single request. Endpoint is operator-configured
+// and may legitimately point at a self-hosted/local runtime — see
+// netutil.MetadataSafeTransport for why only cloud-metadata addresses are blocked,
+// not private ranges.
 func New(cfg Config) *Client {
-	return &Client{cfg: cfg, http: &http.Client{Timeout: 60 * time.Second}}
+	return &Client{cfg: cfg, http: &http.Client{
+		Timeout:   60 * time.Second,
+		Transport: netutil.MetadataSafeTransport(slog.Default(), "llm: SSRF block"),
+	}}
 }
 
 // Model returns the configured model id.

@@ -27,6 +27,7 @@ import (
 
 	"github.com/calnode/calnode/internal/calendar"
 	"github.com/calnode/calnode/internal/connstore"
+	"github.com/calnode/calnode/internal/netutil"
 	"github.com/calnode/calnode/internal/secret"
 	"github.com/calnode/calnode/internal/uid"
 )
@@ -60,6 +61,14 @@ func New(db *sql.DB, encKeyHex string) (*Client, error) {
 			// CalDAV discovery follows redirects manually (preserving the PROPFIND method),
 			// so disable Go's auto-follow which would downgrade 301/302 to GET.
 			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+			// server_url is host-supplied — a self-hosted Nextcloud/Radicale/Baïkal
+			// instance on the operator's own private network or even localhost is a
+			// legitimate, intended configuration (this is a self-hostable product),
+			// so use the narrower metadata-only guard rather than blocking private
+			// ranges outright. Cloud-metadata addresses are never a real CalDAV
+			// server for anyone. Manual redirect-following (webdav.go) always
+			// re-enters c.hc.Do, so every hop gets re-checked too.
+			Transport: netutil.MetadataSafeTransport(slog.Default(), "caldav: SSRF block"),
 		},
 	}, nil
 }
