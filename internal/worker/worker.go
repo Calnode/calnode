@@ -3,10 +3,7 @@ package worker
 import (
 	"bytes"
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -369,9 +366,7 @@ func (w *Worker) deliverWebhook(ctx context.Context, jobPayload string) error {
 	}
 
 	payloadBytes := []byte(deliveryPayload)
-	mac := hmac.New(sha256.New, secret)
-	mac.Write(payloadBytes)
-	sig := "sha256=" + hex.EncodeToString(mac.Sum(nil))
+	sig := webhook.Sign(secret, payloadBytes)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, webhookURL,
 		bytes.NewReader(payloadBytes))
