@@ -232,7 +232,9 @@ func (rl *rateLimiter) cleanup() {
 // configured trusted-proxy allowlist, those headers can be forged by any
 // client and would bypass the rate limit entirely. Operators behind a reverse
 // proxy should strip proxy headers at the proxy level and rely on the TCP
-// address the proxy connects with.
+// address the proxy connects with. See audit/claims.yaml's
+// rate-limit-keys-on-tcp-source-address claim, recorded specifically because a
+// prior Layer 2 audit pass mistook this deliberate behavior for a spoofable gap.
 func remoteIP(r *http.Request) string {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {

@@ -107,6 +107,14 @@ model, review crypto/secrets handling, hunt injection/SSRF/deserialization bugs,
 attack the booking flow specifically). They're written to find problems, not to
 confirm the code is fine — push your agent if it comes back vague.
 
+Before reporting a finding as real, cross-check it against `audit/claims.yaml` —
+several entries there (e.g. `fixed-roles-admin-full-access`,
+`rate-limit-keys-on-tcp-source-address`) exist specifically because a prior run of
+this exact adversarial pass flagged behavior that turned out to be intentional. An
+LLM given no memory of past audits will regenerate the same false positive every
+time unless it's told to check first; a real bug and a already-litigated design
+choice can look identical from the code alone.
+
 ## 4. The claims manifest — falsifiable, including the unflattering parts
 
 **[→ audit/claims.yaml](audit/claims.yaml)** maps every public claim we make (single

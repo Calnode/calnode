@@ -79,6 +79,13 @@ func (h *Handler) PatchNotetakerSettings(w http.ResponseWriter, r *http.Request)
 }
 
 // GetBookingNotes handles GET /v1/bookings/{id}/notes (admin) — the AI notes for a booking.
+//
+// Deliberately admin-scoped, not host-scoped: any admin/owner can read any booking's notes,
+// even one they don't host. This mirrors mcpCallerScope's fullAccess semantics for the
+// equivalent MCP tools (see mcp_oauth.go) — see audit/claims.yaml's
+// fixed-roles-admin-full-access claim, recorded specifically because a prior Layer 2 audit
+// pass mistook this for a cross-host leak. It isn't an inconsistency; it's the same
+// fixed-roles access model REST and MCP both apply.
 func (h *Handler) GetBookingNotes(w http.ResponseWriter, r *http.Request) {
 	if _, ok := h.requireAdmin(w, r); !ok {
 		return

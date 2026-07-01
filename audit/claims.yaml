@@ -223,3 +223,53 @@ claims:
       previously only govulncheck and gitleaks were, which is exactly how the 44
       unannotated gosec findings above went unnoticed. semgrep is not yet a CI gate
       (still a manual step in AUDIT.md's scanner block).
+
+  - id: fixed-roles-admin-full-access
+    claim: >
+      Calnode uses a fixed three-role model (owner/admin/member) with no
+      configurable permission matrix. An admin or owner has full workspace access
+      across every surface — REST, MCP, and the notetaker endpoints — including
+      bookings, notes, and transcripts they don't personally host. This is applied
+      consistently across surfaces, not a per-endpoint inconsistency.
+    verify:
+      - "internal/handler/mcp_oauth.go's mcpCallerScope — fullAccess = c.IsAdmin,
+         which bypasses every userHostsBooking check for MCP tools."
+      - "internal/handler/notetaker_http.go's GetBookingNotes/
+         RegenerateBookingNotes/GetBookingTranscript — gated by requireAdmin only,
+         the same full-access model as MCP's fullAccess, not a narrower host-scoped
+         check."
+      - "grep -rn 'requireAdmin' internal/handler — every admin-only handler grants
+         workspace-wide access; there is no per-resource permission matrix to
+         misconfigure or drift out of sync."
+    status: verified
+    caveat: >
+      Recorded here because a prior Layer 2 audit pass flagged REST's admin-only
+      gate on notetaker endpoints as a "cross-host leak" relative to MCP's access
+      control — it isn't; both apply the identical fixed-roles model. Configurable/
+      fine-grained RBAC (e.g. "admin can manage settings but not read other hosts'
+      meeting content") is a deliberate scope decision, not a gap in the current
+      model — see the project's architecture notes. If your threat model requires
+      restricting admins from other hosts' booking content, that needs new code
+      (a permission matrix), not a fix to an existing bug.
+
+  - id: rate-limit-keys-on-tcp-source-address
+    claim: >
+      Per-IP rate limiting (internal/server/middleware.go's RateLimit) keys
+      strictly on the TCP-level remote address of the connection, never on client-
+      supplied X-Forwarded-For/X-Real-IP headers — a client cannot spoof those
+      headers to evade or split its rate-limit bucket.
+    verify:
+      - "internal/server/middleware.go's remoteIP — net.SplitHostPort(r.RemoteAddr)
+         only; the proxy headers are never read."
+      - "internal/server/ratelimit_test.go's TestRemoteIP_* — assert X-Forwarded-For
+         and X-Real-IP are ignored even when RemoteAddr is loopback."
+    status: verified
+    caveat: >
+      Recorded here because a prior Layer 2 audit pass flagged this as trusting
+      spoofable proxy headers — it doesn't; the flagged behavior traced back to a
+      stale doc comment describing the opposite of what the code does (fixed
+      alongside this entry). Correct behavior does require the deployment's
+      reverse proxy to connect to Calnode directly (or over a trusted private
+      network) — see the deployment docs for reverse-proxy requirements (forward
+      the original Host header, connect over a trusted path, strip client-supplied
+      proxy headers at the edge).
