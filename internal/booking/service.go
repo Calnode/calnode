@@ -47,16 +47,6 @@ func (s *Service) Create(ctx context.Context, p CreateParams) (*Booking, error) 
 
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 
-	// Two intervals [A,B) and [C,D) overlap when A < D and C < B. A host is busy if
-	// they attend ANY non-cancelled overlapping booking — primary OR not — so this
-	// joins booking_hosts rather than matching bookings.host_id (which would miss a
-	// host attending a Group / fixed-host booking as a non-primary).
-	const overlapQ = `
-		SELECT COUNT(*) FROM bookings b
-		JOIN booking_hosts bh ON bh.booking_id = b.id
-		WHERE bh.user_id = ? AND b.status != 'cancelled'
-		  AND b.start_at < ? AND b.end_at > ?`
-
 	// Select hosts. Round-robin picks one *free* candidate from the rotation pool
 	// per p.RRStrategy (free candidates stay in priority order). Any
 	// other mode requires every HostID free and all of them attend (Normal = one
@@ -67,11 +57,11 @@ func (s *Service) Create(ctx context.Context, p CreateParams) (*Booking, error) 
 	if p.RoutingMode == "round_robin" {
 		// Fixed hosts always attend — all must be free.
 		for _, hostID := range p.RequiredHosts {
-			var n int
-			if err := tx.QueryRowContext(ctx, overlapQ, hostID, endStr, startStr).Scan(&n); err != nil {
+			busy, err := hostBusy(ctx, tx, hostID, startStr, endStr, "")
+			if err != nil {
 				return nil, fmt.Errorf("booking: overlap check: %w", err)
 			}
-			if n > 0 {
+			if busy {
 				return nil, ErrDoubleBooked
 			}
 			assigned = append(assigned, hostID)
@@ -79,11 +69,11 @@ func (s *Service) Create(ctx context.Context, p CreateParams) (*Booking, error) 
 		// Rotation pool — pick exactly one free host by strategy.
 		var free []string
 		for _, hostID := range p.HostIDs {
-			var n int
-			if err := tx.QueryRowContext(ctx, overlapQ, hostID, endStr, startStr).Scan(&n); err != nil {
+			busy, err := hostBusy(ctx, tx, hostID, startStr, endStr, "")
+			if err != nil {
 				return nil, fmt.Errorf("booking: overlap check: %w", err)
 			}
-			if n == 0 {
+			if !busy {
 				free = append(free, hostID)
 			}
 		}
@@ -98,11 +88,11 @@ func (s *Service) Create(ctx context.Context, p CreateParams) (*Booking, error) 
 		assigned = append(assigned, chosen)
 	} else {
 		for _, hostID := range p.HostIDs {
-			var n int
-			if err := tx.QueryRowContext(ctx, overlapQ, hostID, endStr, startStr).Scan(&n); err != nil {
+			busy, err := hostBusy(ctx, tx, hostID, startStr, endStr, "")
+			if err != nil {
 				return nil, fmt.Errorf("booking: overlap check: %w", err)
 			}
-			if n > 0 {
+			if busy {
 				return nil, ErrDoubleBooked
 			}
 		}
@@ -115,11 +105,11 @@ func (s *Service) Create(ctx context.Context, p CreateParams) (*Booking, error) 
 		if slices.Contains(assigned, hostID) {
 			continue
 		}
-		var n int
-		if err := tx.QueryRowContext(ctx, overlapQ, hostID, endStr, startStr).Scan(&n); err != nil {
+		busy, err := hostBusy(ctx, tx, hostID, startStr, endStr, "")
+		if err != nil {
 			return nil, fmt.Errorf("booking: optional overlap check: %w", err)
 		}
-		if n == 0 {
+		if !busy {
 			assigned = append(assigned, hostID)
 		}
 	}
@@ -270,14 +260,35 @@ func (s *Service) CancelByID(ctx context.Context, id, reason string) error {
 	return nil
 }
 
+// bookingColumns is the column list scanBooking expects, in order — shared by every
+// query that loads a full Booking, so a schema change (a column added/removed) is
+// one edit instead of five.
+const bookingColumns = `id, event_type_id, host_id, start_at, end_at, status,
+	       COALESCE(cancellation_reason, ''), COALESCE(location_value, ''),
+	       created_at, updated_at,
+	       payment_status, amount_paid_cents, amount_paid_currency`
+
+// hostBusy reports whether hostID has any non-cancelled booking overlapping
+// [start, end) — the double-booking invariant every write path (Create, Reschedule,
+// ReassignHost) must check before committing a time change. A host is busy if they
+// attend ANY overlapping booking, primary or not, so this joins booking_hosts rather
+// than matching bookings.host_id (which would miss a Group/fixed-host attendee).
+// excludeBookingID excludes the booking being modified from its own overlap check
+// (Reschedule/ReassignHost); pass "" when there's no booking yet to exclude (Create).
+func hostBusy(ctx context.Context, tx *sql.Tx, hostID, start, end, excludeBookingID string) (bool, error) {
+	var n int
+	err := tx.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM bookings b
+		JOIN booking_hosts bh ON bh.booking_id = b.id
+		WHERE bh.user_id = ? AND b.status != 'cancelled' AND b.id != ?
+		  AND b.start_at < ? AND b.end_at > ?`,
+		hostID, excludeBookingID, end, start).Scan(&n)
+	return n > 0, err
+}
+
 // Get returns a single booking by ID.
 func (s *Service) Get(ctx context.Context, id string) (*Booking, error) {
-	row := s.db.QueryRowContext(ctx, `
-		SELECT id, event_type_id, host_id, start_at, end_at, status,
-		       COALESCE(cancellation_reason, ''), COALESCE(location_value, ''),
-		       created_at, updated_at,
-		       payment_status, amount_paid_cents, amount_paid_currency
-		FROM bookings WHERE id = ?`, id)
+	row := s.db.QueryRowContext(ctx, `SELECT `+bookingColumns+` FROM bookings WHERE id = ?`, id)
 	return scanBooking(row)
 }
 
@@ -287,10 +298,7 @@ func (s *Service) Get(ctx context.Context, id string) (*Booking, error) {
 // not just the primary) see meetings they're on, not only the ones they lead.
 func (s *Service) ListByHost(ctx context.Context, hostID string) ([]Booking, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, event_type_id, host_id, start_at, end_at, status,
-		       COALESCE(cancellation_reason, ''), COALESCE(location_value, ''),
-		       created_at, updated_at,
-		       payment_status, amount_paid_cents, amount_paid_currency
+		SELECT `+bookingColumns+`
 		FROM bookings
 		WHERE status != 'cancelled'
 		  AND (host_id = ? OR EXISTS (
@@ -318,10 +326,7 @@ func (s *Service) ListByHost(ctx context.Context, hostID string) ([]Booking, err
 // must gate this on the admin role.
 func (s *Service) ListAll(ctx context.Context) ([]Booking, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, event_type_id, host_id, start_at, end_at, status,
-		       COALESCE(cancellation_reason, ''), COALESCE(location_value, ''),
-		       created_at, updated_at,
-		       payment_status, amount_paid_cents, amount_paid_currency
+		SELECT `+bookingColumns+`
 		FROM bookings
 		WHERE status != 'cancelled'
 		ORDER BY start_at`)
@@ -345,21 +350,37 @@ func (s *Service) ListAll(ctx context.Context) ([]Booking, error) {
 // booking, stores its SHA-256 hash in booking_manage_tokens, and returns the
 // raw hex token (shown once, embedded in emails). Tokens expire in 60 days.
 func (s *Service) IssueManageToken(ctx context.Context, bookingID string) (string, error) {
-	raw := make([]byte, 32)
-	if _, err := io.ReadFull(rand.Reader, raw); err != nil {
-		return "", fmt.Errorf("booking: generate token: %w", err)
+	rawHex, hash, expiresAt, err := generateManageToken()
+	if err != nil {
+		return "", err
 	}
-	rawHex := hex.EncodeToString(raw)
-	sum := sha256.Sum256([]byte(rawHex))
-	hash := hex.EncodeToString(sum[:])
-	expiresAt := time.Now().UTC().Add(60 * 24 * time.Hour).Format(time.RFC3339) // 60-day TTL
-
 	if _, err := s.db.ExecContext(ctx, `
 		INSERT INTO booking_manage_tokens (token_hash, booking_id, expires_at)
 		VALUES (?, ?, ?)`, hash, bookingID, expiresAt); err != nil {
 		return "", fmt.Errorf("booking: insert manage token: %w", err)
 	}
 	return rawHex, nil
+}
+
+// manageTokenTTL is how long an issued/rotated manage-link token stays valid.
+const manageTokenTTL = 60 * 24 * time.Hour
+
+// generateManageToken produces a new manage-token: a random 32-byte value (returned
+// hex-encoded as rawHex, given to the recipient in their manage link) and its
+// SHA-256 hash (hash, the only form stored in the DB) plus its expiry. Pure and
+// side-effect-free — callers do their own DB write with the returned values, so
+// IssueManageToken and RotateManageToken share exactly one implementation of the
+// token format/TTL instead of two.
+func generateManageToken() (rawHex, hash, expiresAt string, err error) {
+	raw := make([]byte, 32)
+	if _, err := io.ReadFull(rand.Reader, raw); err != nil {
+		return "", "", "", fmt.Errorf("booking: generate token: %w", err)
+	}
+	rawHex = hex.EncodeToString(raw)
+	sum := sha256.Sum256([]byte(rawHex))
+	hash = hex.EncodeToString(sum[:])
+	expiresAt = time.Now().UTC().Add(manageTokenTTL).Format(time.RFC3339)
+	return rawHex, hash, expiresAt, nil
 }
 
 // ValidateManageToken looks up a manage token by its hash and returns the
@@ -451,12 +472,7 @@ func (s *Service) Reschedule(ctx context.Context, bookingID string, newStart, ne
 	}
 	defer tx.Rollback() //nolint:errcheck
 
-	b, err := scanBooking(tx.QueryRowContext(ctx, `
-		SELECT id, event_type_id, host_id, start_at, end_at, status,
-		       COALESCE(cancellation_reason,''), COALESCE(location_value,''),
-		       created_at, updated_at,
-		       payment_status, amount_paid_cents, amount_paid_currency
-		FROM bookings WHERE id = ?`, bookingID))
+	b, err := scanBooking(tx.QueryRowContext(ctx, `SELECT `+bookingColumns+` FROM bookings WHERE id = ?`, bookingID))
 	if err != nil {
 		return nil, err
 	}
@@ -485,16 +501,11 @@ func (s *Service) Reschedule(ctx context.Context, bookingID string, newStart, ne
 		hostIDs = []string{b.HostID}
 	}
 	for _, hid := range hostIDs {
-		var n int
-		if err := tx.QueryRowContext(ctx, `
-			SELECT COUNT(*) FROM bookings b2
-			JOIN booking_hosts bh ON bh.booking_id = b2.id
-			WHERE bh.user_id = ? AND b2.status != 'cancelled' AND b2.id != ?
-			  AND b2.start_at < ? AND b2.end_at > ?`,
-			hid, bookingID, endStr, startStr).Scan(&n); err != nil {
+		busy, err := hostBusy(ctx, tx, hid, startStr, endStr, bookingID)
+		if err != nil {
 			return nil, fmt.Errorf("booking: reschedule overlap: %w", err)
 		}
-		if n > 0 {
+		if busy {
 			return nil, ErrDoubleBooked
 		}
 	}
@@ -533,12 +544,7 @@ func (s *Service) ReassignHost(ctx context.Context, bookingID, newHostID string)
 	}
 	defer tx.Rollback() //nolint:errcheck
 
-	b, err := scanBooking(tx.QueryRowContext(ctx, `
-		SELECT id, event_type_id, host_id, start_at, end_at, status,
-		       COALESCE(cancellation_reason,''), COALESCE(location_value,''),
-		       created_at, updated_at,
-		       payment_status, amount_paid_cents, amount_paid_currency
-		FROM bookings WHERE id = ?`, bookingID))
+	b, err := scanBooking(tx.QueryRowContext(ctx, `SELECT `+bookingColumns+` FROM bookings WHERE id = ?`, bookingID))
 	if err != nil {
 		return nil, err
 	}
@@ -553,16 +559,11 @@ func (s *Service) ReassignHost(ctx context.Context, bookingID, newHostID string)
 	endStr := b.EndAt.UTC().Format(time.RFC3339Nano)
 
 	// The new host must be free at this time across everything they attend.
-	var n int
-	if err := tx.QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM bookings b2
-		JOIN booking_hosts bh ON bh.booking_id = b2.id
-		WHERE bh.user_id = ? AND b2.status != 'cancelled' AND b2.id != ?
-		  AND b2.start_at < ? AND b2.end_at > ?`,
-		newHostID, bookingID, endStr, startStr).Scan(&n); err != nil {
+	busy, err := hostBusy(ctx, tx, newHostID, startStr, endStr, bookingID)
+	if err != nil {
 		return nil, fmt.Errorf("booking: reassign overlap: %w", err)
 	}
-	if n > 0 {
+	if busy {
 		return nil, ErrDoubleBooked
 	}
 
@@ -621,14 +622,10 @@ func (s *Service) CancelByToken(ctx context.Context, rawToken, reason string) (*
 // issues a fresh one atomically. Called after a reschedule so that the original
 // confirmation-email link cannot be reused or undo the new time.
 func (s *Service) RotateManageToken(ctx context.Context, bookingID string) (string, error) {
-	raw := make([]byte, 32)
-	if _, err := io.ReadFull(rand.Reader, raw); err != nil {
-		return "", fmt.Errorf("booking: generate token: %w", err)
+	rawHex, hash, expiresAt, err := generateManageToken()
+	if err != nil {
+		return "", err
 	}
-	rawHex := hex.EncodeToString(raw)
-	sum := sha256.Sum256([]byte(rawHex))
-	hash := hex.EncodeToString(sum[:])
-	expiresAt := time.Now().UTC().Add(60 * 24 * time.Hour).Format(time.RFC3339) // 60-day TTL
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
