@@ -26,6 +26,34 @@ func TestMagicLink_requestIsGenericForUnknownEmail(t *testing.T) {
 	}
 }
 
+// TestMagicLink_requestSendsForKnownEmail verifies the happy path still works once
+// token generation + email send were moved off the request goroutine (to close the
+// timing side-channel between "known" and "unknown" email — see RequestMagicLink):
+// the response is generic and immediate, and a token row shows up shortly after.
+func TestMagicLink_requestSendsForKnownEmail(t *testing.T) {
+	h, db := newTestHandlerDB(t)
+	db.Exec(`INSERT INTO users (id,email,name,iana_timezone,is_admin) VALUES ('u1','known@example.com','A','UTC',1)`) //nolint:errcheck
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/auth/magic-link/request",
+		strings.NewReader(`{"email":"known@example.com"}`))
+	h.RequestMagicLink(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d; want 200", rec.Code)
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	var n int
+	for time.Now().Before(deadline) {
+		db.QueryRow(`SELECT COUNT(*) FROM magic_link_tokens WHERE user_id = 'u1'`).Scan(&n) //nolint:errcheck
+		if n == 1 {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatalf("token rows for u1 = %d after waiting; want 1 (background send never completed)", n)
+}
+
 func TestMagicLink_verifyConsumesTokenOnce(t *testing.T) {
 	h, db := newTestHandlerDB(t)
 	db.Exec(`INSERT INTO users (id,email,name,iana_timezone,is_admin) VALUES ('u1','a@example.com','A','UTC',1)`) //nolint:errcheck

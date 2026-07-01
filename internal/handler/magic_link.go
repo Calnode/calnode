@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
@@ -17,8 +18,13 @@ import (
 const magicLinkTTL = 15 * time.Minute
 
 // RequestMagicLink handles POST /v1/auth/magic-link/request — emails a one-time login link to
-// the address if it belongs to an active account. Always responds 200 with the same message
-// (no account enumeration); the actual send happens only for a real, non-archived user.
+// the address if it belongs to an active account. Always responds 200 immediately with the same
+// message (no account enumeration): the user lookup happens inline (a single indexed SELECT, so
+// its own cost is negligible), but token generation, the DB write, and the email send — for a
+// real, non-archived user — are dispatched to a background goroutine rather than awaited, so a
+// timing attacker can't distinguish "no such user" from "found user, still emailing" by how long
+// the request takes. See internal/handler/email_auth.go's dummyHash for the analogous constant-
+// time pattern on the password-login path.
 func (h *Handler) RequestMagicLink(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
 	var req struct {
@@ -29,32 +35,28 @@ func (h *Handler) RequestMagicLink(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	email := strings.TrimSpace(strings.ToLower(req.Email))
-	// Generic response regardless of outcome — don't reveal whether the email exists.
-	ok := func() {
-		h.writeJSON(w, http.StatusOK, map[string]any{
-			"ok":      true,
-			"message": "If an account with that email exists, a login link is on its way.",
-		})
+	if email != "" {
+		var userID string
+		var archivedAt sql.NullString
+		err := h.db.QueryRowContext(r.Context(),
+			`SELECT id, archived_at FROM users WHERE email = ?`, email).Scan(&userID, &archivedAt)
+		if err == nil && !archivedAt.Valid {
+			go h.sendMagicLink(context.WithoutCancel(r.Context()), userID, email)
+		}
 	}
-	if email == "" {
-		ok()
-		return
-	}
+	h.writeJSON(w, http.StatusOK, map[string]any{
+		"ok":      true,
+		"message": "If an account with that email exists, a login link is on its way.",
+	})
+}
 
-	var userID string
-	var archivedAt sql.NullString
-	err := h.db.QueryRowContext(r.Context(),
-		`SELECT id, archived_at FROM users WHERE email = ?`, email).Scan(&userID, &archivedAt)
-	if err != nil || archivedAt.Valid {
-		// No such user, or archived — respond identically, send nothing.
-		ok()
-		return
-	}
-
+// sendMagicLink generates and stores a token and emails the login link. Run in a background
+// goroutine by RequestMagicLink so its variable cost (DB write + mailer round-trip) never shows
+// up in the HTTP response timing.
+func (h *Handler) sendMagicLink(ctx context.Context, userID, email string) {
 	rawBytes := make([]byte, 32)
 	if _, err := rand.Read(rawBytes); err != nil {
-		h.logger.ErrorContext(r.Context(), "magic link: rand", "error", err)
-		ok() // still generic
+		h.logger.ErrorContext(ctx, "magic link: rand", "error", err)
 		return
 	}
 	raw := hex.EncodeToString(rawBytes)
@@ -62,21 +64,19 @@ func (h *Handler) RequestMagicLink(w http.ResponseWriter, r *http.Request) {
 	tokenHash := hex.EncodeToString(sum[:])
 	expiresAt := time.Now().UTC().Add(magicLinkTTL).Format(time.RFC3339)
 
-	if _, err := h.db.ExecContext(r.Context(),
+	if _, err := h.db.ExecContext(ctx,
 		`INSERT INTO magic_link_tokens (token_hash, user_id, expires_at) VALUES (?, ?, ?)`,
 		tokenHash, userID, expiresAt); err != nil {
-		h.logger.ErrorContext(r.Context(), "magic link: store token", "error", err)
-		ok()
+		h.logger.ErrorContext(ctx, "magic link: store token", "error", err)
 		return
 	}
 
 	link := h.baseURL + "/v1/auth/magic-link/verify?token=" + raw
 	if h.mailer != nil {
-		if err := h.mailer.Send(r.Context(), magicLinkMessage(email, link)); err != nil {
-			h.logger.ErrorContext(r.Context(), "magic link: send email", "error", err, "user_id", userID)
+		if err := h.mailer.Send(ctx, magicLinkMessage(email, link)); err != nil {
+			h.logger.ErrorContext(ctx, "magic link: send email", "error", err, "user_id", userID)
 		}
 	}
-	ok()
 }
 
 // VerifyMagicLink handles GET /v1/auth/magic-link/verify?token=… — consumes the token, starts
