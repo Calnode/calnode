@@ -237,22 +237,17 @@ func assistantToolStatus(name string) string {
 // assistantSystemPrompt builds the system prompt from the (active+public) event type's
 // public details + intake questions. Returns ok=false if the slug isn't bookable.
 func (h *Handler) assistantSystemPrompt(ctx context.Context, slug, tz string) (string, bool) {
-	var name, locType string
-	var duration, isActive, isPublic int
-	var etID string
-	err := h.db.QueryRowContext(ctx, `
-		SELECT id, name, duration_minutes, location_type, is_active, is_public
-		FROM event_types WHERE slug = ?`, slug).
-		Scan(&etID, &name, &duration, &locType, &isActive, &isPublic)
-	if err != nil || isActive == 0 || isPublic == 0 {
+	et, err := h.loadBookableEventType(ctx, slug)
+	if err != nil {
 		return "", false
 	}
+	name, duration, locType := et.Name, et.DurationMinutes, et.LocationType
 
 	// Required-question list so the model knows what to collect before booking.
 	var qLines []string
 	rows, qErr := h.db.QueryContext(ctx, `
 		SELECT id, label, type, COALESCE(options, ''), required
-		FROM event_type_questions WHERE event_type_id = ? ORDER BY position, id`, etID)
+		FROM event_type_questions WHERE event_type_id = ? ORDER BY position, id`, et.ID)
 	if qErr == nil {
 		defer rows.Close()
 		for rows.Next() {

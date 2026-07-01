@@ -253,6 +253,55 @@ var errNoHostAvailable = errors.New("no active host can take this booking")
 // only be booked through the Stripe Checkout flow on the booking page (agents can't pay).
 var errPaymentRequired = errors.New("this event requires payment; please book on the booking page")
 
+// bookableEventType is the event_types fields the booking-creation and slot-computation
+// paths need. loadBookableEventType is their one shared query — createBookingForSlug,
+// CreateBooking, and computeSlots each used to hand-write their own column subset, which
+// is exactly how the API/MCP/assistant booking path ended up missing the is_public check
+// the direct booking page (book.go) always had. A future caller now gets both is_active
+// and is_public enforced by construction, not by remembering to add the check.
+type bookableEventType struct {
+	ID                  string
+	UserID              string
+	Name                string
+	DurationMinutes     int
+	SlotIntervalMinutes int
+	LocationType        string
+	LocationValue       *string
+	RoutingMode         string
+	RRStrategy          string
+	BufferBeforeMinutes int
+	BufferAfterMinutes  int
+	MinNoticeMinutes    int
+	MaxFutureDays       int
+	MaxActiveBookings   int
+	PriceCents          int
+	Currency            string
+}
+
+// loadBookableEventType loads an event type by slug for the booking-creation/slot paths.
+// Returns errEventTypeNotFound if the slug doesn't exist, is inactive, or isn't public —
+// bookability is gated identically to the direct booking page (book.go's PublicEventType/
+// BookPage), so an operator who unpublishes an event type stops it from being bookable
+// everywhere, not just hidden from its own page.
+func (h *Handler) loadBookableEventType(ctx context.Context, slug string) (*bookableEventType, error) {
+	var et bookableEventType
+	var isActive, isPublic int
+	err := h.db.QueryRowContext(ctx, `
+		SELECT id, user_id, name, duration_minutes, slot_interval_minutes,
+		       location_type, location_value, routing_mode, rr_strategy,
+		       buffer_before_minutes, buffer_after_minutes, min_notice_minutes, max_future_days,
+		       is_active, is_public, max_active_bookings, price_cents, currency
+		FROM event_types WHERE slug = ?`, slug).
+		Scan(&et.ID, &et.UserID, &et.Name, &et.DurationMinutes, &et.SlotIntervalMinutes,
+			&et.LocationType, &et.LocationValue, &et.RoutingMode, &et.RRStrategy,
+			&et.BufferBeforeMinutes, &et.BufferAfterMinutes, &et.MinNoticeMinutes, &et.MaxFutureDays,
+			&isActive, &isPublic, &et.MaxActiveBookings, &et.PriceCents, &et.Currency)
+	if err != nil || isActive == 0 || isPublic == 0 {
+		return nil, errEventTypeNotFound
+	}
+	return &et, nil
+}
+
 // createBookingForSlug is the shared public booking-creation path for one event-type slug:
 // look up the (active) event type, validate intake answers, resolve the host pool, persist,
 // and fire the side effects (calendar/email/webhook/reminders) in the background. Returns the
@@ -261,28 +310,9 @@ var errPaymentRequired = errors.New("this event requires payment; please book on
 // booking.ErrDoubleBooked, booking.ErrBookingLimitReached, errNoHostAvailable) for callers to
 // map to their own protocol.
 func (h *Handler) createBookingForSlug(ctx context.Context, slug string, startAt time.Time, organizer booking.Attendee, rawAnswers []booking.Answer) (*booking.Booking, error) {
-	var et struct {
-		ID                string
-		Name              string
-		DurationMinutes   int
-		LocationType      string
-		LocationValue     *string
-		RoutingMode       string
-		RRStrategy        string
-		IsActive          int
-		IsPublic          int
-		MaxActiveBookings int
-		PriceCents        int
-	}
-	err := h.db.QueryRowContext(ctx, `
-		SELECT id, name, duration_minutes, location_type, location_value, routing_mode, rr_strategy, is_active, is_public, max_active_bookings, price_cents
-		FROM event_types WHERE slug = ?`, slug).
-		Scan(&et.ID, &et.Name, &et.DurationMinutes, &et.LocationType, &et.LocationValue, &et.RoutingMode, &et.RRStrategy, &et.IsActive, &et.IsPublic, &et.MaxActiveBookings, &et.PriceCents)
-	// is_public gates bookability the same as the direct booking page (book.go) — an
-	// operator who unchecks "Public" in the admin UI expects the event type to stop
-	// being bookable everywhere, not just hidden from its own page.
-	if err != nil || et.IsActive == 0 || et.IsPublic == 0 {
-		return nil, errEventTypeNotFound
+	et, err := h.loadBookableEventType(ctx, slug)
+	if err != nil {
+		return nil, err
 	}
 	// Paid events require the Stripe Checkout flow (booking page only) — agents/assistant
 	// can't pay, so they can't book a paid event.
@@ -515,38 +545,8 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Look up the event type.
-	var et struct {
-		ID                string
-		UserID            string
-		Name              string
-		DurationMinutes   int
-		LocationType      string
-		LocationValue     *string
-		RoutingMode       string
-		RRStrategy        string
-		IsActive          int
-		IsPublic          int
-		MaxActiveBookings int
-		PriceCents        int
-		Currency          string
-	}
-	err = h.db.QueryRowContext(r.Context(), `
-		SELECT id, user_id, name, duration_minutes, location_type, location_value, routing_mode, rr_strategy, is_active, is_public, max_active_bookings, price_cents, currency
-		FROM event_types WHERE slug = ?`, req.EventTypeSlug).
-		Scan(&et.ID, &et.UserID, &et.Name, &et.DurationMinutes, &et.LocationType, &et.LocationValue, &et.RoutingMode, &et.RRStrategy, &et.IsActive, &et.IsPublic, &et.MaxActiveBookings, &et.PriceCents, &et.Currency)
+	et, err := h.loadBookableEventType(r.Context(), req.EventTypeSlug)
 	if err != nil {
-		h.writeError(w, http.StatusNotFound, "event type not found")
-		return
-	}
-	if et.IsActive == 0 {
-		h.writeError(w, http.StatusNotFound, "event type not found")
-		return
-	}
-	// is_public gates bookability the same as the direct booking page (book.go) — an
-	// operator who unchecks "Public" in the admin UI expects the event type to stop
-	// being bookable everywhere, not just hidden from its own page.
-	if et.IsPublic == 0 {
 		h.writeError(w, http.StatusNotFound, "event type not found")
 		return
 	}

@@ -60,32 +60,9 @@ func (h *Handler) GetSlots(w http.ResponseWriter, r *http.Request) {
 // tool. tzName "" → UTC; fromStr/toStr "" → today / the max-future cap. Returns one
 // of the sentinel errors above on bad input, or a wrapped error on internal failure.
 func (h *Handler) computeSlots(ctx context.Context, slug, tzName, fromStr, toStr string) ([]slotJSON, map[string]map[string]string, error) {
-	// Load event type (must be active and public).
-	var et struct {
-		ID                  string
-		UserID              string
-		DurationMinutes     int
-		SlotIntervalMinutes int
-		RoutingMode         string
-		BufferBeforeMinutes int
-		BufferAfterMinutes  int
-		MinNoticeMinutes    int
-		MaxFutureDays       int
-		IsActive            int
-		IsPublic            int
-	}
-	err := h.db.QueryRowContext(ctx, `
-		SELECT id, user_id, duration_minutes, slot_interval_minutes,
-		       routing_mode, buffer_before_minutes, buffer_after_minutes,
-		       min_notice_minutes, max_future_days, is_active, is_public
-		FROM event_types WHERE slug = ?`, slug).
-		Scan(&et.ID, &et.UserID,
-			&et.DurationMinutes, &et.SlotIntervalMinutes,
-			&et.RoutingMode, &et.BufferBeforeMinutes, &et.BufferAfterMinutes,
-			&et.MinNoticeMinutes, &et.MaxFutureDays,
-			&et.IsActive, &et.IsPublic)
-	if err != nil || et.IsActive == 0 || et.IsPublic == 0 {
-		return nil, nil, errEventTypeNotFound
+	et, err := h.loadBookableEventType(ctx, slug)
+	if err != nil {
+		return nil, nil, err
 	}
 
 	if tzName == "" {
