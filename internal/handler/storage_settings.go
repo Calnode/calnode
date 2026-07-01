@@ -13,9 +13,7 @@ import (
 
 // GetStorageSettings handles GET /v1/settings/storage (admin).
 func (h *Handler) GetStorageSettings(w http.ResponseWriter, r *http.Request) {
-	user, ok := userFromContext(r.Context())
-	if !ok || !user.IsAdmin {
-		h.writeError(w, http.StatusForbidden, "admin access required")
+	if _, ok := h.requireAdmin(w, r); !ok {
 		return
 	}
 	replica := os.Getenv("LITESTREAM_REPLICA_URL")
@@ -36,9 +34,7 @@ func (h *Handler) GetStorageSettings(w http.ResponseWriter, r *http.Request) {
 
 // PatchStorageSettings handles PATCH /v1/settings/storage (admin) — toggles meeting recording.
 func (h *Handler) PatchStorageSettings(w http.ResponseWriter, r *http.Request) {
-	user, ok := userFromContext(r.Context())
-	if !ok || !user.IsAdmin {
-		h.writeError(w, http.StatusForbidden, "admin access required")
+	if _, ok := h.requireAdmin(w, r); !ok {
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)

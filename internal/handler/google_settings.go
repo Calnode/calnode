@@ -45,9 +45,7 @@ func LoadGoogleSettingsFromDB(db *sql.DB, encKey [32]byte) (*GoogleOAuthConfig, 
 
 // GetGoogleSettings handles GET /v1/settings/google (admin only).
 func (h *Handler) GetGoogleSettings(w http.ResponseWriter, r *http.Request) {
-	user, ok := userFromContext(r.Context())
-	if !ok || !user.IsAdmin {
-		h.writeError(w, http.StatusForbidden, "admin access required")
+	if _, ok := h.requireAdmin(w, r); !ok {
 		return
 	}
 	var clientID, secretEnc string
@@ -76,9 +74,7 @@ func (h *Handler) GetGoogleSettings(w http.ResponseWriter, r *http.Request) {
 // so changes take effect immediately without a server restart.
 // If client_secret is omitted or empty the existing stored secret is kept.
 func (h *Handler) PatchGoogleSettings(w http.ResponseWriter, r *http.Request) {
-	user, ok := userFromContext(r.Context())
-	if !ok || !user.IsAdmin {
-		h.writeError(w, http.StatusForbidden, "admin access required")
+	if _, ok := h.requireAdmin(w, r); !ok {
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 8<<10)

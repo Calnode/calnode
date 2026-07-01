@@ -59,9 +59,7 @@ func LoadEmailSettingsFromDB(db *sql.DB, encKey [32]byte) (*SMTPConfig, error) {
 // Returns current SMTP configuration. The password is never returned;
 // smtp_pass_set indicates whether one is stored.
 func (h *Handler) GetEmailSettings(w http.ResponseWriter, r *http.Request) {
-	caller, ok := userFromContext(r.Context())
-	if !ok || !caller.IsAdmin {
-		h.writeError(w, http.StatusForbidden, "admin access required")
+	if _, ok := h.requireAdmin(w, r); !ok {
 		return
 	}
 	var host, port, user, passEnc, from, fromName string
@@ -93,9 +91,7 @@ func (h *Handler) GetEmailSettings(w http.ResponseWriter, r *http.Request) {
 // Admin-only. Saves SMTP settings to the DB and hot-swaps the live mailer.
 // If smtp_pass is omitted or empty, the existing stored password is kept.
 func (h *Handler) PatchEmailSettings(w http.ResponseWriter, r *http.Request) {
-	user, ok := userFromContext(r.Context())
-	if !ok || !user.IsAdmin {
-		h.writeError(w, http.StatusForbidden, "admin access required")
+	if _, ok := h.requireAdmin(w, r); !ok {
 		return
 	}
 
@@ -207,9 +203,8 @@ func (h *Handler) PatchEmailSettings(w http.ResponseWriter, r *http.Request) {
 // TestEmailConnection handles POST /v1/settings/email/test.
 // Admin-only. Sends a plain connection-check email to the authenticated user's address.
 func (h *Handler) TestEmailConnection(w http.ResponseWriter, r *http.Request) {
-	user, ok := userFromContext(r.Context())
-	if !ok || !user.IsAdmin {
-		h.writeError(w, http.StatusForbidden, "admin access required")
+	user, ok := h.requireAdmin(w, r)
+	if !ok {
 		return
 	}
 

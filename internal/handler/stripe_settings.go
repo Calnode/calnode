@@ -48,9 +48,7 @@ func (h *Handler) stripeWebhookURL() string { return h.baseURL + "/v1/stripe/web
 
 // GetStripeSettings handles GET /v1/settings/stripe (admin only).
 func (h *Handler) GetStripeSettings(w http.ResponseWriter, r *http.Request) {
-	user, ok := userFromContext(r.Context())
-	if !ok || !user.IsAdmin {
-		h.writeError(w, http.StatusForbidden, "admin access required")
+	if _, ok := h.requireAdmin(w, r); !ok {
 		return
 	}
 	var secretEnc, pubKey, whEnc string
@@ -76,9 +74,7 @@ func (h *Handler) GetStripeSettings(w http.ResponseWriter, r *http.Request) {
 // PatchStripeSettings handles PATCH /v1/settings/stripe (admin only). Saves credentials and
 // hot-reloads the Stripe client. Blank secret_key/webhook_secret keep the stored values.
 func (h *Handler) PatchStripeSettings(w http.ResponseWriter, r *http.Request) {
-	user, ok := userFromContext(r.Context())
-	if !ok || !user.IsAdmin {
-		h.writeError(w, http.StatusForbidden, "admin access required")
+	if _, ok := h.requireAdmin(w, r); !ok {
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 8<<10)

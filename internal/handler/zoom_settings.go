@@ -47,9 +47,7 @@ func (h *Handler) zoomRedirectURI() string { return h.baseURL + "/v1/zoom/callba
 
 // GetZoomSettings handles GET /v1/settings/zoom (admin only).
 func (h *Handler) GetZoomSettings(w http.ResponseWriter, r *http.Request) {
-	user, ok := userFromContext(r.Context())
-	if !ok || !user.IsAdmin {
-		h.writeError(w, http.StatusForbidden, "admin access required")
+	if _, ok := h.requireAdmin(w, r); !ok {
 		return
 	}
 	var clientID, secretEnc string
@@ -76,9 +74,7 @@ func (h *Handler) GetZoomSettings(w http.ResponseWriter, r *http.Request) {
 // credentials and hot-reloads the zoom client so changes take effect without a restart.
 // An empty client_secret keeps the existing stored secret.
 func (h *Handler) PatchZoomSettings(w http.ResponseWriter, r *http.Request) {
-	user, ok := userFromContext(r.Context())
-	if !ok || !user.IsAdmin {
-		h.writeError(w, http.StatusForbidden, "admin access required")
+	if _, ok := h.requireAdmin(w, r); !ok {
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 8<<10)

@@ -13,9 +13,7 @@ import (
 
 // GetNotetakerSettings handles GET /v1/settings/notetaker (admin). Never returns the key.
 func (h *Handler) GetNotetakerSettings(w http.ResponseWriter, r *http.Request) {
-	user, ok := userFromContext(r.Context())
-	if !ok || !user.IsAdmin {
-		h.writeError(w, http.StatusForbidden, "admin access required")
+	if _, ok := h.requireAdmin(w, r); !ok {
 		return
 	}
 	var enabled int
@@ -37,9 +35,7 @@ func (h *Handler) GetNotetakerSettings(w http.ResponseWriter, r *http.Request) {
 // PatchNotetakerSettings handles PATCH /v1/settings/notetaker (admin). An empty stt_api_key keeps
 // the stored one (use the toggle to turn the feature off).
 func (h *Handler) PatchNotetakerSettings(w http.ResponseWriter, r *http.Request) {
-	user, ok := userFromContext(r.Context())
-	if !ok || !user.IsAdmin {
-		h.writeError(w, http.StatusForbidden, "admin access required")
+	if _, ok := h.requireAdmin(w, r); !ok {
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 8<<10)
@@ -84,9 +80,7 @@ func (h *Handler) PatchNotetakerSettings(w http.ResponseWriter, r *http.Request)
 
 // GetBookingNotes handles GET /v1/bookings/{id}/notes (admin) — the AI notes for a booking.
 func (h *Handler) GetBookingNotes(w http.ResponseWriter, r *http.Request) {
-	user, ok := userFromContext(r.Context())
-	if !ok || !user.IsAdmin {
-		h.writeError(w, http.StatusForbidden, "admin access required")
+	if _, ok := h.requireAdmin(w, r); !ok {
 		return
 	}
 	var content, status, updatedAt string
@@ -109,9 +103,7 @@ func (h *Handler) GetBookingNotes(w http.ResponseWriter, r *http.Request) {
 // RegenerateBookingNotes handles POST /v1/bookings/{id}/notes/regenerate (admin) — re-runs the LLM
 // summary over the booking's existing transcript(s). 409 if there's no transcript yet, 424 if no LLM.
 func (h *Handler) RegenerateBookingNotes(w http.ResponseWriter, r *http.Request) {
-	user, ok := userFromContext(r.Context())
-	if !ok || !user.IsAdmin {
-		h.writeError(w, http.StatusForbidden, "admin access required")
+	if _, ok := h.requireAdmin(w, r); !ok {
 		return
 	}
 	bookingID := r.PathValue("id")
@@ -150,9 +142,7 @@ func (h *Handler) RegenerateBookingNotes(w http.ResponseWriter, r *http.Request)
 
 // GetBookingTranscript handles GET /v1/bookings/{id}/transcript (admin) — the raw transcript.
 func (h *Handler) GetBookingTranscript(w http.ResponseWriter, r *http.Request) {
-	user, ok := userFromContext(r.Context())
-	if !ok || !user.IsAdmin {
-		h.writeError(w, http.StatusForbidden, "admin access required")
+	if _, ok := h.requireAdmin(w, r); !ok {
 		return
 	}
 	rows, err := h.db.QueryContext(r.Context(),

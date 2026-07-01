@@ -113,9 +113,7 @@ func publicCSP(t trackingSettings) string {
 
 // GetTrackingSettings handles GET /v1/settings/tracking (admin).
 func (h *Handler) GetTrackingSettings(w http.ResponseWriter, r *http.Request) {
-	user, ok := userFromContext(r.Context())
-	if !ok || !user.IsAdmin {
-		h.writeError(w, http.StatusForbidden, "admin access required")
+	if _, ok := h.requireAdmin(w, r); !ok {
 		return
 	}
 	t := h.loadTrackingSettings(r.Context())
@@ -135,9 +133,7 @@ func (h *Handler) GetTrackingSettings(w http.ResponseWriter, r *http.Request) {
 
 // PatchTrackingSettings handles PATCH /v1/settings/tracking (admin).
 func (h *Handler) PatchTrackingSettings(w http.ResponseWriter, r *http.Request) {
-	user, ok := userFromContext(r.Context())
-	if !ok || !user.IsAdmin {
-		h.writeError(w, http.StatusForbidden, "admin access required")
+	if _, ok := h.requireAdmin(w, r); !ok {
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)

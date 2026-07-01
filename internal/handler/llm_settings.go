@@ -48,9 +48,7 @@ func LoadLLMSettingsFromDB(db *sql.DB, encKey [32]byte) (*LLMConfig, error) {
 
 // GetLLMSettings handles GET /v1/settings/llm (admin only). Never returns the api key.
 func (h *Handler) GetLLMSettings(w http.ResponseWriter, r *http.Request) {
-	user, ok := userFromContext(r.Context())
-	if !ok || !user.IsAdmin {
-		h.writeError(w, http.StatusForbidden, "admin access required")
+	if _, ok := h.requireAdmin(w, r); !ok {
 		return
 	}
 	var endpoint, model, keyEnc, extra string
@@ -80,9 +78,7 @@ func (h *Handler) GetLLMSettings(w http.ResponseWriter, r *http.Request) {
 // PatchLLMSettings handles PATCH /v1/settings/llm (admin only): save settings and
 // hot-reload the live client. An empty api_key keeps the stored one.
 func (h *Handler) PatchLLMSettings(w http.ResponseWriter, r *http.Request) {
-	user, ok := userFromContext(r.Context())
-	if !ok || !user.IsAdmin {
-		h.writeError(w, http.StatusForbidden, "admin access required")
+	if _, ok := h.requireAdmin(w, r); !ok {
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 8<<10)
@@ -157,9 +153,7 @@ func (h *Handler) PatchLLMSettings(w http.ResponseWriter, r *http.Request) {
 // against the posted settings (falling back to the stored key) and report ok / latency /
 // error — so the admin can validate before enabling.
 func (h *Handler) TestLLMSettings(w http.ResponseWriter, r *http.Request) {
-	user, ok := userFromContext(r.Context())
-	if !ok || !user.IsAdmin {
-		h.writeError(w, http.StatusForbidden, "admin access required")
+	if _, ok := h.requireAdmin(w, r); !ok {
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 8<<10)

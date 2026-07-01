@@ -44,9 +44,7 @@ func LoadLiveKitSettingsFromDB(db *sql.DB, encKey [32]byte) (*LiveKitConfig, err
 
 // GetLiveKitSettings handles GET /v1/settings/livekit (admin only).
 func (h *Handler) GetLiveKitSettings(w http.ResponseWriter, r *http.Request) {
-	user, ok := userFromContext(r.Context())
-	if !ok || !user.IsAdmin {
-		h.writeError(w, http.StatusForbidden, "admin access required")
+	if _, ok := h.requireAdmin(w, r); !ok {
 		return
 	}
 	var url, apiKey, secretEnc string
@@ -69,9 +67,7 @@ func (h *Handler) GetLiveKitSettings(w http.ResponseWriter, r *http.Request) {
 // PatchLiveKitSettings handles PATCH /v1/settings/livekit (admin only). Stores the config and
 // hot-reloads the client. An empty url clears LiveKit; an empty api_secret keeps the stored one.
 func (h *Handler) PatchLiveKitSettings(w http.ResponseWriter, r *http.Request) {
-	user, ok := userFromContext(r.Context())
-	if !ok || !user.IsAdmin {
-		h.writeError(w, http.StatusForbidden, "admin access required")
+	if _, ok := h.requireAdmin(w, r); !ok {
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 8<<10)

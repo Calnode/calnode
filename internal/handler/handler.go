@@ -219,3 +219,18 @@ func (h *Handler) isEmailEnabled() bool {
 func (h *Handler) writeError(w http.ResponseWriter, status int, msg string) {
 	h.writeJSON(w, status, map[string]string{"error": msg})
 }
+
+// requireAdmin resolves the authenticated caller and writes a 403 (returning
+// ok=false, which the caller must check and return on) unless they're an admin.
+// Every settings handler (branding/tracking/google/email/llm/storage/stripe/zoom/
+// livekit/notetaker) must call this first, not repeat the check inline — copy-paste
+// was exactly how GetEmailSettings shipped without it (a real, live gap, not a
+// hypothetical one) while its sibling PATCH/test-connection handlers had it.
+func (h *Handler) requireAdmin(w http.ResponseWriter, r *http.Request) (AuthUser, bool) {
+	user, ok := userFromContext(r.Context())
+	if !ok || !user.IsAdmin {
+		h.writeError(w, http.StatusForbidden, "admin access required")
+		return AuthUser{}, false
+	}
+	return user, true
+}

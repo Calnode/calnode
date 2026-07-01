@@ -106,9 +106,7 @@ func (h *Handler) applyBranding(ctx context.Context, d *mailer.BookingData) {
 
 // GetBranding handles GET /v1/settings/branding (admin).
 func (h *Handler) GetBranding(w http.ResponseWriter, r *http.Request) {
-	user, ok := userFromContext(r.Context())
-	if !ok || !user.IsAdmin {
-		h.writeError(w, http.StatusForbidden, "admin access required")
+	if _, ok := h.requireAdmin(w, r); !ok {
 		return
 	}
 	b := h.loadBranding(r.Context())
@@ -125,9 +123,7 @@ func (h *Handler) GetBranding(w http.ResponseWriter, r *http.Request) {
 // PatchBranding handles PATCH /v1/settings/branding (admin). Business name only;
 // the logo is managed via the upload/delete endpoints.
 func (h *Handler) PatchBranding(w http.ResponseWriter, r *http.Request) {
-	user, ok := userFromContext(r.Context())
-	if !ok || !user.IsAdmin {
-		h.writeError(w, http.StatusForbidden, "admin access required")
+	if _, ok := h.requireAdmin(w, r); !ok {
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 8<<10)
@@ -195,9 +191,7 @@ func (h *Handler) brandingDir() string { return filepath.Join(h.dataDir, "brandi
 // Resized to fit 600×200 preserving aspect ratio, re-encoded as PNG (keeps
 // transparency), and stored on the data volume.
 func (h *Handler) UploadBrandingLogo(w http.ResponseWriter, r *http.Request) {
-	user, ok := userFromContext(r.Context())
-	if !ok || !user.IsAdmin {
-		h.writeError(w, http.StatusForbidden, "admin access required")
+	if _, ok := h.requireAdmin(w, r); !ok {
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 5<<20+1024)
@@ -299,9 +293,7 @@ func (h *Handler) UploadBrandingLogo(w http.ResponseWriter, r *http.Request) {
 
 // DeleteBrandingLogo handles DELETE /v1/settings/branding/logo (admin).
 func (h *Handler) DeleteBrandingLogo(w http.ResponseWriter, r *http.Request) {
-	user, ok := userFromContext(r.Context())
-	if !ok || !user.IsAdmin {
-		h.writeError(w, http.StatusForbidden, "admin access required")
+	if _, ok := h.requireAdmin(w, r); !ok {
 		return
 	}
 	_ = os.Remove(filepath.Join(h.brandingDir(), "logo.png"))
