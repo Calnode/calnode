@@ -82,9 +82,12 @@ semgrep scan --config p/security-audit --config p/secrets \
 ```
 
 Our own latest run of this exact block: **govulncheck 0 · gosec 0 unresolved (all
-findings annotated) · gitleaks 0 across 321 commits · semgrep 0**. Yours should
+findings annotated) · gitleaks 0 across 337 commits · semgrep 0**. Yours should
 match — if it doesn't, that's either drift since our last run or something we need
-to know about.
+to know about. (`govulncheck` and `gosec` are also re-run on every push to `main`
+via `.github/workflows/audit.yml`, so an unannotated gosec finding or a new CVE
+fails CI instead of silently accumulating — see `audit/claims.yaml`'s
+`clean-security-scan` entry for the last time this actually caught something.)
 
 We also publish an [OpenSSF Scorecard](https://github.com/Calnode/calnode) badge
 and CI-generated SBOM — see the badge on [README.md](README.md) and the
@@ -118,11 +121,22 @@ a hard gate. Feed it to your agent alongside the prompt-pack and have it report
 ## 5. Keeping this honest over time
 
 The deterministic half of `claims.yaml` (no Postgres driver, no new third-party
-egress, no secrets in history) is wired into `.github/workflows/audit.yml` as CI
-assertions — so if a future change silently breaks one of these claims (a new
-dependency drags in a Postgres driver, a new integration starts sending recordings
-somewhere new), the build fails instead of the claim quietly going false. This
-manifest is a regression guard, not just a one-time document.
+egress, no secrets in history, no unresolved vulnerabilities, no unannotated SAST
+findings) is wired into `.github/workflows/audit.yml` as CI assertions — so if a
+future change silently breaks one of these claims (a new dependency drags in a
+Postgres driver, a new integration starts sending recordings somewhere new, a new
+gosec finding ships without a `#nosec` justification), the build fails instead of
+the claim quietly going false. This manifest is a regression guard, not just a
+one-time document.
+
+This gate has already caught a real gap once: `gosec` was documented in this page's
+scanner block (§2) as something you should expect to come back clean, but it had
+never actually been added to `audit.yml` — only `govulncheck` and `gitleaks` were.
+That let 44 unannotated findings accumulate silently before a routine audit re-run
+caught it (see commit `c4c067c`). `gosec` is now a CI gate too, specifically so a
+manual claim in prose can't drift from what CI actually checks again. `semgrep` is
+the one scanner in §2 that is still manual-only (not yet a CI gate) — if you notice
+it drift, that's a known gap, not a surprise.
 
 ---
 

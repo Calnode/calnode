@@ -14,8 +14,8 @@
 # See AUDIT.md for the full audit workflow (deterministic scanners + LLM prompt-pack).
 
 version: 1
-last_verified: "2026-07-01"
-last_verified_commit: "6817698"
+last_verified: "2026-07-02"
+last_verified_commit: "c4c067c"
 
 claims:
   - id: single-binary-no-server-db
@@ -196,11 +196,16 @@ claims:
     verify:
       - "See AUDIT.md's scanner command block — run it yourself and compare."
       - "gosec findings that remain are all annotated inline with `#nosec` +
-         reasoning at the exact line, or documented as false positives with
-         reasoning in the same commit — see commit 6817698."
+         reasoning at the exact line — see commit c4c067c, which triaged and
+         annotated all findings after gosec turned out not to be wired into CI
+         (a real gap: 44 findings had accumulated with zero annotations before
+         that commit — see its message for the full triage)."
     status: verified
     caveat: >
       A clean scan today is not a permanent guarantee — dependencies gain new CVEs
-      over time. This is why the deterministic half of this claim (govulncheck,
-      gitleaks) is wired into CI (.github/workflows/audit.yml) rather than only
-      asserted here once.
+      over time, and new code can introduce new unannotated findings. All three
+      deterministic scanners this claim depends on (govulncheck, gosec, gitleaks)
+      are now wired into CI (.github/workflows/audit.yml) as of commit c4c067c —
+      previously only govulncheck and gitleaks were, which is exactly how the 44
+      unannotated gosec findings above went unnoticed. semgrep is not yet a CI gate
+      (still a manual step in AUDIT.md's scanner block).
