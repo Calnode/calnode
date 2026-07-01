@@ -7,9 +7,10 @@
 	import { Switch } from '$lib/components/ui/switch';
 	import { toast } from 'svelte-sonner';
 	import { saveOnCmdS } from '$lib/save-shortcut';
+	import { createAsyncFlag } from '$lib/async-action.svelte';
 
-	let loading = $state(true);
-	let saving = $state(false);
+	const loadingFlag = createAsyncFlag(true);
+	const savingFlag = createAsyncFlag();
 
 	let notify_confirmation = $state(true);
 	let notify_cancellation = $state(true);
@@ -19,43 +20,32 @@
 	let notify_host_cancel = $state(true);
 	let notify_host_reschedule = $state(true);
 
-	onMount(async () => {
-		try {
-			const user = await api.get<User>('/v1/users/me');
-			notify_confirmation = user.notify_confirmation ?? true;
-			notify_cancellation = user.notify_cancellation ?? true;
-			notify_reschedule = user.notify_reschedule ?? true;
-			notify_reminder = user.notify_reminder ?? true;
-			notify_host_booking = user.notify_host_booking ?? true;
-			notify_host_cancel = user.notify_host_cancel ?? true;
-			notify_host_reschedule = user.notify_host_reschedule ?? true;
-		} catch (e: any) {
-			toast.error(e.message || 'Could not load preferences');
-		} finally {
-			loading = false;
-		}
-	});
+	onMount(() => loadingFlag.run(async () => {
+		const user = await api.get<User>('/v1/users/me');
+		notify_confirmation = user.notify_confirmation ?? true;
+		notify_cancellation = user.notify_cancellation ?? true;
+		notify_reschedule = user.notify_reschedule ?? true;
+		notify_reminder = user.notify_reminder ?? true;
+		notify_host_booking = user.notify_host_booking ?? true;
+		notify_host_cancel = user.notify_host_cancel ?? true;
+		notify_host_reschedule = user.notify_host_reschedule ?? true;
+	}, 'Could not load preferences'));
 
 	async function save() {
-		saving = true;
-		try {
+		await savingFlag.run(async () => {
 			const updated = await api.patch<User>('/v1/users/me', {
 				notify_confirmation, notify_cancellation, notify_reschedule, notify_reminder,
 				notify_host_booking, notify_host_cancel, notify_host_reschedule,
 			});
 			currentUser.set(updated);
 			toast.success('Preferences saved');
-		} catch (e: any) {
-			toast.error(e.message || 'Could not save preferences');
-		} finally {
-			saving = false;
-		}
+		}, 'Could not save preferences');
 	}
 </script>
 
-<svelte:window onkeydown={saveOnCmdS(save, () => !saving)} />
+<svelte:window onkeydown={saveOnCmdS(save, () => !savingFlag.active)} />
 
-{#if loading}
+{#if loadingFlag.active}
 	<p class="py-8 text-sm text-muted-foreground">Loading…</p>
 {:else}
 	<div class="max-w-lg space-y-4">
@@ -106,8 +96,8 @@
 			</div>
 		</div>
 
-		<Button onclick={save} disabled={saving}>
-			{saving ? 'Saving…' : 'Save'}
+		<Button onclick={save} disabled={savingFlag.active}>
+			{savingFlag.active ? 'Saving…' : 'Save'}
 		</Button>
 	</div>
 {/if}

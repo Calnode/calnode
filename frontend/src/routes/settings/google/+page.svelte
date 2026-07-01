@@ -7,9 +7,10 @@
 	import { Label } from '$lib/components/ui/label';
 	import { toast } from 'svelte-sonner';
 	import { saveOnCmdS } from '$lib/save-shortcut';
+	import { createAsyncFlag } from '$lib/async-action.svelte';
 
-	let loading = $state(true);
-	let saving = $state(false);
+	const loadingFlag = createAsyncFlag(true);
+	const savingFlag = createAsyncFlag();
 
 	let googleSettings = $state<GoogleSettings | null>(null);
 	let clientID = $state('');
@@ -23,40 +24,29 @@
 	);
 	const isLocal = $derived(redirectBase.includes('localhost') || redirectBase.includes('127.0.0.1'));
 
-	onMount(async () => {
-		try {
-			googleSettings = await api.get<GoogleSettings>('/v1/settings/google');
-			clientID = googleSettings.client_id;
-		} catch (e: any) {
-			toast.error(e.message || 'Could not load Google settings');
-		} finally {
-			loading = false;
-		}
-	});
+	onMount(() => loadingFlag.run(async () => {
+		googleSettings = await api.get<GoogleSettings>('/v1/settings/google');
+		clientID = googleSettings.client_id;
+	}, 'Could not load Google settings'));
 
 	async function save() {
-		saving = true;
-		try {
+		await savingFlag.run(async () => {
 			const body: Record<string, unknown> = { client_id: clientID };
 			if (clientSecret) body.client_secret = clientSecret;
 			googleSettings = await api.patch<GoogleSettings>('/v1/settings/google', body);
 			clientSecret = '';
 			toast.success('Saved — go to Calendar to connect your account');
-		} catch (e: any) {
-			toast.error(e.message || 'Could not save Google settings');
-		} finally {
-			saving = false;
-		}
+		}, 'Could not save Google settings');
 	}
 </script>
 
-<svelte:window onkeydown={saveOnCmdS(save, () => !saving)} />
+<svelte:window onkeydown={saveOnCmdS(save, () => !savingFlag.active)} />
 
 {#if !$currentUser?.is_admin}
 	<p class="text-sm text-muted-foreground">Admin access required.</p>
 {:else}
 
-{#if loading}
+{#if loadingFlag.active}
 	<p class="py-8 text-sm text-muted-foreground">Loading…</p>
 {:else}
 	<div class="max-w-lg space-y-4">
@@ -169,8 +159,8 @@
 			{/if}
 
 			<div class="mt-5">
-				<Button onclick={save} disabled={saving}>
-					{saving ? 'Saving…' : 'Save'}
+				<Button onclick={save} disabled={savingFlag.active}>
+					{savingFlag.active ? 'Saving…' : 'Save'}
 				</Button>
 			</div>
 		</div>

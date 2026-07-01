@@ -6,6 +6,7 @@
 	import { Switch } from '$lib/components/ui/switch';
 	import { toast } from 'svelte-sonner';
 	import { saveOnCmdS } from '$lib/save-shortcut';
+	import { createAsyncFlag } from '$lib/async-action.svelte';
 
 	type StorageSettings = {
 		backups_configured: boolean;
@@ -16,32 +17,21 @@
 		recordings_prefix: string;
 	};
 
-	let loading = $state(true);
-	let saving = $state(false);
+	const loadingFlag = createAsyncFlag(true);
+	const savingFlag = createAsyncFlag();
 	let settings = $state<StorageSettings | null>(null);
 	let recordingsEnabled = $state(false);
 
-	onMount(async () => {
-		try {
-			settings = await api.get<StorageSettings>('/v1/settings/storage');
-			recordingsEnabled = settings.recordings_enabled;
-		} catch (e: any) {
-			toast.error(e.message || 'Could not load storage settings');
-		} finally {
-			loading = false;
-		}
-	});
+	onMount(() => loadingFlag.run(async () => {
+		settings = await api.get<StorageSettings>('/v1/settings/storage');
+		recordingsEnabled = settings.recordings_enabled;
+	}, 'Could not load storage settings'));
 
 	async function save() {
-		saving = true;
-		try {
+		await savingFlag.run(async () => {
 			settings = await api.patch<StorageSettings>('/v1/settings/storage', { recordings_enabled: recordingsEnabled });
 			toast.success('Saved');
-		} catch (e: any) {
-			toast.error(e.message || 'Could not save');
-		} finally {
-			saving = false;
-		}
+		}, 'Could not save');
 	}
 
 	function badge(ok: boolean, on = 'Configured', off = 'Not configured') {
@@ -49,11 +39,11 @@
 	}
 </script>
 
-<svelte:window onkeydown={saveOnCmdS(save, () => !saving)} />
+<svelte:window onkeydown={saveOnCmdS(save, () => !savingFlag.active)} />
 
 {#if !$currentUser?.is_admin}
 	<p class="text-sm text-muted-foreground">Admin access required.</p>
-{:else if loading}
+{:else if loadingFlag.active}
 	<p class="py-8 text-sm text-muted-foreground">Loading…</p>
 {:else}
 	<div class="max-w-lg space-y-4">
@@ -107,7 +97,7 @@
 				</span>
 				<Switch class="mt-0.5 shrink-0" bind:checked={recordingsEnabled} disabled={!settings?.recordings_storage_ready} />
 			</label>
-			<div class="mt-5"><Button onclick={save} disabled={saving}>{saving ? 'Saving…' : 'Save'}</Button></div>
+			<div class="mt-5"><Button onclick={save} disabled={savingFlag.active}>{savingFlag.active ? 'Saving…' : 'Save'}</Button></div>
 		</div>
 	</div>
 {/if}

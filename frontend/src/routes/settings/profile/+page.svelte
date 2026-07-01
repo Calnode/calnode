@@ -12,12 +12,13 @@
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { toast } from 'svelte-sonner';
 	import { saveOnCmdS } from '$lib/save-shortcut';
+	import { createAsyncFlag } from '$lib/async-action.svelte';
 	import type CropperType from 'cropperjs';
 
 	let user = $state<User | null>(null);
-	let loading = $state(true);
-	let saving = $state(false);
-	let uploading = $state(false);
+	const loadingFlag = createAsyncFlag(true);
+	const savingFlag = createAsyncFlag();
+	const uploadingFlag = createAsyncFlag();
 	let avatarUrl = $state('');
 	let fileInput = $state<HTMLInputElement | undefined>(undefined);
 
@@ -69,20 +70,14 @@
 		reader.readAsDataURL(file);
 	}
 
-	onMount(async () => {
-		try {
-			user = await api.get<User>('/v1/users/me');
-			timezone = user.timezone;
-			time_format = user.time_format ?? '12h';
-			week_start = user.week_start ?? 1;
-			date_format = user.date_format ?? 'dmy';
-			avatarUrl = user.avatar_url ?? '';
-		} catch (e: any) {
-			toast.error(e.message || 'Could not load profile');
-		} finally {
-			loading = false;
-		}
-	});
+	onMount(() => loadingFlag.run(async () => {
+		user = await api.get<User>('/v1/users/me');
+		timezone = user.timezone;
+		time_format = user.time_format ?? '12h';
+		week_start = user.week_start ?? 1;
+		date_format = user.date_format ?? 'dmy';
+		avatarUrl = user.avatar_url ?? '';
+	}, 'Could not load profile'));
 
 	function cancelCrop() {
 		cropOpen = false;
@@ -93,9 +88,8 @@
 	async function cropAndUpload() {
 		if (!cropperInstance) return;
 
-		uploading = true;
-		try {
-			const croppedCanvas = cropperInstance.getCroppedCanvas({ width: 400, height: 400 });
+		await uploadingFlag.run(async () => {
+			const croppedCanvas = cropperInstance!.getCroppedCanvas({ width: 400, height: 400 });
 			const blob = await new Promise<Blob>((resolve, reject) =>
 				croppedCanvas.toBlob(b => b ? resolve(b) : reject(new Error('Canvas export failed')), 'image/jpeg', 0.88)
 			);
@@ -109,11 +103,7 @@
 			cropSrc = '';
 			if (fileInput) fileInput.value = '';
 			toast.success('Avatar updated');
-		} catch (e: any) {
-			toast.error(e.message || 'Could not upload avatar');
-		} finally {
-			uploading = false;
-		}
+		}, 'Could not upload avatar');
 	}
 
 	async function removeAvatar() {
@@ -128,8 +118,7 @@
 	}
 
 	async function save() {
-		saving = true;
-		try {
+		await savingFlag.run(async () => {
 			const updated = await api.patch<User>('/v1/users/me', {
 				timezone, time_format, week_start, date_format,
 			});
@@ -137,11 +126,7 @@
 			prefs.set(prefsFromUser(updated));
 			user = updated;
 			toast.success('Settings saved');
-		} catch (e: any) {
-			toast.error(e.message || 'Could not save settings');
-		} finally {
-			saving = false;
-		}
+		}, 'Could not save settings');
 	}
 
 	function initials(name: string) {
@@ -155,9 +140,9 @@
 	];
 </script>
 
-<svelte:window onkeydown={saveOnCmdS(save, () => !saving)} />
+<svelte:window onkeydown={saveOnCmdS(save, () => !savingFlag.active)} />
 
-{#if loading}
+{#if loadingFlag.active}
 	<p class="py-8 text-sm text-muted-foreground">Loading…</p>
 {:else}
 	<form onsubmit={(e) => { e.preventDefault(); save(); }} class="max-w-lg space-y-4">
@@ -169,7 +154,7 @@
 					<button
 						type="button"
 						onclick={() => fileInput?.click()}
-						disabled={uploading}
+						disabled={uploadingFlag.active}
 						title={avatarUrl ? 'Replace photo' : 'Upload photo'}
 						class="group relative cursor-pointer rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-wait"
 					>
@@ -258,8 +243,8 @@
 			</div>
 		</div>
 
-		<Button type="submit" disabled={saving}>
-			{saving ? 'Saving…' : 'Save'}
+		<Button type="submit" disabled={savingFlag.active}>
+			{savingFlag.active ? 'Saving…' : 'Save'}
 		</Button>
 	</form>
 {/if}
@@ -276,9 +261,9 @@
 			{/if}
 		</div>
 		<Dialog.Footer class="mt-4">
-			<Button variant="outline" onclick={cancelCrop} disabled={uploading}>Cancel</Button>
-			<Button onclick={cropAndUpload} disabled={uploading}>
-				{uploading ? 'Uploading…' : 'Save photo'}
+			<Button variant="outline" onclick={cancelCrop} disabled={uploadingFlag.active}>Cancel</Button>
+			<Button onclick={cropAndUpload} disabled={uploadingFlag.active}>
+				{uploadingFlag.active ? 'Uploading…' : 'Save photo'}
 			</Button>
 		</Dialog.Footer>
 	</Dialog.Content>

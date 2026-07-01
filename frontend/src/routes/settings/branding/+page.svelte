@@ -8,6 +8,7 @@
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { toast } from 'svelte-sonner';
 	import { saveOnCmdS } from '$lib/save-shortcut';
+	import { createAsyncFlag } from '$lib/async-action.svelte';
 	import type CropperType from 'cropperjs';
 
 	type Branding = {
@@ -19,9 +20,9 @@
 		terms_url: string;
 	};
 
-	let loading = $state(true);
-	let saving = $state(false);
-	let uploading = $state(false);
+	const loadingFlag = createAsyncFlag(true);
+	const savingFlag = createAsyncFlag();
+	const uploadingFlag = createAsyncFlag();
 	let businessName = $state('');
 	let logoUrl = $state('');
 	let logoHeight = $state(28);
@@ -55,21 +56,15 @@
 		return () => { c.destroy(); cropperInstance = null; };
 	});
 
-	onMount(async () => {
-		try {
-			const b = await api.get<Branding>('/v1/settings/branding');
-			businessName = b.business_name ?? '';
-			logoUrl = b.logo_url ?? '';
-			logoHeight = b.logo_height || 28;
-			logoOpacity = b.logo_opacity || 100;
-			privacyUrl = b.privacy_url ?? '';
-			termsUrl = b.terms_url ?? '';
-		} catch (e: any) {
-			toast.error(e.message || 'Could not load branding settings');
-		} finally {
-			loading = false;
-		}
-	});
+	onMount(() => loadingFlag.run(async () => {
+		const b = await api.get<Branding>('/v1/settings/branding');
+		businessName = b.business_name ?? '';
+		logoUrl = b.logo_url ?? '';
+		logoHeight = b.logo_height || 28;
+		logoOpacity = b.logo_opacity || 100;
+		privacyUrl = b.privacy_url ?? '';
+		termsUrl = b.terms_url ?? '';
+	}, 'Could not load branding settings'));
 
 	async function onFileChange() {
 		const file = fileInput?.files?.[0];
@@ -97,9 +92,8 @@
 
 	async function cropAndUpload() {
 		if (!cropperInstance) return;
-		uploading = true;
-		try {
-			const canvas = cropperInstance.getCroppedCanvas({ maxWidth: 1200, maxHeight: 1200 });
+		await uploadingFlag.run(async () => {
+			const canvas = cropperInstance!.getCroppedCanvas({ maxWidth: 1200, maxHeight: 1200 });
 			const blob = await new Promise<Blob>((resolve, reject) =>
 				canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('Canvas export failed'))), 'image/png')
 			);
@@ -111,11 +105,7 @@
 			cropSrc = '';
 			if (fileInput) fileInput.value = '';
 			toast.success('Logo uploaded');
-		} catch (e: any) {
-			toast.error(e.message || 'Could not upload logo');
-		} finally {
-			uploading = false;
-		}
+		}, 'Could not upload logo');
 	}
 
 	async function removeLogo() {
@@ -129,8 +119,7 @@
 	}
 
 	async function save() {
-		saving = true;
-		try {
+		await savingFlag.run(async () => {
 			const b = await api.patch<Branding>('/v1/settings/branding', {
 				business_name: businessName,
 				logo_height: logoHeight,
@@ -144,19 +133,15 @@
 			privacyUrl = b.privacy_url ?? '';
 			termsUrl = b.terms_url ?? '';
 			toast.success('Branding saved');
-		} catch (e: any) {
-			toast.error(e.message || 'Could not save branding settings');
-		} finally {
-			saving = false;
-		}
+		}, 'Could not save branding settings');
 	}
 </script>
 
-<svelte:window onkeydown={saveOnCmdS(save, () => !saving)} />
+<svelte:window onkeydown={saveOnCmdS(save, () => !savingFlag.active)} />
 
 {#if !$currentUser?.is_admin}
 	<p class="text-sm text-muted-foreground">Admin access required.</p>
-{:else if loading}
+{:else if loadingFlag.active}
 	<p class="py-8 text-sm text-muted-foreground">Loading…</p>
 {:else}
 	<div class="max-w-2xl space-y-6">
@@ -179,7 +164,7 @@
 				<button
 					type="button"
 					onclick={() => fileInput?.click()}
-					disabled={uploading}
+					disabled={uploadingFlag.active}
 					title={logoUrl ? 'Replace logo' : 'Upload logo'}
 					class="group relative flex min-h-[88px] w-full max-w-md cursor-pointer items-center justify-center overflow-hidden rounded-md border bg-white px-4 py-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-wait"
 				>
@@ -236,7 +221,7 @@
 			</div>
 		</div>
 
-		<Button onclick={save} disabled={saving}>{saving ? 'Saving…' : 'Save'}</Button>
+		<Button onclick={save} disabled={savingFlag.active}>{savingFlag.active ? 'Saving…' : 'Save'}</Button>
 	</div>
 
 	<Dialog.Root bind:open={cropOpen} onOpenChange={(o) => { if (!o) cancelCrop(); }}>
@@ -251,8 +236,8 @@
 				{/if}
 			</div>
 			<Dialog.Footer class="mt-4">
-				<Button variant="outline" onclick={cancelCrop} disabled={uploading}>Cancel</Button>
-				<Button onclick={cropAndUpload} disabled={uploading}>{uploading ? 'Uploading…' : 'Save logo'}</Button>
+				<Button variant="outline" onclick={cancelCrop} disabled={uploadingFlag.active}>Cancel</Button>
+				<Button onclick={cropAndUpload} disabled={uploadingFlag.active}>{uploadingFlag.active ? 'Uploading…' : 'Save logo'}</Button>
 			</Dialog.Footer>
 		</Dialog.Content>
 	</Dialog.Root>

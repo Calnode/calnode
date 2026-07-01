@@ -10,6 +10,7 @@
 	import { Checkbox } from '$lib/components/ui/checkbox';
 	import { toast } from 'svelte-sonner';
 	import { saveOnCmdS } from '$lib/save-shortcut';
+	import { createAsyncFlag } from '$lib/async-action.svelte';
 
 	type Tracking = {
 		head_html: string;
@@ -30,8 +31,8 @@
 	};
 	const piiFields = new Set(['attendee_name', 'attendee_email', 'attendee_timezone', 'answers']);
 
-	let loading = $state(true);
-	let saving = $state(false);
+	const loadingFlag = createAsyncFlag(true);
+	const savingFlag = createAsyncFlag();
 	let headHtml = $state('');
 	let cspAllow = $state('');
 	let dlEnabled = $state(false);
@@ -40,30 +41,23 @@
 	let gtmId = $state('');
 	let ga4Id = $state('');
 
-	onMount(async () => {
-		try {
-			const t = await api.get<Tracking>('/v1/settings/tracking');
-			headHtml = t.head_html ?? '';
-			cspAllow = t.csp_allow ?? '';
-			dlEnabled = t.datalayer_enabled;
-			dlFields = t.datalayer_fields ?? [];
-			availableFields = t.available_fields ?? [];
-			gtmId = t.gtm_container_id ?? '';
-			ga4Id = t.ga4_measurement_id ?? '';
-		} catch (e: any) {
-			toast.error(e.message || 'Could not load tracking settings');
-		} finally {
-			loading = false;
-		}
-	});
+	onMount(() => loadingFlag.run(async () => {
+		const t = await api.get<Tracking>('/v1/settings/tracking');
+		headHtml = t.head_html ?? '';
+		cspAllow = t.csp_allow ?? '';
+		dlEnabled = t.datalayer_enabled;
+		dlFields = t.datalayer_fields ?? [];
+		availableFields = t.available_fields ?? [];
+		gtmId = t.gtm_container_id ?? '';
+		ga4Id = t.ga4_measurement_id ?? '';
+	}, 'Could not load tracking settings'));
 
 	function toggleField(key: string) {
 		dlFields = dlFields.includes(key) ? dlFields.filter((f) => f !== key) : [...dlFields, key];
 	}
 
 	async function save() {
-		saving = true;
-		try {
+		await savingFlag.run(async () => {
 			const t = await api.patch<Tracking>('/v1/settings/tracking', {
 				head_html: headHtml,
 				csp_allow: cspAllow,
@@ -76,19 +70,15 @@
 			gtmId = t.gtm_container_id ?? '';
 			ga4Id = t.ga4_measurement_id ?? '';
 			toast.success('Tracking settings saved');
-		} catch (e: any) {
-			toast.error(e.message || 'Could not save tracking settings');
-		} finally {
-			saving = false;
-		}
+		}, 'Could not save tracking settings');
 	}
 </script>
 
-<svelte:window onkeydown={saveOnCmdS(save, () => !saving)} />
+<svelte:window onkeydown={saveOnCmdS(save, () => !savingFlag.active)} />
 
 {#if !$currentUser?.is_admin}
 	<p class="text-sm text-muted-foreground">Admin access required.</p>
-{:else if loading}
+{:else if loadingFlag.active}
 	<p class="py-8 text-sm text-muted-foreground">Loading…</p>
 {:else}
 	<div class="max-w-2xl space-y-6">
@@ -174,6 +164,6 @@
 			{/if}
 		</div>
 
-		<Button onclick={save} disabled={saving}>{saving ? 'Saving…' : 'Save'}</Button>
+		<Button onclick={save} disabled={savingFlag.active}>{savingFlag.active ? 'Saving…' : 'Save'}</Button>
 	</div>
 {/if}

@@ -9,10 +9,11 @@
 	import { Textarea } from '$lib/components/ui/textarea';
 	import { toast } from 'svelte-sonner';
 	import { saveOnCmdS } from '$lib/save-shortcut';
+	import { createAsyncFlag } from '$lib/async-action.svelte';
 
-	let loading = $state(true);
-	let saving = $state(false);
-	let testing = $state(false);
+	const loadingFlag = createAsyncFlag(true);
+	const savingFlag = createAsyncFlag();
+	const testingFlag = createAsyncFlag();
 
 	let settings = $state<LLMSettings | null>(null);
 	let enabled = $state(false);
@@ -21,23 +22,16 @@
 	let apiKey = $state('');
 	let extraInstructions = $state('');
 
-	onMount(async () => {
-		try {
-			settings = await api.get<LLMSettings>('/v1/settings/llm');
-			enabled = settings.enabled;
-			endpoint = settings.endpoint;
-			model = settings.model;
-			extraInstructions = settings.extra_instructions;
-		} catch (e: any) {
-			toast.error(e.message || 'Could not load AI settings');
-		} finally {
-			loading = false;
-		}
-	});
+	onMount(() => loadingFlag.run(async () => {
+		settings = await api.get<LLMSettings>('/v1/settings/llm');
+		enabled = settings.enabled;
+		endpoint = settings.endpoint;
+		model = settings.model;
+		extraInstructions = settings.extra_instructions;
+	}, 'Could not load AI settings'));
 
 	async function save() {
-		saving = true;
-		try {
+		await savingFlag.run(async () => {
 			const body: Record<string, unknown> = {
 				enabled, endpoint: endpoint.trim(), model: model.trim(),
 				extra_instructions: extraInstructions
@@ -48,11 +42,7 @@
 			extraInstructions = settings.extra_instructions;
 			apiKey = '';
 			toast.success(settings.active ? 'Saved — AI is on' : 'Saved');
-		} catch (e: any) {
-			toast.error(e.message || 'Could not save AI settings');
-		} finally {
-			saving = false;
-		}
+		}, 'Could not save AI settings');
 	}
 
 	async function testConnection() {
@@ -60,27 +50,22 @@
 			toast.error('Enter an endpoint and model first');
 			return;
 		}
-		testing = true;
-		try {
+		await testingFlag.run(async () => {
 			const res = await api.post<{ ok: boolean; latency_ms?: number; error?: string }>(
 				'/v1/settings/llm/test',
 				{ endpoint: endpoint.trim(), model: model.trim(), api_key: apiKey || undefined }
 			);
 			if (res.ok) toast.success(`Connection OK (${res.latency_ms} ms)`);
 			else toast.error(`Test failed: ${res.error}`);
-		} catch (e: any) {
-			toast.error(e.message || 'Test request failed');
-		} finally {
-			testing = false;
-		}
+		}, 'Test request failed');
 	}
 </script>
 
-<svelte:window onkeydown={saveOnCmdS(save, () => !saving)} />
+<svelte:window onkeydown={saveOnCmdS(save, () => !savingFlag.active)} />
 
 {#if !$currentUser?.is_admin}
 	<p class="text-sm text-muted-foreground">Admin access required.</p>
-{:else if loading}
+{:else if loadingFlag.active}
 	<p class="py-8 text-sm text-muted-foreground">Loading…</p>
 {:else}
 	<div class="max-w-lg space-y-4">
@@ -132,9 +117,9 @@
 			</div>
 
 			<div class="mt-5 flex gap-2">
-				<Button onclick={save} disabled={saving}>{saving ? 'Saving…' : 'Save'}</Button>
-				<Button variant="outline" onclick={testConnection} disabled={testing}>
-					{testing ? 'Testing…' : 'Test connection'}
+				<Button onclick={save} disabled={savingFlag.active}>{savingFlag.active ? 'Saving…' : 'Save'}</Button>
+				<Button variant="outline" onclick={testConnection} disabled={testingFlag.active}>
+					{testingFlag.active ? 'Testing…' : 'Test connection'}
 				</Button>
 			</div>
 		</div>
@@ -157,7 +142,7 @@
 				</details>
 			{/if}
 			<div class="mt-5">
-				<Button onclick={save} disabled={saving}>{saving ? 'Saving…' : 'Save'}</Button>
+				<Button onclick={save} disabled={savingFlag.active}>{savingFlag.active ? 'Saving…' : 'Save'}</Button>
 			</div>
 		</div>
 

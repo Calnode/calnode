@@ -8,6 +8,7 @@
 	import { Switch } from '$lib/components/ui/switch';
 	import { toast } from 'svelte-sonner';
 	import { saveOnCmdS } from '$lib/save-shortcut';
+	import { createAsyncFlag } from '$lib/async-action.svelte';
 
 	type LiveKitSettings = {
 		url: string;
@@ -17,8 +18,8 @@
 	};
 	type NotetakerSettings = { enabled: boolean; stt_api_key_set: boolean };
 
-	let loading = $state(true);
-	let saving = $state(false);
+	const loadingFlag = createAsyncFlag(true);
+	const savingFlag = createAsyncFlag();
 
 	let settings = $state<LiveKitSettings | null>(null);
 	let url = $state('');
@@ -30,50 +31,34 @@
 	let notetakerEnabled = $state(false);
 	let deepgramKey = $state('');
 
-	onMount(async () => {
+	onMount(() => loadingFlag.run(async () => {
 		webhookUrl = `${window.location.origin}/v1/livekit/webhook`;
-		try {
-			settings = await api.get<LiveKitSettings>('/v1/settings/livekit');
-			url = settings.url;
-			apiKey = settings.api_key;
-			notetaker = await api.get<NotetakerSettings>('/v1/settings/notetaker');
-			notetakerEnabled = notetaker.enabled;
-		} catch (e: any) {
-			toast.error(e.message || 'Could not load video settings');
-		} finally {
-			loading = false;
-		}
-	});
+		settings = await api.get<LiveKitSettings>('/v1/settings/livekit');
+		url = settings.url;
+		apiKey = settings.api_key;
+		notetaker = await api.get<NotetakerSettings>('/v1/settings/notetaker');
+		notetakerEnabled = notetaker.enabled;
+	}, 'Could not load video settings'));
 
 	async function saveNotetaker() {
-		saving = true;
-		try {
+		await savingFlag.run(async () => {
 			const body: Record<string, unknown> = { enabled: notetakerEnabled };
 			if (deepgramKey.trim()) body.stt_api_key = deepgramKey.trim();
 			notetaker = await api.patch<NotetakerSettings>('/v1/settings/notetaker', body);
 			notetakerEnabled = notetaker.enabled;
 			deepgramKey = '';
 			toast.success('Notetaker settings saved');
-		} catch (e: any) {
-			toast.error(e.message || 'Could not save notetaker settings');
-		} finally {
-			saving = false;
-		}
+		}, 'Could not save notetaker settings');
 	}
 
 	async function save() {
-		saving = true;
-		try {
+		await savingFlag.run(async () => {
 			const body: Record<string, unknown> = { url: url.trim(), api_key: apiKey.trim() };
 			if (apiSecret) body.api_secret = apiSecret;
 			settings = await api.patch<LiveKitSettings>('/v1/settings/livekit', body);
 			apiSecret = '';
 			toast.success('Saved — "Calnode Video (LiveKit)" is now selectable as an event location');
-		} catch (e: any) {
-			toast.error(e.message || 'Could not save video settings');
-		} finally {
-			saving = false;
-		}
+		}, 'Could not save video settings');
 	}
 
 	async function copyWebhook() {
@@ -86,24 +71,19 @@
 	}
 
 	async function disconnect() {
-		saving = true;
-		try {
+		await savingFlag.run(async () => {
 			settings = await api.patch<LiveKitSettings>('/v1/settings/livekit', { url: '' });
 			url = ''; apiKey = ''; apiSecret = '';
 			toast.success('LiveKit disconnected');
-		} catch (e: any) {
-			toast.error(e.message || 'Could not disconnect');
-		} finally {
-			saving = false;
-		}
+		}, 'Could not disconnect');
 	}
 </script>
 
-<svelte:window onkeydown={saveOnCmdS(save, () => !saving)} />
+<svelte:window onkeydown={saveOnCmdS(save, () => !savingFlag.active)} />
 
 {#if !$currentUser?.is_admin}
 	<p class="text-sm text-muted-foreground">Admin access required.</p>
-{:else if loading}
+{:else if loadingFlag.active}
 	<p class="py-8 text-sm text-muted-foreground">Loading…</p>
 {:else}
 	<div class="max-w-lg space-y-4">
@@ -172,9 +152,9 @@
 			</div>
 
 			<div class="mt-5 flex items-center gap-3">
-				<Button onclick={save} disabled={saving}>{saving ? 'Saving…' : 'Save'}</Button>
+				<Button onclick={save} disabled={savingFlag.active}>{savingFlag.active ? 'Saving…' : 'Save'}</Button>
 				{#if settings?.configured}
-					<Button variant="ghost" onclick={disconnect} disabled={saving}>Disconnect</Button>
+					<Button variant="ghost" onclick={disconnect} disabled={savingFlag.active}>Disconnect</Button>
 				{/if}
 			</div>
 		</div>
@@ -221,7 +201,7 @@
 					</p>
 				</div>
 				<div class="mt-5">
-					<Button onclick={saveNotetaker} disabled={saving}>{saving ? 'Saving…' : 'Save'}</Button>
+					<Button onclick={saveNotetaker} disabled={savingFlag.active}>{savingFlag.active ? 'Saving…' : 'Save'}</Button>
 				</div>
 			</div>
 		{/if}

@@ -8,9 +8,10 @@
 	import { ConfirmDialog } from '$lib/components/ui/confirm-dialog';
 	import { toast } from 'svelte-sonner';
 	import { saveOnCmdS } from '$lib/save-shortcut';
+	import { createAsyncFlag } from '$lib/async-action.svelte';
 
-	let loading = $state(true);
-	let saving = $state(false);
+	const loadingFlag = createAsyncFlag(true);
+	const savingFlag = createAsyncFlag();
 	let confirmDisconnectOpen = $state(false);
 
 	let settings = $state<StripeSettings | null>(null);
@@ -20,20 +21,13 @@
 
 	const webhookURL = $derived(settings?.webhook_url || '');
 
-	onMount(async () => {
-		try {
-			settings = await api.get<StripeSettings>('/v1/settings/stripe');
-			publishableKey = settings.publishable_key;
-		} catch (e: any) {
-			toast.error(e.message || 'Could not load payment settings');
-		} finally {
-			loading = false;
-		}
-	});
+	onMount(() => loadingFlag.run(async () => {
+		settings = await api.get<StripeSettings>('/v1/settings/stripe');
+		publishableKey = settings.publishable_key;
+	}, 'Could not load payment settings'));
 
 	async function save() {
-		saving = true;
-		try {
+		await savingFlag.run(async () => {
 			const body: Record<string, unknown> = { publishable_key: publishableKey };
 			if (secretKey) body.secret_key = secretKey;
 			if (webhookSecret) body.webhook_secret = webhookSecret;
@@ -41,34 +35,25 @@
 			secretKey = '';
 			webhookSecret = '';
 			toast.success('Saved — set a price on an event type to start charging');
-		} catch (e: any) {
-			toast.error(e.message || 'Could not save payment settings');
-		} finally {
-			saving = false;
-		}
+		}, 'Could not save payment settings');
 	}
 
 	async function disconnect() {
-		saving = true;
-		try {
+		await savingFlag.run(async () => {
 			settings = await api.patch<StripeSettings>('/v1/settings/stripe', { clear: true });
 			secretKey = publishableKey = webhookSecret = '';
 			toast.success('Stripe disconnected');
-		} catch (e: any) {
-			toast.error(e.message || 'Could not disconnect');
-		} finally {
-			saving = false;
-		}
+		}, 'Could not disconnect');
 	}
 </script>
 
-<svelte:window onkeydown={saveOnCmdS(save, () => !saving)} />
+<svelte:window onkeydown={saveOnCmdS(save, () => !savingFlag.active)} />
 
 {#if !$currentUser?.is_admin}
 	<p class="text-sm text-muted-foreground">Admin access required.</p>
 {:else}
 
-{#if loading}
+{#if loadingFlag.active}
 	<p class="py-8 text-sm text-muted-foreground">Loading…</p>
 {:else}
 	<div class="max-w-lg space-y-4">
@@ -155,9 +140,9 @@
 			{/if}
 
 			<div class="mt-5 flex items-center gap-2">
-				<Button onclick={save} disabled={saving}>{saving ? 'Saving…' : 'Save'}</Button>
+				<Button onclick={save} disabled={savingFlag.active}>{savingFlag.active ? 'Saving…' : 'Save'}</Button>
 				{#if settings?.configured}
-					<Button variant="outline" onclick={() => (confirmDisconnectOpen = true)} disabled={saving}>Disconnect</Button>
+					<Button variant="outline" onclick={() => (confirmDisconnectOpen = true)} disabled={savingFlag.active}>Disconnect</Button>
 				{/if}
 			</div>
 		</div>

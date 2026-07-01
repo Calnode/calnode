@@ -8,10 +8,11 @@
 	import { Switch } from '$lib/components/ui/switch';
 	import { toast } from 'svelte-sonner';
 	import { saveOnCmdS } from '$lib/save-shortcut';
+	import { createAsyncFlag } from '$lib/async-action.svelte';
 
-	let loading = $state(true);
-	let saving = $state(false);
-	let testing = $state(false);
+	const loadingFlag = createAsyncFlag(true);
+	const savingFlag = createAsyncFlag();
+	const testingFlag = createAsyncFlag();
 
 	let emailSettings = $state<EmailSettings | null>(null);
 	let smtpHost = $state('');
@@ -25,31 +26,24 @@
 
 	let userEmail = $state('');
 
-	onMount(async () => {
-		try {
-			const [me, email] = await Promise.all([
-				api.get<User>('/v1/users/me'),
-				api.get<EmailSettings>('/v1/settings/email'),
-			]);
-			userEmail = me.email;
-			emailSettings = email;
-			smtpHost = email.smtp_host;
-			smtpPort = email.smtp_port || '587';
-			smtpUser = email.smtp_user;
-			smtpTLS = email.smtp_tls;
-			smtpStartTLS = email.smtp_starttls;
-			emailFrom = email.email_from;
-			emailFromName = email.email_from_name || 'Calnode';
-		} catch (e: any) {
-			toast.error(e.message || 'Could not load email settings');
-		} finally {
-			loading = false;
-		}
-	});
+	onMount(() => loadingFlag.run(async () => {
+		const [me, email] = await Promise.all([
+			api.get<User>('/v1/users/me'),
+			api.get<EmailSettings>('/v1/settings/email'),
+		]);
+		userEmail = me.email;
+		emailSettings = email;
+		smtpHost = email.smtp_host;
+		smtpPort = email.smtp_port || '587';
+		smtpUser = email.smtp_user;
+		smtpTLS = email.smtp_tls;
+		smtpStartTLS = email.smtp_starttls;
+		emailFrom = email.email_from;
+		emailFromName = email.email_from_name || 'Calnode';
+	}, 'Could not load email settings'));
 
 	async function save() {
-		saving = true;
-		try {
+		await savingFlag.run(async () => {
 			const body: Record<string, unknown> = {
 				smtp_host: smtpHost, smtp_port: smtpPort, smtp_user: smtpUser,
 				smtp_tls: smtpTLS, smtp_starttls: smtpStartTLS,
@@ -59,35 +53,31 @@
 			emailSettings = await api.patch<EmailSettings>('/v1/settings/email', body);
 			smtpPass = '';
 			toast.success('Email settings saved');
-		} catch (e: any) {
-			toast.error(e.message || 'Could not save email settings');
-		} finally {
-			saving = false;
-		}
+		}, 'Could not save email settings');
 	}
 
 	async function test() {
-		testing = true;
-		try {
-			await api.post('/v1/settings/email/test');
+		await testingFlag.run(async () => {
+			try {
+				await api.post('/v1/settings/email/test');
+			} catch (e: any) {
+				if (e.message === 'Email is not configured — save SMTP settings first') {
+					throw new Error('Save your settings first, then try again.');
+				}
+				throw e;
+			}
 			toast.success(`Test email sent to ${userEmail}`);
-		} catch (e: any) {
-			toast.error(e.message === 'Email is not configured — save SMTP settings first'
-				? 'Save your settings first, then try again.'
-				: (e.message || 'Could not send test email'));
-		} finally {
-			testing = false;
-		}
+		}, 'Could not send test email');
 	}
 </script>
 
-<svelte:window onkeydown={saveOnCmdS(save, () => !saving)} />
+<svelte:window onkeydown={saveOnCmdS(save, () => !savingFlag.active)} />
 
 {#if !$currentUser?.is_admin}
 	<p class="text-sm text-muted-foreground">Admin access required.</p>
 {:else}
 
-{#if loading}
+{#if loadingFlag.active}
 	<p class="py-8 text-sm text-muted-foreground">Loading…</p>
 {:else}
 	<div class="max-w-lg">
@@ -164,11 +154,11 @@
 			</div>
 
 			<div class="mt-5 flex flex-wrap items-center gap-3">
-				<Button onclick={save} disabled={saving}>
-					{saving ? 'Saving…' : 'Save'}
+				<Button onclick={save} disabled={savingFlag.active}>
+					{savingFlag.active ? 'Saving…' : 'Save'}
 				</Button>
-				<Button variant="outline" onclick={test} disabled={testing || !emailSettings?.enabled}>
-					{testing ? 'Sending…' : 'Send test email'}
+				<Button variant="outline" onclick={test} disabled={testingFlag.active || !emailSettings?.enabled}>
+					{testingFlag.active ? 'Sending…' : 'Send test email'}
 				</Button>
 			</div>
 		</div>
