@@ -57,14 +57,24 @@ func ResolveNotMetadata(ctx context.Context, host string) ([]net.IPAddr, error) 
 	return addrs, nil
 }
 
+// awsIPv6MetadataAddr is AWS's IMDS address for IPv6-enabled instances
+// (fd00:ec2::254). Unlike the IPv4 metadata address, this is a ULA address
+// (fc00::/7), not a link-local one — ip.IsLinkLocalUnicast() returns false for it, so
+// without this explicit check it would slip past the narrow metadata-only guard
+// (ResolveNotMetadata/CheckHostnameNotMetadata) for CalDAV/BYO-LLM/LiveKit, even
+// though it's exactly the kind of address that guard exists to block. The strict
+// ResolveSafe tier (webhooks) is unaffected — it already blocks all of fc00::/7.
+var awsIPv6MetadataAddr = net.ParseIP("fd00:ec2::254")
+
 // IsLinkLocal reports whether ip is in the link-local range (169.254.0.0/16 /
-// fe80::/10) — the range cloud metadata services live in. Exposed separately from
-// ResolveNotMetadata for callers doing best-effort validation (e.g. at config-save
-// time) that want to treat "definitely metadata" and "failed to resolve right now"
-// differently — a save-time DNS hiccup shouldn't block saving a setting the way an
-// actual metadata address should.
+// fe80::/10) — the range cloud metadata services live in — or is AWS's IPv6 IMDS
+// literal (fd00:ec2::254, a ULA address outside that range; see
+// awsIPv6MetadataAddr). Exposed separately from ResolveNotMetadata for callers doing
+// best-effort validation (e.g. at config-save time) that want to treat "definitely
+// metadata" and "failed to resolve right now" differently — a save-time DNS hiccup
+// shouldn't block saving a setting the way an actual metadata address should.
 func IsLinkLocal(ip net.IP) bool {
-	return ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast()
+	return ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.Equal(awsIPv6MetadataAddr)
 }
 
 // CheckHostnameNotMetadata is a best-effort, save-time companion to

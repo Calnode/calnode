@@ -55,3 +55,33 @@ func TestIsPrivateIP(t *testing.T) {
 		}
 	}
 }
+
+// TestIsLinkLocal_awsIPv6Metadata proves the narrow metadata-only guard
+// (ResolveNotMetadata/CheckHostnameNotMetadata, used by CalDAV/BYO-LLM/LiveKit) blocks
+// AWS's IPv6 IMDS address even though it's a ULA address (fc00::/7), not a link-local
+// one — ip.IsLinkLocalUnicast() alone returns false for it, so without an explicit
+// check it would slip past the narrow tier while the strict webhook tier (which blocks
+// all of fc00::/7 via IsPrivateIP) already caught it.
+func TestIsLinkLocal_awsIPv6Metadata(t *testing.T) {
+	cases := []struct {
+		ip   string
+		want bool
+	}{
+		{"fd00:ec2::254", true},   // AWS IPv6 IMDS — must be blocked
+		{"169.254.169.254", true}, // AWS/GCP/Azure IPv4 metadata — link-local
+		{"fe80::1", true},         // generic link-local
+		{"fd00::1", false},        // an ordinary ULA address is NOT metadata — must stay allowed
+		{"fd12:3456:789a::254", false},
+		{"10.0.0.1", false}, // RFC1918 — narrow tier deliberately allows this
+		{"1.1.1.1", false},
+	}
+	for _, tc := range cases {
+		ip := net.ParseIP(tc.ip)
+		if ip == nil {
+			t.Fatalf("invalid test IP %q", tc.ip)
+		}
+		if got := netutil.IsLinkLocal(ip); got != tc.want {
+			t.Errorf("IsLinkLocal(%q) = %v; want %v", tc.ip, got, tc.want)
+		}
+	}
+}
