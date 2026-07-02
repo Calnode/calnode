@@ -130,10 +130,16 @@ at the edges only.
 `internal/keyvault` + `internal/secret`:
 
 - A random **DEK** (AES-256) encrypts secret columns via **AES-256-GCM** (random
-  12-byte nonce). The encrypted columns are **five values across four tables**:
-  `server_settings.smtp_pass_enc`, `server_settings.google_client_secret_enc`,
-  `calendar_connections.access_token_enc` + `refresh_token_enc`, and
-  `webhooks.secret_enc` (webhook signing secret).
+  12-byte nonce). The encrypted columns have grown with each integration — as of
+  migration `00045`, that's **13 column instances across 4 tables**:
+  `calendar_connections.access_token_enc` + `refresh_token_enc`,
+  `zoom_connections.access_token_enc` + `refresh_token_enc` (its own table — Zoom is
+  a meeting-link provider, not a calendar), `webhooks.secret_enc` (webhook signing
+  secret), and eight `server_settings` columns: `smtp_pass_enc`,
+  `google_client_secret_enc`, `zoom_client_secret_enc`, `llm_api_key_enc`,
+  `stripe_secret_key_enc`, `stripe_webhook_secret_enc`, `livekit_api_secret_enc`,
+  `stt_api_key_enc` (Deepgram). Grep `_enc` across `internal/db/migrations/*.sql` for
+  the current authoritative list — new integrations keep adding columns here.
 - The DEK is stored **wrapped** in `crypto_keystore`, encrypted by a **KEK** =
   `Argon2id(CALNODE_ENCRYPTION_KEY)` — params **64 MiB / 3 iterations / 2 lanes**,
   16-byte salt; the wrap is AES-256-GCM. A second wrapped copy is escrowed under
