@@ -295,3 +295,35 @@ claims:
       network) — see the deployment docs for reverse-proxy requirements (forward
       the original Host header, connect over a trusted path, strip client-supplied
       proxy headers at the edge).
+
+  - id: caldav-connect-self-service-no-admin-gate
+    claim: >
+      POST /v1/calendar/caldav/connect (internal/handler/calendar.go's ConnectCalDAV)
+      requires only RequireAuth, not requireAdmin — any team member can connect their
+      own CalDAV account, matching the self-service pattern of Google/Microsoft
+      calendar connect and Zoom connect (every one of which is also RequireAuth-only,
+      never admin-gated). This is a deliberate product decision, not an oversight.
+    verify:
+      - "internal/server/server.go — compare the route registrations for
+         POST /v1/calendar/caldav/connect, GET /v1/calendar/connect (Google), and
+         GET /v1/zoom/connect: all three are h.RequireAuth(...) only, none is wrapped
+         or inline-gated with requireAdmin."
+      - "internal/handler/calendar.go's ConnectCalDAV body — no h.requireAdmin call;
+         scopes the new connection to userFromContext(ctx).ID, i.e. the caller
+         connects only their own account, never someone else's."
+    status: verified
+    caveat: >
+      Recorded here because a Layer 2 audit pass flagged this as inconsistent with
+      LLM/LiveKit settings requiring requireAdmin — that comparison doesn't hold:
+      LLM/LiveKit settings are single, shared, workspace-wide configuration (hence
+      admin-gated, same reasoning as every other *_settings.go handler), while
+      calendar/meeting-tool connections are per-user personal integrations, uniformly
+      self-service across all four providers. The one real asymmetry: CalDAV is the
+      only one of the four where the server URL itself is user-supplied rather than a
+      fixed OAuth vendor host, so a non-admin member can direct the server to probe an
+      address on its network, bounded by the narrow metadata-only SSRF guard (see
+      ResolveNotMetadata) and requiring the member to already hold a valid account on
+      the instance. Explicitly decided (2026-07-02) to keep this self-service rather
+      than add admin approval — the friction of gating a personal calendar connection
+      behind admin sign-off was judged worse than the bounded, already-authenticated-
+      user SSRF exposure it would close.
