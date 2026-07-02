@@ -5,12 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"net/url"
 	"strings"
 
 	"github.com/calnode/calnode/internal/caldav"
 	"github.com/calnode/calnode/internal/calendar"
-	"github.com/calnode/calnode/internal/netutil"
 )
 
 // stateSep separates the provider name from the userID inside the (encrypted)
@@ -137,21 +135,14 @@ func (h *Handler) ConnectCalDAV(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusBadRequest, "choose a provider or enter a server URL")
 		return
 	}
-	// Scheme check, then the real SSRF guard: reject anything that resolves to a cloud
-	// metadata / link-local address. A self-hosted CalDAV server on the operator's own
-	// private network (or localhost) is a legitimate destination — see
-	// netutil.ResolveNotMetadata — so only the metadata range is blocked here. The
-	// caldav.Client's own http.Client re-validates at dial time (internal/caldav/caldav.go)
-	// so this save-time check is defense-in-depth, not the only guard.
-	if !strings.HasPrefix(server, "https://") && !strings.HasPrefix(server, "http://") {
-		h.writeError(w, http.StatusBadRequest, "server URL must start with https://")
-		return
-	}
-	if u, err := url.Parse(server); err != nil {
-		h.writeError(w, http.StatusBadRequest, "invalid server URL")
-		return
-	} else if _, err := netutil.ResolveNotMetadata(r.Context(), u.Hostname()); err != nil {
-		h.writeError(w, http.StatusBadRequest, "server URL must not resolve to a cloud metadata address")
+	// SSRF guard: a self-hosted CalDAV server on the operator's own private network (or
+	// localhost) is a legitimate destination, so this only blocks the cloud-metadata
+	// range — see validateBYOServerURL (shared with the BYO-LLM and LiveKit URL checks).
+	// The caldav.Client's own http.Client re-validates at dial time
+	// (internal/caldav/caldav.go), and the cc.Connect below immediately exercises the
+	// URL, so a save-time DNS blip surfaces there as a user-actionable error.
+	if err := validateBYOServerURL(r.Context(), server, "server URL", "http", "https"); err != nil {
+		h.writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	user, _ := userFromContext(r.Context())

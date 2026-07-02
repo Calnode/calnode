@@ -6,31 +6,21 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 
 	"github.com/calnode/calnode/internal/llm"
-	"github.com/calnode/calnode/internal/netutil"
 	"github.com/calnode/calnode/internal/secret"
 )
 
-// validateLLMEndpoint checks endpoint is an http(s) URL and, best-effort, that it
-// doesn't resolve to a cloud metadata address right now (netutil.CheckHostnameNotMetadata).
-// Private/loopback destinations are allowed on purpose — a self-hosted or local LLM
-// runtime is a documented, intended configuration for this field — only the metadata
-// range is never a legitimate chat-completions endpoint for anyone. The runtime client
-// (internal/llm/client.go, via netutil.MetadataSafeTransport) re-checks on every real
-// dial, which is the guard that actually matters once the endpoint is used.
+// validateLLMEndpoint checks endpoint is an http(s) URL that doesn't (best-effort)
+// resolve to a cloud-metadata address. Thin wrapper over the shared BYO-server-URL
+// validator (see validateBYOServerURL) so this field can't drift from the CalDAV and
+// LiveKit URL checks. Local/self-hosted LLM runtimes are allowed on purpose; the
+// runtime client (internal/llm/client.go, via netutil.MetadataSafeTransport) re-checks
+// on every real dial.
 func validateLLMEndpoint(ctx context.Context, endpoint string) error {
-	u, err := url.Parse(endpoint)
-	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" {
-		return fmt.Errorf("endpoint must be a valid http(s) URL")
-	}
-	if err := netutil.CheckHostnameNotMetadata(ctx, u.Hostname()); err != nil {
-		return fmt.Errorf("endpoint must not resolve to a cloud metadata address")
-	}
-	return nil
+	return validateBYOServerURL(ctx, endpoint, "endpoint", "http", "https")
 }
 
 // LLMConfig holds decrypted LLM-layer settings loaded from the DB. Endpoint empty ⇒ not
