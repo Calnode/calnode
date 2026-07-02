@@ -111,6 +111,11 @@ jobs:
           gosec ./...
 
       - name: gitleaks (clean-security-scan claim)
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # gitleaks/gitleaks-action@v2 now requires a paid GITLEAKS_LICENSE for
+        # organization repos ("Calnode" is one) — the underlying CLI is still
+        # free/open-source (MIT), so install and run it directly instead, the
+        # same way govulncheck/gosec above do, and the same invocation AUDIT.md
+        # documents for a local run.
+        run: |
+          go install github.com/zricethezav/gitleaks/v8@latest
+          gitleaks detect --source . --no-banner -v
