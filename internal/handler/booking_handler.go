@@ -315,6 +315,56 @@ func (h *Handler) validateBookingTime(ctx context.Context, et *bookableEventType
 	return errSlotUnavailable
 }
 
+// validateRescheduleTime enforces the same min-notice/max-future/availability-window
+// rules on a reschedule's NEW time as validateBookingTime enforces on creation. Reschedule
+// entry points (admin REST, the public manage-token flow, and the MCP tool) previously
+// called straight into booking.Service.Reschedule, which only guards against a double-
+// booking overlap — nothing stopped a manage-token holder from moving their own booking
+// to a time in the next minute, years out, or outside the host's configured hours, even
+// though none of that is reachable through the fixed creation path.
+//
+// Deliberately does NOT go through loadBookableEventType (its is_active/is_public gate is
+// about NEW bookability, not about whether an EXISTING booking may still be moved — an
+// operator unpublishing an event type shouldn't strand already-booked attendees). Checks
+// every host currently assigned to the booking (booking_hosts), matching
+// booking.Service.Reschedule's own "every host keeps their seat, so every host must be
+// free" semantics — falls back to the booking's primary host_id for a legacy booking with
+// no booking_hosts rows, the same fallback Reschedule itself uses.
+func (h *Handler) validateRescheduleTime(ctx context.Context, bookingID, eventTypeID, fallbackHostID string, newStart, newEnd time.Time) error {
+	var et bookableEventType
+	et.ID = eventTypeID
+	if err := h.db.QueryRowContext(ctx,
+		`SELECT min_notice_minutes, max_future_days FROM event_types WHERE id = ?`, eventTypeID).
+		Scan(&et.MinNoticeMinutes, &et.MaxFutureDays); err != nil {
+		return fmt.Errorf("load event type constraints: %w", err)
+	}
+
+	hostRows, err := h.db.QueryContext(ctx, `SELECT user_id FROM booking_hosts WHERE booking_id = ?`, bookingID)
+	if err != nil {
+		return fmt.Errorf("load booking hosts: %w", err)
+	}
+	var hostIDs []string
+	for hostRows.Next() {
+		var u string
+		if err := hostRows.Scan(&u); err != nil {
+			hostRows.Close() // #nosec G104 -- already returning the scan error; nothing more actionable
+			return fmt.Errorf("scan booking host: %w", err)
+		}
+		hostIDs = append(hostIDs, u)
+	}
+	hostRows.Close() // #nosec G104 -- rows already fully consumed above; nothing actionable on close error
+	if err := hostRows.Err(); err != nil {
+		return err
+	}
+	if len(hostIDs) == 0 { // legacy booking with no booking_hosts rows
+		hostIDs = []string{fallbackHostID}
+	}
+	// routingMode "fixed" (i.e. not "round_robin") makes validateBookingTime require EVERY
+	// one of hostIDs to be available — there's no pool to pick from on a reschedule, every
+	// assigned host keeps their seat.
+	return h.validateBookingTime(ctx, &et, "fixed", hostIDs, nil, newStart, newEnd)
+}
+
 // hostAvailableAt reports whether [startAt, endAt) falls entirely within one of
 // userID's configured availability windows (weekly rules, or a date override) for
 // eventTypeID, per internal/slots' own per-date resolution (slots.ResolveDayWindows).

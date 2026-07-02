@@ -217,3 +217,43 @@ func TestMCP_createRescheduleCancel(t *testing.T) {
 		t.Errorf("cancel_booking status = %q; want cancelled", cancelled.Status)
 	}
 }
+
+// TestMCP_rescheduleBooking_rejectsPastDate proves the reschedule_booking tool now goes
+// through the same min-notice/max-future/availability validation as create_booking — before
+// validateRescheduleTime was wired into mcpRescheduleBooking, this tool had no time-window
+// check at all beyond the double-booking guard.
+func TestMCP_rescheduleBooking_rejectsPastDate(t *testing.T) {
+	h, apiKey, _ := setupWorkspace(t)
+	body := `{"slug":"mcp-past","name":"MCP Past","duration_minutes":30,"location_type":"phone","location_value":"+1 555 000 1111","max_future_days":0}`
+	rec := httptest.NewRecorder()
+	h.RequireAuth(h.CreateEventType)(rec, authReq(http.MethodPost, "/v1/event-types", body, apiKey))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create event type: %d — %s", rec.Code, rec.Body.String())
+	}
+	seedFullAvailability(t, h, apiKey)
+
+	cs := connectMCP(t, h)
+	ctx := context.Background()
+
+	res, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "create_booking", Arguments: map[string]any{
+		"event_type_id":  "mcp-past",
+		"slot_start":     "2027-01-15T10:00:00Z",
+		"attendee_name":  "Pat Booker",
+		"attendee_email": "pat@example.com",
+	}})
+	if err != nil {
+		t.Fatalf("create_booking: %v", err)
+	}
+	created := decodeBooking(t, res)
+
+	res, err = cs.CallTool(ctx, &mcp.CallToolParams{Name: "reschedule_booking", Arguments: map[string]any{
+		"booking_id":     created.ID,
+		"new_slot_start": "2020-01-01T10:00:00Z",
+	}})
+	if err != nil {
+		t.Fatalf("reschedule_booking call: %v", err)
+	}
+	if !res.IsError {
+		t.Errorf("reschedule_booking to a past date should error; got %+v", res.Content)
+	}
+}

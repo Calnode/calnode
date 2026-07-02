@@ -433,8 +433,8 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 
 	// Manage booking (reschedule / cancel via token link)
 	mux.HandleFunc("GET /manage/{token}", manageRL(h.ManagePage))
-	mux.HandleFunc("POST /manage/{token}/reschedule", h.RescheduleByToken)
-	mux.HandleFunc("POST /manage/{token}/cancel", h.CancelByToken)
+	mux.HandleFunc("POST /manage/{token}/reschedule", manageRL(h.RescheduleByToken))
+	mux.HandleFunc("POST /manage/{token}/cancel", manageRL(h.CancelByToken))
 
 	// Webhooks
 	mux.HandleFunc("POST /v1/webhooks", h.RequireAuth(h.CreateWebhook))

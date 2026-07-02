@@ -440,8 +440,16 @@ func (h *Handler) mcpRescheduleBooking(ctx context.Context, _ *mcp.CallToolReque
 	if err := h.db.QueryRowContext(ctx, `SELECT duration_minutes FROM event_types WHERE id = ?`, b.EventTypeID).Scan(&durMins); err != nil {
 		return nil, bookingJSON{}, fmt.Errorf("load duration: %w", err)
 	}
+	newEnd := newStart.Add(time.Duration(durMins) * time.Minute)
+	if err := h.validateRescheduleTime(ctx, b.ID, b.EventTypeID, b.HostID, newStart, newEnd); err != nil {
+		if errors.Is(err, errSlotUnavailable) {
+			return nil, bookingJSON{}, fmt.Errorf("that time slot is no longer available")
+		}
+		return nil, bookingJSON{}, fmt.Errorf("validate reschedule time: %w", err)
+	}
+
 	previousStart, previousEnd := b.StartAt, b.EndAt
-	updated, err := h.bookingSvc.Reschedule(ctx, b.ID, newStart, newStart.Add(time.Duration(durMins)*time.Minute))
+	updated, err := h.bookingSvc.Reschedule(ctx, b.ID, newStart, newEnd)
 	if err != nil {
 		switch {
 		case errors.Is(err, booking.ErrDoubleBooked):

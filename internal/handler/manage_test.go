@@ -276,6 +276,51 @@ func TestRescheduleByToken_invalidStartAtFormat(t *testing.T) {
 	}
 }
 
+// TestRescheduleByToken_pastDate proves the reschedule validation gap is closed: before
+// validateRescheduleTime was wired in, RescheduleByToken had NO time-in-the-past check at
+// all (unlike the admin RescheduleBooking path), so a manage-token holder could reschedule
+// their own booking to any arbitrary past/near/far time.
+func TestRescheduleByToken_pastDate(t *testing.T) {
+	h, database, apiKey, _ := setupWorkspaceWithDB(t)
+	slug, _ := seedEventTypeHTTP(t, h, apiKey)
+
+	bookingID := createBookingViaHTTP(t, h, slug, "2026-06-20T09:00:00Z")
+	tok := issueTestToken(t, database, bookingID)
+
+	body := `{"start_at":"2020-01-01T09:00:00Z"}`
+	req := httptest.NewRequest(http.MethodPost, "/manage/"+tok+"/reschedule", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.SetPathValue("token", tok)
+	rec := httptest.NewRecorder()
+	h.RescheduleByToken(rec, req)
+
+	if rec.Code != http.StatusConflict {
+		t.Errorf("reschedule to a past date: status = %d; want 409 — body: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestRescheduleByToken_beyondMaxFutureDays proves the same fix covers max_future_days,
+// not just the past — seedEventTypeHTTP's event type has max_future_days:0, which
+// validateBookingTime treats as a 365-day safety cap from bookingNow (pinned 2026-06-01).
+func TestRescheduleByToken_beyondMaxFutureDays(t *testing.T) {
+	h, database, apiKey, _ := setupWorkspaceWithDB(t)
+	slug, _ := seedEventTypeHTTP(t, h, apiKey)
+
+	bookingID := createBookingViaHTTP(t, h, slug, "2026-06-20T09:00:00Z")
+	tok := issueTestToken(t, database, bookingID)
+
+	body := `{"start_at":"2028-01-01T09:00:00Z"}`
+	req := httptest.NewRequest(http.MethodPost, "/manage/"+tok+"/reschedule", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.SetPathValue("token", tok)
+	rec := httptest.NewRecorder()
+	h.RescheduleByToken(rec, req)
+
+	if rec.Code != http.StatusConflict {
+		t.Errorf("reschedule beyond the max-future safety cap: status = %d; want 409 — body: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestRescheduleByToken_conflict(t *testing.T) {
 	h, database, apiKey, _ := setupWorkspaceWithDB(t)
 	slug, _ := seedEventTypeHTTP(t, h, apiKey)

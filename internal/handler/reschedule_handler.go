@@ -84,6 +84,16 @@ func (h *Handler) RescheduleBooking(w http.ResponseWriter, r *http.Request) {
 
 	newEnd := newStart.Add(time.Duration(durMins) * time.Minute)
 
+	if err := h.validateRescheduleTime(r.Context(), id, etID, hostID, newStart, newEnd); err != nil {
+		if errors.Is(err, errSlotUnavailable) {
+			h.writeError(w, http.StatusConflict, "this slot is no longer available")
+			return
+		}
+		h.logger.ErrorContext(r.Context(), "reschedule booking: validate time", "error", err)
+		h.writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
 	updated, err := h.bookingSvc.Reschedule(r.Context(), id, newStart, newEnd)
 	if errors.Is(err, booking.ErrDoubleBooked) {
 		h.writeError(w, http.StatusConflict, "that time slot is no longer available")

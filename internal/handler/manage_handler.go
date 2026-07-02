@@ -195,6 +195,16 @@ func (h *Handler) RescheduleByToken(w http.ResponseWriter, r *http.Request) {
 	previousEnd := b.EndAt
 	newEnd := newStart.Add(time.Duration(durMins) * time.Minute)
 
+	if err := h.validateRescheduleTime(r.Context(), b.ID, b.EventTypeID, b.HostID, newStart, newEnd); err != nil {
+		if errors.Is(err, errSlotUnavailable) {
+			h.writeError(w, http.StatusConflict, "that time slot is no longer available")
+			return
+		}
+		h.logger.ErrorContext(r.Context(), "reschedule: validate time", "error", err)
+		h.writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
 	updated, err := h.bookingSvc.Reschedule(r.Context(), b.ID, newStart, newEnd)
 	if errors.Is(err, booking.ErrDoubleBooked) {
 		h.writeError(w, http.StatusConflict, "that time slot is no longer available")
