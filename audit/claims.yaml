@@ -15,7 +15,7 @@
 
 version: 1
 last_verified: "2026-07-02"
-last_verified_commit: "c4c067c"
+last_verified_commit: "6db0643"
 
 claims:
   - id: single-binary-no-server-db
