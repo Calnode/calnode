@@ -233,6 +233,29 @@ func TestAdminSetPassword_ownerCanResetAdmin_adminCanResetMember(t *testing.T) {
 	}
 }
 
+// TestAdminSetPassword_revokesTargetSessions proves an admin force-resetting a
+// compromised user's password actually evicts them — without this, a session cookie
+// stolen before the reset kept working until its own TTL expired.
+func TestAdminSetPassword_revokesTargetSessions(t *testing.T) {
+	h, database, ownerKey, _ := setupWorkspaceWithDB(t)
+	database.Exec(`INSERT INTO users (id,email,name,iana_timezone,is_admin) VALUES ('u2','m@example.com','Member','UTC',0)`)
+	database.Exec(`INSERT INTO sessions (id,user_id,expires_at) VALUES ('victim-sess','u2','2099-01-01T00:00:00Z')`)
+
+	req := authReq(http.MethodPost, "/v1/users/u2/password", `{"password":"newpassword123"}`, ownerKey)
+	req.SetPathValue("id", "u2")
+	rec := httptest.NewRecorder()
+	h.RequireAuth(h.AdminSetPassword)(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("got %d; want 200 — %s", rec.Code, rec.Body.String())
+	}
+
+	var n int
+	database.QueryRow(`SELECT COUNT(*) FROM sessions WHERE id = 'victim-sess'`).Scan(&n)
+	if n != 0 {
+		t.Error("target's session survived an admin password reset; want it revoked")
+	}
+}
+
 func TestDeleteUser_blockedByUpcomingBookings(t *testing.T) {
 	h, database, ownerKey, _ := setupWorkspaceWithDB(t)
 	database.Exec(`INSERT INTO users (id,email,name,iana_timezone,is_admin) VALUES ('u2','host2@example.com','Host','UTC',0)`)

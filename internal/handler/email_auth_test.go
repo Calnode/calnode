@@ -151,6 +151,40 @@ func TestChangePassword_success(t *testing.T) {
 	}
 }
 
+// TestChangePassword_revokesOtherSessions proves changing a password now closes the
+// gap where a compromised session cookie survived the standard "change your password"
+// remediation: every OTHER session for the user is deleted, while the session used to
+// make the change itself (proof the caller still controls this browser) stays alive.
+func TestChangePassword_revokesOtherSessions(t *testing.T) {
+	h, database := newTestHandlerDB(t)
+
+	hash, _ := bcrypt.GenerateFromPassword([]byte("oldpassword"), bcrypt.MinCost)
+	database.Exec(`INSERT INTO users (id,email,name,iana_timezone,is_admin,email_login,password_hash) VALUES ('u1','alice@example.com','Alice','UTC',1,1,?)`, string(hash))
+	database.Exec(`INSERT INTO sessions (id,user_id,expires_at) VALUES ('current-sess','u1','2099-01-01T00:00:00Z')`)
+	database.Exec(`INSERT INTO sessions (id,user_id,expires_at) VALUES ('other-sess','u1','2099-01-01T00:00:00Z')`)
+
+	body := `{"current_password":"oldpassword","new_password":"newpassword123"}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/users/me/password", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: "calnode_session", Value: "current-sess"})
+	rec := httptest.NewRecorder()
+	h.RequireAuth(h.ChangePassword)(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("got %d; want 200 — %s", rec.Code, rec.Body.String())
+	}
+
+	var currentExists, otherExists int
+	database.QueryRow(`SELECT COUNT(*) FROM sessions WHERE id = 'current-sess'`).Scan(&currentExists)
+	database.QueryRow(`SELECT COUNT(*) FROM sessions WHERE id = 'other-sess'`).Scan(&otherExists)
+	if currentExists != 1 {
+		t.Error("the session used to make the password change was revoked; it should survive")
+	}
+	if otherExists != 0 {
+		t.Error("another session for the same user survived a password change; want it revoked")
+	}
+}
+
 func TestChangePassword_wrongCurrent(t *testing.T) {
 	h, database := newTestHandlerDB(t)
 

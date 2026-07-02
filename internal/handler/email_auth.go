@@ -129,7 +129,24 @@ func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+	h.revokeOtherSessions(r, user.ID)
 	h.writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+// revokeOtherSessions deletes every session row for userID except the one the current
+// request is authenticated with (if any — an API-key-authenticated request has none to
+// keep). Called after a password change: without this, a compromised session cookie
+// survives the standard "change your password" remediation for up to the session's
+// full TTL, since changing the password hash alone doesn't touch the sessions table.
+func (h *Handler) revokeOtherSessions(r *http.Request, userID string) {
+	var currentSessionID string
+	if c, err := r.Cookie(sessionCookieName); err == nil {
+		currentSessionID = c.Value
+	}
+	if _, err := h.db.ExecContext(r.Context(),
+		`DELETE FROM sessions WHERE user_id = ? AND id != ?`, userID, currentSessionID); err != nil {
+		h.logger.ErrorContext(r.Context(), "revoke other sessions", "error", err, "user_id", userID)
+	}
 }
 
 // AdminSetPassword handles POST /v1/users/{id}/password — admin resets another
@@ -202,6 +219,12 @@ func (h *Handler) AdminSetPassword(w http.ResponseWriter, r *http.Request) {
 		h.logger.ErrorContext(r.Context(), "admin set password: update", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal error")
 		return
+	}
+	// targetID is never the caller (checked above), so there's no "current session" to
+	// preserve — revoke every session the target holds, same reasoning as ChangePassword.
+	if _, err := h.db.ExecContext(r.Context(),
+		`DELETE FROM sessions WHERE user_id = ?`, targetID); err != nil {
+		h.logger.ErrorContext(r.Context(), "admin set password: revoke sessions", "error", err, "user_id", targetID)
 	}
 	h.writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
