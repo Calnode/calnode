@@ -100,6 +100,28 @@ claims:
       A skeptical reader should verify this list is exhaustive themselves — that's
       exactly what the adversarial prompt above is for.
 
+  - id: admin-frontend-google-fonts
+    claim: >
+      The admin SvelteKit app (frontend/src/app.html) unconditionally loads a font
+      stylesheet from fonts.googleapis.com/fonts.gstatic.com on every /admin/ page
+      load, with no operator opt-out. This carries only staff browser metadata
+      (IP/User-Agent) — no application, booking, or meeting-content data — and is
+      confined to the authenticated admin UI: neither the public booking templates
+      (book.html/manage.html) nor the embed widget (embed.js) reference it.
+    verify:
+      - "grep -n 'fonts.googleapis\\|fonts.gstatic' frontend/src/app.html"
+      - "grep -rn 'fonts.googleapis\\|fonts.gstatic' internal/handler/templates/
+         internal/handler/embed.js — expect no matches, confirming it's admin-only."
+    status: verified
+    caveat: >
+      This was undocumented until a Layer 2 audit pass flagged it — recorded here
+      not because it's a security issue (it isn't: no app data reaches Google, and
+      it's staff-only, not visitor-facing) but because an exhaustive egress claim
+      should list every third-party call, however low-severity. A privacy-strict or
+      air-gapped self-hoster who wants zero third-party calls even from the admin UI
+      would need to vendor these fonts locally — not currently offered as a
+      built-in toggle.
+
   - id: envelope-encryption-at-rest
     claim: >
       Secrets at rest (OAuth refresh tokens, API credentials) use envelope
