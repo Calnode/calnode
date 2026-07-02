@@ -395,8 +395,6 @@
 		}
 	}
 
-	let questionsPanel: ReturnType<typeof QuestionsPanel> | undefined = $state();
-
 	onMount(async () => {
 		await loadET();
 		// Editor-only data (owner-scoped endpoints) — skip for read-only hosts.
@@ -404,7 +402,6 @@
 		// Connected calendar — best-effort; drives the meeting-link hint only.
 		api.get<CalendarStatus>('/v1/calendar/status').then((s) => (calStatus = s)).catch(() => {});
 	api.get<ZoomStatus>('/v1/zoom/status').then((s) => (zoomStatus = s)).catch(() => {});
-		questionsPanel?.loadQuestions();
 		if (hostScope === 'people') {
 			await loadHosts();
 			loadMembers();
@@ -978,7 +975,7 @@
 {/if}
 
 {#if activeTab === 'questions'}
-	<QuestionsPanel bind:this={questionsPanel} slug={slug ?? ''} />
+	<QuestionsPanel slug={slug ?? ''} />
 {/if}
 
 {#if activeTab === 'embed'}

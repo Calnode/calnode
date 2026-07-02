@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { api, type Question } from '$lib/api';
 	import { Button, buttonVariants } from '$lib/components/ui/button';
 	import { ConfirmDialog } from '$lib/components/ui/confirm-dialog';
@@ -30,7 +31,7 @@
 	let editQForm = $state({ label: '', type: 'text' as 'text'|'select'|'checkbox', options: '', required: false });
 	let qSaving = $state(false);
 
-	export async function loadQuestions() {
+	async function loadQuestions() {
 		try {
 			const res = await api.get<{ items: Question[] }>(`/v1/event-types/${slug}/questions/admin`);
 			questions = (res.items ?? []).sort((a, b) => a.position - b.position);
@@ -40,6 +41,14 @@
 			qLoading = false;
 		}
 	}
+
+	// This panel is only mounted once the parent's "Questions" tab is selected
+	// ({#if activeTab === 'questions'}), so it must fetch its own data on mount
+	// rather than relying on the parent to trigger a load — previously nothing
+	// called loadQuestions() until a mutation (add/save/delete) did so as a
+	// side effect, which is why existing questions never showed up until you
+	// added a new one.
+	onMount(loadQuestions);
 
 	function optionsArray(raw: string): string[] {
 		return raw.split('\n').map(s => s.trim()).filter(Boolean);
