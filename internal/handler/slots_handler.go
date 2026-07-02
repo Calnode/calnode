@@ -203,11 +203,17 @@ func (h *Handler) hostDisplayMap(ctx context.Context, ids []string) map[string]m
 
 // hostAvailability loads one host's timezone, availability rules, overrides, and
 // busy intervals (DB bookings + Google Calendar free/busy) for the date range.
-func (h *Handler) hostAvailability(ctx context.Context, userID, eventTypeID string, dateFrom, dateTo time.Time) (slots.HostAvailability, error) {
+// loadHostSchedule loads a host's timezone plus the raw availability inputs (weekly
+// rules + date overrides) that slots.ResolveDayWindows needs for eventTypeID. Shared by
+// hostAvailability (slot generation, which layers busy-booking loading on top) and
+// booking_handler.go's hostAvailableAt (booking-time validation), so the two can't
+// drift. Returns materialized slices, closing each cursor before opening the next — the
+// MaxOpenConns(1) pool can't hold two open cursors at once (see [[sqlite-single-connection]]).
+func (h *Handler) loadHostSchedule(ctx context.Context, userID, eventTypeID string) (*time.Location, []slots.AvailabilityRule, []slots.AvailabilityOverride, error) {
 	var hostTZName string
 	if err := h.db.QueryRowContext(ctx,
 		`SELECT iana_timezone FROM users WHERE id = ?`, userID).Scan(&hostTZName); err != nil {
-		return slots.HostAvailability{}, err
+		return nil, nil, nil, err
 	}
 	hostLoc, err := time.LoadLocation(hostTZName)
 	if err != nil {
@@ -220,36 +226,37 @@ func (h *Handler) hostAvailability(ctx context.Context, userID, eventTypeID stri
 		WHERE user_id = ? AND (event_type_id = ? OR event_type_id IS NULL)
 		ORDER BY day_of_week, start_time`, userID, eventTypeID)
 	if err != nil {
-		return slots.HostAvailability{}, err
+		return nil, nil, nil, err
 	}
-	defer ruleRows.Close()
 	var rules []slots.AvailabilityRule
 	for ruleRows.Next() {
 		var dow int
 		var start, end string
 		if err := ruleRows.Scan(&dow, &start, &end); err != nil {
-			return slots.HostAvailability{}, err
+			ruleRows.Close() // #nosec G104 -- already returning the scan error; nothing more actionable
+			return nil, nil, nil, err
 		}
 		rules = append(rules, slots.AvailabilityRule{DayOfWeek: time.Weekday(dow), StartTime: start, EndTime: end})
 	}
+	ruleRows.Close() // #nosec G104 -- rows already fully consumed above; nothing actionable on close error
 	if err := ruleRows.Err(); err != nil {
-		return slots.HostAvailability{}, err
+		return nil, nil, nil, err
 	}
 
 	ovRows, err := h.db.QueryContext(ctx, `
 		SELECT date, is_available, COALESCE(start_time,''), COALESCE(end_time,'')
 		FROM availability_overrides WHERE user_id = ?`, userID)
 	if err != nil {
-		return slots.HostAvailability{}, err
+		return nil, nil, nil, err
 	}
-	defer ovRows.Close()
 	var overrides []slots.AvailabilityOverride
 	for ovRows.Next() {
 		var dateStr string
 		var isAvail int
 		var startT, endT string
 		if err := ovRows.Scan(&dateStr, &isAvail, &startT, &endT); err != nil {
-			return slots.HostAvailability{}, err
+			ovRows.Close() // #nosec G104 -- already returning the scan error; nothing more actionable
+			return nil, nil, nil, err
 		}
 		date, err := time.Parse("2006-01-02", dateStr)
 		if err != nil {
@@ -257,7 +264,17 @@ func (h *Handler) hostAvailability(ctx context.Context, userID, eventTypeID stri
 		}
 		overrides = append(overrides, slots.AvailabilityOverride{Date: date, IsAvailable: isAvail != 0, StartTime: startT, EndTime: endT})
 	}
+	ovRows.Close() // #nosec G104 -- rows already fully consumed above; nothing actionable on close error
 	if err := ovRows.Err(); err != nil {
+		return nil, nil, nil, err
+	}
+
+	return hostLoc, rules, overrides, nil
+}
+
+func (h *Handler) hostAvailability(ctx context.Context, userID, eventTypeID string, dateFrom, dateTo time.Time) (slots.HostAvailability, error) {
+	hostLoc, rules, overrides, err := h.loadHostSchedule(ctx, userID, eventTypeID)
+	if err != nil {
 		return slots.HostAvailability{}, err
 	}
 

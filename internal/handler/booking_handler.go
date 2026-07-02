@@ -372,62 +372,8 @@ func (h *Handler) validateRescheduleTime(ctx context.Context, bookingID, eventTy
 // can straddle a UTC date boundary (the same reasoning as slots_handler.go's busy-
 // window widening).
 func (h *Handler) hostAvailableAt(ctx context.Context, userID, eventTypeID string, startAt, endAt time.Time) (bool, error) {
-	var hostTZName string
-	if err := h.db.QueryRowContext(ctx,
-		`SELECT iana_timezone FROM users WHERE id = ?`, userID).Scan(&hostTZName); err != nil {
-		return false, err
-	}
-	hostLoc, err := time.LoadLocation(hostTZName)
+	hostLoc, rules, overrides, err := h.loadHostSchedule(ctx, userID, eventTypeID)
 	if err != nil {
-		hostLoc = time.UTC
-	}
-
-	ruleRows, err := h.db.QueryContext(ctx, `
-		SELECT day_of_week, start_time, end_time
-		FROM availability_rules
-		WHERE user_id = ? AND (event_type_id = ? OR event_type_id IS NULL)
-		ORDER BY day_of_week, start_time`, userID, eventTypeID)
-	if err != nil {
-		return false, err
-	}
-	var rules []slots.AvailabilityRule
-	for ruleRows.Next() {
-		var dow int
-		var start, end string
-		if err := ruleRows.Scan(&dow, &start, &end); err != nil {
-			ruleRows.Close() // #nosec G104 -- already returning the scan error; nothing more actionable
-			return false, err
-		}
-		rules = append(rules, slots.AvailabilityRule{DayOfWeek: time.Weekday(dow), StartTime: start, EndTime: end})
-	}
-	ruleRows.Close() // #nosec G104 -- rows already fully consumed above; nothing actionable on close error
-	if err := ruleRows.Err(); err != nil {
-		return false, err
-	}
-
-	ovRows, err := h.db.QueryContext(ctx, `
-		SELECT date, is_available, COALESCE(start_time,''), COALESCE(end_time,'')
-		FROM availability_overrides WHERE user_id = ?`, userID)
-	if err != nil {
-		return false, err
-	}
-	var overrides []slots.AvailabilityOverride
-	for ovRows.Next() {
-		var dateStr string
-		var isAvail int
-		var startT, endT string
-		if err := ovRows.Scan(&dateStr, &isAvail, &startT, &endT); err != nil {
-			ovRows.Close() // #nosec G104 -- already returning the scan error; nothing more actionable
-			return false, err
-		}
-		date, err := time.Parse("2006-01-02", dateStr)
-		if err != nil {
-			continue
-		}
-		overrides = append(overrides, slots.AvailabilityOverride{Date: date, IsAvailable: isAvail != 0, StartTime: startT, EndTime: endT})
-	}
-	ovRows.Close() // #nosec G104 -- rows already fully consumed above; nothing actionable on close error
-	if err := ovRows.Err(); err != nil {
 		return false, err
 	}
 
