@@ -4,6 +4,7 @@ import (
 	"log/slog"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/calnode/calnode/internal/config"
 )
@@ -86,5 +87,37 @@ func TestLoad_encryptionKeyFromEnv(t *testing.T) {
 	cfg := config.Load()
 	if cfg.EncryptionKey != validKey {
 		t.Errorf("EncryptionKey = %q; want %q", cfg.EncryptionKey, validKey)
+	}
+}
+
+func TestLoad_demoModeDefaults(t *testing.T) {
+	os.Unsetenv("DEMO_MODE")
+	os.Unsetenv("DEMO_RESET_INTERVAL")
+	cfg := config.Load()
+	if cfg.DemoMode {
+		t.Error("DemoMode should default to false")
+	}
+	if cfg.DemoResetInterval != 30*time.Minute {
+		t.Errorf("DemoResetInterval = %v; want 30m default", cfg.DemoResetInterval)
+	}
+}
+
+func TestLoad_demoModeEnvOverrides(t *testing.T) {
+	t.Setenv("DEMO_MODE", "true")
+	t.Setenv("DEMO_RESET_INTERVAL", "45s")
+	cfg := config.Load()
+	if !cfg.DemoMode {
+		t.Error("DemoMode = false; want true")
+	}
+	if cfg.DemoResetInterval != 45*time.Second {
+		t.Errorf("DemoResetInterval = %v; want 45s", cfg.DemoResetInterval)
+	}
+}
+
+func TestLoad_demoResetIntervalInvalidFallsBackToDefault(t *testing.T) {
+	t.Setenv("DEMO_RESET_INTERVAL", "not-a-duration")
+	cfg := config.Load()
+	if cfg.DemoResetInterval != 30*time.Minute {
+		t.Errorf("DemoResetInterval = %v; want 30m default on invalid input", cfg.DemoResetInterval)
 	}
 }

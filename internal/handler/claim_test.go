@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/calnode/calnode/internal/handler"
 )
@@ -54,6 +55,35 @@ func TestAuthStatus_claimed(t *testing.T) {
 	json.Unmarshal(rec.Body.Bytes(), &resp)
 	if claimed, _ := resp["claimed"].(bool); !claimed {
 		t.Error("claimed = false; want true when users exist")
+	}
+	if demoMode, _ := resp["demo_mode"].(bool); demoMode {
+		t.Error("demo_mode = true; want false on a normal instance")
+	}
+	if _, present := resp["next_reset_at"]; present {
+		t.Error("next_reset_at present; want it omitted outside demo mode")
+	}
+}
+
+func TestAuthStatus_demoMode(t *testing.T) {
+	h, _, _, _ := setupWorkspaceWithDB(t)
+	h.SetDemoMode(true)
+	h.SetDemoNextResetAt(time.Now().Add(30 * time.Minute))
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/auth/status", nil)
+	rec := httptest.NewRecorder()
+	h.AuthStatus(rec, req)
+
+	var resp map[string]any
+	json.Unmarshal(rec.Body.Bytes(), &resp) //nolint:errcheck
+	if demoMode, _ := resp["demo_mode"].(bool); !demoMode {
+		t.Error("demo_mode = false; want true")
+	}
+	nextReset, ok := resp["next_reset_at"].(string)
+	if !ok || nextReset == "" {
+		t.Fatalf("next_reset_at = %v; want a non-empty timestamp string", resp["next_reset_at"])
+	}
+	if _, err := time.Parse(time.RFC3339, nextReset); err != nil {
+		t.Errorf("next_reset_at = %q; not a valid RFC3339 timestamp: %v", nextReset, err)
 	}
 }
 

@@ -152,6 +152,32 @@ func TestConnectCalendar_stateIsURLSafe(t *testing.T) {
 	}
 }
 
+func TestConnectCalendar_demoMode_returns503(t *testing.T) {
+	h, _, apiKey, _ := newHandlerWithGCal(t) // fully configured — demo mode must still block it
+	h.SetDemoMode(true)
+
+	req := authReq(http.MethodGet, "/v1/calendar/connect", "", apiKey)
+	rec := httptest.NewRecorder()
+	h.RequireAuth(h.ConnectCalendar)(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("status = %d; want 503 in demo mode", rec.Code)
+	}
+}
+
+func TestConnectCalDAV_demoMode_returns503(t *testing.T) {
+	h, _, apiKey, _ := newHandlerWithGCal(t)
+	h.SetDemoMode(true)
+
+	req := authReq(http.MethodPost, "/v1/calendar/caldav/connect", `{}`, apiKey)
+	rec := httptest.NewRecorder()
+	h.RequireAuth(h.ConnectCalDAV)(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("status = %d; want 503 in demo mode", rec.Code)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // CalendarCallback
 // ---------------------------------------------------------------------------

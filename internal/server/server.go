@@ -12,6 +12,7 @@ import (
 	"github.com/calnode/calnode/internal/calendar"
 	"github.com/calnode/calnode/internal/calendar/microsoft"
 	"github.com/calnode/calnode/internal/config"
+	"github.com/calnode/calnode/internal/demo"
 	"github.com/calnode/calnode/internal/gcal"
 	"github.com/calnode/calnode/internal/handler"
 	"github.com/calnode/calnode/internal/livekit"
@@ -41,6 +42,36 @@ func BuildHandler(ctx context.Context, cfg *config.Config, db *sql.DB, logger *s
 	h.SetPublicBaseURL(cfg.PublicBaseURL)
 	h.SetDataDir("data")
 	h.SetEncKey(cfg.EncryptionKey)
+	h.SetDemoMode(cfg.DemoMode)
+	h.SetDemoResetInterval(cfg.DemoResetInterval)
+
+	if cfg.DemoMode {
+		// There's no persistent volume in demo mode, so the DB is always empty on
+		// boot — this seed doubles as "first boot" and "after a container restart".
+		if err := demo.Seed(ctx, db); err != nil {
+			logger.Error("demo: seed failed", "error", err)
+		} else {
+			logger.Info("demo: seeded")
+		}
+		h.SetDemoNextResetAt(time.Now().Add(cfg.DemoResetInterval))
+		go func() {
+			ticker := time.NewTicker(cfg.DemoResetInterval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					if err := demo.Reset(ctx, db); err != nil {
+						logger.Error("demo: scheduled reset failed", "error", err)
+					} else {
+						logger.Info("demo: scheduled reset complete")
+					}
+					h.SetDemoNextResetAt(time.Now().Add(cfg.DemoResetInterval))
+				}
+			}
+		}()
+	}
 
 	encKey, _ := secret.ParseKey(cfg.EncryptionKey)
 
@@ -470,6 +501,15 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	// Connected apps — MCP OAuth grants the user can review and revoke.
 	mux.HandleFunc("GET /v1/oauth/connections", h.RequireAuth(h.ListOAuthConnections))
 	mux.HandleFunc("DELETE /v1/oauth/connections/{id}", h.RequireAuth(h.RevokeOAuthConnection))
+
+	// Demo instance only — one-click login, on-demand reset, and a disallow-all
+	// robots.txt. Never registered on a real deployment.
+	if cfg.DemoMode {
+		mux.HandleFunc("GET /v1/demo/enter", h.DemoEnter)
+		demoResetRL := RateLimit(2, time.Minute)
+		mux.HandleFunc("POST /v1/demo/reset", demoResetRL(h.DemoReset))
+		mux.HandleFunc("GET /robots.txt", h.Robots)
+	}
 
 	// Favicon at the root, shared by the public server-rendered pages and the
 	// browser's default /favicon.ico probe — same embedded source as the admin SPA.

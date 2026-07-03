@@ -19,6 +19,10 @@ const stateSep = "\x1f"
 // Redirects the browser to the chosen provider's OAuth consent page.
 // Optional ?provider=<name> selects a provider; defaults to the primary.
 func (h *Handler) ConnectCalendar(w http.ResponseWriter, r *http.Request) {
+	if h.demoMode {
+		h.writeError(w, http.StatusServiceUnavailable, "not available in the demo")
+		return
+	}
 	svc := h.getCal()
 	if svc == nil || !svc.Any() {
 		h.writeError(w, http.StatusNotImplemented, "Calendar integration not configured")
@@ -104,6 +108,10 @@ func (h *Handler) CalendarCallback(w http.ResponseWriter, r *http.Request) {
 // password. We discover their calendar, validate the credentials, and store the connection.
 // Body: {"preset": "...", "server_url": "...", "username": "...", "app_password": "..."}.
 func (h *Handler) ConnectCalDAV(w http.ResponseWriter, r *http.Request) {
+	if h.demoMode {
+		h.writeError(w, http.StatusServiceUnavailable, "not available in the demo")
+		return
+	}
 	svc := h.getCal()
 	if svc == nil || !svc.Any() {
 		h.writeError(w, http.StatusNotImplemented, "Calendar integration not configured")

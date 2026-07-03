@@ -90,3 +90,56 @@ func TestConsentChromeSharedAcrossSurfaces(t *testing.T) {
 		})
 	}
 }
+
+// TestDemoChromeSharedAcrossSurfaces mirrors TestConsentChromeSharedAcrossSurfaces for
+// the demo-mode banner + noindex meta tag — both surfaces render from the same
+// "demoBanner"/"demoNoindex" partials, so a regression in one shows up in both.
+func TestDemoChromeSharedAcrossSurfaces(t *testing.T) {
+	surfaces := []struct {
+		name   string
+		render func(t *testing.T, demoMode bool) string
+	}{
+		{"book", func(t *testing.T, demoMode bool) string {
+			var b bytes.Buffer
+			if err := bookTmpl.Execute(&b, bookPageData{DemoMode: demoMode}); err != nil {
+				t.Fatalf("book render: %v", err)
+			}
+			return b.String()
+		}},
+		{"manage", func(t *testing.T, demoMode bool) string {
+			var b bytes.Buffer
+			if err := manageTmpl.Execute(&b, managePageData{DemoMode: demoMode}); err != nil {
+				t.Fatalf("manage render: %v", err)
+			}
+			return b.String()
+		}},
+	}
+
+	for _, s := range surfaces {
+		s := s
+		t.Run(s.name+"/demo_on", func(t *testing.T) {
+			out := s.render(t, true)
+			for _, want := range []string{
+				`<meta name="robots" content="noindex,nofollow">`,
+				`class="demo-banner"`,
+				"Public demo",
+			} {
+				if !strings.Contains(out, want) {
+					t.Errorf("%s demo-on: output missing %q", s.name, want)
+				}
+			}
+		})
+
+		t.Run(s.name+"/demo_off", func(t *testing.T) {
+			out := s.render(t, false)
+			for _, notWant := range []string{
+				`name="robots"`,
+				`class="demo-banner"`,
+			} {
+				if strings.Contains(out, notWant) {
+					t.Errorf("%s demo-off: output should not contain %q", s.name, notWant)
+				}
+			}
+		})
+	}
+}

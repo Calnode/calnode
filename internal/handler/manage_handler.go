@@ -55,6 +55,8 @@ type managePageData struct {
 	CSSVersion   string // cache-busts the /booking.css link (content hash)
 	// BookingLogicJS is the shared booking-calendar logic module, inlined ahead of the page script.
 	BookingLogicJS template.JS
+	// DemoMode shows the "public demo" banner + a noindex meta tag (see internal/demo).
+	DemoMode bool
 }
 
 // ManagePage renders the attendee manage page for a booking (reschedule / cancel).
@@ -142,6 +144,7 @@ func (h *Handler) renderManage(w http.ResponseWriter, r *http.Request, data mana
 	data.TermsURL = brand.TermsURL
 	data.CSSVersion = bookingCSSVersion
 	data.BookingLogicJS = template.JS(bookingLogicJS) // #nosec G203 -- our own bundled JS source constant, not user input
+	data.DemoMode = h.demoMode
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Content-Security-Policy", publicCSP(track))

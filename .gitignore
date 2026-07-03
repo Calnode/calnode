@@ -22,6 +22,7 @@ dist/
 
 # Data (local dev DB)
 data/
+data-demo/
 *.db
 *.db-shm
 *.db-wal

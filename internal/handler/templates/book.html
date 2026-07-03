@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <title>{{.Name}}</title>
+{{template "demoNoindex" .}}
 {{template "trackingHead" .}}
 {{.HeadHTML}}
 {{if .DataLayerEnabled}}
@@ -74,6 +75,7 @@ body {
 </style>
 </head>
 <body>
+{{template "demoBanner" .}}
 {{/* GTM <noscript> fallback intentionally omitted — it would load GTM without consent for no-JS visitors, bypassing the cookie gate. */}}
 
 {{if or .LogoURL .BusinessName}}

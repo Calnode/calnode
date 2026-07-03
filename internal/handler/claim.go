@@ -39,12 +39,17 @@ func (h *Handler) AuthStatus(w http.ResponseWriter, r *http.Request) {
 	h.db.QueryRowContext(r.Context(),
 		`SELECT COUNT(*) FROM users WHERE email_login = 1`).Scan(&emailLoginCount)
 
-	h.writeJSON(w, http.StatusOK, map[string]any{
+	resp := map[string]any{
 		"claimed":         userCount > 0,
 		"email_login":     emailLoginCount > 0,
 		"providers":       providers,
 		"smtp_configured": h.isEmailEnabled(),
-	})
+		"demo_mode":       h.demoMode,
+	}
+	if h.demoMode {
+		resp["next_reset_at"] = h.getDemoNextResetAt().UTC().Format(time.RFC3339)
+	}
+	h.writeJSON(w, http.StatusOK, resp)
 }
 
 // Claim handles POST /v1/auth/claim — creates the first admin user.

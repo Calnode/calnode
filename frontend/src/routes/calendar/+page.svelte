@@ -6,6 +6,7 @@
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
 	import { ConfirmDialog } from '$lib/components/ui/confirm-dialog';
+	import { authStatus } from '$lib/stores';
 
 	// Display names for known calendar providers.
 	const PROVIDER_LABELS: Record<string, string> = {
@@ -222,6 +223,9 @@
 		{/if}
 
 		<!-- Connect (another) calendar -->
+		{#if $authStatus.demo_mode}
+			<p class="text-sm text-muted-foreground">Calendar connect is disabled in the demo.</p>
+		{:else}
 		<div class="space-y-2">
 			<p class="text-sm font-medium">{connections.length > 0 ? 'Connect another calendar' : 'Connect a calendar'}</p>
 			{#each providers as p}
@@ -293,11 +297,12 @@
 				<p class="text-xs text-muted-foreground">Connect a personal + work calendar (or both providers) so nothing double-books.</p>
 			{/if}
 		</div>
+		{/if}
 	</div>
 {/if}
 
 <!-- Zoom — per-host meeting links (independent of the calendar) -->
-{#if zoom?.configured}
+{#if zoom?.configured && !$authStatus.demo_mode}
 	<div class="mt-10">
 		<h2 class="text-lg font-semibold tracking-tight">Zoom</h2>
 		<p class="mt-1 text-sm text-muted-foreground">

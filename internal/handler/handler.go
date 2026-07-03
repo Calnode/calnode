@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"sync"
+	"time"
 
 	"golang.org/x/oauth2"
 
@@ -20,31 +21,35 @@ import (
 )
 
 type Handler struct {
-	db            *sql.DB
-	logger        *slog.Logger
-	bookingSvc    *booking.Service
-	mailer        mailer.Mailer
-	live          *mailer.Live // non-nil in production; nil in tests using a direct stub
-	encKey        [32]byte     // AES-256 key for encrypting secrets stored in the DB
-	calMu         sync.RWMutex
-	cal           *calendar.Service
-	calNudge      chan struct{} // buffered(1): wakes the calendar reconciler after a failed inline op
-	webhookSvc    *webhook.Service
-	baseURL       string
-	publicBaseURL string
-	dataDir       string
-	authMu        sync.RWMutex
-	googleAuth    *oauth2.Config
-	microsoftAuth *oauth2.Config
-	secureCookie  bool
-	llmMu         sync.RWMutex
-	llm           *llm.Client // nil when the optional LLM layer is off/unconfigured
-	zoomMu        sync.RWMutex
-	zoom          *zoom.Client // nil when no Zoom app is configured
-	stripeMu      sync.RWMutex
-	stripe        *stripe.Client // nil when payments are unconfigured
-	livekitMu     sync.RWMutex
-	livekit       *livekit.Client // nil when LiveKit video is unconfigured
+	db                *sql.DB
+	logger            *slog.Logger
+	bookingSvc        *booking.Service
+	mailer            mailer.Mailer
+	live              *mailer.Live // non-nil in production; nil in tests using a direct stub
+	encKey            [32]byte     // AES-256 key for encrypting secrets stored in the DB
+	calMu             sync.RWMutex
+	cal               *calendar.Service
+	calNudge          chan struct{} // buffered(1): wakes the calendar reconciler after a failed inline op
+	webhookSvc        *webhook.Service
+	baseURL           string
+	publicBaseURL     string
+	dataDir           string
+	authMu            sync.RWMutex
+	googleAuth        *oauth2.Config
+	microsoftAuth     *oauth2.Config
+	secureCookie      bool
+	llmMu             sync.RWMutex
+	llm               *llm.Client // nil when the optional LLM layer is off/unconfigured
+	zoomMu            sync.RWMutex
+	zoom              *zoom.Client // nil when no Zoom app is configured
+	stripeMu          sync.RWMutex
+	stripe            *stripe.Client // nil when payments are unconfigured
+	livekitMu         sync.RWMutex
+	livekit           *livekit.Client // nil when LiveKit video is unconfigured
+	demoMode          bool            // true on the public demo instance: disables calendar/Zoom connect
+	demoResetInterval time.Duration
+	demoMu            sync.RWMutex
+	demoNextResetAt   time.Time
 }
 
 // SetLiveKit swaps the active LiveKit client (nil disables built-in video rooms).
@@ -170,6 +175,36 @@ func (h *Handler) publicURL() string {
 // SetDataDir sets the directory used for file uploads (avatars, etc.).
 func (h *Handler) SetDataDir(dir string) {
 	h.dataDir = dir
+}
+
+// SetDemoMode marks this instance as the public, self-resetting demo, which
+// disables calendar/Zoom connect and is surfaced to the frontend via
+// GET /v1/auth/status. Never set this on a real deployment.
+func (h *Handler) SetDemoMode(v bool) {
+	h.demoMode = v
+}
+
+// SetDemoResetInterval records how often the demo wipes and re-seeds, purely
+// so DemoReset (an on-demand reset) can recompute the same "next reset at"
+// estimate the periodic ticker uses.
+func (h *Handler) SetDemoResetInterval(d time.Duration) {
+	h.demoResetInterval = d
+}
+
+// SetDemoNextResetAt records when the next scheduled demo reset will fire,
+// surfaced to the frontend via GET /v1/auth/status for a countdown.
+func (h *Handler) SetDemoNextResetAt(t time.Time) {
+	h.demoMu.Lock()
+	h.demoNextResetAt = t
+	h.demoMu.Unlock()
+}
+
+// getDemoNextResetAt returns the next scheduled demo reset time (zero value
+// when not in demo mode).
+func (h *Handler) getDemoNextResetAt() time.Time {
+	h.demoMu.RLock()
+	defer h.demoMu.RUnlock()
+	return h.demoNextResetAt
 }
 
 // SetCalendar configures the multi-provider calendar service.

@@ -102,6 +102,10 @@
   <a href="https://calnode.com" target="_blank" rel="noopener noreferrer">Calnode</a>
 </footer>{{end}}
 
+{{define "demoNoindex"}}{{if .DemoMode}}<meta name="robots" content="noindex,nofollow">{{end}}{{end}}
+
+{{define "demoBanner"}}{{if .DemoMode}}<div class="demo-banner"><strong>Public demo</strong> — data here is visible to everyone and resets automatically. Don't enter anything private. <a href="https://github.com/Calnode/calnode" target="_blank" rel="noopener noreferrer">View source</a></div>{{end}}{{end}}
+
 {{/* Month nav + the day grid. The grid (#cal) is empty here and filled by
      booking-logic.js. Each page wraps this in its own <section> (book shows it
      inline + a timezone picker; manage starts it hidden + adds a Back button). */}}

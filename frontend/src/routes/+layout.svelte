@@ -4,11 +4,12 @@
 	import { base } from '$app/paths';
 	import '../app.css';
 	import { api, type User } from '$lib/api';
-	import { currentUser } from '$lib/stores';
+	import { currentUser, authStatus, type AuthStatus } from '$lib/stores';
 	import { prefs, prefsFromUser } from '$lib/prefs';
 	import { Toaster } from '$lib/components/ui/sonner';
 	import { buttonVariants } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
+	import DemoBanner from '$lib/components/demo-banner.svelte';
 	import type { Snippet } from 'svelte';
 
 	let { children }: { children: Snippet } = $props();
@@ -115,6 +116,11 @@
 			window.location.href = '/admin/login';
 			return;
 		}
+		try {
+			authStatus.set(await api.get<AuthStatus>('/v1/auth/status'));
+		} catch {
+			// Non-critical — the demo banner and calendar/Zoom hiding just won't show.
+		}
 		checking = false;
 	});
 
@@ -142,7 +148,11 @@
 		Loading…
 	</div>
 {:else}
-	<div class="flex h-full">
+	<div class="flex h-full flex-col">
+	{#if $authStatus.demo_mode}
+		<DemoBanner />
+	{/if}
+	<div class="flex flex-1 overflow-hidden">
 		<!-- Sidebar -->
 		<aside class="flex w-56 shrink-0 flex-col border-r border-sidebar-border bg-sidebar">
 			<!-- User section -->
@@ -167,7 +177,7 @@
 			<!-- Nav -->
 			<nav class="flex-1 space-y-0.5 p-2">
 				{#each navItems as item}
-					{#if !item.adminOnly || $currentUser?.is_admin}
+					{#if (!item.adminOnly || $currentUser?.is_admin) && !($authStatus.demo_mode && item.label === 'Calendar')}
 						{@const active = item.exact
 							? $page.url.pathname === item.href || $page.url.pathname === base
 							: $page.url.pathname.startsWith(item.href)}
@@ -216,6 +226,7 @@
 				{@render children()}
 			</div>
 		</main>
+	</div>
 	</div>
 
 	<Dialog.Root bind:open={reportOpen}>

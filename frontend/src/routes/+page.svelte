@@ -2,6 +2,7 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { base } from '$app/paths';
 	import { api, type CalendarStatus, type AvailabilityRule, type EventType } from '$lib/api';
+	import { authStatus } from '$lib/stores';
 
 	let calendarConnected = $state(false);
 	let calendarConfigured = $state(true);
@@ -37,7 +38,11 @@
 	});
 
 	const calendarDone = $derived(calendarConnected);
-	const allDone = $derived((!calendarConfigured || calendarDone) && hasAvailability && hasEventType);
+	// Calendar connect is disabled in the demo (see calendar.go's demoMode guard), so the
+	// checklist treats it the same as "not configured" — required, forever-incomplete, and
+	// pointing at a dead-end connect flow otherwise.
+	const calendarRequired = $derived(calendarConfigured && !$authStatus.demo_mode);
+	const allDone = $derived((!calendarRequired || calendarDone) && hasAvailability && hasEventType);
 	const bookingUrl = $derived(firstSlug && origin ? `${origin}/book/${firstSlug}` : '');
 
 	async function copyLink() {
@@ -94,7 +99,8 @@
 
 	<!-- Checklist -->
 	<div class="rounded-lg border bg-card divide-y">
-		<!-- Calendar -->
+		<!-- Calendar (hidden in the demo — connect is disabled there) -->
+		{#if !$authStatus.demo_mode}
 		<a
 			href="{base}/{calendarConfigured ? 'calendar' : 'settings/google'}"
 			class="flex items-start gap-4 px-5 py-4 transition-colors hover:bg-muted/40 group"
@@ -119,6 +125,7 @@
 				<polyline points="9 18 15 12 9 6"/>
 			</svg>
 		</a>
+		{/if}
 
 		<!-- Availability -->
 		<a

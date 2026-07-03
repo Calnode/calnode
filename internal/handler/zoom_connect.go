@@ -5,6 +5,10 @@ import "net/http"
 // ConnectZoom handles GET /v1/zoom/connect (auth required). Redirects the host to Zoom's
 // OAuth consent page so they can connect their own Zoom account.
 func (h *Handler) ConnectZoom(w http.ResponseWriter, r *http.Request) {
+	if h.demoMode {
+		h.writeError(w, http.StatusServiceUnavailable, "not available in the demo")
+		return
+	}
 	zc := h.getZoom()
 	if zc == nil {
 		h.writeError(w, http.StatusNotImplemented, "Zoom integration not configured")

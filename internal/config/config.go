@@ -5,6 +5,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type Config struct {
@@ -50,6 +51,16 @@ type Config struct {
 	// (`*`). CORS only constrains browsers; it is not an access-control boundary —
 	// the public endpoints are rate-limited regardless. Comma-separated.
 	EmbedAllowedOrigins []string
+
+	// DemoMode turns this instance into a public, self-resetting demo: seeds sample
+	// data on every boot (there's no persistent volume, so every boot is a fresh DB),
+	// disables calendar/Zoom connect, serves a disallow-all robots.txt, and exposes
+	// demo_mode/next_reset_at via the public auth-status endpoint so the frontend can
+	// show the reset banner. Never set this on a real deployment.
+	DemoMode bool
+	// DemoResetInterval is how often DemoMode wipes and re-seeds the DB. Configurable
+	// (not hardcoded to 30m) so local verification doesn't require waiting half an hour.
+	DemoResetInterval time.Duration
 }
 
 func Load() *Config {
@@ -87,6 +98,8 @@ func Load() *Config {
 	cfg.PublicBaseURL = getEnv("PUBLIC_BASE_URL", cfg.BaseURL)
 	cfg.LogLevel = parseLogLevel(getEnv("LOG_LEVEL", "info"))
 	cfg.CookieSecure = getBool("COOKIE_SECURE", strings.HasPrefix(cfg.BaseURL, "https://"))
+	cfg.DemoMode = getBool("DEMO_MODE", false)
+	cfg.DemoResetInterval = getDuration("DEMO_RESET_INTERVAL", 30*time.Minute)
 
 	return cfg
 }
@@ -137,4 +150,16 @@ func getBool(key string, def bool) bool {
 		return def
 	}
 	return b
+}
+
+func getDuration(key string, def time.Duration) time.Duration {
+	v := os.Getenv(key)
+	if v == "" {
+		return def
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil {
+		return def
+	}
+	return d
 }
