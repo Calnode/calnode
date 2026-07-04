@@ -201,6 +201,8 @@ unverified backup isn't a backup.
 ## 7. Built-in video & recording (LiveKit)
 
 Optional — only if you want Calnode-hosted in-browser meetings as a booking location.
+Full setup guide, including recording consent, the AI notetaker, and host controls:
+[docs/VIDEO.md](docs/VIDEO.md).
 
 - **Credentials live in the app, not env vars.** Create a project at
   [cloud.livekit.io](https://cloud.livekit.io) (or self-host LiveKit), then enter the
