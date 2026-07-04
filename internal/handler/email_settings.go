@@ -94,6 +94,10 @@ func (h *Handler) PatchEmailSettings(w http.ResponseWriter, r *http.Request) {
 	if _, ok := h.requireAdmin(w, r); !ok {
 		return
 	}
+	if h.demoMode {
+		h.writeError(w, http.StatusServiceUnavailable, "not available in the demo")
+		return
+	}
 
 	r.Body = http.MaxBytesReader(w, r.Body, 8<<10)
 	var req struct {
@@ -205,6 +209,10 @@ func (h *Handler) PatchEmailSettings(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) TestEmailConnection(w http.ResponseWriter, r *http.Request) {
 	user, ok := h.requireAdmin(w, r)
 	if !ok {
+		return
+	}
+	if h.demoMode {
+		h.writeError(w, http.StatusServiceUnavailable, "not available in the demo")
 		return
 	}
 

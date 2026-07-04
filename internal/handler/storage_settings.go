@@ -37,6 +37,10 @@ func (h *Handler) PatchStorageSettings(w http.ResponseWriter, r *http.Request) {
 	if _, ok := h.requireAdmin(w, r); !ok {
 		return
 	}
+	if h.demoMode {
+		h.writeError(w, http.StatusServiceUnavailable, "not available in the demo")
+		return
+	}
 	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
 	var req struct {
 		RecordingsEnabled bool `json:"recordings_enabled"`
