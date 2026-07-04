@@ -10,6 +10,7 @@
 		email_login: boolean;
 		providers: string[];
 		smtp_configured: boolean;
+		demo_mode: boolean;
 	};
 
 	let status = $state<AuthStatus | null>(null);
@@ -42,6 +43,10 @@
 			status = await res.json();
 			if (!status?.claimed) {
 				window.location.href = '/admin/claim';
+				return;
+			}
+			if (status?.demo_mode) {
+				window.location.href = '/v1/demo/enter';
 			}
 		}
 	});
@@ -124,8 +129,10 @@
 			<div class="mb-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{loginError}</div>
 		{/if}
 
-		{#if status === null}
-			<div class="text-center text-sm text-muted-foreground">Loading…</div>
+		{#if status === null || status.demo_mode}
+			<div class="text-center text-sm text-muted-foreground">
+				{status?.demo_mode ? 'Entering demo…' : 'Loading…'}
+			</div>
 		{:else}
 			{#if showGoogle}
 				<Button variant="outline" class="h-11 w-full" onclick={() => window.location.href = '/v1/auth/login'}>
