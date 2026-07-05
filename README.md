@@ -7,8 +7,8 @@ embedded **SQLite** database — no Redis, no Postgres, no separate API server, 
 multi-gigabyte image. It's API-first, webhook-native, and built for a world where
 agents do the booking. Self-host the whole thing on a $5 box; nothing is paywalled.
 
-> Our production instance bills **~$0.09/month** of compute. It's a single static
-> binary serving a SQLite file — it costs almost nothing to run.
+> Calnode runs for pennies on a small VPS — it's a single static binary serving
+> a SQLite file, so there's almost nothing to pay for.
 
 `Apache-2.0` · `Go 1.26` · `single static binary` · `SQLite + Litestream`
 
