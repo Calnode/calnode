@@ -2,8 +2,10 @@
 
 Calnode is a **single Go binary** that embeds the admin SPA and serves the public
 booking pages, with **SQLite** on a persistent volume. No separate database,
-cache, or web server. The official image is built from the repo `Dockerfile`
-(multi-stage: build the SvelteKit admin → compile Go → ~small Alpine runtime).
+cache, or web server. The official image, `ghcr.io/calnode/calnode:latest`
+(amd64 + arm64), is built by CI from the repo `Dockerfile` on every push to
+`main` (multi-stage: build the SvelteKit admin → compile Go → small Alpine
+runtime) — or build it yourself with `docker build -t calnode .`.
 
 This guide covers a generic Docker deploy and a step-by-step **Railway** deploy
 (the current reference host).
@@ -41,8 +43,11 @@ docker run -d -p 3000:3000 \
   -e CALNODE_RECOVERY_SECRET="$(openssl rand -hex 32)" \
   -e DATABASE_URL=sqlite:///data/calnode.db \
   -v calnode-data:/data \
-  <your-image>
+  ghcr.io/calnode/calnode:latest
 ```
+
+(Or swap in your own build: `docker build -t calnode .` from the repo root, then
+use `calnode` in place of the image name above.)
 
 Put a TLS-terminating reverse proxy in front (Caddy/nginx/Traefik). **The proxy
 must forward the original `Host` header** — Calnode's CSRF check compares

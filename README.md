@@ -129,7 +129,7 @@ docker run -d -p 3000:3000 \
   -e CALNODE_RECOVERY_SECRET="$(openssl rand -hex 32)" \
   -e DATABASE_URL=sqlite:///data/calnode.db \
   -v calnode-data:/data \
-  <your-image>
+  ghcr.io/calnode/calnode:latest
 ```
 
 Open `/` → it redirects to `/admin/` and walks you through first-run setup (create
