@@ -711,7 +711,7 @@ func (h *Handler) DeleteEventType(w http.ResponseWriter, r *http.Request) {
 		`DELETE FROM event_types WHERE slug = ? AND user_id = ?`, slug, user.ID)
 	if err != nil {
 		if strings.Contains(err.Error(), "FOREIGN KEY constraint failed") {
-			h.writeError(w, http.StatusConflict, "event type has existing bookings")
+			h.writeError(w, http.StatusConflict, "this event type has bookings in its history (including cancelled ones) and can't be deleted — deactivate it instead")
 			return
 		}
 		h.logger.ErrorContext(r.Context(), "delete event type", "error", err)
