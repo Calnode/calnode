@@ -77,10 +77,36 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Uses the preinstalled gh CLI + GITHUB_TOKEN (no third-party action, to keep
-      # the supply-chain surface small). --generate-notes builds notes from the
-      # commits/PRs since the previous tag.
+      # Pull the matching version's section out of CHANGELOG.md for the release body,
+      # so the GitHub Release and the CHANGELOG stay identical. Index-based (not a `\[`
+      # regex) so it's portable across awk flavours. Falls back to GitHub's
+      # auto-generated notes if there's no CHANGELOG entry for the tag.
+      - name: Extract release notes from CHANGELOG
+        id: notes
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          awk -v tag="## [${version}]" '
+            index($0, tag)==1 {cap=1; next}
+            index($0, "## [")==1 && cap==1 {cap=0}
+            substr($0,1,1)=="[" && cap==1 {exit}
+            cap {print}
+          ' CHANGELOG.md > release-notes.md
+          if [ -s release-notes.md ]; then
+            echo "have_notes=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "have_notes=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Preinstalled gh CLI + GITHUB_TOKEN (no third-party action — keeps the
+      # supply-chain surface small).
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release create "${GITHUB_REF_NAME}" --title "${GITHUB_REF_NAME}" --generate-notes --verify-tag
+        run: |
+          if [ "${{ steps.notes.outputs.have_notes }}" = "true" ]; then
+            gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" \
+              --notes-file release-notes.md --verify-tag
+          else
+            gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" \
+              --generate-notes --verify-tag
+          fi
