@@ -17,6 +17,23 @@ agents do the booking. Self-host the whole thing on a $5 box; nothing is paywall
 
 ---
 
+## Quick start
+
+Kick the tires — one command, no config:
+
+```bash
+docker run -p 3000:3000 -v ./data:/data ghcr.io/calnode/calnode:latest
+# → open http://localhost:3000
+```
+
+The whole app — booking pages, admin UI, SQLite — in one container, with data in
+`./data`. With no encryption key set it runs on an ephemeral one (fine for a look;
+stored credentials won't survive a restart). **Deploying for real** — HTTPS, a
+persistent encryption key, backups — see **[Deploy for real](#deploy-for-real)** below,
+or the full **[DEPLOY.md](DEPLOY.md)**.
+
+---
+
 ## Why Calnode
 
 - **One binary, one file.** Pure-Go SQLite (no CGO) compiles to a fully static
@@ -128,7 +145,7 @@ bookings they host. (The stdio subcommand is the local operator → full access.
 
 ---
 
-## Quick start
+## Deploy for real
 
 ```bash
 docker run -d -p 3000:3000 \
