@@ -2,8 +2,9 @@
 
 **A lean, self-hostable scheduling engine that lives in your AI stack.**
 
-Calnode is a Calendly-style booking app shipped as a **single Go binary** with an
-embedded **SQLite** database — no Redis, no Postgres, no separate API server, no
+Calnode is a Calendly-style booking app — with **first-party video meetings,
+recording, and AI notetaking** built in — shipped as a **single Go binary** with an
+embedded **SQLite** database: no Redis, no Postgres, no separate API server, no
 multi-gigabyte image. It's API-first, webhook-native, and built for a world where
 agents do the booking. Self-host the whole thing on a $5 box; nothing is paywalled.
 
@@ -19,7 +20,13 @@ agents do the booking. Self-host the whole thing on a $5 box; nothing is paywall
 ## Why Calnode
 
 - **One binary, one file.** Pure-Go SQLite (no CGO) compiles to a fully static
-  binary. `docker run` it, or drop it on a VPS. No external services to orchestrate.
+  binary. `docker run` it, or drop it on a VPS. No external services to orchestrate
+  (built-in video, if you turn it on, is the one add-on — it needs a LiveKit server).
+- **Meetings built in.** Optional first-party video rooms (LiveKit) as a booking
+  location — guests join in-browser, no app or account. Recording lands in your own
+  Litestream backup bucket (no extra storage to provision); an AI notetaker turns each
+  call into a transcript + notes, exposed as MCP tools and webhooks. The one add-on:
+  video needs a LiveKit endpoint (Cloud or self-hosted).
 - **API-first, agent-ready.** A full REST API (88 endpoints) with API keys and
   **HMAC-signed webhooks configured *via API*** — script every booking action from
   Claude, ChatGPT, n8n, or curl. Plus a native **MCP server** built into the binary
@@ -47,6 +54,7 @@ The default open-source scheduler is a SaaS monolith. Calnode is the opposite.
 | **Database** | Postgres (+ Redis) | SQLite (WAL) + Litestream point-in-time backup |
 | **Webhooks** | UI-only | **API-first**, HMAC-signed, per-webhook payloads |
 | **AI / agents** | None | REST API + webhooks **+ a native MCP server** (stdio + HTTP) |
+| **Video & recording** | Third-party links (Zoom / Meet) | **Built-in in-browser rooms + recording + AI notes** (self-hosted LiveKit) |
 | **Deploy** | Orchestrate several services | `docker run` one container |
 | **Isolation** | Shared multi-tenant DB (`org_id` everywhere) | Instance-per-tenant — isolation is the default |
 | **Licence** | AGPL-3.0 | **Apache-2.0**, nothing paywalled for self-host |
@@ -132,6 +140,10 @@ docker run -d -p 3000:3000 \
   ghcr.io/calnode/calnode:latest
 ```
 
+**Pinning a version.** `:latest` follows the newest tagged release; `:edge` tracks
+`main`. For reproducible deploys, pin a release — `:0.1` (tracks patches within the
+minor) or an exact `:0.1.0`. See [releases](https://github.com/Calnode/calnode/releases).
+
 Open `/` → it redirects to `/admin/` and walks you through first-run setup (create
 the owner account, connect a calendar, add an event type). Put a TLS-terminating
 proxy in front that forwards the original `Host` header.
@@ -159,7 +171,8 @@ domains, Resend email, Google & Microsoft OAuth, Litestream backups, troubleshoo
 - **Conversational booking** ("Book by chat" on the booking page + embed widget; BYO-LLM, off by default)
 - **Paid bookings** — Stripe Checkout (pay-then-book: the slot is held, confirmed on the payment webhook, auto-refunded on cancel)
 - **Zoom** — per-host OAuth; a Zoom-located booking mints a meeting under the assigned host's account
-- **Built-in video meetings (LiveKit)** — in-browser rooms as a booking location (no app or account for guests); host controls (end-for-all, hand-off **and reclaim** host, attendee screen-share toggle), **meeting recording** straight to your own backup bucket with in-app downloads, **recording consent** (notice + consent-or-leave), and an **AI notetaker** (Deepgram transcript → LLM notes). Headless-consumable: MCP `get_meeting_notes`/`get_transcript` + `recording.completed`/`transcript.ready`/`notes.ready` webhooks. BYO LiveKit endpoint (Cloud or self-hosted); configured in Settings → Video — see [docs/VIDEO.md](docs/VIDEO.md)
+- **Built-in video meetings (LiveKit)** — in-browser rooms as a booking location (no app or account for guests); host controls (end-for-all, hand-off **and reclaim** host, attendee screen-share toggle), **meeting recording** straight to your own **Litestream backup bucket** (the same one
+  you already use for DB backup — no extra storage to provision) with in-app downloads, **recording consent** (notice + consent-or-leave), and an **AI notetaker** (Deepgram transcript → LLM notes). Headless-consumable: MCP `get_meeting_notes`/`get_transcript` + `recording.completed`/`transcript.ready`/`notes.ready` webhooks. BYO LiveKit endpoint (Cloud or self-hosted); configured in Settings → Video — see [docs/VIDEO.md](docs/VIDEO.md)
 - Embeddable booking widget (Shadow-DOM web component; inline + popup)
 - Members, roles (owner/admin/member), email-token invitations
 - `Idempotency-Key` on booking creation; transactional double-booking guard
@@ -190,7 +203,8 @@ A few load-bearing decisions (full detail in the the design docs):
 - **Time = UTC instant + IANA timezone name**, never a fixed offset — availability
   resolves to UTC per-date so DST shifts never corrupt a slot.
 - **Single process, no external services.** Durability comes from Litestream, not a
-  second datastore.
+  second datastore. (The one exception is optional built-in video: it talks to a
+  LiveKit server — Cloud or self-hosted — only when you enable video.)
 - **Instance-per-tenant.** Each install is one workspace; isolation is a feature,
   and the self-host and cloud codepaths are identical.
 
