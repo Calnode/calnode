@@ -1,12 +1,16 @@
 name: Docker publish
 
-# Builds the multi-arch (amd64 + arm64) image from the repo Dockerfile. On PRs it
-# only builds (catches cross-arch build breaks early, e.g. an amd64-only step
-# slipping back in). On push to main it also pushes to GHCR, tagged `latest` and
-# the short commit SHA.
+# Builds the multi-arch (amd64 + arm64) image from the repo Dockerfile.
+#   * PR                → build only (catches cross-arch build breaks early, e.g. an
+#                         amd64-only step slipping back in). Nothing is pushed.
+#   * push to main      → push `:edge` + `:sha-<short>` (bleeding edge).
+#   * push a `vX.Y.Z` tag → push `:X.Y.Z`, `:X.Y`, and `:latest`, then cut a GitHub
+#                         Release. So `:latest` always tracks the newest *release*,
+#                         never raw main.
 on:
   push:
     branches: [main]
+    tags: ['v*.*.*']
   pull_request:
 
 concurrency:
@@ -40,12 +44,43 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build (and push on main)
+      # Computes the tag set from the git ref:
+      #   main  → edge, sha-<short>
+      #   vX.Y.Z tag → X.Y.Z, X.Y, and latest (latest=auto only fires on a semver tag)
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=edge,branch=main
+            type=sha,enable={{is_default_branch}}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+
+      - name: Build (push on main and on tags)
         uses: docker/build-push-action@v6
         with:
           context: .
           platforms: linux/amd64,linux/arm64
           push: ${{ github.event_name != 'pull_request' }}
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+  release:
+    # Only on a version tag, and only once the image built + pushed.
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      # Uses the preinstalled gh CLI + GITHUB_TOKEN (no third-party action, to keep
+      # the supply-chain surface small). --generate-notes builds notes from the
+      # commits/PRs since the previous tag.
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release create "${GITHUB_REF_NAME}" --title "${GITHUB_REF_NAME}" --generate-notes --verify-tag
