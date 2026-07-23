@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/calnode/calnode/internal/uid"
@@ -135,6 +136,7 @@ func (h *Handler) PatchMe(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
 
 	var req struct {
+		Name                 *string `json:"name"`
 		Timezone             *string `json:"timezone"`
 		TimeFormat           *string `json:"time_format"`
 		WeekStart            *int    `json:"week_start"`
@@ -153,6 +155,7 @@ func (h *Handler) PatchMe(w http.ResponseWriter, r *http.Request) {
 	}
 
 	current := struct {
+		Name                 string
 		Timezone             string
 		TimeFormat           string
 		WeekStart            int
@@ -165,11 +168,23 @@ func (h *Handler) PatchMe(w http.ResponseWriter, r *http.Request) {
 		NotifyHostCancel     bool
 		NotifyHostReschedule bool
 	}{
-		user.IANATZ, user.TimeFormat, user.WeekStart, user.DateFormat,
+		user.Name, user.IANATZ, user.TimeFormat, user.WeekStart, user.DateFormat,
 		user.NotifyConfirmation, user.NotifyCancellation, user.NotifyReschedule, user.NotifyReminder,
 		user.NotifyHostBooking, user.NotifyHostCancel, user.NotifyHostReschedule,
 	}
 
+	if req.Name != nil {
+		name := strings.TrimSpace(*req.Name)
+		if name == "" {
+			h.writeError(w, http.StatusBadRequest, "name cannot be empty")
+			return
+		}
+		if len(name) > 200 {
+			h.writeError(w, http.StatusBadRequest, "name is too long (max 200 characters)")
+			return
+		}
+		current.Name = name
+	}
 	if req.Timezone != nil {
 		if _, err := time.LoadLocation(*req.Timezone); err != nil {
 			h.writeError(w, http.StatusBadRequest, "invalid timezone: "+*req.Timezone)
@@ -231,11 +246,11 @@ func (h *Handler) PatchMe(w http.ResponseWriter, r *http.Request) {
 
 	if _, err := h.db.ExecContext(r.Context(), `
 		UPDATE users SET
-			iana_timezone = ?, time_format = ?, week_start = ?, date_format = ?,
+			name = ?, iana_timezone = ?, time_format = ?, week_start = ?, date_format = ?,
 			notify_confirmation = ?, notify_cancellation = ?, notify_reschedule = ?, notify_reminder = ?,
 			notify_host_booking = ?, notify_host_cancel = ?, notify_host_reschedule = ?
 		WHERE id = ?`,
-		current.Timezone, current.TimeFormat, current.WeekStart, current.DateFormat,
+		current.Name, current.Timezone, current.TimeFormat, current.WeekStart, current.DateFormat,
 		boolToInt(current.NotifyConfirmation), boolToInt(current.NotifyCancellation),
 		boolToInt(current.NotifyReschedule), boolToInt(current.NotifyReminder),
 		boolToInt(current.NotifyHostBooking), boolToInt(current.NotifyHostCancel),
@@ -249,7 +264,7 @@ func (h *Handler) PatchMe(w http.ResponseWriter, r *http.Request) {
 	out := map[string]any{
 		"id":          user.ID,
 		"email":       user.Email,
-		"name":        user.Name,
+		"name":        current.Name,
 		"timezone":    current.Timezone,
 		"time_format": current.TimeFormat,
 		"week_start":  current.WeekStart,

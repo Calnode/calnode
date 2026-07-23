@@ -22,6 +22,7 @@
 	let avatarUrl = $state('');
 	let fileInput = $state<HTMLInputElement | undefined>(undefined);
 
+	let name = $state('');
 	let timezone = $state('UTC');
 	let time_format = $state<'12h' | '24h'>('12h');
 	let week_start = $state(1);
@@ -72,6 +73,7 @@
 
 	onMount(() => loadingFlag.run(async () => {
 		user = await api.get<User>('/v1/users/me');
+		name = user.name ?? '';
 		timezone = user.timezone;
 		time_format = user.time_format ?? '12h';
 		week_start = user.week_start ?? 1;
@@ -120,7 +122,7 @@
 	async function save() {
 		await savingFlag.run(async () => {
 			const updated = await api.patch<User>('/v1/users/me', {
-				timezone, time_format, week_start, date_format,
+				name, timezone, time_format, week_start, date_format,
 			});
 			currentUser.set(updated);
 			prefs.set(prefsFromUser(updated));
@@ -176,8 +178,9 @@
 				</div>
 
 				<div class="space-y-1.5">
-					<Label class="text-muted-foreground">Name</Label>
-					<Input type="text" disabled value={user?.name ?? ''} class="opacity-60" />
+					<Label for="name">Name</Label>
+					<Input id="name" type="text" bind:value={name} placeholder="Your name" />
+					<p class="text-xs text-muted-foreground">Your personal name, shown as the meeting host. Your business brand (logo, business name) is set separately in Settings → Branding.</p>
 				</div>
 				<div class="space-y-1.5">
 					<Label class="text-muted-foreground">Email</Label>
