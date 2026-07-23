@@ -524,7 +524,7 @@
 								<td class="px-4 py-3 font-mono text-xs text-muted-foreground">
 									{ov.is_available && ov.start_time && ov.end_time
 										? `${fmtTime(ov.start_time)} – ${fmtTime(ov.end_time)}`
-										: '—'}
+										: '1 day'}
 								</td>
 								<td class="px-4 py-3">
 									<Tooltip.Provider>
