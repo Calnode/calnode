@@ -433,7 +433,7 @@
 					<tr class="border-b">
 						<th class="px-4 pb-3 pt-3 text-left text-xs font-medium text-muted-foreground">Date</th>
 						<th class="px-4 pb-3 pt-3 text-left text-xs font-medium text-muted-foreground">Type</th>
-						<th class="px-4 pb-3 pt-3 text-left text-xs font-medium text-muted-foreground">Hours</th>
+						<th class="px-4 pb-3 pt-3 text-left text-xs font-medium text-muted-foreground">Duration</th>
 						<th class="px-4 pb-3 pt-3"></th>
 					</tr>
 				</thead>
