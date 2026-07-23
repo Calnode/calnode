@@ -135,12 +135,8 @@
 	let addingOv = $state(false);
 	let ovAddError = $state('');
 
-	let editingOvId = $state<string | null>(null);
 	let deleteOvOpen = $state(false);
 	let deleteOvId = $state('');
-	let editOvForm = $state({ reason: 'day_off' as OverrideReason, start_time: '09:00', end_time: '17:00' });
-	let savingOv = $state(false);
-	let ovSaveError = $state('');
 
 	let deleteGroupId = $state('');
 	let deleteGroupOpen = $state(false);
@@ -189,39 +185,8 @@
 		}
 	}
 
-	function startEditOv(ov: AvailabilityOverride) {
-		editingOvId = ov.id;
-		editOvForm = {
-			reason: (ov.reason ?? 'day_off') as OverrideReason,
-			start_time: ov.start_time ?? '09:00',
-			end_time: ov.end_time ?? '17:00'
-		};
-		ovSaveError = '';
-	}
 
-	function cancelEditOv() { editingOvId = null; ovSaveError = ''; }
 
-	async function saveOv(id: string) {
-		ovSaveError = '';
-		if (editOvForm.reason === 'custom_hours' && editOvForm.start_time >= editOvForm.end_time) {
-			ovSaveError = 'End time must be after start time.'; return;
-		}
-		savingOv = true;
-		try {
-			await api.patch(`/v1/availability-overrides/${id}`, {
-				reason: editOvForm.reason,
-				...(editOvForm.reason === 'custom_hours'
-					? { start_time: editOvForm.start_time, end_time: editOvForm.end_time }
-					: {})
-			});
-			editingOvId = null;
-			await loadOverrides();
-		} catch (e: any) {
-			ovSaveError = e.message;
-		} finally {
-			savingOv = false;
-		}
-	}
 
 	async function addOverride() {
 		ovAddError = '';
@@ -449,7 +414,7 @@
 										<Badge variant="secondary">Day off</Badge>
 									{/if}
 								</td>
-								<td class="px-4 py-3 text-xs text-muted-foreground">{entry.days} days</td>
+								<td class="px-4 py-3 text-muted-foreground">{entry.days} days</td>
 								<td class="px-4 py-3">
 									<Tooltip.Provider>
 										<div class="flex items-center justify-end gap-1">
@@ -465,51 +430,6 @@
 							</tr>
 						{:else}
 							{@const ov = entry.ov}
-							{#if editingOvId === ov.id}
-							<tr class="bg-muted/20">
-								<td class="px-4 py-3 font-medium">{fmtDate(ov.date, $prefs)}</td>
-								<td class="px-4 py-3">
-									<Select.Root type="single" value={editOvForm.reason} onValueChange={(v) => { if (v) editOvForm.reason = v as OverrideReason; }}>
-										<Select.Trigger class="w-fit">{REASON_LABELS[editOvForm.reason]}</Select.Trigger>
-										<Select.Content>
-											{#each REASON_OPTIONS as r}
-												<Select.Item value={r.value} label={r.label}>{r.label}</Select.Item>
-											{/each}
-										</Select.Content>
-									</Select.Root>
-								</td>
-								<td class="px-4 py-3">
-									{#if editOvForm.reason === 'custom_hours'}
-										<div class="flex items-center gap-2">
-											<Select.Root type="single" bind:value={editOvForm.start_time}>
-												<Select.Trigger class="w-fit">{timeLabel(editOvForm.start_time)}</Select.Trigger>
-												<Select.Content>
-													{#each timeOptions as t}<Select.Item value={t.value} label={t.label}>{t.label}</Select.Item>{/each}
-												</Select.Content>
-											</Select.Root>
-											<span class="text-muted-foreground">–</span>
-											<Select.Root type="single" bind:value={editOvForm.end_time}>
-												<Select.Trigger class="w-fit">{timeLabel(editOvForm.end_time)}</Select.Trigger>
-												<Select.Content>
-													{#each timeOptions as t}<Select.Item value={t.value} label={t.label}>{t.label}</Select.Item>{/each}
-												</Select.Content>
-											</Select.Root>
-										</div>
-									{:else}
-										<span class="text-muted-foreground">—</span>
-									{/if}
-									{#if ovSaveError}<p class="mt-1 text-xs text-destructive">{ovSaveError}</p>{/if}
-								</td>
-								<td class="px-4 py-3">
-									<div class="flex items-center justify-end gap-2">
-										<Button size="sm" onclick={() => saveOv(ov.id)} disabled={savingOv}>
-											{savingOv ? 'Saving…' : 'Save'}
-										</Button>
-										<Button size="sm" variant="outline" onclick={cancelEditOv}>Cancel</Button>
-									</div>
-								</td>
-							</tr>
-						{:else}
 							<tr class="transition-colors hover:bg-muted/30">
 								<td class="px-4 py-3 font-medium">{fmtDate(ov.date, $prefs)}</td>
 								<td class="px-4 py-3">
@@ -521,7 +441,7 @@
 										<Badge variant="secondary">Day off</Badge>
 									{/if}
 								</td>
-								<td class="px-4 py-3 font-mono text-xs text-muted-foreground">
+								<td class="px-4 py-3 text-muted-foreground">
 									{ov.is_available && ov.start_time && ov.end_time
 										? `${fmtTime(ov.start_time)} – ${fmtTime(ov.end_time)}`
 										: '1 day'}
@@ -529,15 +449,6 @@
 								<td class="px-4 py-3">
 									<Tooltip.Provider>
 										<div class="flex items-center justify-end gap-1">
-											<Tooltip.Root>
-												<Tooltip.Trigger
-													class={buttonVariants({ variant: 'ghost', size: 'icon' })}
-													onclick={() => startEditOv(ov)}
-												>
-													<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-												</Tooltip.Trigger>
-												<Tooltip.Content>Edit</Tooltip.Content>
-											</Tooltip.Root>
 											<Tooltip.Root>
 												<Tooltip.Trigger
 													class={buttonVariants({ variant: 'ghost', size: 'icon' })}
@@ -551,7 +462,6 @@
 									</Tooltip.Provider>
 								</td>
 							</tr>
-						{/if}
 						{/if}
 					{/each}
 				</tbody>
