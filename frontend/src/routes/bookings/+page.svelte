@@ -18,6 +18,22 @@
 	const isAdmin = $derived($currentUser?.is_admin ?? false);
 	let scope = $state<'mine' | 'all'>('mine');
 
+	// Time filter. "Past" is keyed on end_at, not start_at — a meeting that has
+	// started but not finished stays under Upcoming until it actually ends.
+	let timeFilter = $state<'upcoming' | 'past'>('upcoming');
+	const isPast = (b: Booking) => new Date(b.end_at).getTime() < Date.now();
+	const visible = $derived(
+		items
+			.filter((bk) => (timeFilter === 'past' ? isPast(bk) : !isPast(bk)))
+			.sort((x, y) => {
+				const dx = new Date(x.start_at).getTime();
+				const dy = new Date(y.start_at).getTime();
+				return timeFilter === 'past' ? dy - dx : dx - dy; // past: most recent first; upcoming: soonest first
+			})
+	);
+	const upcomingCount = $derived(items.filter((b) => !isPast(b)).length);
+	const pastCount = $derived(items.length - upcomingCount);
+
 	let reschedulingId = $state<string | null>(null);
 	let reschedulingSlug = $state('');
 	let rescheduleDate = $state('');
@@ -208,6 +224,15 @@
 		<p class="mt-1 text-sm text-muted-foreground">Bookings will appear here once attendees schedule time with you.</p>
 	</div>
 {:else}
+	<div class="mb-4 inline-flex rounded-md border p-0.5 text-sm">
+		<button type="button" class="rounded px-3 py-1 transition-colors {timeFilter === 'upcoming' ? 'bg-muted font-medium' : 'text-muted-foreground hover:text-foreground'}" onclick={() => (timeFilter = 'upcoming')}>Upcoming ({upcomingCount})</button>
+		<button type="button" class="rounded px-3 py-1 transition-colors {timeFilter === 'past' ? 'bg-muted font-medium' : 'text-muted-foreground hover:text-foreground'}" onclick={() => (timeFilter = 'past')}>Past ({pastCount})</button>
+	</div>
+	{#if visible.length === 0}
+		<div class="rounded-lg border border-dashed bg-card p-12 text-center">
+			<p class="text-sm text-muted-foreground">No {timeFilter} bookings.</p>
+		</div>
+	{:else}
 	<div class="rounded-lg border bg-card overflow-hidden">
 		<table class="w-full text-sm">
 			<thead>
@@ -221,7 +246,7 @@
 				</tr>
 			</thead>
 			<tbody class="divide-y">
-				{#each items as b}
+				{#each visible as b}
 					<tr class="transition-colors hover:bg-muted/30">
 						<td class="px-4 py-3">
 							{#if b.attendees && b.attendees.length > 0}
@@ -419,6 +444,7 @@
 			</tbody>
 		</table>
 	</div>
+	{/if}
 {/if}
 
 <ConfirmDialog
