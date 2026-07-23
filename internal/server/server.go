@@ -396,6 +396,7 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	mux.HandleFunc("GET /v1/availability-overrides", h.RequireAuth(h.ListAvailabilityOverrides))
 	mux.HandleFunc("PATCH /v1/availability-overrides/{id}", h.RequireAuth(h.UpdateAvailabilityOverride))
 	mux.HandleFunc("DELETE /v1/availability-overrides/{id}", h.RequireAuth(h.DeleteAvailabilityOverride))
+	mux.HandleFunc("DELETE /v1/availability-overrides/group/{groupId}", h.RequireAuth(h.DeleteAvailabilityOverrideGroup))
 
 	// Slots — public, rate-limited per IP. Browsed more than booked (so a higher cap
 	// than booking), but each call fans out Google free/busy per host, so leaving it

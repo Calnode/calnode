@@ -131,7 +131,7 @@
 		custom_hours: 'Custom hours'
 	};
 
-	let ovForm = $state({ date: '', reason: 'day_off' as OverrideReason, start_time: '09:00', end_time: '17:00' });
+	let ovForm = $state({ date: '', end_date: '', reason: 'day_off' as OverrideReason, start_time: '09:00', end_time: '17:00' });
 	let addingOv = $state(false);
 	let ovAddError = $state('');
 
@@ -141,6 +141,41 @@
 	let editOvForm = $state({ reason: 'day_off' as OverrideReason, start_time: '09:00', end_time: '17:00' });
 	let savingOv = $state(false);
 	let ovSaveError = $state('');
+
+	let deleteGroupId = $state('');
+	let deleteGroupOpen = $state(false);
+
+	// Collapse per-date rows that share a group_id (a multi-day span) into one entry.
+	type OvEntry =
+		| { kind: 'single'; ov: AvailabilityOverride }
+		| { kind: 'span'; group_id: string; reason: OverrideReason; start: string; end: string; days: number };
+	const overrideEntries = $derived.by((): OvEntry[] => {
+		const groups = new Map<string, AvailabilityOverride[]>();
+		const entries: OvEntry[] = [];
+		for (const ov of overrides) {
+			if (ov.group_id) {
+				const arr = groups.get(ov.group_id) ?? [];
+				arr.push(ov);
+				groups.set(ov.group_id, arr);
+			} else {
+				entries.push({ kind: 'single', ov });
+			}
+		}
+		for (const [gid, arr] of groups) {
+			const dates = arr.map((o) => o.date).sort();
+			entries.push({
+				kind: 'span',
+				group_id: gid,
+				reason: (arr[0].reason ?? 'out_of_office') as OverrideReason,
+				start: dates[0],
+				end: dates[dates.length - 1],
+				days: dates.length
+			});
+		}
+		return entries.sort((a, b) =>
+			(a.kind === 'single' ? a.ov.date : a.start).localeCompare(b.kind === 'single' ? b.ov.date : b.start)
+		);
+	});
 
 	async function loadOverrides() {
 		overridesError = '';
@@ -197,16 +232,21 @@
 		if (ovForm.reason === 'custom_hours' && ovForm.start_time >= ovForm.end_time) {
 			ovAddError = 'End time must be after start time.'; return;
 		}
+		if (ovForm.end_date && ovForm.end_date < ovForm.date) {
+			ovAddError = 'End date must be on or after the start date.'; return;
+		}
 		addingOv = true;
 		try {
+			const isRange = ovForm.reason !== 'custom_hours' && !!ovForm.end_date && ovForm.end_date > ovForm.date;
 			await api.post('/v1/availability-overrides', {
 				date: ovForm.date,
 				reason: ovForm.reason,
 				...(ovForm.reason === 'custom_hours'
 					? { start_time: ovForm.start_time, end_time: ovForm.end_time }
-					: {})
+					: {}),
+				...(isRange ? { end_date: ovForm.end_date } : {})
 			});
-			ovForm = { date: '', reason: 'day_off', start_time: '09:00', end_time: '17:00' };
+			ovForm = { date: '', end_date: '', reason: 'day_off', start_time: '09:00', end_time: '17:00' };
 			await loadOverrides();
 		} catch (e: any) {
 			ovAddError = e.message;
@@ -223,6 +263,20 @@
 	async function doDeleteOverride() {
 		try {
 			await api.del(`/v1/availability-overrides/${deleteOvId}`);
+			await loadOverrides();
+		} catch (e: any) {
+			overridesError = e.message;
+		}
+	}
+
+	function deleteGroup(groupId: string) {
+		deleteGroupId = groupId;
+		deleteGroupOpen = true;
+	}
+
+	async function doDeleteGroup() {
+		try {
+			await api.del(`/v1/availability-overrides/group/${deleteGroupId}`);
 			await loadOverrides();
 		} catch (e: any) {
 			overridesError = e.message;
@@ -252,6 +306,15 @@
 	confirmText="Remove"
 	destructive
 	onConfirm={doDeleteOverride}
+/>
+
+<ConfirmDialog
+	bind:open={deleteGroupOpen}
+	title="Remove this out-of-office span?"
+	description="All days in this range will become bookable again."
+	confirmText="Remove"
+	destructive
+	onConfirm={doDeleteGroup}
 />
 
 <svelte:head><title>Availability — Calnode</title></svelte:head>
@@ -375,8 +438,34 @@
 					</tr>
 				</thead>
 				<tbody class="divide-y">
-					{#each overrides as ov}
-						{#if editingOvId === ov.id}
+					{#each overrideEntries as entry (entry.kind === 'span' ? entry.group_id : entry.ov.id)}
+						{#if entry.kind === 'span'}
+							<tr class="transition-colors hover:bg-muted/30">
+								<td class="px-4 py-3 font-medium">{fmtDate(entry.start, $prefs)} – {fmtDate(entry.end, $prefs)}</td>
+								<td class="px-4 py-3">
+									{#if entry.reason === 'out_of_office'}
+										<Badge class="bg-amber-50 text-amber-700 border-amber-200">Out of office</Badge>
+									{:else}
+										<Badge variant="secondary">Day off</Badge>
+									{/if}
+								</td>
+								<td class="px-4 py-3 text-xs text-muted-foreground">{entry.days} days</td>
+								<td class="px-4 py-3">
+									<Tooltip.Provider>
+										<div class="flex items-center justify-end gap-1">
+											<Tooltip.Root>
+												<Tooltip.Trigger class={buttonVariants({ variant: 'ghost', size: 'icon' })} onclick={() => deleteGroup(entry.group_id)}>
+													<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+												</Tooltip.Trigger>
+												<Tooltip.Content>Delete span</Tooltip.Content>
+											</Tooltip.Root>
+										</div>
+									</Tooltip.Provider>
+								</td>
+							</tr>
+						{:else}
+							{@const ov = entry.ov}
+							{#if editingOvId === ov.id}
 							<tr class="bg-muted/20">
 								<td class="px-4 py-3 font-medium">{fmtDate(ov.date, $prefs)}</td>
 								<td class="px-4 py-3">
@@ -463,6 +552,7 @@
 								</td>
 							</tr>
 						{/if}
+						{/if}
 					{/each}
 				</tbody>
 			</table>
@@ -478,6 +568,12 @@
 					<label for="ov-date" class="text-sm font-medium">Date</label>
 					<DatePicker bind:value={ovForm.date} placeholder="Pick a date" />
 				</div>
+				{#if ovForm.reason !== 'custom_hours'}
+					<div class="space-y-1.5">
+						<label for="ov-end-date" class="text-sm font-medium">To <span class="font-normal text-muted-foreground">(optional)</span></label>
+						<DatePicker bind:value={ovForm.end_date} placeholder="Same day" />
+					</div>
+				{/if}
 				<div class="space-y-1.5">
 					<label for="ov-type" class="text-sm font-medium">Type</label>
 					<Select.Root type="single" value={ovForm.reason} onValueChange={(v) => { if (v) ovForm.reason = v as OverrideReason; }}>

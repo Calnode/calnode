@@ -17,6 +17,7 @@ type availOverrideJSON struct {
 	Reason      string  `json:"reason"`     // "day_off" | "out_of_office" | "custom_hours"
 	StartTime   *string `json:"start_time"` // HH:MM; only when IsAvailable
 	EndTime     *string `json:"end_time"`   // HH:MM; only when IsAvailable
+	GroupID     *string `json:"group_id,omitempty"` // set on rows from a multi-day span
 }
 
 func validOverrideReason(r string) bool {
@@ -38,6 +39,7 @@ func (h *Handler) CreateAvailabilityOverride(w http.ResponseWriter, r *http.Requ
 
 	var req struct {
 		Date      string  `json:"date"`
+		EndDate   *string `json:"end_date"` // set for a multi-day out-of-office span
 		Reason    string  `json:"reason"`
 		StartTime *string `json:"start_time"`
 		EndTime   *string `json:"end_time"`
@@ -87,6 +89,62 @@ func (h *Handler) CreateAvailabilityOverride(w http.ResponseWriter, r *http.Requ
 		req.EndTime = nil
 	}
 
+	// Date-range block: expand [date … end_date] into one blocked row per date, tied
+	// by a shared group_id so the UI shows/deletes them as a single "out of office"
+	// span. Slot generation is unchanged (it reads the per-date rows).
+	if req.EndDate != nil && *req.EndDate != "" {
+		if isCustom {
+			h.writeError(w, http.StatusBadRequest, "a date range is only for 'day_off' or 'out_of_office', not custom hours")
+			return
+		}
+		startDate, _ := time.Parse("2006-01-02", req.Date) // req.Date already validated above
+		endDate, err := time.Parse("2006-01-02", *req.EndDate)
+		if err != nil {
+			h.writeError(w, http.StatusBadRequest, "end_date must be YYYY-MM-DD")
+			return
+		}
+		if endDate.Before(startDate) {
+			h.writeError(w, http.StatusBadRequest, "end_date must be on or after date")
+			return
+		}
+		if endDate.Sub(startDate) > 366*24*time.Hour {
+			h.writeError(w, http.StatusBadRequest, "date range is too long (max 366 days)")
+			return
+		}
+		groupID := uid.New()
+		tx, err := h.db.BeginTx(r.Context(), nil)
+		if err != nil {
+			h.logger.ErrorContext(r.Context(), "override range: begin tx", "error", err)
+			h.writeError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		defer tx.Rollback() //nolint:errcheck
+		days := 0
+		for d := startDate; !d.After(endDate); d = d.AddDate(0, 0, 1) {
+			// A range block wins over any existing single-date override on that date.
+			if _, err := tx.ExecContext(r.Context(), `
+				INSERT INTO availability_overrides (id, user_id, date, is_available, reason, start_time, end_time, group_id)
+				VALUES (?, ?, ?, 0, ?, NULL, NULL, ?)
+				ON CONFLICT(user_id, date) DO UPDATE SET
+					is_available = 0, reason = excluded.reason, start_time = NULL, end_time = NULL, group_id = excluded.group_id`,
+				uid.New(), user.ID, d.Format("2006-01-02"), req.Reason, groupID); err != nil {
+				h.logger.ErrorContext(r.Context(), "override range: insert", "error", err)
+				h.writeError(w, http.StatusInternalServerError, "internal error")
+				return
+			}
+			days++
+		}
+		if err := tx.Commit(); err != nil {
+			h.logger.ErrorContext(r.Context(), "override range: commit", "error", err)
+			h.writeError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		h.writeJSON(w, http.StatusCreated, map[string]any{
+			"group_id": groupID, "reason": req.Reason, "start": req.Date, "end": *req.EndDate, "days": days,
+		})
+		return
+	}
+
 	isAvailInt := 0
 	if isCustom {
 		isAvailInt = 1
@@ -125,7 +183,7 @@ func (h *Handler) ListAvailabilityOverrides(w http.ResponseWriter, r *http.Reque
 
 	rows, err := h.db.QueryContext(r.Context(), `
 		SELECT id, date, is_available, COALESCE(reason,'day_off'),
-		       COALESCE(start_time,''), COALESCE(end_time,'')
+		       COALESCE(start_time,''), COALESCE(end_time,''), group_id
 		FROM availability_overrides
 		WHERE user_id = ?
 		ORDER BY date`, user.ID)
@@ -141,7 +199,8 @@ func (h *Handler) ListAvailabilityOverrides(w http.ResponseWriter, r *http.Reque
 		var item availOverrideJSON
 		var isAvail int
 		var startT, endT string
-		if err := rows.Scan(&item.ID, &item.Date, &isAvail, &item.Reason, &startT, &endT); err != nil {
+		var groupID sql.NullString
+		if err := rows.Scan(&item.ID, &item.Date, &isAvail, &item.Reason, &startT, &endT, &groupID); err != nil {
 			h.logger.ErrorContext(r.Context(), "scan availability override", "error", err)
 			h.writeError(w, http.StatusInternalServerError, "internal error")
 			return
@@ -150,6 +209,9 @@ func (h *Handler) ListAvailabilityOverrides(w http.ResponseWriter, r *http.Reque
 		if item.IsAvailable && startT != "" {
 			item.StartTime = &startT
 			item.EndTime = &endT
+		}
+		if groupID.Valid && groupID.String != "" {
+			item.GroupID = &groupID.String
 		}
 		items = append(items, item)
 	}
@@ -275,6 +337,27 @@ func (h *Handler) DeleteAvailabilityOverride(w http.ResponseWriter, r *http.Requ
 	n, _ := res.RowsAffected()
 	if n == 0 {
 		h.writeError(w, http.StatusNotFound, "override not found")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// DeleteAvailabilityOverrideGroup handles DELETE /v1/availability-overrides/group/{groupId}
+// — removes every per-date row of a multi-day span in one call.
+func (h *Handler) DeleteAvailabilityOverrideGroup(w http.ResponseWriter, r *http.Request) {
+	user, _ := userFromContext(r.Context())
+	groupID := r.PathValue("groupId")
+
+	res, err := h.db.ExecContext(r.Context(),
+		`DELETE FROM availability_overrides WHERE group_id = ? AND user_id = ?`, groupID, user.ID)
+	if err != nil {
+		h.logger.ErrorContext(r.Context(), "delete availability override group", "error", err)
+		h.writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		h.writeError(w, http.StatusNotFound, "no overrides found for that group")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

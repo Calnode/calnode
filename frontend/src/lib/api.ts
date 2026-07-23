@@ -270,6 +270,8 @@ export type AvailabilityOverride = {
 	reason: 'day_off' | 'out_of_office' | 'custom_hours';
 	start_time: string | null;
 	end_time: string | null;
+	/** Set on per-date rows that belong to a multi-day out-of-office span. */
+	group_id?: string;
 };
 
 async function apiFetch<T>(path: string, opts: RequestInit = {}): Promise<T> {
