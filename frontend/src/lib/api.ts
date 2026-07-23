@@ -48,6 +48,8 @@ export type EventType = {
 	reminders: number[]; // hours_before values
 	routing_mode: 'fixed' | 'round_robin' | 'collective';
 	rr_strategy: 'even' | 'soonest' | 'priority';
+	/** True when archived — hidden from the default list, is_active forced off. Reversible. */
+	archived?: boolean;
 	/** True if the current user owns this event type; false if they only host it (read-only). */
 	owned?: boolean;
 	/** Owner identity, returned only when the viewer is a read-only host. */

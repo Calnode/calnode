@@ -47,6 +47,9 @@ type eventTypeJSON struct {
 	PriceCents          int     `json:"price_cents"` // 0 = free
 	Currency            string  `json:"currency"`    // ISO 4217, lowercase (e.g. "usd")
 	Reminders           []int   `json:"reminders"`   // hours_before values
+	// Archived is true when the event type has been archived — hidden from the default
+	// list, with is_active forced off so it stops taking bookings. Reversible.
+	Archived bool `json:"archived"`
 	// Owned is true when the requesting user owns this event type; false when they
 	// only see it as an assigned host (read-only — only the owner can edit).
 	Owned bool `json:"owned"`
@@ -145,7 +148,8 @@ const selectETCols = "SELECT " + etColumns + " FROM event_types"
 // listEventTypesQuery returns every event type the user owns OR is an assigned
 // host on, with an `owned` flag (the owner is also seeded into event_type_hosts,
 // so ownership is keyed on event_types.user_id, not host membership).
-const listEventTypesQuery = "SELECT " + etColumns + `, (user_id = ?) AS owned
+const listEventTypesQuery = "SELECT " + etColumns + `, (user_id = ?) AS owned,
+	(archived_at IS NOT NULL) AS archived
 FROM event_types
 WHERE user_id = ?
    OR id IN (SELECT event_type_id FROM event_type_hosts WHERE user_id = ?)
@@ -156,7 +160,8 @@ ORDER BY created_at`
 // who to contact for changes).
 const getEventTypeQuery = "SELECT " + etColumns + `, (user_id = ?) AS owned,
 	(SELECT name FROM users WHERE id = event_types.user_id) AS owner_name,
-	(SELECT email FROM users WHERE id = event_types.user_id) AS owner_email
+	(SELECT email FROM users WHERE id = event_types.user_id) AS owner_email,
+	(archived_at IS NOT NULL) AS archived
 FROM event_types
 WHERE slug = ? AND (user_id = ? OR id IN (SELECT event_type_id FROM event_type_hosts WHERE user_id = ?))`
 
@@ -334,14 +339,15 @@ func (h *Handler) ListEventTypes(w http.ResponseWriter, r *http.Request) {
 
 	items := make([]eventTypeJSON, 0)
 	for rows.Next() {
-		var owned int
-		et, err := scanEventTypeRow(rows, &owned)
+		var owned, archived int
+		et, err := scanEventTypeRow(rows, &owned, &archived)
 		if err != nil {
 			h.logger.ErrorContext(r.Context(), "scan event type", "error", err)
 			h.writeError(w, http.StatusInternalServerError, "internal error")
 			return
 		}
 		et.Owned = owned != 0
+		et.Archived = archived != 0
 		items = append(items, *et)
 	}
 	if err := rows.Err(); err != nil {
@@ -357,10 +363,10 @@ func (h *Handler) GetEventType(w http.ResponseWriter, r *http.Request) {
 	user, _ := userFromContext(r.Context())
 	slug := r.PathValue("slug")
 
-	var owned int
+	var owned, archived int
 	var ownerName, ownerEmail string
 	row := h.db.QueryRowContext(r.Context(), getEventTypeQuery, user.ID, slug, user.ID, user.ID)
-	et, err := scanEventTypeRow(row, &owned, &ownerName, &ownerEmail)
+	et, err := scanEventTypeRow(row, &owned, &ownerName, &ownerEmail, &archived)
 	if err != nil {
 		h.logger.ErrorContext(r.Context(), "get event type", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal error")
@@ -371,6 +377,7 @@ func (h *Handler) GetEventType(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	et.Owned = owned != 0
+	et.Archived = archived != 0
 	if !et.Owned { // read-only host: surface who to contact for changes
 		et.OwnerName = ownerName
 		et.OwnerEmail = ownerEmail
@@ -405,6 +412,7 @@ func (h *Handler) PatchEventType(w http.ResponseWriter, r *http.Request) {
 		MaxActiveBookings   *int    `json:"max_active_bookings"`
 		IsActive            *bool   `json:"is_active"`
 		IsPublic            *bool   `json:"is_public"`
+		Archived            *bool   `json:"archived"`
 		MsgConfirmation     *string `json:"msg_confirmation"`
 		MsgCancellation     *string `json:"msg_cancellation"`
 		MsgReschedule       *string `json:"msg_reschedule"`
@@ -540,6 +548,16 @@ func (h *Handler) PatchEventType(w http.ResponseWriter, r *http.Request) {
 			v = 1
 		}
 		set("is_public", v)
+	}
+	if req.Archived != nil {
+		if *req.Archived {
+			// strftime literal (no bound value) — matches the DB's timestamp format;
+			// also force is_active off so the archived type stops taking bookings.
+			setClauses = append(setClauses, "archived_at = strftime('%Y-%m-%dT%H:%M:%fZ','now')")
+			set("is_active", 0)
+		} else {
+			setClauses = append(setClauses, "archived_at = NULL")
+		}
 	}
 	const maxMsgLen = 2000
 	if req.MsgConfirmation != nil {

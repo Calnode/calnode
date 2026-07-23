@@ -19,6 +19,11 @@
 	let deleteOpen = $state(false);
 	let deleteSlug = $state('');
 
+	let filter = $state<'active' | 'archived'>('active');
+	const visible = $derived(items.filter((et) => (filter === 'archived' ? !!et.archived : !et.archived)));
+	const archivedCount = $derived(items.filter((et) => et.archived).length);
+	const activeCount = $derived(items.length - archivedCount);
+
 	async function load() {
 		try {
 			const res = await api.get<{ items: EventType[] }>('/v1/event-types');
@@ -61,6 +66,16 @@
 		} catch (e: any) {
 			et.is_active = !newActive; // revert optimistic update
 			toast.error(e.message || 'Could not update status');
+		}
+	}
+
+	async function archive(et: EventType, archived: boolean) {
+		try {
+			await api.patch(`/v1/event-types/${et.slug}`, { archived });
+			toast.success(archived ? 'Event type archived' : 'Event type restored');
+			await load();
+		} catch (e: any) {
+			toast.error(e.message || 'Could not update event type');
 		}
 	}
 
@@ -139,6 +154,15 @@
 		<p class="mt-1 text-sm text-muted-foreground">Create your first event type to start accepting bookings.</p>
 	</div>
 {:else}
+	<div class="mb-4 inline-flex rounded-md border p-0.5 text-sm">
+		<button type="button" class="rounded px-3 py-1 transition-colors {filter === 'active' ? 'bg-muted font-medium' : 'text-muted-foreground hover:text-foreground'}" onclick={() => (filter = 'active')}>Active ({activeCount})</button>
+		<button type="button" class="rounded px-3 py-1 transition-colors {filter === 'archived' ? 'bg-muted font-medium' : 'text-muted-foreground hover:text-foreground'}" onclick={() => (filter = 'archived')}>Archived ({archivedCount})</button>
+	</div>
+	{#if visible.length === 0}
+		<div class="rounded-lg border border-dashed bg-card p-12 text-center">
+			<p class="text-sm text-muted-foreground">No {filter === 'archived' ? 'archived' : 'active'} event types.</p>
+		</div>
+	{:else}
 	<div class="rounded-lg border bg-card overflow-hidden">
 		<table class="w-full text-sm">
 			<thead>
@@ -151,7 +175,7 @@
 				</tr>
 			</thead>
 			<tbody class="divide-y">
-				{#each items as et}
+				{#each visible as et}
 					<tr class="transition-colors hover:bg-muted/30">
 						<td class="px-4 py-3">
 							<div class="flex items-center gap-2">
@@ -178,7 +202,7 @@
 							</Tooltip.Provider>
 						</td>
 						<td class="px-4 py-3">
-							<Switch bind:checked={et.is_active} onCheckedChange={(v) => saveActive(et, v)} disabled={et.owned === false} />
+							<Switch bind:checked={et.is_active} onCheckedChange={(v) => saveActive(et, v)} disabled={et.owned === false || et.archived} />
 						</td>
 						<td class="px-4 py-3">
 							<Tooltip.Provider>
@@ -198,6 +222,21 @@
 										<Tooltip.Root>
 											<Tooltip.Trigger
 												class={buttonVariants({ variant: 'ghost', size: 'icon' })}
+												onclick={() => archive(et, !et.archived)}
+											>
+												{#if et.archived}
+													<!-- Restore icon -->
+													<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="5" rx="1"/><path d="M4 9v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9"/><path d="M12 12v6"/><path d="M9 15l3-3 3 3"/></svg>
+												{:else}
+													<!-- Archive box icon -->
+													<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="5" rx="1"/><path d="M4 9v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9"/><path d="M10 13h4"/></svg>
+												{/if}
+											</Tooltip.Trigger>
+											<Tooltip.Content>{et.archived ? 'Restore' : 'Archive'}</Tooltip.Content>
+										</Tooltip.Root>
+										<Tooltip.Root>
+											<Tooltip.Trigger
+												class={buttonVariants({ variant: 'ghost', size: 'icon' })}
 												onclick={() => del(et.slug)}
 											>
 												<!-- Trash icon -->
@@ -214,4 +253,5 @@
 			</tbody>
 		</table>
 	</div>
+	{/if}
 {/if}
