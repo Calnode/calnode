@@ -265,7 +265,15 @@ func (h *Handler) GetConnectionCalendars(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	user, _ := userFromContext(r.Context())
-	cals, err := svc.AccountCalendars(r.Context(), user.ID, r.PathValue("id"))
+	// Keyed on account identity, not the {id} path value: a calendar_connections.id is
+	// volatile (recreated on token refresh, which listing calendars can itself trigger).
+	provider := r.URL.Query().Get("provider")
+	account := r.URL.Query().Get("account")
+	if provider == "" {
+		h.writeError(w, http.StatusBadRequest, "provider is required")
+		return
+	}
+	cals, err := svc.AccountCalendars(r.Context(), user.ID, provider, account)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			h.writeError(w, http.StatusNotFound, "calendar connection not found")
@@ -292,13 +300,20 @@ func (h *Handler) PutConnectionCalendars(w http.ResponseWriter, r *http.Request)
 	user, _ := userFromContext(r.Context())
 	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
 	var req struct {
+		Provider  string                       `json:"provider"`
+		Account   string                       `json:"account_email"`
 		Calendars []calendar.CalendarSelection `json:"calendars"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.writeError(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
-	if err := svc.SetAccountCalendars(r.Context(), user.ID, r.PathValue("id"), req.Calendars); err != nil {
+	if req.Provider == "" {
+		h.writeError(w, http.StatusBadRequest, "provider is required")
+		return
+	}
+	// Account identity, not the volatile {id} path value (see GetConnectionCalendars).
+	if err := svc.SetAccountCalendars(r.Context(), user.ID, req.Provider, req.Account, req.Calendars); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			h.writeError(w, http.StatusNotFound, "calendar connection not found")
 			return

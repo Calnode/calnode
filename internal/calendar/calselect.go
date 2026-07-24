@@ -2,26 +2,34 @@ package calendar
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 
 	"github.com/calnode/calnode/internal/uid"
 )
 
-// resolveConn maps a calendar_connections.id to its (provider, accountEmail) for the user.
-func (s *Service) resolveConn(ctx context.Context, userID, connID string) (provider, accountEmail string, err error) {
-	err = s.db.QueryRowContext(ctx,
-		`SELECT provider, COALESCE(account_email,'') FROM calendar_connections WHERE id = ? AND user_id = ?`,
-		connID, userID).Scan(&provider, &accountEmail)
-	return provider, accountEmail, err
+// accountExists reports whether the user has a live connection for (provider, accountEmail).
+// The picker is keyed on account identity rather than a calendar_connections.id because that
+// id is volatile: saveToken deletes and re-inserts the row (new id) on every token refresh —
+// including the refresh that listing calendars can trigger — which would strand a stale id.
+func (s *Service) accountExists(ctx context.Context, userID, provider, accountEmail string) (bool, error) {
+	var n int
+	err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM calendar_connections WHERE user_id = ? AND provider = ? AND COALESCE(account_email,'') = ?`,
+		userID, provider, accountEmail).Scan(&n)
+	return n > 0, err
 }
 
-// AccountCalendars lists every calendar in the connection's account, each annotated with the
-// user's saved check_conflicts / is_destination choice (from connection_calendars). An
-// unsaved calendar defaults to conflict-checked only if it's the account's primary.
-func (s *Service) AccountCalendars(ctx context.Context, userID, connID string) ([]CalendarSelection, error) {
-	provider, accountEmail, err := s.resolveConn(ctx, userID, connID)
+// AccountCalendars lists every calendar in the account, each annotated with the user's saved
+// check_conflicts / is_destination choice (from connection_calendars). An unsaved calendar
+// defaults to conflict-checked only if it's the account's primary.
+func (s *Service) AccountCalendars(ctx context.Context, userID, provider, accountEmail string) ([]CalendarSelection, error) {
+	ok, err := s.accountExists(ctx, userID, provider, accountEmail)
 	if err != nil {
 		return nil, err
+	}
+	if !ok {
+		return nil, sql.ErrNoRows
 	}
 	p := s.providers[provider]
 	if p == nil {
@@ -71,10 +79,13 @@ func (s *Service) AccountCalendars(ctx context.Context, userID, connID string) (
 
 // SetAccountCalendars replaces the saved selection for the connection's account. At most one
 // calendar across the whole user may be the destination (enforced by clearing others first).
-func (s *Service) SetAccountCalendars(ctx context.Context, userID, connID string, sels []CalendarSelection) error {
-	provider, accountEmail, err := s.resolveConn(ctx, userID, connID)
+func (s *Service) SetAccountCalendars(ctx context.Context, userID, provider, accountEmail string, sels []CalendarSelection) error {
+	ok, err := s.accountExists(ctx, userID, provider, accountEmail)
 	if err != nil {
 		return err
+	}
+	if !ok {
+		return sql.ErrNoRows
 	}
 
 	tx, err := s.db.BeginTx(ctx, nil)

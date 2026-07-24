@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { page } from '$app/stores';
-	import { api, type CalendarStatus, type ZoomStatus, type CalendarPick } from '$lib/api';
+	import { api, type CalendarStatus, type ZoomStatus, type CalendarPick, type CalendarConnection } from '$lib/api';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
@@ -111,17 +111,23 @@
 	let pickerSaving = $state(false);
 	let pickerErr = $state('');
 
-	async function togglePicker(id: string) {
-		if (pickerConnId === id) {
+	// The picker is keyed on account identity (provider + account_email), not the connection id —
+	// listing calendars can refresh the OAuth token, which recreates the connection row under a
+	// new id and would strand a stale id on save.
+	async function togglePicker(c: CalendarConnection) {
+		if (pickerConnId === c.id) {
 			pickerConnId = null;
 			return;
 		}
-		pickerConnId = id;
+		pickerConnId = c.id;
 		pickerCals = [];
 		pickerErr = '';
 		pickerLoading = true;
 		try {
-			const res = await api.get<{ calendars: CalendarPick[] }>(`/v1/calendar/connections/${id}/calendars`);
+			const q = new URLSearchParams({ provider: c.provider, account: c.account_email ?? '' });
+			const res = await api.get<{ calendars: CalendarPick[] }>(
+				`/v1/calendar/connections/${c.id}/calendars?${q}`
+			);
 			pickerCals = res.calendars ?? [];
 		} catch (e: any) {
 			pickerErr = e.message || 'Could not load calendars for this account.';
@@ -130,11 +136,15 @@
 		}
 	}
 
-	async function savePicker(id: string) {
+	async function savePicker(c: CalendarConnection) {
 		pickerSaving = true;
 		pickerErr = '';
 		try {
-			await api.put(`/v1/calendar/connections/${id}/calendars`, { calendars: pickerCals });
+			await api.put(`/v1/calendar/connections/${c.id}/calendars`, {
+				provider: c.provider,
+				account_email: c.account_email ?? '',
+				calendars: pickerCals
+			});
 			pickerConnId = null;
 			await load();
 		} catch (e: any) {
@@ -257,7 +267,7 @@
 						</div>
 						</div>
 						<div class="mt-2 pl-8">
-							<button type="button" class="text-xs font-medium text-muted-foreground underline-offset-2 hover:underline" onclick={() => togglePicker(c.id)}>
+							<button type="button" class="text-xs font-medium text-muted-foreground underline-offset-2 hover:underline" onclick={() => togglePicker(c)}>
 								{pickerConnId === c.id ? 'Hide calendars' : 'Manage calendars'}
 							</button>
 						</div>
@@ -280,7 +290,7 @@
 										{/each}
 									</div>
 									<div class="flex items-center gap-2 pt-1">
-										<Button size="sm" onclick={() => savePicker(c.id)} disabled={pickerSaving}>
+										<Button size="sm" onclick={() => savePicker(c)} disabled={pickerSaving}>
 											{pickerSaving ? 'Saving…' : 'Save'}
 										</Button>
 										<Button variant="ghost" size="sm" onclick={() => (pickerConnId = null)} disabled={pickerSaving}>Cancel</Button>
