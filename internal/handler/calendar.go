@@ -279,6 +279,12 @@ func (h *Handler) GetConnectionCalendars(w http.ResponseWriter, r *http.Request)
 			h.writeError(w, http.StatusNotFound, "calendar connection not found")
 			return
 		}
+		if calendar.IsReauthErr(err) {
+			// The stored OAuth grant is dead (revoked/expired/security interrupt) — this is a
+			// reconnect, not an outage. 409 so the UI can flag the account distinctly.
+			h.writeError(w, http.StatusConflict, "This calendar needs reconnecting — disconnect it and connect again.")
+			return
+		}
 		h.logger.ErrorContext(r.Context(), "list connection calendars", "error", err)
 		h.writeError(w, http.StatusBadGateway, "could not reach the calendar provider")
 		return

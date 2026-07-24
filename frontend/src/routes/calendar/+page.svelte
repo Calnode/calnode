@@ -110,6 +110,8 @@
 	let pickerLoading = $state(false);
 	let pickerSaving = $state(false);
 	let pickerErr = $state('');
+	// Connection ids whose provider reported a dead OAuth grant (409) — flagged for reconnect.
+	let reauthNeeded = $state<Set<string>>(new Set());
 
 	// The picker is keyed on account identity (provider + account_email), not the connection id —
 	// listing calendars can refresh the OAuth token, which recreates the connection row under a
@@ -129,7 +131,13 @@
 				`/v1/calendar/connections/${c.id}/calendars?${q}`
 			);
 			pickerCals = res.calendars ?? [];
+			if (reauthNeeded.has(c.id)) {
+				const s = new Set(reauthNeeded);
+				s.delete(c.id);
+				reauthNeeded = s; // recovered after a reconnect
+			}
 		} catch (e: any) {
+			if (e?.status === 409) reauthNeeded = new Set(reauthNeeded).add(c.id);
 			pickerErr = e.message || 'Could not load calendars for this account.';
 		} finally {
 			pickerLoading = false;
@@ -256,6 +264,9 @@
 							<div class="min-w-0">
 								<p class="truncate font-medium">{c.account_email || label(c.provider)}</p>
 								<p class="text-xs text-muted-foreground">{label(c.provider)} · checked for conflicts</p>
+								{#if reauthNeeded.has(c.id)}
+									<p class="text-xs font-medium text-destructive">Reconnect needed — disconnect and connect again.</p>
+								{/if}
 							</div>
 						</div>
 						<div class="flex shrink-0 items-center gap-4">

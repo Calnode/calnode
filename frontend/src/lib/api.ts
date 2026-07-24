@@ -302,7 +302,11 @@ async function apiFetch<T>(path: string, opts: RequestInit = {}): Promise<T> {
 	if (res.status === 204) return null as T;
 
 	const data = await res.json().catch(() => ({ error: res.statusText }));
-	if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+	if (!res.ok) {
+		const err = new Error(data.error ?? `HTTP ${res.status}`) as Error & { status?: number };
+		err.status = res.status;
+		throw err;
+	}
 	return data as T;
 }
 
