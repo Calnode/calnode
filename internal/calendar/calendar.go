@@ -25,6 +25,20 @@ type CreateEventParams struct {
 	AddMeet        bool
 }
 
+// CalendarInfo is one calendar the provider exposes for a connected account.
+type CalendarInfo struct {
+	ID      string `json:"id"`      // provider calendar id ("primary", an address, a URL)
+	Name    string `json:"name"`    // display name
+	Primary bool   `json:"primary"` // the account's default calendar
+}
+
+// CalendarSelection is a CalendarInfo plus the user's per-calendar settings.
+type CalendarSelection struct {
+	CalendarInfo
+	CheckConflicts bool `json:"check_conflicts"` // include in free/busy
+	IsDestination  bool `json:"is_destination"`  // write new events here
+}
+
 // Provider is one calendar backend for a connected user. All operations are keyed
 // by userID and resolve that user's stored credentials internally; they return
 // zero values (not errors) when the user has no matching connection.
@@ -42,6 +56,9 @@ type Provider interface {
 	Connected(ctx context.Context, userID string) (bool, error)
 	Disconnect(ctx context.Context, userID string) error
 	HasDestination(ctx context.Context, userID string) (bool, error)
+
+	// ListCalendars returns the calendars in one connected account (by account email).
+	ListCalendars(ctx context.Context, userID, accountEmail string) ([]CalendarInfo, error)
 
 	// Operations
 	FreeBusy(ctx context.Context, userID string, from, to time.Time) ([]slots.Interval, error)

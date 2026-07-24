@@ -481,6 +481,8 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	mux.HandleFunc("POST /v1/calendar/caldav/connect", h.RequireAuth(h.ConnectCalDAV))
 	mux.HandleFunc("GET /v1/calendar/status", h.RequireAuth(h.CalendarStatus))
 	mux.HandleFunc("POST /v1/calendar/connections/{id}/destination", h.RequireAuth(h.SetCalendarDestination))
+	mux.HandleFunc("GET /v1/calendar/connections/{id}/calendars", h.RequireAuth(h.GetConnectionCalendars))
+	mux.HandleFunc("PUT /v1/calendar/connections/{id}/calendars", h.RequireAuth(h.PutConnectionCalendars))
 	mux.HandleFunc("DELETE /v1/calendar/connections/{id}", h.RequireAuth(h.DisconnectCalendarConnection))
 	mux.HandleFunc("DELETE /v1/calendar", h.RequireAuth(h.DisconnectCalendar))
 

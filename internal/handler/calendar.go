@@ -255,3 +255,57 @@ func (h *Handler) DisconnectCalendar(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
+
+// GetConnectionCalendars handles GET /v1/calendar/connections/{id}/calendars (auth) —
+// lists the account's calendars, each with the user's saved conflict/destination choice.
+func (h *Handler) GetConnectionCalendars(w http.ResponseWriter, r *http.Request) {
+	svc := h.getCal()
+	if svc == nil || !svc.Any() {
+		h.writeError(w, http.StatusNotImplemented, "Calendar integration not configured")
+		return
+	}
+	user, _ := userFromContext(r.Context())
+	cals, err := svc.AccountCalendars(r.Context(), user.ID, r.PathValue("id"))
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			h.writeError(w, http.StatusNotFound, "calendar connection not found")
+			return
+		}
+		h.logger.ErrorContext(r.Context(), "list connection calendars", "error", err)
+		h.writeError(w, http.StatusBadGateway, "could not reach the calendar provider")
+		return
+	}
+	if cals == nil {
+		cals = []calendar.CalendarSelection{}
+	}
+	h.writeJSON(w, http.StatusOK, map[string]any{"calendars": cals})
+}
+
+// PutConnectionCalendars handles PUT /v1/calendar/connections/{id}/calendars (auth) —
+// saves which of the account's calendars count for conflicts and which is the write target.
+func (h *Handler) PutConnectionCalendars(w http.ResponseWriter, r *http.Request) {
+	svc := h.getCal()
+	if svc == nil || !svc.Any() {
+		h.writeError(w, http.StatusNotImplemented, "Calendar integration not configured")
+		return
+	}
+	user, _ := userFromContext(r.Context())
+	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
+	var req struct {
+		Calendars []calendar.CalendarSelection `json:"calendars"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	if err := svc.SetAccountCalendars(r.Context(), user.ID, r.PathValue("id"), req.Calendars); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			h.writeError(w, http.StatusNotFound, "calendar connection not found")
+			return
+		}
+		h.logger.ErrorContext(r.Context(), "set connection calendars", "error", err)
+		h.writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}

@@ -136,6 +136,14 @@ export type CalendarConnection = {
 	check_conflicts: boolean;
 };
 
+export type CalendarPick = {
+	id: string;
+	name: string;
+	primary: boolean;
+	check_conflicts: boolean;
+	is_destination: boolean;
+};
+
 export type CalendarStatus = {
 	connected: boolean;
 	configured?: boolean;

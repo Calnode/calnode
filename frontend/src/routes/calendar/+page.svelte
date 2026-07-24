@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { page } from '$app/stores';
-	import { api, type CalendarStatus, type ZoomStatus } from '$lib/api';
+	import { api, type CalendarStatus, type ZoomStatus, type CalendarPick } from '$lib/api';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
@@ -103,6 +103,47 @@
 		loadZoom();
 	});
 
+	// Per-account calendar picker: which of an account's calendars are checked for conflicts.
+	// Loaded lazily when a connection's "Manage calendars" section is expanded.
+	let pickerConnId = $state<string | null>(null);
+	let pickerCals = $state<CalendarPick[]>([]);
+	let pickerLoading = $state(false);
+	let pickerSaving = $state(false);
+	let pickerErr = $state('');
+
+	async function togglePicker(id: string) {
+		if (pickerConnId === id) {
+			pickerConnId = null;
+			return;
+		}
+		pickerConnId = id;
+		pickerCals = [];
+		pickerErr = '';
+		pickerLoading = true;
+		try {
+			const res = await api.get<{ calendars: CalendarPick[] }>(`/v1/calendar/connections/${id}/calendars`);
+			pickerCals = res.calendars ?? [];
+		} catch (e: any) {
+			pickerErr = e.message || 'Could not load calendars for this account.';
+		} finally {
+			pickerLoading = false;
+		}
+	}
+
+	async function savePicker(id: string) {
+		pickerSaving = true;
+		pickerErr = '';
+		try {
+			await api.put(`/v1/calendar/connections/${id}/calendars`, { calendars: pickerCals });
+			pickerConnId = null;
+			await load();
+		} catch (e: any) {
+			pickerErr = e.message || 'Could not save calendar selection.';
+		} finally {
+			pickerSaving = false;
+		}
+	}
+
 	async function setDestination(id: string) {
 		busy = true;
 		error = '';
@@ -196,7 +237,8 @@
 			<!-- Connected calendars: all checked for conflicts; exactly one is the write destination. -->
 			<div class="divide-y rounded-lg border bg-card">
 				{#each connections as c (c.id)}
-					<div class="flex items-center justify-between gap-3 p-4">
+					<div class="p-4">
+						<div class="flex items-center justify-between gap-3">
 						<div class="flex min-w-0 items-center gap-3">
 							<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="shrink-0 text-muted-foreground">
 								<rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
@@ -213,6 +255,39 @@
 							</label>
 							<Button variant="ghost" size="sm" onclick={() => askDisconnect(c.id)} disabled={busy}>Disconnect</Button>
 						</div>
+						</div>
+						<div class="mt-2 pl-8">
+							<button type="button" class="text-xs font-medium text-muted-foreground underline-offset-2 hover:underline" onclick={() => togglePicker(c.id)}>
+								{pickerConnId === c.id ? 'Hide calendars' : 'Manage calendars'}
+							</button>
+						</div>
+						{#if pickerConnId === c.id}
+							<div class="mt-3 space-y-3 rounded-md border bg-muted/30 p-3">
+								{#if pickerLoading}
+									<p class="text-xs text-muted-foreground">Loading calendars…</p>
+								{:else if pickerErr}
+									<p class="text-xs text-destructive">{pickerErr}</p>
+								{:else if pickerCals.length === 0}
+									<p class="text-xs text-muted-foreground">No calendars found for this account.</p>
+								{:else}
+									<p class="text-xs text-muted-foreground">Choose which calendars in this account are checked for conflicts.</p>
+									<div class="space-y-1.5">
+										{#each pickerCals as cal (cal.id)}
+											<label class="flex cursor-pointer items-center gap-2 text-sm">
+												<input type="checkbox" bind:checked={cal.check_conflicts} disabled={pickerSaving} />
+												<span class="truncate">{cal.name}{#if cal.primary}<span class="ml-1 text-xs text-muted-foreground">(primary)</span>{/if}</span>
+											</label>
+										{/each}
+									</div>
+									<div class="flex items-center gap-2 pt-1">
+										<Button size="sm" onclick={() => savePicker(c.id)} disabled={pickerSaving}>
+											{pickerSaving ? 'Saving…' : 'Save'}
+										</Button>
+										<Button variant="ghost" size="sm" onclick={() => (pickerConnId = null)} disabled={pickerSaving}>Cancel</Button>
+									</div>
+								{/if}
+							</div>
+						{/if}
 					</div>
 				{/each}
 			</div>
