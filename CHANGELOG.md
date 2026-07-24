@@ -28,6 +28,10 @@ Adds per-account calendar selection and a set of admin-UX refinements from early
 - Calendar connections whose OAuth grant has been revoked or expired are now flagged
   **"Reconnect needed"** instead of surfacing a generic provider error.
 
+### Changed
+- Simplified the favicon to the plain logomark (dropping the rounded-square badge), matching
+  the sign-in and invite marks.
+
 ### Fixed
 - Corrected the Google OAuth redirect path in `.env.example`.
 
