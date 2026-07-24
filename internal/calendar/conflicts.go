@@ -31,7 +31,7 @@ func ConflictCalendarIDs(ctx context.Context, db *sql.DB, provider, userID, acco
 		var calID string
 		var checkConflicts int
 		if err := rows.Scan(&calID, &checkConflicts); err != nil {
-			rows.Close() //nolint:errcheck,gosec
+			rows.Close() // #nosec G104 -- already returning the scan error; nothing more actionable
 			return nil, err
 		}
 		configured = true
@@ -39,7 +39,7 @@ func ConflictCalendarIDs(ctx context.Context, db *sql.DB, provider, userID, acco
 			selected = append(selected, calID)
 		}
 	}
-	rows.Close() //nolint:errcheck,gosec
+	rows.Close() // #nosec G104 -- rows already fully consumed above; nothing actionable on close error
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}

@@ -233,12 +233,12 @@ func (c *Client) freeBusyConnections(ctx context.Context, userID string) ([]fbCo
 	for rows.Next() {
 		var d rowData
 		if err := rows.Scan(&d.accessEnc, &d.refreshEnc, &d.calID, &d.expiryStr, &d.accountEmail); err != nil {
-			rows.Close() //nolint:errcheck,gosec
+			rows.Close() // #nosec G104 -- already returning the scan error; nothing more actionable
 			return nil, fmt.Errorf("gcal: scan freebusy connection: %w", err)
 		}
 		data = append(data, d)
 	}
-	rows.Close() //nolint:errcheck,gosec
+	rows.Close() // #nosec G104 -- rows already fully consumed above; nothing actionable on close error
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
