@@ -11,6 +11,29 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-07-24
+
+Adds per-account calendar selection and a set of admin-UX refinements from early user feedback.
+
+### Added
+- **Per-account sub-calendar selection.** Each connected account (Google, Microsoft 365, CalDAV)
+  can expose several calendars; a per-connection **Manage calendars** picker chooses which are
+  checked for conflicts, and free/busy honours the selection. Accounts connected before upgrading
+  keep their existing behaviour (their bound calendar stays checked).
+- **Out-of-office date ranges** in availability — block a multi-day span in one step.
+- **Event-type archiving** with an Active / Archived filter, replacing outright deletion for
+  event types you want to keep but hide.
+- **Upcoming / Past filter** for bookings, keyed on the booking end time.
+- Users can edit their own display name from the profile page.
+- Calendar connections whose OAuth grant has been revoked or expired are now flagged
+  **"Reconnect needed"** instead of surfacing a generic provider error.
+
+### Fixed
+- Corrected the Google OAuth redirect path in `.env.example`.
+
+[Unreleased]: https://github.com/Calnode/calnode/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/Calnode/calnode/releases/tag/v0.2.0
+
 ## [0.1.0] - 2026-07-23
 
 First tagged, pinnable release. Calnode had already been running in production before
@@ -31,5 +54,4 @@ Highlights of what ships in `0.1.0` (see the [README](README.md) for the full li
 - Envelope encryption at rest; SQLite WAL + optional Litestream point-in-time backup
 - Multi-arch image (`linux/amd64` + `linux/arm64`)
 
-[Unreleased]: https://github.com/Calnode/calnode/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/Calnode/calnode/releases/tag/v0.1.0
