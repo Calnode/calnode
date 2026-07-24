@@ -48,12 +48,18 @@ func (c *Client) FreeBusy(ctx context.Context, userID string, from, to time.Time
 	return out, nil
 }
 
-// freeBusyForConn queries one connection's calendar for busy intervals in [from, to).
+// freeBusyForConn queries one connection's selected calendars for busy intervals in [from, to).
+// Google's freeBusy accepts multiple items and returns each calendar's busy blocks, which the
+// decoder below unions.
 func (c *Client) freeBusyForConn(ctx context.Context, conn fbConn, from, to time.Time) ([]slots.Interval, error) {
+	items := make([]map[string]string, 0, len(conn.calIDs))
+	for _, id := range conn.calIDs {
+		items = append(items, map[string]string{"id": id})
+	}
 	body, err := json.Marshal(freeBusyReq{
 		TimeMin: from.UTC().Format(time.RFC3339),
 		TimeMax: to.UTC().Format(time.RFC3339),
-		Items:   []map[string]string{{"id": conn.calID}},
+		Items:   items,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("gcal: freeBusy marshal: %w", err)

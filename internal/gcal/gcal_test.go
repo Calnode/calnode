@@ -308,8 +308,75 @@ func TestFreeBusyConnections_returnsConnectedCalendars(t *testing.T) {
 	if conns[0].hc == nil {
 		t.Error("expected non-nil http.Client")
 	}
-	if conns[0].calID != "user@example.com" {
-		t.Errorf("calID = %q; want user@example.com", conns[0].calID)
+	if len(conns[0].calIDs) != 1 || conns[0].calIDs[0] != "user@example.com" {
+		t.Errorf("calIDs = %v; want [user@example.com]", conns[0].calIDs)
+	}
+}
+
+// insertConnCal adds a per-account sub-calendar selection row for the google provider.
+func insertConnCal(t *testing.T, db *sql.DB, userID, account, calID string, check bool) {
+	t.Helper()
+	cc := 0
+	if check {
+		cc = 1
+	}
+	_, err := db.ExecContext(context.Background(), `
+		INSERT INTO connection_calendars (id, user_id, provider, account_email, calendar_id, name, check_conflicts, is_destination)
+		VALUES (lower(hex(randomblob(16))), ?, 'google', ?, ?, '', ?, 0)`,
+		userID, account, calID, cc)
+	if err != nil {
+		t.Fatalf("insertConnCal(%q): %v", calID, err)
+	}
+}
+
+// When an account has sub-calendar selections, only the checked calendars are returned — not
+// the account's single bound calendar.
+func TestFreeBusyConnections_honorsSubCalendarSelection(t *testing.T) {
+	c := newTestClient(t)
+	ctx := context.Background()
+	seedUser(t, c.db, "user-1")
+	c.saveToken(ctx, "user-1", "primary", "user@example.com", &oauth2.Token{ //nolint:errcheck
+		AccessToken: "tok", Expiry: time.Now().Add(time.Hour),
+	})
+	insertConnCal(t, c.db, "user-1", "user@example.com", "primary", true)
+	insertConnCal(t, c.db, "user-1", "user@example.com", "team@group.calendar.google.com", true)
+	insertConnCal(t, c.db, "user-1", "user@example.com", "muted@group.calendar.google.com", false)
+
+	conns, err := c.freeBusyConnections(ctx, "user-1")
+	if err != nil {
+		t.Fatalf("freeBusyConnections: %v", err)
+	}
+	if len(conns) != 1 {
+		t.Fatalf("got %d connections; want 1", len(conns))
+	}
+	got := map[string]bool{}
+	for _, id := range conns[0].calIDs {
+		got[id] = true
+	}
+	if len(got) != 2 || !got["primary"] || !got["team@group.calendar.google.com"] {
+		t.Errorf("calIDs = %v; want {primary, team@group.calendar.google.com}", conns[0].calIDs)
+	}
+	if got["muted@group.calendar.google.com"] {
+		t.Error("deselected calendar leaked into conflict check")
+	}
+}
+
+// When every calendar of an account is deselected, that account is dropped entirely.
+func TestFreeBusyConnections_skipsFullyDeselectedAccount(t *testing.T) {
+	c := newTestClient(t)
+	ctx := context.Background()
+	seedUser(t, c.db, "user-1")
+	c.saveToken(ctx, "user-1", "primary", "user@example.com", &oauth2.Token{ //nolint:errcheck
+		AccessToken: "tok", Expiry: time.Now().Add(time.Hour),
+	})
+	insertConnCal(t, c.db, "user-1", "user@example.com", "primary", false)
+
+	conns, err := c.freeBusyConnections(ctx, "user-1")
+	if err != nil {
+		t.Fatalf("freeBusyConnections: %v", err)
+	}
+	if len(conns) != 0 {
+		t.Fatalf("got %d connections; want 0 (account fully deselected)", len(conns))
 	}
 }
 

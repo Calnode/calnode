@@ -30,9 +30,9 @@ func (c *Client) clientForAccount(ctx context.Context, userID, accountEmail stri
 
 type msCalListResp struct {
 	Value []struct {
-		ID               string `json:"id"`
-		Name             string `json:"name"`
-		IsDefaultCalendar bool  `json:"isDefaultCalendar"`
+		ID                string `json:"id"`
+		Name              string `json:"name"`
+		IsDefaultCalendar bool   `json:"isDefaultCalendar"`
 	} `json:"value"`
 }
 

@@ -112,10 +112,10 @@ func (s *Service) SetAccountCalendars(ctx context.Context, userID, provider, acc
 		userID, provider, accountEmail); err != nil {
 		return err
 	}
+	// Persist a row for EVERY calendar the account exposes, including unchecked ones. The
+	// presence of any row is what marks the account "configured" (see ConflictCalendarIDs);
+	// storing check_conflicts=0 rows is also what makes unchecking the primary calendar stick.
 	for _, c := range sels {
-		if !c.CheckConflicts && !c.IsDestination {
-			continue // a fully-off calendar needs no row
-		}
 		cc, dest := 0, 0
 		if c.CheckConflicts {
 			cc = 1

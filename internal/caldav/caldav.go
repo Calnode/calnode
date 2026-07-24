@@ -182,22 +182,33 @@ func (c *Client) conflictConns(ctx context.Context, userID string) ([]conn, erro
 	if err != nil {
 		return nil, fmt.Errorf("caldav: load conflict connections: %w", err)
 	}
-	defer rows.Close()
 	type rowData struct{ id, username, pwEnc, calURL string }
 	var data []rowData
 	for rows.Next() {
 		var d rowData
 		if err := rows.Scan(&d.id, &d.username, &d.pwEnc, &d.calURL); err != nil {
+			rows.Close() //nolint:errcheck,gosec
 			return nil, fmt.Errorf("caldav: scan conflict connection: %w", err)
 		}
 		data = append(data, d)
 	}
+	rows.Close() //nolint:errcheck,gosec
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	// Decrypt after the cursor is closed (single-connection DB pool).
+	// Resolve selection + decrypt after the cursor is closed (single-connection DB pool; the
+	// ConflictCalendarIDs query would deadlock against an open cursor). CalDAV binds one
+	// calendar per connection, so the sub-calendar picker is simply an on/off toggle: an empty
+	// result means the user deselected it.
 	var conns []conn
 	for _, d := range data {
+		calIDs, err := calendar.ConflictCalendarIDs(ctx, c.db, "caldav", userID, d.username, d.calURL)
+		if err != nil {
+			return nil, fmt.Errorf("caldav: resolve conflict calendars: %w", err)
+		}
+		if len(calIDs) == 0 {
+			continue // deselected
+		}
 		pw, err := c.decrypt(d.pwEnc)
 		if err != nil {
 			c.logger.Warn("caldav: skipping connection with bad credentials", "user_id", userID, "error", err)

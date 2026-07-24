@@ -37,13 +37,13 @@ type calendarViewResp struct {
 // busy). Returns (nil, nil) if the user has no such connection. Fail-open: an account that
 // errors is logged and skipped.
 func (c *Client) FreeBusy(ctx context.Context, userID string, from, to time.Time) ([]slots.Interval, error) {
-	clients, err := c.freeBusyConnections(ctx, userID)
+	conns, err := c.freeBusyConnections(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
 	var out []slots.Interval
-	for _, hc := range clients {
-		intervals, err := c.freeBusyForClient(ctx, hc, from, to)
+	for _, fc := range conns {
+		intervals, err := c.freeBusyForConn(ctx, fc, from, to)
 		if err != nil {
 			c.logger.Warn("microsoft: freebusy for connection failed, skipping", "user_id", userID, "error", err)
 			continue
@@ -53,14 +53,34 @@ func (c *Client) FreeBusy(ctx context.Context, userID string, from, to time.Time
 	return out, nil
 }
 
-// freeBusyForClient reads one account's calendar view for busy intervals in [from, to).
-func (c *Client) freeBusyForClient(ctx context.Context, hc *http.Client, from, to time.Time) ([]slots.Interval, error) {
+// freeBusyForConn reads every selected calendar of one account for busy intervals in [from, to),
+// unioning them. Unconfigured accounts read the default calendar view (/me/calendarView);
+// picker-selected calendars read /me/calendars/{id}/calendarView.
+func (c *Client) freeBusyForConn(ctx context.Context, fc msFBConn, from, to time.Time) ([]slots.Interval, error) {
+	var out []slots.Interval
+	if fc.useDefault {
+		return c.calendarView(ctx, fc.hc, c.apiBase+"/me/calendarView", from, to)
+	}
+	for _, calID := range fc.calIDs {
+		base := c.apiBase + "/me/calendars/" + url.PathEscape(calID) + "/calendarView"
+		iv, err := c.calendarView(ctx, fc.hc, base, from, to)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, iv...)
+	}
+	return out, nil
+}
+
+// calendarView pages through one calendar-view endpoint (base URL, no query string) and returns
+// its busy intervals in [from, to).
+func (c *Client) calendarView(ctx context.Context, hc *http.Client, base string, from, to time.Time) ([]slots.Interval, error) {
 	q := url.Values{}
 	q.Set("startDateTime", from.UTC().Format(time.RFC3339))
 	q.Set("endDateTime", to.UTC().Format(time.RFC3339))
 	q.Set("$select", "start,end")
 	q.Set("$top", "200")
-	next := c.apiBase + "/me/calendarView?" + q.Encode()
+	next := base + "?" + q.Encode()
 
 	var out []slots.Interval
 	for next != "" {

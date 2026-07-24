@@ -208,15 +208,18 @@ func (c *Client) httpClient(ctx context.Context, userID string, checkConflicts, 
 	return hc, calID, nil
 }
 
-// fbConn is one conflict-check connection's authorized client + calendar id.
+// fbConn is one conflict-check connection's authorized client + the calendar ids to check
+// (the account's selected sub-calendars, or its single bound calendar when unselected).
 type fbConn struct {
-	hc    *http.Client
-	calID string
+	hc     *http.Client
+	calIDs []string
 }
 
 // freeBusyConnections returns an authorized client for EVERY Google connection the user has
 // with check_conflicts = 1 (so a user can connect several Google accounts and have them all
-// checked for conflicts). Decrypt failures on one row are logged and skipped (fail-open).
+// checked for conflicts), each paired with the set of that account's calendars to check for
+// conflicts (per-account sub-calendar selection). Decrypt failures on one row are logged and
+// skipped (fail-open); an account whose calendars are all deselected is dropped.
 func (c *Client) freeBusyConnections(ctx context.Context, userID string) ([]fbConn, error) {
 	rows, err := c.db.QueryContext(ctx, `
 		SELECT access_token_enc, COALESCE(refresh_token_enc,''), calendar_id, COALESCE(expiry_at,''), COALESCE(account_email,'')
@@ -225,29 +228,37 @@ func (c *Client) freeBusyConnections(ctx context.Context, userID string) ([]fbCo
 	if err != nil {
 		return nil, fmt.Errorf("gcal: load freebusy connections: %w", err)
 	}
-	defer rows.Close()
 	type rowData struct{ accessEnc, refreshEnc, calID, expiryStr, accountEmail string }
 	var data []rowData
 	for rows.Next() {
 		var d rowData
 		if err := rows.Scan(&d.accessEnc, &d.refreshEnc, &d.calID, &d.expiryStr, &d.accountEmail); err != nil {
+			rows.Close() //nolint:errcheck,gosec
 			return nil, fmt.Errorf("gcal: scan freebusy connection: %w", err)
 		}
 		data = append(data, d)
 	}
+	rows.Close() //nolint:errcheck,gosec
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	// Build clients after the cursor is closed (the DB pool is single-connection; building a
-	// client touches no DB, but persisted refreshes during use would deadlock on an open cursor).
+	// Resolve selections + build clients after the cursor is closed: ConflictCalendarIDs runs
+	// its own query, which would deadlock the single-connection pool against an open cursor.
 	var conns []fbConn
 	for _, d := range data {
+		calIDs, err := calendar.ConflictCalendarIDs(ctx, c.db, "google", userID, d.accountEmail, d.calID)
+		if err != nil {
+			return nil, fmt.Errorf("gcal: resolve conflict calendars: %w", err)
+		}
+		if len(calIDs) == 0 {
+			continue // account fully deselected
+		}
 		hc, err := c.buildClient(ctx, userID, d.accessEnc, d.refreshEnc, d.calID, d.expiryStr, d.accountEmail)
 		if err != nil {
 			c.logger.Warn("gcal: skipping connection with bad credentials", "user_id", userID, "error", err)
 			continue
 		}
-		conns = append(conns, fbConn{hc: hc, calID: d.calID})
+		conns = append(conns, fbConn{hc: hc, calIDs: calIDs})
 	}
 	return conns, nil
 }

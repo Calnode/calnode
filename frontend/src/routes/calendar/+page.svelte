@@ -302,8 +302,9 @@
 				{/each}
 			</div>
 			<p class="text-xs text-muted-foreground">
-				Every connected calendar is checked for conflicts. Confirmed bookings (and any auto-generated
-				meeting links) are written to the one marked <span class="font-medium">“Add bookings here”</span>.
+				Use <span class="font-medium">Manage calendars</span> on each account to choose which of its
+				calendars are checked for conflicts. Confirmed bookings (and any auto-generated meeting links)
+				are written to the account marked <span class="font-medium">“Add bookings here”</span>.
 			</p>
 		{/if}
 

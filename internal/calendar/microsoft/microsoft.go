@@ -264,7 +264,17 @@ func (c *Client) httpClient(ctx context.Context, userID string, checkConflicts, 
 // freeBusyConnections returns an authorized client for EVERY Microsoft connection the user
 // has with check_conflicts = 1 (so several connected Microsoft accounts are all checked).
 // Bad-credential rows are logged and skipped (fail-open).
-func (c *Client) freeBusyConnections(ctx context.Context, userID string) ([]*http.Client, error) {
+// msFBConn is one conflict-check account's authorized client plus which calendars to read.
+// useDefault means query /me/calendarView (the account's default calendar) — the pre-picker
+// behaviour, used when the user hasn't selected sub-calendars; otherwise calIDs holds the
+// real Graph calendar ids to read via /me/calendars/{id}/calendarView.
+type msFBConn struct {
+	hc         *http.Client
+	calIDs     []string
+	useDefault bool
+}
+
+func (c *Client) freeBusyConnections(ctx context.Context, userID string) ([]msFBConn, error) {
 	rows, err := c.db.QueryContext(ctx, `
 		SELECT access_token_enc, COALESCE(refresh_token_enc,''), calendar_id, COALESCE(expiry_at,''), COALESCE(account_email,'')
 		FROM calendar_connections
@@ -272,27 +282,40 @@ func (c *Client) freeBusyConnections(ctx context.Context, userID string) ([]*htt
 	if err != nil {
 		return nil, fmt.Errorf("microsoft: load freebusy connections: %w", err)
 	}
-	defer rows.Close()
 	type rowData struct{ accessEnc, refreshEnc, calID, expiryStr, accountEmail string }
 	var data []rowData
 	for rows.Next() {
 		var d rowData
 		if err := rows.Scan(&d.accessEnc, &d.refreshEnc, &d.calID, &d.expiryStr, &d.accountEmail); err != nil {
+			rows.Close() //nolint:errcheck,gosec
 			return nil, fmt.Errorf("microsoft: scan freebusy connection: %w", err)
 		}
 		data = append(data, d)
 	}
+	rows.Close() //nolint:errcheck,gosec
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	var clients []*http.Client
+	// Resolve selections + build clients after the cursor is closed (ConflictCalendarIDs runs
+	// its own query; the single-connection pool would deadlock against an open cursor).
+	var clients []msFBConn
 	for _, d := range data {
+		calIDs, err := calendar.ConflictCalendarIDs(ctx, c.db, providerName, userID, d.accountEmail, d.calID)
+		if err != nil {
+			return nil, fmt.Errorf("microsoft: resolve conflict calendars: %w", err)
+		}
+		if len(calIDs) == 0 {
+			continue // account fully deselected
+		}
 		hc, err := c.buildClient(ctx, userID, d.accessEnc, d.refreshEnc, d.calID, d.expiryStr, d.accountEmail)
 		if err != nil {
 			c.logger.Warn("microsoft: skipping connection with bad credentials", "user_id", userID, "error", err)
 			continue
 		}
-		clients = append(clients, hc)
+		// Unconfigured accounts fall back to the stored "primary" placeholder id, which is not a
+		// real Graph calendar id — read the default calendar view for those.
+		useDefault := len(calIDs) == 1 && calIDs[0] == d.calID
+		clients = append(clients, msFBConn{hc: hc, calIDs: calIDs, useDefault: useDefault})
 	}
 	return clients, nil
 }
