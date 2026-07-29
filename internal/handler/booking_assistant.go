@@ -46,6 +46,16 @@ const (
 	assistantMaxSlots    = 40  // cap slots passed back to the model (token control)
 )
 
+// AssistantDisclosureText is the persistent AI-disclosure notice shown on the chat panel
+// (EU AI Act Art. 50(1): a person must be informed they're interacting with AI, at the latest
+// at the first interaction). Single source of truth for book.html; embed.js carries an
+// identical literal (can't share a Go const across a JS asset) with a comment pointing back
+// here — keep both in sync on edit.
+//
+// i18n stub: no localization layer exists yet in this codebase. This constant is the one
+// place a future i18n lookup would replace; do not duplicate the literal elsewhere.
+const AssistantDisclosureText = "You're chatting with an automated assistant, not a person."
+
 // assistantBaseRules is the static, code-owned core of the assistant's system prompt —
 // the tool-calling contract + style + safety rails. It is NOT admin-editable (editing it
 // could break tool use or the data-boundary guarantees); admins customize via the

@@ -56,6 +56,8 @@ type bookPageData struct {
 	Questions     []bookQuestion
 	// AssistantEnabled shows the conversational-booking chat panel when the LLM layer is on.
 	AssistantEnabled bool
+	// AssistantDisclosure is the persistent AI-disclosure notice on the chat panel (Art. 50(1)).
+	AssistantDisclosure string
 	// CSSVersion cache-busts the /booking.css link (content hash).
 	CSSVersion string
 	// BookingLogicJS is the shared booking-calendar logic module, inlined ahead of the page script.
@@ -393,24 +395,25 @@ func (h *Handler) BookPage(w http.ResponseWriter, r *http.Request) {
 	qjson, _ := json.Marshal(qmap)
 
 	data := bookPageData{
-		Slug:             slug,
-		Name:             name,
-		Description:      renderMarkdown(description),
-		DurationLabel:    durationLabel(durMins),
-		HostName:         hosts[0].Name,
-		HostInitial:      hosts[0].Initial,
-		AvatarURL:        hosts[0].AvatarURL,
-		Hosts:            hosts,
-		HostsLabel:       hostsLabel(hosts),
-		LocationLabel:    locationLabel(locType, locValue),
-		PriceLabel:       formatPrice(priceCents, currency),
-		PriceCents:       priceCents,
-		Currency:         currency,
-		MaxFutureDays:    maxDays,
-		Questions:        questions,
-		BookingLogicJS:   template.JS(bookingLogicJS), // #nosec G203 -- our own bundled JS source constant, not user input
-		AssistantEnabled: h.getLLM() != nil,
-		CSSVersion:       bookingCSSVersion,
+		Slug:                slug,
+		Name:                name,
+		Description:         renderMarkdown(description),
+		DurationLabel:       durationLabel(durMins),
+		HostName:            hosts[0].Name,
+		HostInitial:         hosts[0].Initial,
+		AvatarURL:           hosts[0].AvatarURL,
+		Hosts:               hosts,
+		HostsLabel:          hostsLabel(hosts),
+		LocationLabel:       locationLabel(locType, locValue),
+		PriceLabel:          formatPrice(priceCents, currency),
+		PriceCents:          priceCents,
+		Currency:            currency,
+		MaxFutureDays:       maxDays,
+		Questions:           questions,
+		BookingLogicJS:      template.JS(bookingLogicJS), // #nosec G203 -- our own bundled JS source constant, not user input
+		AssistantEnabled:    h.getLLM() != nil,
+		AssistantDisclosure: AssistantDisclosureText,
+		CSSVersion:          bookingCSSVersion,
 
 		HeadHTML:         template.HTML(track.HeadHTML), // #nosec G203 -- admin-only "code injection" feature (Settings -> Tracking); intentionally raw, documented, gated by requireAdmin on the settings endpoint
 		GTMContainerID:   track.GTMContainerID,

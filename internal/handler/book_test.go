@@ -248,6 +248,71 @@ func TestBookPage_assistantPanelGatedOnLLM(t *testing.T) {
 	}
 }
 
+// EU AI Act Art. 50(1): a person must be informed they're interacting with an AI system, at
+// the latest at the time of the first interaction. The disclosure must render on first load
+// (not appear only after the bot's first reply), sit outside the conversation log (so a
+// reset of the chat state — which only clears asst-log's contents client-side — can never
+// remove it), and be exposed to assistive tech via its own accessible note, not folded into
+// the aria-live conversation region.
+func TestBookPage_assistantDisclosure(t *testing.T) {
+	h, apiKey, _ := setupWorkspace(t)
+	slug, _ := seedEventTypeHTTP(t, h, apiKey)
+
+	// AI off → no disclosure (nothing to disclose; the panel doesn't exist at all).
+	req := httptest.NewRequest(http.MethodGet, "/book/"+slug, nil)
+	req.SetPathValue("slug", slug)
+	rec := httptest.NewRecorder()
+	h.BookPage(rec, req)
+	if strings.Contains(rec.Body.String(), "asst-disclosure") {
+		t.Error("disclosure rendered while LLM/assistant is disabled")
+	}
+
+	prec := httptest.NewRecorder()
+	h.RequireAuth(h.PatchLLMSettings)(prec, authReq(http.MethodPatch, "/v1/settings/llm",
+		`{"enabled":true,"endpoint":"http://example.test/v1","model":"m"}`, apiKey))
+	if prec.Code != http.StatusOK {
+		t.Fatalf("enable llm: %d — %s", prec.Code, prec.Body.String())
+	}
+
+	req2 := httptest.NewRequest(http.MethodGet, "/book/"+slug, nil)
+	req2.SetPathValue("slug", slug)
+	rec2 := httptest.NewRecorder()
+	h.BookPage(rec2, req2)
+	body := rec2.Body.String()
+
+	// html/template escapes the apostrophe (You're → You&#39;re) — correct, safe behavior;
+	// a browser renders it identically to the source. Match the escaped form.
+	const disclosureText = "You&#39;re chatting with an automated assistant, not a person."
+	if !strings.Contains(body, disclosureText) {
+		t.Fatal("AI-disclosure notice missing from the rendered chat panel")
+	}
+
+	// Present in the accessibility tree as its own announced note, distinct from the
+	// aria-live conversation log.
+	noteIdx := strings.Index(body, `role="note"`)
+	if noteIdx == -1 || !strings.Contains(body[noteIdx:noteIdx+200], disclosureText) {
+		t.Error(`disclosure is not exposed via role="note"`)
+	}
+
+	// Renders before the conversation log and the user's first input — not appended after
+	// the bot's opening reply — and survives a conversation reset because it lives in
+	// asst-head, outside asst-log entirely (a client-side reset only ever touches asst-log).
+	headIdx := strings.Index(body, `class="asst-head"`)
+	logIdx := strings.Index(body, `id="asst-log"`)
+	inputIdx := strings.Index(body, `id="asst-input"`)
+	discIdx := strings.Index(body, disclosureText)
+	if headIdx == -1 || logIdx == -1 || inputIdx == -1 || discIdx == -1 {
+		t.Fatal("expected chat panel structure (asst-head/asst-log/asst-input) not found")
+	}
+	if !(headIdx < discIdx && discIdx < logIdx && logIdx < inputIdx) {
+		t.Errorf("disclosure must sit inside asst-head, before asst-log and asst-input; got head=%d disc=%d log=%d input=%d",
+			headIdx, discIdx, logIdx, inputIdx)
+	}
+	if strings.Count(body, disclosureText) != 1 {
+		t.Errorf("expected exactly one disclosure instance in asst-head, got %d", strings.Count(body, disclosureText))
+	}
+}
+
 func TestBookPage_maxFutureDays0(t *testing.T) {
 	h, apiKey, _ := setupWorkspace(t)
 	slug := "zero-days"
