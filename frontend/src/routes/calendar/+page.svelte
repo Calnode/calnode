@@ -22,7 +22,7 @@
 		google: { text: 'Set up in Settings → Google OAuth', href: '/admin/settings/google' },
 		microsoft: {
 			text: 'See setup docs',
-			href: 'https://github.com/Calnode/calnode/blob/main/docs/ARCHITECTURE.md',
+			href: 'https://github.com/Calnode/calnode/blob/main/.env.example',
 			external: true
 		}
 	};

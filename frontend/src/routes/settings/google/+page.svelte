@@ -24,6 +24,16 @@
 	);
 	const isLocal = $derived(redirectBase.includes('localhost') || redirectBase.includes('127.0.0.1'));
 
+	// Catches the "moved to a custom domain but never updated BASE_URL" trap: the server
+	// still computes redirect URIs from its own configured base_url, which can silently
+	// drift from whatever domain an admin is actually browsing this page at (e.g. after
+	// pointing a custom domain at a host whose BASE_URL secret still says the old default).
+	const browserOrigin = $derived(typeof window !== 'undefined' ? window.location.origin : '');
+	const originMismatch = $derived(
+		!!googleSettings?.base_url && !!browserOrigin &&
+		googleSettings.base_url.replace(/\/+$/, '') !== browserOrigin
+	);
+
 	onMount(() => loadingFlag.run(async () => {
 		googleSettings = await api.get<GoogleSettings>('/v1/settings/google');
 		clientID = googleSettings.client_id;
@@ -50,6 +60,22 @@
 	<p class="py-8 text-sm text-muted-foreground">Loading…</p>
 {:else}
 	<div class="max-w-lg space-y-4">
+
+		{#if originMismatch}
+			<div class="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+				<p class="font-medium">This page is being viewed at a different domain than Calnode is configured for</p>
+				<p class="mt-1 text-amber-800">
+					You're browsing <code class="rounded bg-amber-100 px-1 font-mono">{browserOrigin}</code>, but this
+					server's <code class="rounded bg-amber-100 px-1 font-mono">BASE_URL</code> is set to
+					<code class="rounded bg-amber-100 px-1 font-mono">{googleSettings?.base_url}</code>. The redirect
+					URIs below are built from <code class="rounded bg-amber-100 px-1 font-mono">BASE_URL</code> —
+					if <code class="rounded bg-amber-100 px-1 font-mono">{browserOrigin}</code> is your real domain
+					(for example, after pointing a custom domain at this instance), update the
+					<code class="rounded bg-amber-100 px-1 font-mono">BASE_URL</code> environment variable/secret with
+					your hosting provider and redeploy, then reload this page.
+				</p>
+			</div>
+		{/if}
 
 		{#if !googleSettings?.configured}
 		<div class="rounded-lg border bg-card p-6">
