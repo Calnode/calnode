@@ -11,9 +11,18 @@ import (
 	"net/mail"
 	"net/smtp"
 	"strings"
+	"time"
 
 	"github.com/calnode/calnode/internal/uid"
 )
+
+// defaultSMTPTimeout bounds the entire SMTP conversation (StartTLS, Auth, MAIL/RCPT/DATA,
+// Quit) when ctx carries no deadline of its own. net/smtp's Client has no context support
+// past the initial dial — every call after that blocks on the raw connection with no
+// timeout unless one is set here, which previously meant a stalled or misconfigured server
+// (e.g. a port/TLS-mode mismatch) could hang the request — and therefore the caller — forever
+// with no error surfaced. A var, not a const, so tests can shrink it instead of waiting 30s.
+var defaultSMTPTimeout = 30 * time.Second
 
 // SMTP sends email via an SMTP server.
 type SMTP struct {
@@ -47,6 +56,14 @@ func (s *SMTP) Send(ctx context.Context, msg Message) error {
 	addr := net.JoinHostPort(s.host, s.port)
 	raw := s.buildRaw(msg)
 
+	// Bounds the whole conversation, not just the dial (see defaultSMTPTimeout).
+	// Whichever is EARLIER of "ctx's own deadline" and "now + the default" wins, so a
+	// caller-supplied shorter deadline is still honoured.
+	deadline := time.Now().Add(defaultSMTPTimeout)
+	if d, ok := ctx.Deadline(); ok && d.Before(deadline) {
+		deadline = d
+	}
+
 	var c *smtp.Client
 
 	if s.implicitTLS {
@@ -54,6 +71,10 @@ func (s *SMTP) Send(ctx context.Context, msg Message) error {
 		conn, err := d.DialContext(ctx, "tcp", addr)
 		if err != nil {
 			return fmt.Errorf("mailer: tls dial %s: %w", addr, err)
+		}
+		if err := conn.SetDeadline(deadline); err != nil {
+			conn.Close() // #nosec G104 -- already returning a more specific error; nothing actionable on close error
+			return fmt.Errorf("mailer: set deadline: %w", err)
 		}
 		c, err = smtp.NewClient(conn, s.host)
 		if err != nil {
@@ -65,6 +86,10 @@ func (s *SMTP) Send(ctx context.Context, msg Message) error {
 		conn, err := nd.DialContext(ctx, "tcp", addr)
 		if err != nil {
 			return fmt.Errorf("mailer: dial %s: %w", addr, err)
+		}
+		if err := conn.SetDeadline(deadline); err != nil {
+			conn.Close() // #nosec G104 -- already returning a more specific error; nothing actionable on close error
+			return fmt.Errorf("mailer: set deadline: %w", err)
 		}
 		c, err = smtp.NewClient(conn, s.host)
 		if err != nil {
