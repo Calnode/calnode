@@ -15,6 +15,18 @@
 		caldav: 'CalDAV (Apple iCloud, Fastmail, Nextcloud)'
 	};
 
+	// Where to send an admin for each provider Calnode supports but this instance hasn't
+	// been given credentials for. Google is self-serve (a settings page); Microsoft is
+	// currently env-var-only, so it points at the docs instead of a form.
+	const UNCONFIGURED_SETUP: Record<string, { text: string; href: string; external?: boolean }> = {
+		google: { text: 'Set up in Settings → Google OAuth', href: '/admin/settings/google' },
+		microsoft: {
+			text: 'See setup docs',
+			href: 'https://github.com/Calnode/calnode/blob/main/docs/ARCHITECTURE.md',
+			external: true
+		}
+	};
+
 	// CalDAV is credential-based (no OAuth redirect): an inline form collects a server + an
 	// app-specific password and POSTs to the dedicated connect endpoint.
 	let caldavOpen = $state(false);
@@ -389,6 +401,27 @@
 						<Button variant={connections.length > 0 ? 'outline' : 'default'} onclick={() => (window.location.href = `/v1/calendar/connect?provider=${p}`)}>Connect</Button>
 					</div>
 				{/if}
+			{/each}
+			{#each status?.unconfigured_providers ?? [] as p}
+				<div class="flex items-center justify-between rounded-lg border border-dashed bg-muted/20 p-4">
+					<div class="flex items-center gap-3">
+						<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="shrink-0 text-muted-foreground/60">
+							<rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+						</svg>
+						<div>
+							<p class="font-medium text-muted-foreground">{label(p)}</p>
+							<p class="text-xs text-muted-foreground">Not set up on this instance</p>
+						</div>
+					</div>
+					{#if UNCONFIGURED_SETUP[p]}
+						<a href={UNCONFIGURED_SETUP[p].href}
+							class="text-sm font-medium text-primary underline-offset-2 hover:underline"
+							target={UNCONFIGURED_SETUP[p].external ? '_blank' : undefined}
+							rel={UNCONFIGURED_SETUP[p].external ? 'noopener noreferrer' : undefined}>
+							{UNCONFIGURED_SETUP[p].text}
+						</a>
+					{/if}
+				</div>
 			{/each}
 			{#if connections.length > 0}
 				<p class="text-xs text-muted-foreground">Connect a personal + work calendar (or both providers) so nothing double-books.</p>

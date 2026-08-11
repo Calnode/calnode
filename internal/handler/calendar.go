@@ -163,13 +163,33 @@ func (h *Handler) ConnectCalDAV(w http.ResponseWriter, r *http.Request) {
 	h.writeJSON(w, http.StatusOK, map[string]any{"connected": true, "account_email": email})
 }
 
+// unconfiguredProviders reports which OAuth calendar providers Calnode supports but this
+// instance hasn't registered — so the admin UI can show "not set up yet" rather than
+// silently omitting them. svc may be nil (calendar entirely unconfigured), in which case
+// every OAuth provider is unconfigured. CalDAV needs no instance-level credentials (each
+// host supplies their own at connect-time), so it's never listed here.
+func unconfiguredProviders(svc *calendar.Service) []string {
+	var out []string
+	if svc == nil || svc.Provider("google") == nil {
+		out = append(out, "google")
+	}
+	if svc == nil || svc.Provider("microsoft") == nil {
+		out = append(out, "microsoft")
+	}
+	return out
+}
+
 // CalendarStatus handles GET /v1/calendar/status (auth required). Returns the user's full
 // list of connected calendars (many may be checked for conflicts; exactly one is the
-// destination), plus which providers are available to connect.
+// destination), which providers are available to connect, and which supported providers
+// this instance hasn't been configured with credentials for yet.
 func (h *Handler) CalendarStatus(w http.ResponseWriter, r *http.Request) {
 	svc := h.getCal()
 	if svc == nil || !svc.Any() {
-		h.writeJSON(w, http.StatusOK, map[string]any{"connected": false, "configured": false, "connections": []any{}})
+		h.writeJSON(w, http.StatusOK, map[string]any{
+			"connected": false, "configured": false, "connections": []any{},
+			"unconfigured_providers": unconfiguredProviders(svc),
+		})
 		return
 	}
 	user, _ := userFromContext(r.Context())
@@ -190,10 +210,11 @@ func (h *Handler) CalendarStatus(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	resp := map[string]any{
-		"connected":   len(conns) > 0,
-		"configured":  true,
-		"providers":   svc.ProviderNames(),
-		"connections": conns,
+		"connected":              len(conns) > 0,
+		"configured":             true,
+		"providers":              svc.ProviderNames(),
+		"connections":            conns,
+		"unconfigured_providers": unconfiguredProviders(svc),
 	}
 	if destProvider != "" {
 		resp["provider"] = destProvider

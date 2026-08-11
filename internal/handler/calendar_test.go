@@ -100,6 +100,53 @@ func TestCalendarStatus_configuredButNotConnected(t *testing.T) {
 	}
 }
 
+// unconfiguredProviders lets a fresh install know Google/Microsoft calendar support exists
+// even though nobody has added credentials for them yet, instead of silently omitting them.
+func TestCalendarStatus_unconfiguredProviders_freshInstall(t *testing.T) {
+	// No SetCalendar called — svc is nil, so every OAuth provider is unconfigured.
+	h := newTestHandler(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/calendar/status", nil)
+	rec := httptest.NewRecorder()
+	h.CalendarStatus(rec, req)
+
+	var resp map[string]any
+	json.Unmarshal(rec.Body.Bytes(), &resp) //nolint:errcheck
+	got, _ := resp["unconfigured_providers"].([]any)
+	want := map[string]bool{"google": true, "microsoft": true}
+	if len(got) != len(want) {
+		t.Fatalf("unconfigured_providers = %v; want google + microsoft", got)
+	}
+	for _, p := range got {
+		if !want[p.(string)] { //nolint:errcheck
+			t.Errorf("unexpected provider %v in unconfigured_providers", p)
+		}
+	}
+}
+
+// A provider that IS registered as a calendar (Google, here) must not also be reported as
+// unconfigured — the two lists are complementary, not overlapping.
+func TestCalendarStatus_unconfiguredProviders_googleConfigured(t *testing.T) {
+	h, _, apiKey, _ := newHandlerWithGCal(t) // registers google, not microsoft
+
+	req := authReq(http.MethodGet, "/v1/calendar/status", "", apiKey)
+	rec := httptest.NewRecorder()
+	h.RequireAuth(h.CalendarStatus)(rec, req)
+
+	var resp map[string]any
+	json.Unmarshal(rec.Body.Bytes(), &resp) //nolint:errcheck
+	unconf, _ := resp["unconfigured_providers"].([]any)
+	if len(unconf) != 1 || unconf[0] != "microsoft" {
+		t.Errorf("unconfigured_providers = %v; want exactly [microsoft] (google is configured)", unconf)
+	}
+	configured, _ := resp["providers"].([]any)
+	for _, p := range configured {
+		if p == "microsoft" {
+			t.Error("microsoft appeared in both providers and unconfigured_providers")
+		}
+	}
+}
+
 // ---------------------------------------------------------------------------
 // ConnectCalendar
 // ---------------------------------------------------------------------------
