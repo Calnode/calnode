@@ -11,6 +11,23 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-08-12
+
+Compliance and admin-UX polish.
+
+### Added
+- **AI-disclosure notice** on the booking-assistant chat panel ("Book by chat"), pinned above
+  the conversation and visible before the first message, satisfying the EU AI Act's Article
+  50(1) requirement that a person be told they're talking to an AI. Shown on both surfaces
+  the assistant appears on: the hosted booking page and the embeddable widget.
+- **Google and Microsoft now show up on the Calendar page even when unconfigured.** Previously
+  an instance with no OAuth credentials for a provider simply omitted it from "Connect a
+  calendar," with no indication it was ever an option. Each now renders a clearly-labelled
+  "Not set up on this instance" row with a next step — a link to Settings → Google OAuth, or
+  to the Microsoft setup docs.
+
+[0.2.1]: https://github.com/Calnode/calnode/releases/tag/v0.2.1
+
 ## [0.2.0] - 2026-07-24
 
 Adds per-account calendar selection and a set of admin-UX refinements from early user feedback.
@@ -35,7 +52,7 @@ Adds per-account calendar selection and a set of admin-UX refinements from early
 ### Fixed
 - Corrected the Google OAuth redirect path in `.env.example`.
 
-[Unreleased]: https://github.com/Calnode/calnode/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/Calnode/calnode/compare/v0.2.1...HEAD
 [0.2.0]: https://github.com/Calnode/calnode/releases/tag/v0.2.0
 
 ## [0.1.0] - 2026-07-23
