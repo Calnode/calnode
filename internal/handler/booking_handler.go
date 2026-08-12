@@ -984,6 +984,23 @@ func (h *Handler) mintMeetingLink(ctx context.Context, b *booking.Booking, in bo
 	return meetURL, autoGenMeet, livekitHostURL
 }
 
+// hostEventLocation picks the Location for a host's calendar event. That event adds the
+// attendee as a guest (see gcal's CreateEvent), so the calendar provider (Google/Microsoft/
+// CalDAV) emails this value straight to the attendee via its own native invite — bypassing
+// Calnode's host/attendee link split entirely if it were ever a privileged link. For a LiveKit
+// booking (livekitHostURL != ""), meetURL IS the host-role join link, so it must never land
+// here; use the plain attendee-safe link instead (the host still gets their privileged link
+// separately, via their own confirmation email, which never reaches the attendee's inbox). For
+// every other location type, meetURL is already attendee-safe (or "" until the primary host's
+// event auto-generates one — see the auto-gen-Meet branch below, which updates meetURL for
+// later/secondary-host iterations).
+func hostEventLocation(meetURL, livekitHostURL, attendeeLocationValue string) string {
+	if livekitHostURL != "" {
+		return attendeeLocationValue
+	}
+	return meetURL
+}
+
 // createHostEventsAndNotify creates a calendar event on each assigned host's connected
 // calendar (Group bookings put several hosts on the meeting; round-robin/Normal has one) and
 // emails each host that has host-booking notifications on. For the primary host, a
@@ -1002,7 +1019,7 @@ func (h *Handler) createHostEventsAndNotify(ctx context.Context, b *booking.Book
 			eventID, link, err := gc.CreateEvent(ctx, host.UserID, calendar.CreateEventParams{
 				Summary:        in.EventTypeName + " with " + in.OrganizerName,
 				Description:    "Booking ID: " + b.ID,
-				Location:       meetURL, // empty until the primary creates it; secondary hosts get the link
+				Location:       hostEventLocation(meetURL, livekitHostURL, bData.LocationValue), // empty until the primary creates it; secondary hosts get the link
 				Start:          b.StartAt,
 				End:            b.EndAt,
 				OrganizerName:  in.OrganizerName,
