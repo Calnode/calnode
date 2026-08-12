@@ -17,6 +17,7 @@
 		configured: boolean;
 	};
 	type NotetakerSettings = { enabled: boolean; stt_api_key_set: boolean };
+	type StorageStatus = { recordings_storage_ready: boolean; recordings_enabled: boolean };
 
 	const loadingFlag = createAsyncFlag(true);
 	const savingFlag = createAsyncFlag();
@@ -31,6 +32,12 @@
 	let notetakerEnabled = $state(false);
 	let deepgramKey = $state('');
 
+	let storage = $state<StorageStatus | null>(null);
+	// Only worth surfacing once LiveKit itself works — there's nothing to record yet otherwise.
+	const recordingNotReady = $derived(
+		settings?.configured && storage !== null && (!storage.recordings_storage_ready || !storage.recordings_enabled)
+	);
+
 	onMount(() => loadingFlag.run(async () => {
 		webhookUrl = `${window.location.origin}/v1/livekit/webhook`;
 		settings = await api.get<LiveKitSettings>('/v1/settings/livekit');
@@ -38,6 +45,7 @@
 		apiKey = settings.api_key;
 		notetaker = await api.get<NotetakerSettings>('/v1/settings/notetaker');
 		notetakerEnabled = notetaker.enabled;
+		storage = await api.get<StorageStatus>('/v1/settings/storage');
 	}, 'Could not load video settings'));
 
 	async function saveNotetaker() {
@@ -158,6 +166,19 @@
 				{/if}
 			</div>
 		</div>
+
+		{#if recordingNotReady}
+			<div class="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+				{#if !storage?.recordings_storage_ready}
+					<p>Meeting recordings need object storage set up first.</p>
+				{:else}
+					<p>Object storage is ready — turn recordings on to let hosts record meetings.</p>
+				{/if}
+				<a href="/admin/settings/storage" class="mt-1 inline-block font-medium text-amber-900 underline underline-offset-2">
+					Go to Settings → Storage
+				</a>
+			</div>
+		{/if}
 
 		{#if settings?.configured}
 			<div class="rounded-lg border bg-card p-6">
