@@ -11,6 +11,42 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-08-12
+
+### Security
+- **Fixed a LiveKit host-control leak.** For a booking held on a host's connected Google or
+  Microsoft calendar, the calendar event added the attendee as a guest — and the provider then
+  sent its own native invite email using that event's Location, which was the host's
+  *privileged* join link. An attendee opening that invite (not Calnode's own confirmation email,
+  which was never affected) got instant host controls in the room. CalDAV bookings were not
+  exposed (its ICS never listed the attendee as a scheduling participant, so no native invite
+  was ever sent). If you've run LiveKit bookings with a Google- or Microsoft-connected host
+  before this release, treat any prior host links as having been shared more widely than
+  intended.
+
+### Fixed
+- The SMTP mailer had no timeout past the initial connection — a stalled or misconfigured
+  server (e.g. a port/TLS-mode mismatch) could hang a send indefinitely, surfacing in the admin
+  UI as "Send test email" stuck on **Sending…** forever with no error. Now bounded to 30s (or
+  the caller's own deadline, if shorter).
+- `Settings → Google OAuth` now warns when the page is being viewed at a different domain than
+  the server's configured `BASE_URL` — the usual cause of `redirect_uri_mismatch` after moving
+  to a custom domain without updating `BASE_URL` to match.
+
+### Added
+- **Storage setup instructions.** `Settings → Storage` had a status badge but no real
+  instructions for configuring the recording/backups bucket; now shows a full numbered guide
+  (provider suggestions, exact env vars, including `LITESTREAM_ENDPOINT`/`REGION` which weren't
+  documented anywhere before). `.env.example` documents the full `LITESTREAM_*` set for the
+  first time, and the previously-undocumented `MICROSOFT_CLIENT_ID`/`SECRET`/`TENANT` set.
+- `Settings → Video` now explains when meeting recordings need the storage bucket set up, with
+  a link straight to `Settings → Storage`.
+- The Recordings page's "no notes yet" message now says precisely which of the notetaker's three
+  requirements (recording on, a Deepgram key, an LLM configured) is missing, instead of a
+  generic message that only ever mentioned the first.
+
+[0.2.2]: https://github.com/Calnode/calnode/releases/tag/v0.2.2
+
 ## [0.2.1] - 2026-08-12
 
 Compliance and admin-UX polish.
@@ -52,7 +88,7 @@ Adds per-account calendar selection and a set of admin-UX refinements from early
 ### Fixed
 - Corrected the Google OAuth redirect path in `.env.example`.
 
-[Unreleased]: https://github.com/Calnode/calnode/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/Calnode/calnode/compare/v0.2.2...HEAD
 [0.2.0]: https://github.com/Calnode/calnode/releases/tag/v0.2.0
 
 ## [0.1.0] - 2026-07-23
