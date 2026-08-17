@@ -367,7 +367,7 @@
 											{#each answersCache[b.id] as a}
 												<div class="flex gap-4 text-sm">
 													<dt class="w-48 shrink-0 font-medium text-foreground">{a.label}</dt>
-													<dd class="text-muted-foreground">
+													<dd class="text-muted-foreground {a.type !== 'checkbox' ? 'whitespace-pre-wrap' : ''}">
 														{#if a.type === 'checkbox'}
 															{a.value === 'yes' ? 'Yes' : 'No'}
 														{:else}

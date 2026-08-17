@@ -201,6 +201,21 @@
   transition: border-color .12s, box-shadow .12s;
 }
 .field input:focus { border-color: #111827; box-shadow: 0 0 0 3px rgba(17,24,39,.06); }
+.field textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: .55rem .75rem;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 8px;
+  font: inherit;
+  font-size: .875rem;
+  color: #111827;
+  outline: none;
+  resize: vertical;
+  min-height: 4.5rem;
+  transition: border-color .12s, box-shadow .12s;
+}
+.field textarea:focus { border-color: #111827; box-shadow: 0 0 0 3px rgba(17,24,39,.06); }
 .btn-primary {
   width: 100%; padding: .675rem 1rem; margin-top: .5rem;
   background: #111827; color: #fff;

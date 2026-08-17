@@ -433,7 +433,7 @@
           if (q.required) inp.required = true;
           field = el('div', { class: 'field' }, [el('label', { html: esc(q.label) + (q.required ? ' <span class="required-star">*</span>' : '') }), inp]);
         } else {
-          inp = el('input', { type: 'text' });
+          inp = el('textarea', { rows: '3' });
           if (q.required) inp.required = true;
           field = el('div', { class: 'field' }, [el('label', { html: esc(q.label) + (q.required ? ' <span class="required-star">*</span>' : '') }), inp]);
         }

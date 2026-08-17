@@ -209,7 +209,7 @@ body {
           </select>
           {{else}}
           <label for="ans-{{.ID}}">{{.Label}}{{if .Required}} <span class="required-star">*</span>{{end}}</label>
-          <input id="ans-{{.ID}}" name="ans-{{.ID}}" type="text"{{if .Required}} required{{end}}>  <!-- nosemgrep: generic.html-templates.security.unquoted-attribute-var.unquoted-attribute-var -->
+          <textarea id="ans-{{.ID}}" name="ans-{{.ID}}" rows="3"{{if .Required}} required{{end}}></textarea>  <!-- nosemgrep: generic.html-templates.security.unquoted-attribute-var.unquoted-attribute-var -->
           {{end}}
         </div>
         {{end}}
@@ -554,7 +554,7 @@ body {
     const qEls = document.querySelectorAll('[data-qid]');
     for (let i = 0; i < qEls.length; i++) {
       const el = qEls[i];
-      const input = el.querySelector('input, select');
+      const input = el.querySelector('input, select, textarea');
       if (!input) continue;
       let value;
       if (input.type === 'checkbox') {
