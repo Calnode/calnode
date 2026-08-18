@@ -33,8 +33,12 @@ COPY --from=frontend-builder /app/build ./frontend/build
 # on ARM hosts where the original hardcoded amd64 would produce a
 # binary that can't execute at all).
 ARG TARGETARCH
+# VERSION is passed by docker-publish.yml from the resolved image tag (semver on a
+# release, "edge"/branch on a plain main push); defaults to "dev" for local builds
+# so `go build` without --build-arg still works as documented in CLAUDE.md.
+ARG VERSION=dev
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build \
-    -ldflags="-s -w" \
+    -ldflags="-s -w -X github.com/calnode/calnode/internal/buildinfo.Version=${VERSION}" \
     -o calnode ./cmd/calnode
 
 # Download Litestream for the deployment target, matching TARGETARCH

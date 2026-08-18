@@ -11,6 +11,8 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-08-18
+
 ### Security
 - Bumped the Go toolchain from 1.26.5 to 1.26.6, closing 8 known stdlib CVEs
   (`net/http`, `encoding/xml`, `encoding/asn1`, `golang.org/x/net/idna`) that were
@@ -28,7 +30,9 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
   logo (either, both, or neither can be shown).
 - A small link to the GitHub releases page in the admin sidebar footer, so
   self-hosted operators always have an easy way to check what version they're
-  running against.
+  running against. The released Docker image now stamps its actual version at
+  build time (`-ldflags -X buildinfo.Version=...`), which it previously didn't -
+  every image, including past tagged releases, reported "dev".
 
 ## [0.2.2] - 2026-08-12
 
