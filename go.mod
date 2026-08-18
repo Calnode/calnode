@@ -2,6 +2,8 @@ module github.com/calnode/calnode
 
 go 1.26
 
+toolchain go1.26.6
+
 require (
 	github.com/disintegration/imaging v1.6.2
 	github.com/joho/godotenv v1.5.1
@@ -9,7 +11,7 @@ require (
 	github.com/pressly/goose/v3 v3.27.1
 	github.com/yuin/goldmark v1.8.2
 	golang.org/x/crypto v0.53.0
-	golang.org/x/image v0.43.0
+	golang.org/x/image v0.45.0
 	golang.org/x/oauth2 v0.36.0
 	modernc.org/sqlite v1.49.1
 )
@@ -29,7 +31,7 @@ require (
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
-	golang.org/x/sys v0.46.0 // indirect
+	golang.org/x/sys v0.47.0 // indirect
 	modernc.org/libc v1.72.1 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
