@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+
+	"github.com/calnode/calnode/internal/i18n"
 )
 
 // The manage template injects JS constants from server data. Using
@@ -22,6 +24,7 @@ func TestManageTemplate_jsConstantsNotDoubleQuoted(t *testing.T) {
 		Status:          "confirmed",
 		MaxFutureDays:   60,
 		DurationMinutes: 20,
+		T:               i18n.Default().T,
 	}
 	if err := manageTmpl.Execute(&buf, data); err != nil {
 		t.Fatalf("render manage template: %v", err)

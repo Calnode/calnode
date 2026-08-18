@@ -410,6 +410,19 @@
 .powered-by a:hover,
 .powered-by .cookie-link:hover { opacity: .6; }
 
+/* Language switcher — matches the footer links' size/weight/color so it reads as one
+   of the footer items rather than a distinct form control. */
+.powered-by .lang-select {
+  font: inherit;
+  font-size: .75rem;
+  font-weight: 600;
+  color: #111827;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
 /* ── Public demo banner ────────────────────────────── */
 /* Shared by book.html + manage.html (the "demoBanner" partial) — only rendered
    when the instance is running in demo mode (internal/demo). */

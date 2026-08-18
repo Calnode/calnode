@@ -55,6 +55,22 @@
   // dowIndex — Monday-first weekday index (0=Mon … 6=Sun) for the calendar grid offset.
   function dowIndex(date) { return (date.getDay() + 6) % 7; }
 
+  // dowLabels — Monday-first weekday header labels (2-char abbreviations), via Intl for
+  // the given locale rather than a hardcoded English array. Replaces the old
+  // ['Mo','Tu',…] literal that was duplicated (in English, regardless of visitor
+  // language) across book.html/manage.html. 2024-01-01 is an arbitrary fixed Monday
+  // anchor — only its weekday matters, not the actual date.
+  function dowLabels(locale) {
+    var labels = [];
+    var monday = new Date(Date.UTC(2024, 0, 1));
+    for (var i = 0; i < 7; i++) {
+      var d = new Date(monday.getTime() + i * 86400000);
+      var full = new Intl.DateTimeFormat(locale || [], { weekday: 'short', timeZone: 'UTC' }).format(d);
+      labels.push(full.slice(0, 2));
+    }
+    return labels;
+  }
+
   function startOfMonth(d) { return new Date(d.getFullYear(), d.getMonth(), 1); }
   function endOfMonth(d) { return new Date(d.getFullYear(), d.getMonth() + 1, 0); }
   function addMonths(d, n) { return new Date(d.getFullYear(), d.getMonth() + n, 1); }
@@ -78,6 +94,7 @@
     formatTime: formatTime,
     formatDay: formatDay,
     dowIndex: dowIndex,
+    dowLabels: dowLabels,
     startOfMonth: startOfMonth,
     endOfMonth: endOfMonth,
     addMonths: addMonths,

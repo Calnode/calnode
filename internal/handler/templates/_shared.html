@@ -43,14 +43,14 @@
 {{end}}{{end}}
 
 {{define "consentBanner"}}{{if or .GTMContainerID .GA4MeasurementID}}
-<div id="cookie-banner" class="cookie-banner" hidden role="dialog" aria-label="Cookie consent">
+<div id="cookie-banner" class="cookie-banner" hidden role="dialog" aria-label="{{call .T "cookie_consent_aria"}}">
   {{/* SAFE (generic.html-templates.security.var-in-href): .PrivacyURL is server-validated to
        require an absolute http(s) scheme before it's ever stored (validatedLegalURL in
        branding_settings.go) — a javascript: URI is rejected at write time, never at render time. */}}
-  <p class="cookie-text">We use analytics cookies to understand how this booking page is used — set only if you accept.{{if .PrivacyURL}} <a href="{{.PrivacyURL}}" target="_blank" rel="noopener noreferrer">Privacy policy</a>.{{end}}</p>  <!-- nosemgrep: generic.html-templates.security.var-in-href.var-in-href -->
+  <p class="cookie-text">{{call .T "cookie_text"}}{{if .PrivacyURL}} <a href="{{.PrivacyURL}}" target="_blank" rel="noopener noreferrer">{{call .T "privacy_policy"}}</a>.{{end}}</p>  <!-- nosemgrep: generic.html-templates.security.var-in-href.var-in-href -->
   <div class="cookie-actions">
-    <button id="cookie-decline" type="button" class="cookie-btn">Decline</button>
-    <button id="cookie-accept" type="button" class="cookie-btn cookie-btn-primary">Accept</button>
+    <button id="cookie-decline" type="button" class="cookie-btn">{{call .T "decline"}}</button>
+    <button id="cookie-accept" type="button" class="cookie-btn cookie-btn-primary">{{call .T "accept"}}</button>
   </div>
 </div>
 <script>
@@ -96,25 +96,35 @@
      are server-validated to require an absolute http(s) scheme before storage (validatedLegalURL
      in branding_settings.go) — a javascript: URI is rejected at write time, never at render time. */}}
 {{define "legalFooter"}}<footer class="powered-by">
-  {{if .PrivacyURL}}<a href="{{.PrivacyURL}}" target="_blank" rel="noopener noreferrer">Privacy</a>{{end}}  <!-- nosemgrep: generic.html-templates.security.var-in-href.var-in-href -->
-  {{if .TermsURL}}<a href="{{.TermsURL}}" target="_blank" rel="noopener noreferrer">Terms</a>{{end}}  <!-- nosemgrep: generic.html-templates.security.var-in-href.var-in-href -->
-  {{if or .GTMContainerID .GA4MeasurementID}}<button type="button" class="cookie-link" onclick="window.__calnodeOpenConsent && window.__calnodeOpenConsent()">Cookie settings</button>{{end}}
+  {{if .PrivacyURL}}<a href="{{.PrivacyURL}}" target="_blank" rel="noopener noreferrer">{{call .T "privacy"}}</a>{{end}}  <!-- nosemgrep: generic.html-templates.security.var-in-href.var-in-href -->
+  {{if .TermsURL}}<a href="{{.TermsURL}}" target="_blank" rel="noopener noreferrer">{{call .T "terms"}}</a>{{end}}  <!-- nosemgrep: generic.html-templates.security.var-in-href.var-in-href -->
+  {{if or .GTMContainerID .GA4MeasurementID}}<button type="button" class="cookie-link" onclick="window.__calnodeOpenConsent && window.__calnodeOpenConsent()">{{call .T "cookie_settings"}}</button>{{end}}
+  {{/* Language switcher — only shown once a second language actually exists. Setting
+       ?lang= reloads the page; the server persists the choice to a cookie (see
+       resolveLocale/persistLangOverride in internal/handler/i18n.go) so it sticks on
+       later visits without the query param. Each option is labelled in ITS OWN
+       language (never the current UI language) — standard language-switcher practice. */}}
+  {{if gt (len (supportedLocales)) 1}}
+  <select class="lang-select" aria-label="Language" onchange="var u=new URL(location.href);u.searchParams.set('lang',this.value);location.href=u.toString();">
+    {{range supportedLocales}}<option value="{{.Code}}"{{if eq .Code $.Locale}} selected{{end}}>{{.Name}}</option>{{end}}
+  </select>
+  {{end}}
   <a href="https://calnode.com" target="_blank" rel="noopener noreferrer">Calnode</a>
 </footer>{{end}}
 
 {{define "demoNoindex"}}{{if .DemoMode}}<meta name="robots" content="noindex,nofollow">{{end}}{{end}}
 
-{{define "demoBanner"}}{{if .DemoMode}}<div class="demo-banner"><strong>Public demo</strong> — data here is visible to everyone and resets automatically. Don't enter anything private. <a href="https://github.com/Calnode/calnode" target="_blank" rel="noopener noreferrer">View source</a></div>{{end}}{{end}}
+{{define "demoBanner"}}{{if .DemoMode}}<div class="demo-banner"><strong>{{call .T "demo_public_label"}}</strong> — {{call .T "demo_public_text"}} <a href="https://github.com/Calnode/calnode" target="_blank" rel="noopener noreferrer">{{call .T "demo_view_source"}}</a></div>{{end}}{{end}}
 
 {{/* Month nav + the day grid. The grid (#cal) is empty here and filled by
      booking-logic.js. Each page wraps this in its own <section> (book shows it
      inline + a timezone picker; manage starts it hidden + adds a Back button). */}}
 {{define "calendarGrid"}}<div class="cal-nav">
       <span id="month-label" class="month-label" aria-live="polite"></span>
-      <button id="prev-btn" aria-label="Previous month">
+      <button id="prev-btn" aria-label="{{call .T "prev_month_aria"}}">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
       </button>
-      <button id="next-btn" aria-label="Next month">
+      <button id="next-btn" aria-label="{{call .T "next_month_aria"}}">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
       </button>
     </div>

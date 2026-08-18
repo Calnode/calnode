@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/calnode/calnode/internal/booking"
+	"github.com/calnode/calnode/internal/i18n"
 	"github.com/calnode/calnode/internal/mailer"
 	"github.com/calnode/calnode/internal/webhook"
 )
@@ -20,7 +21,9 @@ var manageTmplSrc string
 
 // Shared chrome partials (consent/tracking/footer) are parsed first so manage.html can
 // reference them via {{template "trackingHead" .}} etc. — same source as the booking page.
-var manageTmpl = template.Must(template.Must(template.New("manage").Parse(sharedPartialsSrc)).Parse(manageTmplSrc))
+var manageTmpl = template.Must(template.Must(template.New("manage").Funcs(template.FuncMap{
+	"supportedLocales": i18n.SupportedLocales,
+}).Parse(sharedPartialsSrc)).Parse(manageTmplSrc))
 
 type managePageData struct {
 	Token           string
@@ -59,6 +62,11 @@ type managePageData struct {
 	BookingLogicJS template.JS
 	// DemoMode shows the "public demo" banner + a noindex meta tag (see internal/demo).
 	DemoMode bool
+	// Locale/T serve the shared partials (_shared.html) this page renders — its own
+	// strings aren't extracted yet (internal-docs/i18n-plan.md scopes this session to
+	// book.html), but the shared chrome (cookie banner, footer, calendar nav) is.
+	Locale string
+	T      func(string) string
 }
 
 // ManagePage renders the attendee manage page for a booking (reschedule / cancel).
@@ -93,9 +101,10 @@ func (h *Handler) ManagePage(w http.ResponseWriter, r *http.Request) {
 	// Show the actual assigned host(s) for this booking, not the event-type owner
 	// (round-robin/Group route elsewhere). Falls back to the owner name above if
 	// no booking_hosts rows exist. The avatar uses the primary host.
+	loc := h.resolveLocale(r)
 	var hostInitial, avatarURL string
 	if hosts := h.displayHostsForBooking(r.Context(), b.ID); len(hosts) > 0 {
-		hostName = hostsLabel(hosts)
+		hostName = hostsLabel(hosts, loc)
 		hostInitial = hosts[0].Initial
 		avatarURL = hosts[0].AvatarURL
 	} else {
@@ -118,8 +127,8 @@ func (h *Handler) ManagePage(w http.ResponseWriter, r *http.Request) {
 		HostName:        hostName,
 		HostInitial:     hostInitial,
 		AvatarURL:       avatarURL,
-		DurationLabel:   durationLabel(durMins),
-		LocationLabel:   locationLabel(locType, locValue),
+		DurationLabel:   durationLabel(durMins, loc),
+		LocationLabel:   locationLabel(locType, locValue, loc),
 		MaxFutureDays:   maxDays,
 		DurationMinutes: durMins,
 		CurrentStartISO: b.StartAt.UTC().Format(time.RFC3339),
@@ -149,11 +158,16 @@ func (h *Handler) renderManage(w http.ResponseWriter, r *http.Request, data mana
 	data.CSSVersion = bookingCSSVersion
 	data.BookingLogicJS = template.JS(bookingLogicJS) // #nosec G203 -- our own bundled JS source constant, not user input
 	data.DemoMode = h.demoMode
+	loc := h.resolveLocale(r)
+	data.Locale = loc.Code
+	data.T = loc.T
 
+	h.persistLangOverride(w, r)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Content-Security-Policy", publicCSP(track))
 	w.Header().Set("X-Frame-Options", "DENY")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Vary", "Accept-Language, Cookie") // see the same header in book.go's BookPage
 	if err := manageTmpl.Execute(w, data); err != nil {
 		h.logger.ErrorContext(r.Context(), "manage page: template", "error", err)
 	}

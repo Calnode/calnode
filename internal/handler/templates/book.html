@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{.Locale}}">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -8,6 +8,10 @@
 {{template "demoNoindex" .}}
 {{template "trackingHead" .}}
 {{.HeadHTML}}
+{{/* SAFE (generic.html-templates.security.var-in-script-tag): .I18NJSON is server-built via
+     json.Marshal (HTML-escapes <,>,& by default), same pattern as .DataLayerFields/.QuestionsJSON
+     below — never raw/attacker-controlled data. */}}
+<script>window.__CALNODE_I18N = {{.I18NJSON}};</script>  <!-- nosemgrep: generic.html-templates.security.var-in-script-tag.var-in-script-tag -->
 {{if .DataLayerEnabled}}
 <script>
   window.dataLayer = window.dataLayer || [];
@@ -91,27 +95,27 @@ body {
 {{if .AssistantEnabled}}
 <button type="button" class="asst-fab-btn" id="asst-open" aria-expanded="false" aria-controls="asst-panel">
   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.8L18.7 9.7l-4.8 1.9L12 16.4l-1.9-4.8L5.3 9.7l4.8-1.9L12 3z"/></svg>
-  Book by chat
+  {{call .T "book_by_chat"}}
 </button>
-<div class="asst-panel" id="asst-panel" role="dialog" aria-label="Book by chat" hidden>
+<div class="asst-panel" id="asst-panel" role="dialog" aria-label="{{call .T "book_by_chat"}}" hidden>
   <div class="asst-head">
     <div class="asst-head-row">
       <span class="asst-title">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.8L18.7 9.7l-4.8 1.9L12 16.4l-1.9-4.8L5.3 9.7l4.8-1.9L12 3z"/></svg>
-        Book by chat
+        {{call .T "book_by_chat"}}
       </span>
-      <button type="button" class="asst-close" id="asst-close" aria-label="Close">
+      <button type="button" class="asst-close" id="asst-close" aria-label="{{call .T "close"}}">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
     <p class="asst-disclosure" role="note">{{.AssistantDisclosure}}</p>
   </div>
   <div class="asst-log" id="asst-log" aria-live="polite">
-    <div class="asst-msg bot">Hi! Tell me roughly when you'd like to meet — e.g. "Tuesday afternoon" or "next week" — and I'll find a time. You can always use the calendar instead.</div>
+    <div class="asst-msg bot">{{call .T "assistant_greeting"}}</div>
   </div>
   <form class="asst-row" id="asst-form" autocomplete="off">
-    <input class="asst-input" id="asst-input" type="text" placeholder="Type when you're free…" aria-label="Message the booking assistant" maxlength="500">
-    <button class="asst-send" id="asst-send" type="submit">Send</button>
+    <input class="asst-input" id="asst-input" type="text" placeholder="{{call .T "assistant_input_placeholder"}}" aria-label="{{call .T "assistant_input_aria"}}" maxlength="500">
+    <button class="asst-send" id="asst-send" type="submit">{{call .T "send"}}</button>
   </form>
 </div>
 {{end}}
@@ -137,20 +141,20 @@ body {
     {{if .AssistantEnabled}}
     <button type="button" class="asst-link" id="asst-open-inline">
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.8L18.7 9.7l-4.8 1.9L12 16.4l-1.9-4.8L5.3 9.7l4.8-1.9L12 3z"/></svg>
-      Book by chat
+      {{call .T "book_by_chat"}}
       <svg class="asst-link-arrow" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="13 17 18 12 13 7"/><polyline points="6 17 11 12 6 7"/></svg>
     </button>
     {{end}}
     {{if .Description}}<div class="description">{{.Description}}</div>
-    <button type="button" class="desc-toggle" id="desc-toggle">Show more</button>{{end}}
+    <button type="button" class="desc-toggle" id="desc-toggle">{{call .T "show_more"}}</button>{{end}}
   </aside>
 
   <!-- Calendar column -->
-  <section class="cal-col" aria-label="Date picker">
+  <section class="cal-col" aria-label="{{call .T "date_picker_aria"}}">
     {{template "calendarGrid" .}}
     <p class="tz-label">
       <span class="tz-wrapper">
-        <select id="tz-select" aria-label="Timezone"></select>
+        <select id="tz-select" aria-label="{{call .T "timezone_aria"}}"></select>
         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
       </span>
       <span id="tz-sizer" aria-hidden="true"></span>
@@ -161,13 +165,13 @@ body {
   <section class="right-col" aria-live="polite">
 
     <!-- Empty state (before a day is chosen) -->
-    <p id="empty-hint" class="hint">Select a day to see available times.</p>
+    <p id="empty-hint" class="hint">{{call .T "select_day_hint"}}</p>
 
     <!-- Slots -->
     <div id="slots-view" class="hidden">
       <button class="back-btn cal-back" id="cal-back-btn">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-        Back
+        {{call .T "back"}}
       </button>
       <p class="slots-header" id="slots-date"></p>
       <div id="slots-list" class="slots-list"></div>
@@ -177,7 +181,7 @@ body {
     <div id="form-view" class="hidden">
       <button class="back-btn" id="back-btn">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-        Back
+        {{call .T "back"}}
       </button>
       <p class="slot-label" id="form-slot-label"></p>
       <form id="booking-form" novalidate>
@@ -187,12 +191,12 @@ body {
           <label>Company<input id="f-company" name="company" type="text" tabindex="-1" autocomplete="off"></label>
         </div>
         <div class="field">
-          <label for="f-name">Name</label>
-          <input id="f-name" name="name" type="text" required autocomplete="name" placeholder="Your full name">
+          <label for="f-name">{{call .T "name_label"}}</label>
+          <input id="f-name" name="name" type="text" required autocomplete="name" placeholder="{{call .T "name_placeholder"}}">
         </div>
         <div class="field">
-          <label for="f-email">Email</label>
-          <input id="f-email" name="email" type="email" required autocomplete="email" placeholder="you@example.com">
+          <label for="f-email">{{call .T "email_label"}}</label>
+          <input id="f-email" name="email" type="email" required autocomplete="email" placeholder="{{call .T "email_placeholder"}}">
         </div>
         {{/* SAFE (generic.html-templates.security.unquoted-attribute-var, this whole block):
              .ID is the event type's own intake-question primary key (admin-configured, not
@@ -208,7 +212,7 @@ body {
           {{else if eq .QType "select"}}
           <label for="ans-{{.ID}}">{{.Label}}{{if .Required}} <span class="required-star">*</span>{{end}}</label>
           <select id="ans-{{.ID}}" name="ans-{{.ID}}"{{if .Required}} required{{end}}>  <!-- nosemgrep: generic.html-templates.security.unquoted-attribute-var.unquoted-attribute-var -->
-            <option value="">Choose an option</option>
+            <option value="">{{call .T "choose_option"}}</option>
             {{range .Options}}<option value="{{.}}">{{.}}</option>{{end}}
           </select>
           {{else}}
@@ -218,7 +222,7 @@ body {
         </div>
         {{end}}
         <p id="form-error" class="form-error" role="alert"></p>
-        <button type="submit" id="submit-btn" class="btn-primary">Confirm booking</button>
+        <button type="submit" id="submit-btn" class="btn-primary">{{call .T "confirm_booking"}}</button>
       </form>
     </div>
 
@@ -228,9 +232,9 @@ body {
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
       </div>
       <div class="confirm-view">
-        <h3>Booking confirmed</h3>
+        <h3>{{call .T "booking_confirmed"}}</h3>
         <p class="when" id="confirm-time"></p>
-        <p class="sub">A confirmation email has been sent to you.</p>
+        <p class="sub">{{call .T "confirmation_email_sent"}}</p>
       </div>
     </div>
 
@@ -253,6 +257,9 @@ body {
   const PRICE_CENTS = {{.PriceCents}};
   const CURRENCY = "{{.Currency}}";
   const EVENT_NAME = {{.Name}};
+  const LOCALE   = "{{.Locale}}";
+  const I18N     = window.__CALNODE_I18N || {};
+  function t(key) { return I18N[key] || key; } // key itself as a last-resort fallback, matching Locale.T server-side
   let TZ         = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -287,7 +294,7 @@ body {
     if (n === 1) return metas[0].name;
     if (n === 2) return `${firstName(metas[0].name)} & ${firstName(metas[1].name)}`;
     if (n === 3) return `${firstName(metas[0].name)}, ${firstName(metas[1].name)} & ${firstName(metas[2].name)}`;
-    return `${firstName(metas[0].name)}, ${firstName(metas[1].name)}, ${firstName(metas[2].name)} & ${n - 3} ${n - 3 === 1 ? 'other' : 'others'}`;
+    return `${firstName(metas[0].name)}, ${firstName(metas[1].name)}, ${firstName(metas[2].name)} & ${n - 3} ${n - 3 === 1 ? t('other') : t('others')}`;
   }
   function faceHTML(m, z) {
     const inner = m.avatar_url
@@ -328,8 +335,8 @@ body {
     if (params.get('paid') !== '1') return;
     var _ch3 = document.querySelector('#confirm-view h3');
     var _csub = document.querySelector('#confirm-view .sub');
-    if (_ch3) _ch3.textContent = 'Payment received';
-    if (_csub) _csub.textContent = 'Your booking is confirmed — a confirmation email is on its way.';
+    if (_ch3) _ch3.textContent = t('payment_received');
+    if (_csub) _csub.textContent = t('payment_confirmed_sub');
     showView('confirm-view');
     // Fire the conversion event for paid bookings too (the form-submit path redirected to
     // Stripe before it could). transaction_id lets GA4/GTM dedupe on refresh.
@@ -373,12 +380,12 @@ body {
     }
     if (descExpanded) {
       descEl.classList.remove('clamp');
-      descToggle.textContent = 'Show less';
+      descToggle.textContent = t('show_less');
       descToggle.classList.add('visible');
       return;
     }
     descEl.classList.add('clamp');
-    descToggle.textContent = 'Show more';
+    descToggle.textContent = t('show_more');
     descToggle.classList.toggle('visible', descEl.scrollHeight > descEl.clientHeight + 1);
   }
   if (descToggle) descToggle.addEventListener('click', () => { descExpanded = !descExpanded; syncDesc(); });
@@ -386,8 +393,9 @@ body {
   syncDesc();
 
   // ── Calendar ──────────────────────────────────────────────────────────────
-  // Week starts Monday (index 1). Days: Mo Tu We Th Fr Sa Su
-  const DOW_LABELS = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
+  // Week starts Monday (index 1). Locale-aware via Intl (BookingLogic.dowLabels),
+  // not a hardcoded English array — see internal-docs/i18n-plan.md.
+  const DOW_LABELS = BookingLogic.dowLabels(LOCALE);
 
   function dowIndex(date) { return BookingLogic.dowIndex(date); } // 0=Mon…6=Sun
 
@@ -480,7 +488,7 @@ body {
   // ── Date pick ─────────────────────────────────────────────────────────────
   function fillSlots(list) {
     if (!slotsCache.length) {
-      list.innerHTML = '<p class="hint">No available times.</p>';
+      list.innerHTML = `<p class="hint">${t('no_available_times')}</p>`;
       return;
     }
     list.innerHTML = slotsCache.map((s, i) =>
@@ -506,7 +514,7 @@ body {
       return;
     }
     // Fallback (clicked before the month load finished): fetch just this day.
-    list.innerHTML = '<p class="hint">Loading…</p>';
+    list.innerHTML = `<p class="hint">${t('loading')}</p>`;
     try {
       const r = await fetch(`/v1/event-types/${SLUG}/slots?from=${ds}&to=${ds}&tz=${encodeURIComponent(TZ)}`);
       if (!r.ok) throw new Error(r.status);
@@ -515,7 +523,7 @@ body {
       slotsCache = data.slots || [];
       fillSlots(list);
     } catch {
-      list.innerHTML = '<p class="hint" style="color:#dc2626">Could not load times. Please try again.</p>';
+      list.innerHTML = `<p class="hint" style="color:#dc2626">${t('could_not_load_times')}</p>`;
     }
   }
 
@@ -549,7 +557,7 @@ body {
     const errEl = $('form-error');
 
     if (!form.name.value.trim() || !form.email.value.trim()) {
-      errEl.textContent = 'Please fill in all required fields.';
+      errEl.textContent = t('required_fields_error');
       return;
     }
 
@@ -567,13 +575,13 @@ body {
         value = input.value.trim();
       }
       if (el.dataset.required === 'true' && input.type !== 'checkbox' && !value) {
-        errEl.textContent = 'Please fill in all required fields.';
+        errEl.textContent = t('required_fields_error');
         return;
       }
       answers.push({ question_id: el.dataset.qid, value });
     }
 
-    btn.disabled = true; btn.textContent = 'Confirming…'; errEl.textContent = '';
+    btn.disabled = true; btn.textContent = t('confirming'); errEl.textContent = '';
 
     try {
       const r = await fetch('/v1/bookings', {
@@ -591,17 +599,20 @@ body {
       });
 
       if (r.status === 409) {
-        errEl.textContent = 'That slot was just taken. Please choose another time.';
+        errEl.textContent = t('slot_taken_error');
         const ds = toDateStr(pickedDate.getFullYear(), pickedDate.getMonth(), pickedDate.getDate());
         await pickDate(ds, pickedDate.getFullYear(), pickedDate.getMonth(), pickedDate.getDate());
-        btn.disabled = false; btn.textContent = 'Confirm booking';
+        btn.disabled = false; btn.textContent = t('confirm_booking');
         return;
       }
 
       if (!r.ok) {
         const data = await r.json().catch(() => ({}));
-        errEl.textContent = data.error || 'Booking failed. Please try again.';
-        btn.disabled = false; btn.textContent = 'Confirm booking';
+        // data.error (when present) is a raw message from the booking API, which isn't
+        // translated yet — a separate gap from this page's own strings; see
+        // internal-docs/i18n-plan.md.
+        errEl.textContent = data.error || t('booking_failed_error');
+        btn.disabled = false; btn.textContent = t('confirm_booking');
         return;
       }
 
@@ -652,11 +663,11 @@ body {
       // the success path didn't, which is what left it stuck on "Confirming…".
       // The server enforces the per-invitee active-booking cap and returns a clear
       // message, so the resubmit surfaces that instead of hanging.
-      btn.disabled = false; btn.textContent = 'Confirm booking';
+      btn.disabled = false; btn.textContent = t('confirm_booking');
 
     } catch {
-      errEl.textContent = 'Network error. Please check your connection.';
-      btn.disabled = false; btn.textContent = 'Confirm booking';
+      errEl.textContent = t('network_error');
+      btn.disabled = false; btn.textContent = t('confirm_booking');
     }
   });
 
@@ -713,6 +724,8 @@ body {
 (function () {
   'use strict';
   var SLUG = "{{.Slug}}";
+  var I18N = window.__CALNODE_I18N || {};
+  function t(key) { return I18N[key] || key; } // separate closure from the main script's own t()
   var form = document.getElementById('asst-form');
   if (!form) return;
   var input   = document.getElementById('asst-input');
@@ -808,7 +821,7 @@ body {
       if (booking && typeof ga4Convert === 'function') ga4Convert(false, 0, '', booking.id);
     } catch (err) {
       if (typing.parentNode) typing.remove();
-      add('Sorry — something went wrong. Please use the calendar below.', 'note');
+      add(t('assistant_error'), 'note');
     } finally {
       busy = false; send.disabled = false; input.focus();
     }

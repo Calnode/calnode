@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+
+	"github.com/calnode/calnode/internal/i18n"
 )
 
 // TestBookingSurfacesShareStructuralHooks pins the structural contract across the
@@ -24,12 +26,12 @@ import (
 // embed, and month nav uses #prev-btn/#next-btn in the templates vs the embed's own.
 func TestBookingSurfacesShareStructuralHooks(t *testing.T) {
 	var bookBuf, manageBuf bytes.Buffer
-	if err := bookTmpl.Execute(&bookBuf, bookPageData{}); err != nil {
+	if err := bookTmpl.Execute(&bookBuf, bookPageData{T: i18n.Default().T}); err != nil {
 		t.Fatalf("book render: %v", err)
 	}
 	// Zero value → TokenInvalid false + Status "" (not "cancelled"), so the reschedule
 	// calendar branch renders.
-	if err := manageTmpl.Execute(&manageBuf, managePageData{}); err != nil {
+	if err := manageTmpl.Execute(&manageBuf, managePageData{T: i18n.Default().T}); err != nil {
 		t.Fatalf("manage render: %v", err)
 	}
 

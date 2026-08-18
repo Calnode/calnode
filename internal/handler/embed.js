@@ -267,8 +267,8 @@
       var form = el('form', { class: 'asst-row', autocomplete: 'off' }, [input, sendBtn]);
       var closeBtn = el('button', { class: 'asst-close', type: 'button', 'aria-label': 'Close', html: SVG_X });
       var headRow = el('div', { class: 'asst-head-row' }, [el('span', { class: 'asst-title', html: SVG_SPARK + ' Book by chat' }), closeBtn]);
-      // Persistent AI-disclosure notice (EU AI Act Art. 50(1)) — text must match
-      // AssistantDisclosureText in internal/handler/booking_assistant.go; keep in sync on edit.
+      // Persistent AI-disclosure notice (EU AI Act Art. 50(1)) — text must match the
+      // "assistant_disclosure" key in internal/i18n/locales/en.json; keep in sync on edit.
       var disclosure = el('p', { class: 'asst-disclosure', role: 'note', text: "You're chatting with an automated assistant, not a person." });
       var head = el('div', { class: 'asst-head' }, [headRow, disclosure]);
       var panel = el('div', { class: 'asst-panel', role: 'dialog', 'aria-label': 'Book by chat' }, [head, log, form]);

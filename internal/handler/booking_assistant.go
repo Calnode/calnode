@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/calnode/calnode/internal/booking"
+	"github.com/calnode/calnode/internal/i18n"
 	"github.com/calnode/calnode/internal/llm"
 )
 
@@ -46,15 +47,14 @@ const (
 	assistantMaxSlots    = 40  // cap slots passed back to the model (token control)
 )
 
-// AssistantDisclosureText is the persistent AI-disclosure notice shown on the chat panel
-// (EU AI Act Art. 50(1): a person must be informed they're interacting with AI, at the latest
-// at the first interaction). Single source of truth for book.html; embed.js carries an
-// identical literal (can't share a Go const across a JS asset) with a comment pointing back
-// here — keep both in sync on edit.
-//
-// i18n stub: no localization layer exists yet in this codebase. This constant is the one
-// place a future i18n lookup would replace; do not duplicate the literal elsewhere.
-const AssistantDisclosureText = "You're chatting with an automated assistant, not a person."
+// The persistent AI-disclosure notice shown on the chat panel (EU AI Act Art. 50(1): a
+// person must be informed they're interacting with AI, at the latest at the first
+// interaction) lives in locales/en.json (key "assistant_disclosure"), not as a Go
+// constant, so it's translated with everything else. book.html reads it via
+// {{.T "assistant_disclosure"}}. embed.js carries an identical English literal (can't
+// share a Go/i18n lookup across a JS asset, and embed.js translation is its own separate
+// future work, see internal-docs/i18n-plan.md) with a comment pointing back here, so keep
+// both in sync on edit.
 
 // assistantBaseRules is the static, code-owned core of the assistant's system prompt —
 // the tool-calling contract + style + safety rails. It is NOT admin-editable (editing it
@@ -279,11 +279,14 @@ func (h *Handler) assistantSystemPrompt(ctx context.Context, slug, tz string) (s
 	}
 
 	today := time.Now().UTC().Format("2006-01-02")
+	// i18n.Default(): the assistant's own reply language is a separate, not-yet-built
+	// setting (internal-docs/i18n-plan.md) — this locationLabel call just needs *a*
+	// locale for the prompt text, independent of that.
 	prompt := fmt.Sprintf(`You are a concise scheduling assistant helping a visitor book "%s" (a %d-minute %s meeting).
 Today is %s. The visitor's timezone is %s — show times in that timezone and state it once early on; if they name a different timezone, use theirs.
 Intake questions: %s
 
-%s`, name, duration, locationLabel(locType, ""), today, tz, questions, assistantBaseRules)
+%s`, name, duration, locationLabel(locType, "", i18n.Default()), today, tz, questions, assistantBaseRules)
 
 	// Admin "Additional instructions" — appended, never replacing the rules above.
 	var extra string

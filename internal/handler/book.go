@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/calnode/calnode/internal/i18n"
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/extension"
 	"github.com/yuin/goldmark/renderer/html"
@@ -27,8 +28,12 @@ var bookTmplSrc string
 var bookingLogicJS string
 
 // Shared chrome partials (consent/tracking/footer) are parsed first so book.html can
-// reference them via {{template "trackingHead" .}} etc.
-var bookTmpl = template.Must(template.Must(template.New("book").Parse(sharedPartialsSrc)).Parse(bookTmplSrc))
+// reference them via {{template "trackingHead" .}} etc. supportedLocales is registered
+// here (not a per-request data field like .T) because it's the same static list on every
+// request — a language switcher option, not a translation lookup.
+var bookTmpl = template.Must(template.Must(template.New("book").Funcs(template.FuncMap{
+	"supportedLocales": i18n.SupportedLocales,
+}).Parse(sharedPartialsSrc)).Parse(bookTmplSrc))
 
 type bookQuestion struct {
 	ID       string
@@ -62,6 +67,12 @@ type bookPageData struct {
 	CSSVersion string
 	// BookingLogicJS is the shared booking-calendar logic module, inlined ahead of the page script.
 	BookingLogicJS template.JS
+	// Locale is the resolved BCP-47 code (e.g. "en", "es") for <html lang>. T looks up a
+	// translation key server-side; I18NJSON is the same locale's full string table,
+	// embedded for the page's own JS (see internal-docs/i18n-plan.md).
+	Locale   string
+	T        func(string) string
+	I18NJSON template.JS
 	// Tracking
 	HeadHTML         template.HTML // operator-configured <head> code injection (trusted)
 	GTMContainerID   string        // native GTM container (validated GTM-XXXX); "" = off
@@ -134,7 +145,7 @@ func (h *Handler) displayHosts(ctx context.Context, etID, mode string) []hostDis
 }
 
 // hostsLabel renders a group host list as "Alex, Sam & 2 others" (first names).
-func hostsLabel(hosts []hostDisplay) string {
+func hostsLabel(hosts []hostDisplay, loc *i18n.Locale) string {
 	first := func(name string) string {
 		for i, r := range name {
 			if r == ' ' {
@@ -154,28 +165,28 @@ func hostsLabel(hosts []hostDisplay) string {
 	case 3:
 		return first(hosts[0].Name) + ", " + first(hosts[1].Name) + " & " + first(hosts[2].Name)
 	default:
-		unit := "others"
+		unit := loc.T("others")
 		if n-3 == 1 {
-			unit = "other"
+			unit = loc.T("other")
 		}
 		return fmt.Sprintf("%s, %s, %s & %d %s",
 			first(hosts[0].Name), first(hosts[1].Name), first(hosts[2].Name), n-3, unit)
 	}
 }
 
-func durationLabel(minutes int) string {
+func durationLabel(minutes int, loc *i18n.Locale) string {
 	if minutes < 60 {
-		return fmt.Sprintf("%d min", minutes)
+		return fmt.Sprintf(loc.T("duration_min"), minutes)
 	}
 	h := minutes / 60
 	m := minutes % 60
 	if m == 0 {
 		if h == 1 {
-			return "1 hour"
+			return loc.T("duration_hour_one")
 		}
-		return fmt.Sprintf("%d hours", h)
+		return fmt.Sprintf(loc.T("duration_hours"), h)
 	}
-	return fmt.Sprintf("%d hr %d min", h, m)
+	return fmt.Sprintf(loc.T("duration_hr_min"), h, m)
 }
 
 var mdRenderer = goldmark.New(
@@ -219,7 +230,9 @@ func formatPrice(cents int, currency string) string {
 	}
 }
 
-func locationLabel(locType, locValue string) string {
+// locationLabel formats a location type for display. Product names (Zoom, Google Meet,
+// Microsoft Teams) are brand names and stay untranslated, same as elsewhere.
+func locationLabel(locType, locValue string, loc *i18n.Locale) string {
 	switch locType {
 	case "zoom":
 		return "Zoom"
@@ -228,18 +241,18 @@ func locationLabel(locType, locValue string) string {
 	case "teams":
 		return "Microsoft Teams"
 	case "livekit":
-		return "Video meeting"
+		return loc.T("location_video_meeting")
 	case "phone":
-		return "Phone Call"
+		return loc.T("location_phone")
 	case "in_person":
 		if locValue != "" {
 			return locValue
 		}
-		return "In Person"
+		return loc.T("location_in_person")
 	case "custom_video":
-		return "Video Call"
+		return loc.T("location_video_call")
 	default:
-		return "Video Call"
+		return loc.T("location_video_call")
 	}
 }
 
@@ -301,7 +314,7 @@ func (h *Handler) PublicEventType(w http.ResponseWriter, r *http.Request) {
 		"description":       description,
 		"duration_minutes":  durMins,
 		"location_type":     locType,
-		"location_label":    locationLabel(locType, locValue),
+		"location_label":    locationLabel(locType, locValue, h.resolveLocale(r)),
 		"max_future_days":   maxDays,
 		"assistant_enabled": h.getLLM() != nil,
 		"price_cents":       priceCents,
@@ -397,25 +410,31 @@ func (h *Handler) BookPage(w http.ResponseWriter, r *http.Request) {
 	}
 	qjson, _ := json.Marshal(qmap)
 
+	loc := h.resolveLocale(r)
+	i18nJSON, _ := loc.JSON()
+
 	data := bookPageData{
 		Slug:                slug,
 		Name:                name,
 		Description:         renderMarkdown(description),
-		DurationLabel:       durationLabel(durMins),
+		DurationLabel:       durationLabel(durMins, loc),
 		HostName:            hosts[0].Name,
 		HostInitial:         hosts[0].Initial,
 		AvatarURL:           hosts[0].AvatarURL,
 		Hosts:               hosts,
-		HostsLabel:          hostsLabel(hosts),
-		LocationLabel:       locationLabel(locType, locValue),
+		HostsLabel:          hostsLabel(hosts, loc),
+		LocationLabel:       locationLabel(locType, locValue, loc),
 		PriceLabel:          formatPrice(priceCents, currency),
+		Locale:              loc.Code,
+		T:                   loc.T,
+		I18NJSON:            template.JS(i18nJSON), // #nosec G203 -- json.Marshal output, which escapes <,>,& by default; safe for embedding in a <script> block
 		PriceCents:          priceCents,
 		Currency:            currency,
 		MaxFutureDays:       maxDays,
 		Questions:           questions,
 		BookingLogicJS:      template.JS(bookingLogicJS), // #nosec G203 -- our own bundled JS source constant, not user input
 		AssistantEnabled:    h.getLLM() != nil,
-		AssistantDisclosure: AssistantDisclosureText,
+		AssistantDisclosure: loc.T("assistant_disclosure"),
 		CSSVersion:          bookingCSSVersion,
 
 		HeadHTML:         template.HTML(track.HeadHTML), // #nosec G203 -- admin-only "code injection" feature (Settings -> Tracking); intentionally raw, documented, gated by requireAdmin on the settings endpoint
@@ -436,10 +455,15 @@ func (h *Handler) BookPage(w http.ResponseWriter, r *http.Request) {
 		DemoMode:      h.demoMode,
 	}
 
+	h.persistLangOverride(w, r)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Content-Security-Policy", publicCSP(track))
 	w.Header().Set("X-Frame-Options", "DENY")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
+	// The body varies by resolved locale (Accept-Language, or the calnode_lang override
+	// cookie) — without this, a shared cache/CDN in front of a self-hosted instance would
+	// serve the first visitor's language to everyone. See internal-docs/i18n-plan.md.
+	w.Header().Set("Vary", "Accept-Language, Cookie")
 	if err := bookTmpl.Execute(w, data); err != nil {
 		h.logger.ErrorContext(r.Context(), "book page: template", "error", err)
 	}

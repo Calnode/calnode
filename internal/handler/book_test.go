@@ -228,8 +228,11 @@ func TestBookPage_assistantPanelGatedOnLLM(t *testing.T) {
 		return rec.Body.String()
 	}
 
-	// AI off (default) → no chat panel.
-	if body := render(); strings.Contains(body, "Book by chat") {
+	// AI off (default) → no chat panel. Checked via the structural id, not the "Book by
+	// chat" text itself — that string now also appears unconditionally on every page as
+	// data inside the __CALNODE_I18N JSON blob (internal-docs/i18n-plan.md), so its mere
+	// presence no longer implies the assistant UI actually rendered.
+	if body := render(); strings.Contains(body, `id="asst-panel"`) {
 		t.Error("assistant panel rendered while LLM is disabled")
 	}
 
@@ -243,7 +246,7 @@ func TestBookPage_assistantPanelGatedOnLLM(t *testing.T) {
 
 	// AI on → chat panel + assistant endpoint wired.
 	body := render()
-	if !strings.Contains(body, "Book by chat") || !strings.Contains(body, "/assistant") {
+	if !strings.Contains(body, `id="asst-panel"`) || !strings.Contains(body, "/assistant") {
 		t.Errorf("assistant panel/script missing when LLM enabled")
 	}
 }

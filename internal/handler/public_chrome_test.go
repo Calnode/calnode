@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+
+	"github.com/calnode/calnode/internal/i18n"
 )
 
 // TestConsentChromeSharedAcrossSurfaces renders the book and manage templates from
@@ -18,7 +20,7 @@ func TestConsentChromeSharedAcrossSurfaces(t *testing.T) {
 		{"book", func(t *testing.T, gtm, privacy, terms string) string {
 			var b bytes.Buffer
 			if err := bookTmpl.Execute(&b, bookPageData{
-				GTMContainerID: gtm, PrivacyURL: privacy, TermsURL: terms,
+				GTMContainerID: gtm, PrivacyURL: privacy, TermsURL: terms, T: i18n.Default().T,
 			}); err != nil {
 				t.Fatalf("book render: %v", err)
 			}
@@ -27,7 +29,7 @@ func TestConsentChromeSharedAcrossSurfaces(t *testing.T) {
 		{"manage", func(t *testing.T, gtm, privacy, terms string) string {
 			var b bytes.Buffer
 			if err := manageTmpl.Execute(&b, managePageData{
-				GTMContainerID: gtm, PrivacyURL: privacy, TermsURL: terms,
+				GTMContainerID: gtm, PrivacyURL: privacy, TermsURL: terms, T: i18n.Default().T,
 			}); err != nil {
 				t.Fatalf("manage render: %v", err)
 			}
@@ -101,14 +103,14 @@ func TestDemoChromeSharedAcrossSurfaces(t *testing.T) {
 	}{
 		{"book", func(t *testing.T, demoMode bool) string {
 			var b bytes.Buffer
-			if err := bookTmpl.Execute(&b, bookPageData{DemoMode: demoMode}); err != nil {
+			if err := bookTmpl.Execute(&b, bookPageData{DemoMode: demoMode, T: i18n.Default().T}); err != nil {
 				t.Fatalf("book render: %v", err)
 			}
 			return b.String()
 		}},
 		{"manage", func(t *testing.T, demoMode bool) string {
 			var b bytes.Buffer
-			if err := manageTmpl.Execute(&b, managePageData{DemoMode: demoMode}); err != nil {
+			if err := manageTmpl.Execute(&b, managePageData{DemoMode: demoMode, T: i18n.Default().T}); err != nil {
 				t.Fatalf("manage render: %v", err)
 			}
 			return b.String()

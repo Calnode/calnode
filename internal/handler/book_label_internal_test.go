@@ -1,6 +1,10 @@
 package handler
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/calnode/calnode/internal/i18n"
+)
 
 func TestHostsLabel(t *testing.T) {
 	mk := func(names ...string) []hostDisplay {
@@ -22,7 +26,7 @@ func TestHostsLabel(t *testing.T) {
 		{mk("A B", "C D", "E F", "G H", "I J"), "A, C, E & 2 others"},
 	}
 	for _, c := range cases {
-		if got := hostsLabel(c.hosts); got != c.want {
+		if got := hostsLabel(c.hosts, i18n.Default()); got != c.want {
 			t.Errorf("hostsLabel(%d hosts) = %q; want %q", len(c.hosts), got, c.want)
 		}
 	}

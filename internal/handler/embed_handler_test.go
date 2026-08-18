@@ -5,6 +5,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/calnode/calnode/internal/i18n"
 )
 
 // The embed widget script and the stylesheet it pulls are linked WITHOUT a version
@@ -46,15 +48,16 @@ func TestEmbedJS_etagRevalidation(t *testing.T) {
 
 // EU AI Act Art. 50(1): the embed widget's "Book by chat" drawer must carry the same
 // persistent AI-disclosure notice as the hosted booking page (book.html) — text must match
-// AssistantDisclosureText in booking_assistant.go, since the two can't share a Go const.
+// the "assistant_disclosure" key in internal/i18n/locales/en.json, since embed.js can't
+// share a Go/i18n lookup across a JS asset (see internal-docs/i18n-plan.md).
 func TestEmbedJS_assistantDisclosure(t *testing.T) {
 	h := &Handler{}
 	rec := httptest.NewRecorder()
 	h.EmbedJS(rec, httptest.NewRequest(http.MethodGet, "/embed.js", nil))
 	body := rec.Body.String()
 
-	if !strings.Contains(body, AssistantDisclosureText) {
-		t.Fatal("embed.js is missing the AI-disclosure notice, or it has drifted from AssistantDisclosureText")
+	if !strings.Contains(body, i18n.Default().T("assistant_disclosure")) {
+		t.Fatal("embed.js is missing the AI-disclosure notice, or it has drifted from the assistant_disclosure locale key")
 	}
 	if !strings.Contains(body, `role: 'note'`) && !strings.Contains(body, `'role': 'note'`) {
 		t.Error("embed.js disclosure element is missing role: 'note' (accessibility exposure)")

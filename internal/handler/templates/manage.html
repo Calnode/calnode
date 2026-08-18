@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{.Locale}}">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -309,7 +309,8 @@ body {
   $('current-time').textContent = fmtDatetime(CURRENT_ISO);
 
   // ── Calendar ────────────────────────────────────────────────────────────────
-  const DOW_LABELS = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
+  // Locale-aware via Intl (BookingLogic.dowLabels), not a hardcoded English array.
+  const DOW_LABELS = BookingLogic.dowLabels();
   function dowIndex(date) { return BookingLogic.dowIndex(date); } // 0 = Monday
 
   async function loadMonthAvailability(y, m) {

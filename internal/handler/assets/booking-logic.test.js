@@ -30,6 +30,13 @@ test('dowIndex is Monday-first (0=Mon … 6=Sun)', () => {
   assert.equal(B.dowIndex(new Date(2026, 5, 21)), 6); // Sunday
 });
 
+test('dowLabels is Monday-first and locale-aware', () => {
+  assert.deepEqual(B.dowLabels('en'), ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su']);
+  assert.deepEqual(B.dowLabels('es'), ['lu', 'ma', 'mi', 'ju', 'vi', 'sá', 'do']);
+  // No locale passed → falls back to the runtime default rather than throwing.
+  assert.equal(B.dowLabels().length, 7);
+});
+
 test('month helpers', () => {
   const d = new Date(2026, 5, 15); // June 2026
   assert.equal(B.startOfMonth(d).getDate(), 1);
