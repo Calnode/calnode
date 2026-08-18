@@ -70,12 +70,14 @@ type bookPageData struct {
 	DataLayerFields  template.JS // JSON array of enabled dataLayer field keys
 	QuestionsJSON    template.JS // {questionID: label} map for labelling answers in dataLayer
 	// Branding
-	BusinessName string
-	LogoURL      string
-	LogoHeight   int
-	LogoOpacity  string // CSS opacity value, e.g. "1" or "0.6"
-	PrivacyURL   string // operator Privacy Policy URL; "" hides the footer/banner link
-	TermsURL     string // operator Terms URL; "" hides the footer link
+	BusinessName  string
+	LogoURL       string
+	LogoHeight    int
+	LogoOpacity   string // CSS opacity value, e.g. "1" or "0.6"
+	BannerURL     string
+	BannerOpacity string // CSS opacity value, e.g. "1" or "0.6"
+	PrivacyURL    string // operator Privacy Policy URL; "" hides the footer/banner link
+	TermsURL      string // operator Terms URL; "" hides the footer link
 	// DemoMode shows the "public demo" banner + a noindex meta tag (see internal/demo).
 	DemoMode bool
 }
@@ -307,6 +309,7 @@ func (h *Handler) PublicEventType(w http.ResponseWriter, r *http.Request) {
 		"hosts":             outHosts,
 		"business_name":     brand.BusinessName,
 		"logo_url":          abs(brand.LogoURL),
+		"banner_url":        abs(brand.BannerURL),
 	})
 }
 
@@ -422,13 +425,15 @@ func (h *Handler) BookPage(w http.ResponseWriter, r *http.Request) {
 		DataLayerFields:  template.JS(dlFields), // #nosec G203 -- json.Marshal output, which escapes <,>,& by default; safe for embedding in a <script> block
 		QuestionsJSON:    template.JS(qjson),    // #nosec G203 -- json.Marshal output, which escapes <,>,& by default; safe for embedding in a <script> block
 
-		BusinessName: brand.BusinessName,
-		LogoURL:      brand.LogoURL,
-		LogoHeight:   pageLogoHeight(brand.LogoHeight),
-		LogoOpacity:  opacityCSS(brand.LogoOpacity),
-		PrivacyURL:   brand.PrivacyURL,
-		TermsURL:     brand.TermsURL,
-		DemoMode:     h.demoMode,
+		BusinessName:  brand.BusinessName,
+		LogoURL:       brand.LogoURL,
+		LogoHeight:    pageLogoHeight(brand.LogoHeight),
+		LogoOpacity:   opacityCSS(brand.LogoOpacity),
+		BannerURL:     brand.BannerURL,
+		BannerOpacity: opacityCSS(brand.BannerOpacity),
+		PrivacyURL:    brand.PrivacyURL,
+		TermsURL:      brand.TermsURL,
+		DemoMode:      h.demoMode,
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")

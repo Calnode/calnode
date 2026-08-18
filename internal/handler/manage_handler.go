@@ -46,13 +46,15 @@ type managePageData struct {
 	GTMContainerID   string // native GTM container; consent-gated (shared trackingHead/consentBanner)
 	GA4MeasurementID string // native GA4 id; consent-gated
 	// Branding
-	BusinessName string
-	LogoURL      string
-	LogoHeight   int
-	LogoOpacity  string // CSS opacity value, e.g. "1" or "0.6"
-	PrivacyURL   string // operator Privacy Policy URL (legalFooter + banner link)
-	TermsURL     string // operator Terms URL (legalFooter)
-	CSSVersion   string // cache-busts the /booking.css link (content hash)
+	BusinessName  string
+	LogoURL       string
+	LogoHeight    int
+	LogoOpacity   string // CSS opacity value, e.g. "1" or "0.6"
+	BannerURL     string
+	BannerOpacity string // CSS opacity value, e.g. "1" or "0.6"
+	PrivacyURL    string // operator Privacy Policy URL (legalFooter + banner link)
+	TermsURL      string // operator Terms URL (legalFooter)
+	CSSVersion    string // cache-busts the /booking.css link (content hash)
 	// BookingLogicJS is the shared booking-calendar logic module, inlined ahead of the page script.
 	BookingLogicJS template.JS
 	// DemoMode shows the "public demo" banner + a noindex meta tag (see internal/demo).
@@ -140,6 +142,8 @@ func (h *Handler) renderManage(w http.ResponseWriter, r *http.Request, data mana
 	data.LogoURL = brand.LogoURL
 	data.LogoHeight = pageLogoHeight(brand.LogoHeight)
 	data.LogoOpacity = opacityCSS(brand.LogoOpacity)
+	data.BannerURL = brand.BannerURL
+	data.BannerOpacity = opacityCSS(brand.BannerOpacity)
 	data.PrivacyURL = brand.PrivacyURL
 	data.TermsURL = brand.TermsURL
 	data.CSSVersion = bookingCSSVersion

@@ -20,6 +20,9 @@ const htmlLayout = `{{define "layout"}}<!doctype html>
 {{if .LogoURL}}<tr><td align="center" style="padding:18px 24px;border-bottom:1px solid #e4e4e7;text-align:center;">
 <img src="{{.LogoURL}}" alt="{{.Brand}}" height="{{.LogoPx}}" style="height:{{.LogoPx}}px;width:auto;max-width:100%;opacity:{{.LogoOpacityCSS}};display:inline-block;border:0;">
 </td></tr>{{end}}
+{{if .BannerURL}}<tr><td style="padding:0;line-height:0;font-size:0;">
+<img src="{{.BannerURL}}" alt="" width="480" style="width:100%;max-width:100%;height:auto;opacity:{{.BannerOpacityCSS}};display:block;border:0;">
+</td></tr>{{end}}
 <tr><td style="padding:24px;color:#18181b;font-size:15px;line-height:1.6;">
 {{template "content" .}}
 </td></tr>

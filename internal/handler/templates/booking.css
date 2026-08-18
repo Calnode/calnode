@@ -10,6 +10,18 @@
  * padding removes default <ul>/<h1>/<p> spacing (component rules below set their own). */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* ── Brand banner ────────────────────────────────── */
+/* Full-width operator banner, shown above .card (below the logo, if any). Not
+ * used by the embed widget — the widget carries no operator branding. */
+.brand-banner {
+  display: block;
+  width: 100%;
+  max-width: 860px;
+  height: auto;
+  border-radius: 12px;
+  margin: 0 0 16px;
+}
+
 /* ── Card ────────────────────────────────────────── */
 .card {
   display: flex;

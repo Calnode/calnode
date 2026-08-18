@@ -72,6 +72,20 @@ func TestRenderHTML_allTemplates(t *testing.T) {
 	if !strings.Contains(withLogo, `alt="Orchestratr"`) {
 		t.Error("confirm-org: logo alt should be the brand name")
 	}
+
+	// With a banner, it renders full-width below the logo, with no border/padding.
+	d.BannerURL = "https://cdn.example.com/banner.png"
+	d.BannerOpacity = 60
+	withBanner := renderHTML(htmlConfirmOrg, d)
+	if !strings.Contains(withBanner, `src="https://cdn.example.com/banner.png"`) {
+		t.Error("confirm-org: banner image not rendered when BannerURL set")
+	}
+	if !strings.Contains(withBanner, `opacity:0.6`) {
+		t.Error("confirm-org: banner opacity not applied")
+	}
+	if strings.Index(withBanner, "cdn.example.com/logo.png") > strings.Index(withBanner, "cdn.example.com/banner.png") {
+		t.Error("confirm-org: banner should render after the logo, not before")
+	}
 }
 
 func TestBookingData_Brand(t *testing.T) {

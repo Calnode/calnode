@@ -108,6 +108,10 @@ body {
 </header>
 {{end}}
 
+{{if .BannerURL}}
+<img class="brand-banner" src="{{.BannerURL}}" alt="" style="opacity:{{.BannerOpacity}};">
+{{end}}
+
 {{if .TokenInvalid}}
 <div class="card">
   <section class="right-col">

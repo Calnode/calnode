@@ -16,9 +16,15 @@
 		logo_url: string;
 		logo_height: number;
 		logo_opacity: number;
+		banner_url: string;
+		banner_opacity: number;
 		privacy_url: string;
 		terms_url: string;
 	};
+
+	// Both logo and banner share the same upload/crop dialog; cropTarget picks
+	// which endpoint + field name cropAndUpload() posts to.
+	type CropTarget = 'logo' | 'banner';
 
 	const loadingFlag = createAsyncFlag(true);
 	const savingFlag = createAsyncFlag();
@@ -27,13 +33,17 @@
 	let logoUrl = $state('');
 	let logoHeight = $state(28);
 	let logoOpacity = $state(100);
+	let bannerUrl = $state('');
+	let bannerOpacity = $state(100);
 	let privacyUrl = $state('');
 	let termsUrl = $state('');
 	let fileInput = $state<HTMLInputElement | undefined>();
+	let bannerFileInput = $state<HTMLInputElement | undefined>();
 
 	// Crop dialog — Cropper is lazy-loaded client-side only to avoid SSR failures.
 	let cropOpen = $state(false);
 	let cropSrc = $state('');
+	let cropTarget = $state<CropTarget>('logo');
 	let cropperEl = $state<HTMLImageElement | undefined>();
 	let cropperInstance: CropperType | null = null;
 	let CropperClass: typeof CropperType | null = null;
@@ -62,12 +72,15 @@
 		logoUrl = b.logo_url ?? '';
 		logoHeight = b.logo_height || 28;
 		logoOpacity = b.logo_opacity || 100;
+		bannerUrl = b.banner_url ?? '';
+		bannerOpacity = b.banner_opacity || 100;
 		privacyUrl = b.privacy_url ?? '';
 		termsUrl = b.terms_url ?? '';
 	}, 'Could not load branding settings'));
 
-	async function onFileChange() {
-		const file = fileInput?.files?.[0];
+	async function onFileChange(target: CropTarget) {
+		const input = target === 'logo' ? fileInput : bannerFileInput;
+		const file = input?.files?.[0];
 		if (!file) return;
 		if (!CropperClass) {
 			const [mod] = await Promise.all([
@@ -76,6 +89,7 @@
 			]);
 			CropperClass = mod.default;
 		}
+		cropTarget = target;
 		const reader = new FileReader();
 		reader.onload = (e) => {
 			cropSrc = e.target?.result as string;
@@ -88,24 +102,32 @@
 		cropOpen = false;
 		cropSrc = '';
 		if (fileInput) fileInput.value = '';
+		if (bannerFileInput) bannerFileInput.value = '';
 	}
 
 	async function cropAndUpload() {
 		if (!cropperInstance) return;
+		const target = cropTarget;
 		await uploadingFlag.run(async () => {
 			const canvas = cropperInstance!.getCroppedCanvas({ maxWidth: 1200, maxHeight: 1200 });
 			const blob = await new Promise<Blob>((resolve, reject) =>
 				canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('Canvas export failed'))), 'image/png')
 			);
 			const data = new FormData();
-			data.append('logo', blob, 'logo.png');
-			const res = await api.postForm<{ logo_url: string }>('/v1/settings/branding/logo', data);
-			logoUrl = res.logo_url;
+			data.append(target, blob, `${target}.png`);
+			if (target === 'logo') {
+				const res = await api.postForm<{ logo_url: string }>('/v1/settings/branding/logo', data);
+				logoUrl = res.logo_url;
+			} else {
+				const res = await api.postForm<{ banner_url: string }>('/v1/settings/branding/banner', data);
+				bannerUrl = res.banner_url;
+			}
 			cropOpen = false;
 			cropSrc = '';
 			if (fileInput) fileInput.value = '';
-			toast.success('Logo uploaded');
-		}, 'Could not upload logo');
+			if (bannerFileInput) bannerFileInput.value = '';
+			toast.success(target === 'logo' ? 'Logo uploaded' : 'Banner uploaded');
+		}, `Could not upload ${target}`);
 	}
 
 	async function removeLogo() {
@@ -118,18 +140,30 @@
 		}
 	}
 
+	async function removeBanner() {
+		try {
+			await api.del('/v1/settings/branding/banner');
+			bannerUrl = '';
+			toast.success('Banner removed');
+		} catch (e: any) {
+			toast.error(e.message || 'Could not remove banner');
+		}
+	}
+
 	async function save() {
 		await savingFlag.run(async () => {
 			const b = await api.patch<Branding>('/v1/settings/branding', {
 				business_name: businessName,
 				logo_height: logoHeight,
 				logo_opacity: logoOpacity,
+				banner_opacity: bannerOpacity,
 				privacy_url: privacyUrl,
 				terms_url: termsUrl
 			});
 			businessName = b.business_name ?? '';
 			logoHeight = b.logo_height || 28;
 			logoOpacity = b.logo_opacity || 100;
+			bannerOpacity = b.banner_opacity || 100;
 			privacyUrl = b.privacy_url ?? '';
 			termsUrl = b.terms_url ?? '';
 			toast.success('Branding saved');
@@ -160,7 +194,7 @@
 
 			<div class="mt-5 space-y-3">
 				<Label>Logo</Label>
-				<input bind:this={fileInput} type="file" accept="image/jpeg,image/png,image/gif,image/webp" class="hidden" onchange={onFileChange} />
+				<input bind:this={fileInput} type="file" accept="image/jpeg,image/png,image/gif,image/webp" class="hidden" onchange={() => onFileChange('logo')} />
 				<button
 					type="button"
 					onclick={() => fileInput?.click()}
@@ -199,6 +233,43 @@
 					shape — you can crop it next. Max 5 MB. Adjust size and opacity (preview updates live), then Save.
 				</p>
 			</div>
+
+			<div class="mt-6 space-y-3 border-t pt-5">
+				<Label>Banner</Label>
+				<input bind:this={bannerFileInput} type="file" accept="image/jpeg,image/png,image/gif,image/webp" class="hidden" onchange={() => onFileChange('banner')} />
+				<button
+					type="button"
+					onclick={() => bannerFileInput?.click()}
+					disabled={uploadingFlag.active}
+					title={bannerUrl ? 'Replace banner' : 'Upload banner'}
+					class="group relative flex min-h-[88px] w-full max-w-md cursor-pointer items-center justify-center overflow-hidden rounded-md border bg-white px-4 py-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-wait"
+				>
+					{#if bannerUrl}
+						<img src={bannerUrl} alt="Banner" style="width:100%;height:auto;opacity:{bannerOpacity / 100};" />
+					{:else}
+						<span class="text-sm text-muted-foreground">Click to upload a banner</span>
+					{/if}
+					<div class="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
+						<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+					</div>
+				</button>
+
+				{#if bannerUrl}
+					<div class="max-w-md space-y-3">
+						<div class="flex items-center gap-3">
+							<span class="w-14 text-xs font-medium text-muted-foreground">Opacity</span>
+							<input type="range" min="20" max="100" step="1" bind:value={bannerOpacity} class="flex-1 accent-primary" />
+							<span class="w-10 text-right text-xs tabular-nums text-muted-foreground">{bannerOpacity}%</span>
+						</div>
+						<Button type="button" variant="ghost" size="sm" onclick={removeBanner} class="text-destructive hover:text-destructive">Remove banner</Button>
+					</div>
+				{/if}
+
+				<p class="text-xs text-muted-foreground">
+					Shown full-width below your logo on booking emails and your public booking/manage pages — hidden
+					entirely if not set. Wide images work best, since it's always shown at full width. Max 5 MB.
+				</p>
+			</div>
 		</div>
 
 		<div class="rounded-lg border bg-card p-6">
@@ -227,7 +298,7 @@
 	<Dialog.Root bind:open={cropOpen} onOpenChange={(o) => { if (!o) cancelCrop(); }}>
 		<Dialog.Content class="max-w-lg">
 			<Dialog.Header>
-				<Dialog.Title>Crop logo</Dialog.Title>
+				<Dialog.Title>{cropTarget === 'logo' ? 'Crop logo' : 'Crop banner'}</Dialog.Title>
 				<Dialog.Description>Drag to adjust, or just save to use the whole image.</Dialog.Description>
 			</Dialog.Header>
 			<div class="mt-2 overflow-hidden rounded-md bg-muted" style="max-height: 360px;">
@@ -237,7 +308,7 @@
 			</div>
 			<Dialog.Footer class="mt-4">
 				<Button variant="outline" onclick={cancelCrop} disabled={uploadingFlag.active}>Cancel</Button>
-				<Button onclick={cropAndUpload} disabled={uploadingFlag.active}>{uploadingFlag.active ? 'Uploading…' : 'Save logo'}</Button>
+				<Button onclick={cropAndUpload} disabled={uploadingFlag.active}>{uploadingFlag.active ? 'Uploading…' : cropTarget === 'logo' ? 'Save logo' : 'Save banner'}</Button>
 			</Dialog.Footer>
 		</Dialog.Content>
 	</Dialog.Root>
