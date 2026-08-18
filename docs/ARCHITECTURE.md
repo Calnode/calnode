@@ -463,17 +463,22 @@ as the desired state:
 - **Per-event-type customisation:** custom note bodies (`msg_*`) and custom subject
   lines (`subj_*`, migration 00026) for the four attendee emails; a blank subject
   falls back to the built-in default (`BookingData.SubjectOverride` / `subjectOr`).
-- **Branding (`branding_settings.go`, migration 00029):** instance-wide
-  `business_name` + `logo_url` on the singleton row. Business name is the wordmark
-  fallback (defaults to "Calnode") + public-page header; the logo is the email
-  header image + public-page header. `GET/PATCH /v1/settings/branding` (name only);
-  the logo is an **upload** (`POST/DELETE /v1/settings/branding/logo`, public serve
-  `GET /branding/logo`) reusing the avatar pipeline — `imaging.Fit` into 600×200
-  preserving aspect ratio (no crop), re-encoded PNG (keeps transparency), stored on
-  the `/data` volume. `logo_url` stores the relative serve path with a `?v=<ts>`
-  cache-buster; `Handler.applyBranding` makes it absolute for emails (relative is
-  fine on same-origin pages). Public-page CSP `img-src` allows `https:`/`data:` so
-  the logo loads (`strictPublicCSP`). Brand is threaded into every send site
+- **Branding (`branding_settings.go`, migrations 00029/00050):** instance-wide
+  `business_name` + `logo_url` + `banner_url` on the singleton row. Business name is the
+  wordmark fallback (defaults to "Calnode") + public-page header; the logo is the email
+  header image + public-page header. `GET/PATCH /v1/settings/branding` (name + opacity
+  settings only); the logo and banner are each an **upload**
+  (`POST/DELETE /v1/settings/branding/logo` and `.../banner`, public serve at
+  `GET /branding/logo` / `GET /branding/banner`) reusing the avatar pipeline:
+  `imaging.Fit` into 600x200 (logo) or 1600x800 (banner) preserving aspect ratio (no
+  crop), re-encoded PNG (keeps transparency), stored on the `/data` volume. Both URLs
+  store the relative serve path with a `?v=<ts>` cache-buster; `Handler.applyBranding`
+  makes them absolute for emails (relative is fine on same-origin pages). The banner is
+  optional and independent of the logo (each shows or hides on its own presence),
+  rendered full width below the logo on `book.html`/`manage.html` (matching `.card`'s
+  860px max-width) and edge-to-edge in emails (no padding/border, unlike the logo's
+  bordered header cell). Public-page CSP `img-src` allows `https:`/`data:` so the
+  logo/banner load (`strictPublicCSP`). Brand is threaded into every send site
   (booking/cancel/reschedule/reassign + worker reminder).
 - Reminders: scheduled as `jobs` and sent by the worker (§13).
 - **Deliverability note (ops):** prod sends via **Resend** SMTP

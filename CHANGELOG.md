@@ -11,6 +11,25 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
 
 ## [Unreleased]
 
+### Security
+- Bumped the Go toolchain from 1.26.5 to 1.26.6, closing 8 known stdlib CVEs
+  (`net/http`, `encoding/xml`, `encoding/asn1`, `golang.org/x/net/idna`) that were
+  reachable from Calnode's own code paths (CalDAV free/busy parsing, DB schema
+  version checks, Zoom/Google HTTP clients).
+- Bumped `golang.org/x/image` to v0.45.0, closing a VP8L (WebP) decode
+  memory-exhaustion CVE (GO-2026-6222) reachable through the branding logo/banner
+  upload endpoints, which accept WebP images.
+
+### Added
+- **Banner option on the Branding settings page.** Same upload/crop/opacity flow
+  as the logo, shown full width below the logo (matching the email content
+  container and the public booking form's width) on the booking page, manage
+  page, and confirmation emails. Hidden entirely when not set; independent of the
+  logo (either, both, or neither can be shown).
+- A small link to the GitHub releases page in the admin sidebar footer, so
+  self-hosted operators always have an easy way to check what version they're
+  running against.
+
 ## [0.2.2] - 2026-08-12
 
 ### Security
