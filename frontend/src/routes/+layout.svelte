@@ -17,9 +17,11 @@
 	let checking = $state(true);
 	let reportOpen = $state(false);
 	let recordingsConfigured = $state(false);
+	let version = $state('');
 
 	const ISSUES_URL = 'https://github.com/Calnode/calnode/issues';
 	const NEW_ISSUE_URL = 'https://github.com/Calnode/calnode/issues/new/choose';
+	const RELEASES_URL = 'https://github.com/Calnode/calnode/releases';
 
 	const isLogin = $derived($page.route.id === '/login');
 	const isPublicRoute = $derived(
@@ -152,6 +154,12 @@
 		} catch {
 			// Non-critical — the demo banner and calendar/Zoom hiding just won't show.
 		}
+		try {
+			const v = await api.get<{ version: string }>('/version');
+			version = v.version;
+		} catch {
+			// Non-critical - the sidebar version link just won't show.
+		}
 		checking = false;
 	});
 
@@ -253,6 +261,16 @@
 					</svg>
 					Sign out
 				</button>
+				{#if version}
+					<a
+						href={RELEASES_URL}
+						target="_blank"
+						rel="noopener noreferrer"
+						class="mt-1 block px-2.5 py-1 text-xs text-sidebar-foreground/35 transition-colors hover:text-sidebar-foreground/60"
+					>
+						{version}
+					</a>
+				{/if}
 			</div>
 		</aside>
 
