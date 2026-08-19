@@ -298,7 +298,7 @@
       if (this.asstPanel || !this.info || !this.info.assistant_enabled) return;
       var self = this;
       var log = el('div', { class: 'asst-log' }, [
-        el('div', { class: 'asst-msg bot', text: t(this.i18n, 'assistant_greeting') }),
+        el('div', { class: 'asst-msg bot', text: this.info.assistant_greeting || t(this.i18n, 'assistant_greeting') }),
       ]);
       var input = el('input', { class: 'asst-input', type: 'text', placeholder: t(this.i18n, 'assistant_input_placeholder'), maxlength: '500', 'aria-label': t(this.i18n, 'assistant_input_aria') });
       var sendBtn = el('button', { class: 'asst-send', type: 'submit', text: t(this.i18n, 'send') });

@@ -40,13 +40,17 @@ type eventTypeJSON struct {
 	MsgCancellation     *string `json:"msg_cancellation"`
 	MsgReschedule       *string `json:"msg_reschedule"`
 	MsgReminder         *string `json:"msg_reminder"`
-	SubjConfirmation    *string `json:"subj_confirmation"`
-	SubjCancellation    *string `json:"subj_cancellation"`
-	SubjReschedule      *string `json:"subj_reschedule"`
-	SubjReminder        *string `json:"subj_reminder"`
-	PriceCents          int     `json:"price_cents"` // 0 = free
-	Currency            string  `json:"currency"`    // ISO 4217, lowercase (e.g. "usd")
-	Reminders           []int   `json:"reminders"`   // hours_before values
+	// MsgGreeting overrides the conversational assistant's opening line for this event
+	// type. Unlike the Msg* fields above, nil/empty means "no override" — the assistant
+	// falls back to the locale-keyed default greeting, not a fixed English seed.
+	MsgGreeting      *string `json:"msg_greeting"`
+	SubjConfirmation *string `json:"subj_confirmation"`
+	SubjCancellation *string `json:"subj_cancellation"`
+	SubjReschedule   *string `json:"subj_reschedule"`
+	SubjReminder     *string `json:"subj_reminder"`
+	PriceCents       int     `json:"price_cents"` // 0 = free
+	Currency         string  `json:"currency"`    // ISO 4217, lowercase (e.g. "usd")
+	Reminders        []int   `json:"reminders"`   // hours_before values
 	// Archived is true when the event type has been archived — hidden from the default
 	// list, with is_active forced off so it stops taking bookings. Reversible.
 	Archived bool `json:"archived"`
@@ -71,7 +75,7 @@ func scanEventType(s rowScanner) (*eventTypeJSON, error) {
 // pointers (e.g. the computed `owned` column from the list/get queries).
 func scanEventTypeRow(s rowScanner, trailing ...any) (*eventTypeJSON, error) {
 	var et eventTypeJSON
-	var desc, locVal, msgConf, msgCancel, msgResched, msgRemind sql.NullString
+	var desc, locVal, msgConf, msgCancel, msgResched, msgRemind, msgGreeting sql.NullString
 	var subjConf, subjCancel, subjResched, subjRemind sql.NullString
 	var isActive, isPublic int
 
@@ -83,7 +87,7 @@ func scanEventTypeRow(s rowScanner, trailing ...any) (*eventTypeJSON, error) {
 		&et.BufferBeforeMinutes, &et.BufferAfterMinutes,
 		&et.MinNoticeMinutes, &et.MaxFutureDays, &et.MaxActiveBookings,
 		&isActive, &isPublic, &et.CreatedAt,
-		&msgConf, &msgCancel, &msgResched, &msgRemind,
+		&msgConf, &msgCancel, &msgResched, &msgRemind, &msgGreeting,
 		&subjConf, &subjCancel, &subjResched, &subjRemind,
 		&et.PriceCents, &et.Currency,
 	}
@@ -115,6 +119,9 @@ func scanEventTypeRow(s rowScanner, trailing ...any) (*eventTypeJSON, error) {
 	if msgRemind.Valid {
 		et.MsgReminder = &msgRemind.String
 	}
+	if msgGreeting.Valid {
+		et.MsgGreeting = &msgGreeting.String
+	}
 	if subjConf.Valid {
 		et.SubjConfirmation = &subjConf.String
 	}
@@ -138,7 +145,7 @@ const etColumns = `id, slug, name, description,
 	buffer_before_minutes, buffer_after_minutes,
 	min_notice_minutes, max_future_days, max_active_bookings,
 	is_active, is_public, created_at,
-	msg_confirmation, msg_cancellation, msg_reschedule, msg_reminder,
+	msg_confirmation, msg_cancellation, msg_reschedule, msg_reminder, msg_greeting,
 	subj_confirmation, subj_cancellation, subj_reschedule, subj_reminder,
 	price_cents, currency`
 
@@ -417,6 +424,7 @@ func (h *Handler) PatchEventType(w http.ResponseWriter, r *http.Request) {
 		MsgCancellation     *string `json:"msg_cancellation"`
 		MsgReschedule       *string `json:"msg_reschedule"`
 		MsgReminder         *string `json:"msg_reminder"`
+		MsgGreeting         *string `json:"msg_greeting"`
 		SubjConfirmation    *string `json:"subj_confirmation"`
 		SubjCancellation    *string `json:"subj_cancellation"`
 		SubjReschedule      *string `json:"subj_reschedule"`
@@ -587,6 +595,13 @@ func (h *Handler) PatchEventType(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		set("msg_reminder", nullableString(*req.MsgReminder))
+	}
+	if req.MsgGreeting != nil {
+		if len(*req.MsgGreeting) > maxMsgLen {
+			h.writeError(w, http.StatusBadRequest, "msg_greeting exceeds 2000 characters")
+			return
+		}
+		set("msg_greeting", nullableString(*req.MsgGreeting))
 	}
 	const maxSubjLen = 200
 	for _, s := range []struct {

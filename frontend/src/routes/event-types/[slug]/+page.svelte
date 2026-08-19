@@ -231,6 +231,9 @@
 	let msg_cancellation = $state('');
 	let msg_reschedule = $state('');
 	let msg_reminder = $state('');
+	// Assistant's opening chat line for this event type — blank keeps the built-in
+	// (translated) default; set overrides it verbatim, same as the email notes above.
+	let msg_greeting = $state('');
 	// Optional custom subject lines (empty = built-in default subject).
 	let subj_confirmation = $state('');
 	let subj_cancellation = $state('');
@@ -279,6 +282,7 @@
 			msg_cancellation = et.msg_cancellation ?? '';
 			msg_reschedule = et.msg_reschedule ?? '';
 			msg_reminder = et.msg_reminder ?? '';
+			msg_greeting = et.msg_greeting ?? '';
 			subj_confirmation = et.subj_confirmation ?? '';
 			subj_cancellation = et.subj_cancellation ?? '';
 			subj_reschedule = et.subj_reschedule ?? '';
@@ -324,6 +328,7 @@
 				msg_cancellation: msg_cancellation.trim() || null,
 				msg_reschedule: msg_reschedule.trim() || null,
 				msg_reminder: msg_reminder.trim() || null,
+				msg_greeting: msg_greeting.trim() || null,
 				subj_confirmation: subj_confirmation.trim() || null,
 				subj_cancellation: subj_cancellation.trim() || null,
 				subj_reschedule: subj_reschedule.trim() || null,
@@ -968,6 +973,17 @@
 					</div>
 				{/each}
 			</div>
+		</div>
+
+		<!-- Assistant greeting -->
+		<div class="border-t pt-5">
+			<p class="mb-1 text-sm font-medium">Assistant greeting</p>
+			<p class="mb-3 text-xs text-muted-foreground">
+				The chat assistant's opening line on this event's booking page. Leave blank to use
+				the built-in greeting, which is automatically translated for the visitor's language;
+				a custom greeting is shown exactly as written, in every language.
+			</p>
+			<Textarea bind:value={msg_greeting} rows={2} placeholder="Hi! Tell me roughly when you'd like to meet…" />
 		</div>
 
 	</div>

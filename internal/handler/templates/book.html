@@ -111,7 +111,7 @@ body {
     <p class="asst-disclosure" role="note">{{.AssistantDisclosure}}</p>
   </div>
   <div class="asst-log" id="asst-log" aria-live="polite">
-    <div class="asst-msg bot">{{call .T "assistant_greeting"}}</div>
+    <div class="asst-msg bot">{{.AssistantGreeting}}</div>
   </div>
   <form class="asst-row" id="asst-form" autocomplete="off">
     <input class="asst-input" id="asst-input" type="text" placeholder="{{call .T "assistant_input_placeholder"}}" aria-label="{{call .T "assistant_input_aria"}}" maxlength="500">

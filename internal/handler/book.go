@@ -63,6 +63,9 @@ type bookPageData struct {
 	AssistantEnabled bool
 	// AssistantDisclosure is the persistent AI-disclosure notice on the chat panel (Art. 50(1)).
 	AssistantDisclosure string
+	// AssistantGreeting is the chat panel's opening line — the event type's admin
+	// override if set, else the locale-keyed default. See assistantGreeting().
+	AssistantGreeting string
 	// CSSVersion cache-busts the /booking.css link (content hash).
 	CSSVersion string
 	// BookingLogicJS is the shared booking-calendar logic module, inlined ahead of the page script.
@@ -256,6 +259,17 @@ func locationLabel(locType, locValue string, loc *i18n.Locale) string {
 	}
 }
 
+// assistantGreeting resolves the conversational assistant's opening line: the
+// event type's admin-authored override (msgGreeting) if set, verbatim and
+// untranslated like the other Msg* custom notes — otherwise the locale-keyed
+// default, translated per the resolved visitor locale.
+func assistantGreeting(msgGreeting sql.NullString, loc *i18n.Locale) string {
+	if msgGreeting.Valid && msgGreeting.String != "" {
+		return msgGreeting.String
+	}
+	return loc.T("assistant_greeting")
+}
+
 // PublicEventType handles GET /v1/event-types/{slug}/public — the public display
 // info a booking client (e.g. the embeddable widget) needs before rendering the
 // form: name, duration, location label, host faces, and brand. No PII, no auth;
@@ -267,16 +281,17 @@ func (h *Handler) PublicEventType(w http.ResponseWriter, r *http.Request) {
 		etID, name, description, locType, locValue string
 		hostName, avatarURL, routingMode, currency string
 		durMins, maxDays, priceCents               int
+		msgGreeting                                sql.NullString
 	)
 	err := h.db.QueryRowContext(r.Context(), `
 		SELECT et.id, et.name, COALESCE(et.description, ''),
 		       et.duration_minutes, et.location_type, COALESCE(et.location_value, ''),
 		       et.max_future_days, et.routing_mode, u.name, COALESCE(u.avatar_url, ''),
-		       et.price_cents, et.currency
+		       et.price_cents, et.currency, et.msg_greeting
 		FROM event_types et
 		JOIN users u ON u.id = et.user_id
 		WHERE et.slug = ? AND et.is_active = 1 AND et.is_public = 1`,
-		slug).Scan(&etID, &name, &description, &durMins, &locType, &locValue, &maxDays, &routingMode, &hostName, &avatarURL, &priceCents, &currency)
+		slug).Scan(&etID, &name, &description, &durMins, &locType, &locValue, &maxDays, &routingMode, &hostName, &avatarURL, &priceCents, &currency, &msgGreeting)
 	if errors.Is(err, sql.ErrNoRows) {
 		h.writeError(w, http.StatusNotFound, "event type not found")
 		return
@@ -322,22 +337,23 @@ func (h *Handler) PublicEventType(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.writeJSON(w, http.StatusOK, map[string]any{
-		"slug":              slug,
-		"name":              name,
-		"description":       description,
-		"duration_minutes":  durMins,
-		"location_type":     locType,
-		"location_label":    locationLabel(locType, locValue, loc),
-		"max_future_days":   maxDays,
-		"assistant_enabled": h.getLLM() != nil,
-		"price_cents":       priceCents,
-		"currency":          currency,
-		"hosts":             outHosts,
-		"business_name":     brand.BusinessName,
-		"logo_url":          abs(brand.LogoURL),
-		"banner_url":        abs(brand.BannerURL),
-		"locale":            loc.Code,
-		"i18n":              json.RawMessage(i18nJSON),
+		"slug":               slug,
+		"name":               name,
+		"description":        description,
+		"duration_minutes":   durMins,
+		"location_type":      locType,
+		"location_label":     locationLabel(locType, locValue, loc),
+		"max_future_days":    maxDays,
+		"assistant_enabled":  h.getLLM() != nil,
+		"assistant_greeting": assistantGreeting(msgGreeting, loc),
+		"price_cents":        priceCents,
+		"currency":           currency,
+		"hosts":              outHosts,
+		"business_name":      brand.BusinessName,
+		"logo_url":           abs(brand.LogoURL),
+		"banner_url":         abs(brand.BannerURL),
+		"locale":             loc.Code,
+		"i18n":               json.RawMessage(i18nJSON),
 	})
 }
 
@@ -358,16 +374,17 @@ func (h *Handler) BookPage(w http.ResponseWriter, r *http.Request) {
 		routingMode string
 		priceCents  int
 		currency    string
+		msgGreeting sql.NullString
 	)
 	err := h.db.QueryRowContext(r.Context(), `
 		SELECT et.id, et.name, COALESCE(et.description, ''),
 		       et.duration_minutes, et.location_type, COALESCE(et.location_value, ''),
 		       et.max_future_days, et.routing_mode, u.name, COALESCE(u.avatar_url, ''),
-		       et.price_cents, et.currency
+		       et.price_cents, et.currency, et.msg_greeting
 		FROM event_types et
 		JOIN users u ON u.id = et.user_id
 		WHERE et.slug = ? AND et.is_active = 1 AND et.is_public = 1`,
-		slug).Scan(&etID, &name, &description, &durMins, &locType, &locValue, &maxDays, &routingMode, &hostName, &avatarURL, &priceCents, &currency)
+		slug).Scan(&etID, &name, &description, &durMins, &locType, &locValue, &maxDays, &routingMode, &hostName, &avatarURL, &priceCents, &currency, &msgGreeting)
 
 	if errors.Is(err, sql.ErrNoRows) {
 		http.Error(w, "Page not found", http.StatusNotFound)
@@ -450,6 +467,7 @@ func (h *Handler) BookPage(w http.ResponseWriter, r *http.Request) {
 		BookingLogicJS:      template.JS(bookingLogicJS), // #nosec G203 -- our own bundled JS source constant, not user input
 		AssistantEnabled:    h.getLLM() != nil,
 		AssistantDisclosure: loc.T("assistant_disclosure"),
+		AssistantGreeting:   assistantGreeting(msgGreeting, loc),
 		CSSVersion:          bookingCSSVersion,
 
 		HeadHTML:         template.HTML(track.HeadHTML), // #nosec G203 -- admin-only "code injection" feature (Settings -> Tracking); intentionally raw, documented, gated by requireAdmin on the settings endpoint

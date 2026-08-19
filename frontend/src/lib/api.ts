@@ -45,6 +45,8 @@ export type EventType = {
 	msg_cancellation?: string;
 	msg_reschedule?: string;
 	msg_reminder?: string;
+	/** Overrides the conversational assistant's opening chat line; unset = built-in translated default. */
+	msg_greeting?: string;
 	reminders: number[]; // hours_before values
 	routing_mode: 'fixed' | 'round_robin' | 'collective';
 	rr_strategy: 'even' | 'soonest' | 'priority';
