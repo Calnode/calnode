@@ -575,7 +575,13 @@
     '.x:hover{background:#f1f5f9;}' +
     '@media (max-width:560px){.ovl{padding:0;}.wrap{max-width:none;min-height:100%;}}';
 
-  function openPopup(slug) {
+  // lang: optional explicit language override, same semantics as the inline
+  // <calnode-booking lang=""> attribute — for popup mode there's no persistent element
+  // to put it on ahead of time, so it's read off the trigger button instead (see
+  // wirePopups) and forwarded here. window.Calnode.openPopup(slug, lang) also accepts
+  // it directly for callers driving the popup from their own JS rather than a
+  // data-calnode-popup button.
+  function openPopup(slug, lang) {
     var hostEl = el('div', {});
     hostEl.setAttribute('style', 'position:fixed;inset:0;z-index:2147483647;');
     var sr = hostEl.attachShadow({ mode: 'open' });
@@ -583,6 +589,7 @@
     var widget = document.createElement('calnode-booking');
     widget.setAttribute('slug', slug);
     widget.setAttribute('data-modal', '');
+    if (lang) widget.setAttribute('lang', lang);
     // Not translated: this popup-chrome close button is created synchronously, before
     // the inner <calnode-booking> has loaded and resolved a locale (same bootstrapping
     // gap as the widget's own initial "Loading…" state).
@@ -600,7 +607,7 @@
   function wirePopups(scope) {
     (scope || document).querySelectorAll('[data-calnode-popup]:not([data-calnode-wired])').forEach(function (b) {
       b.setAttribute('data-calnode-wired', '1');
-      b.addEventListener('click', function (e) { e.preventDefault(); openPopup(b.getAttribute('data-calnode-popup')); });
+      b.addEventListener('click', function (e) { e.preventDefault(); openPopup(b.getAttribute('data-calnode-popup'), b.getAttribute('lang')); });
     });
   }
   if (document.readyState !== 'loading') wirePopups();
