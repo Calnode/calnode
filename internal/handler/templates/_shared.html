@@ -103,11 +103,24 @@
        ?lang= reloads the page; the server persists the choice to a cookie (see
        resolveLocale/persistLangOverride in internal/handler/i18n.go) so it sticks on
        later visits without the query param. Each option is labelled in ITS OWN
-       language (never the current UI language) — standard language-switcher practice. */}}
+       language (never the current UI language) — standard language-switcher practice.
+       The change handler is a real <script>, NOT an inline onchange="" attribute:
+       inline HTML event-handler attributes execute inside an implicit
+       `with (document) { with (form) { ... } }` scope, and `document.URL` is a real
+       built-in property (the page URL as a *string*) that shadows the global `URL`
+       constructor there — `new URL(...)` silently threw "URL is not a constructor"
+       and the switcher did nothing. A normal <script> has no such scope chain. */}}
   {{if gt (len (supportedLocales)) 1}}
-  <select class="lang-select" aria-label="Language" onchange="var u=new URL(location.href);u.searchParams.set('lang',this.value);location.href=u.toString();">
+  <select id="lang-select" class="lang-select" aria-label="Language">
     {{range supportedLocales}}<option value="{{.Code}}"{{if eq .Code $.Locale}} selected{{end}}>{{.Name}}</option>{{end}}
   </select>
+  <script>
+  document.getElementById('lang-select').addEventListener('change', function () {
+    var u = new URL(location.href);
+    u.searchParams.set('lang', this.value);
+    location.href = u.toString();
+  });
+  </script>
   {{end}}
   <a href="https://calnode.com" target="_blank" rel="noopener noreferrer">Calnode</a>
 </footer>{{end}}
