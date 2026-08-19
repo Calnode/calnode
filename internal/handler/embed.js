@@ -359,7 +359,7 @@
         var res = await fetch(BASE + '/v1/event-types/' + encodeURIComponent(this.slug) + '/assistant', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Accept': 'text/event-stream' },
-          body: JSON.stringify({ messages: this.asstMessages, timezone: TZ }),
+          body: JSON.stringify({ messages: this.asstMessages, timezone: TZ, language: this.locale }),
         });
         if (!res.ok || !res.body) throw new Error('http ' + res.status);
         var reader = res.body.getReader(), dec = new TextDecoder(), buf = '';

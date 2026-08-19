@@ -74,6 +74,19 @@ func TestSupportedLocales(t *testing.T) {
 	}
 }
 
+func TestEnglishName(t *testing.T) {
+	if got := Get("es").EnglishName(); got != "Spanish" {
+		t.Errorf("Get(%q).EnglishName() = %q, want %q", "es", got, "Spanish")
+	}
+	if got := Default().EnglishName(); got != "English" {
+		t.Errorf("Default().EnglishName() = %q, want %q", got, "English")
+	}
+	var nilLocale *Locale
+	if got := nilLocale.EnglishName(); got != "English" {
+		t.Errorf("nil locale EnglishName() = %q, want %q", got, "English")
+	}
+}
+
 func TestAllLocalesHaveTheSameKeys(t *testing.T) {
 	en := Default()
 	for code, l := range locales {

@@ -129,6 +129,17 @@ func (l *Locale) T(key string) string {
 	return key
 }
 
+// EnglishName returns this locale's language name in English (e.g. "Spanish" for es) — for
+// contexts that are deliberately kept in English (like the booking assistant's system
+// prompt; see assistantBaseRules in internal/handler/booking_assistant.go) but still need
+// to name a language, e.g. a "reply in %s" directive.
+func (l *Locale) EnglishName() string {
+	if l == nil {
+		return Default().EnglishName()
+	}
+	return display.English.Languages().Name(language.Make(l.Code))
+}
+
 // JSON marshals this locale's full string table for client-side lookup (the embed widget,
 // and JS-driven UI copy on the server-rendered pages that can't use {{.T}} directly).
 // json.Marshal HTML-escapes <, >, and & by default, so this is safe to embed directly in

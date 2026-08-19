@@ -86,6 +86,57 @@ func TestBookingAssistant_findThenBook(t *testing.T) {
 	}
 }
 
+func TestBookingAssistant_languageDirective(t *testing.T) {
+	var captured []byte
+	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		captured, _ = io.ReadAll(r.Body)
+		io.WriteString(w, `{"choices":[{"message":{"role":"assistant","content":"Hola!"}}]}`)
+	}))
+	defer mock.Close()
+
+	h, apiKey, _ := setupWorkspace(t)
+	erec := httptest.NewRecorder()
+	h.RequireAuth(h.CreateEventType)(erec, authReq(http.MethodPost, "/v1/event-types",
+		`{"slug":"lang-call","name":"Lang Call","duration_minutes":30,"location_type":"phone","location_value":"+1 555 000 1111"}`, apiKey))
+	if erec.Code != http.StatusCreated {
+		t.Fatalf("create event type: %d — %s", erec.Code, erec.Body.String())
+	}
+
+	prec := httptest.NewRecorder()
+	h.RequireAuth(h.PatchLLMSettings)(prec, authReq(http.MethodPatch, "/v1/settings/llm",
+		`{"enabled":true,"endpoint":"`+mock.URL+`","model":"m","api_key":"k"}`, apiKey))
+	if prec.Code != http.StatusOK {
+		t.Fatalf("enable llm: %d — %s", prec.Code, prec.Body.String())
+	}
+
+	// language: "es" on the request should become a "Reply in Spanish" directive in the
+	// system prompt sent to the LLM — mirrors the existing timezone plumbing.
+	areq := httptest.NewRequest(http.MethodPost, "/v1/event-types/lang-call/assistant",
+		strings.NewReader(`{"messages":[{"role":"user","content":"hola"}],"timezone":"UTC","language":"es"}`))
+	areq.SetPathValue("slug", "lang-call")
+	arec := httptest.NewRecorder()
+	h.BookingAssistant(arec, areq)
+	if arec.Code != http.StatusOK {
+		t.Fatalf("assistant: %d — %s", arec.Code, arec.Body.String())
+	}
+
+	var sent struct {
+		Messages []struct {
+			Role    string `json:"role"`
+			Content string `json:"content"`
+		} `json:"messages"`
+	}
+	if err := json.Unmarshal(captured, &sent); err != nil {
+		t.Fatalf("decode captured LLM request: %v (%s)", err, captured)
+	}
+	if len(sent.Messages) == 0 || sent.Messages[0].Role != "system" {
+		t.Fatalf("expected a system message first; got %+v", sent.Messages)
+	}
+	if !strings.Contains(sent.Messages[0].Content, "Reply in Spanish") {
+		t.Errorf("system prompt should direct the model to reply in Spanish; got %q", sent.Messages[0].Content)
+	}
+}
+
 func TestBookingAssistant_fallbackWhenLLMOff(t *testing.T) {
 	h, apiKey, _ := setupWorkspace(t)
 	erec := httptest.NewRecorder()

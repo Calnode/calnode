@@ -728,6 +728,7 @@ body {
 (function () {
   'use strict';
   var SLUG = "{{.Slug}}";
+  var LOCALE = "{{.Locale}}";
   var I18N = window.__CALNODE_I18N || {};
   function t(key) { return I18N[key] || key; } // separate closure from the main script's own t()
   var form = document.getElementById('asst-form');
@@ -798,7 +799,7 @@ body {
       var res = await fetch('/v1/event-types/' + encodeURIComponent(SLUG) + '/assistant', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Accept': 'text/event-stream' },
-        body: JSON.stringify({ messages: messages, timezone: tz() })
+        body: JSON.stringify({ messages: messages, timezone: tz(), language: LOCALE })
       });
       if (!res.ok || !res.body) throw new Error('http ' + res.status);
       // Read the SSE stream: events are "data: <json>\n\n".

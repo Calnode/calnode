@@ -76,6 +76,10 @@ type assistantMessage struct {
 type assistantRequest struct {
 	Messages []assistantMessage `json:"messages"`
 	Timezone string             `json:"timezone"`
+	// Language is the resolved page locale code (e.g. "es"), same mechanism as Timezone —
+	// see the "reply language" directive in assistantSystemPrompt. Empty falls back to
+	// English via i18n.Resolve.
+	Language string `json:"language"`
 }
 
 type assistantBooking struct {
@@ -122,7 +126,7 @@ func (h *Handler) BookingAssistant(w http.ResponseWriter, r *http.Request) {
 
 	// Event-type context for the system prompt (active+public only). Doubles as the
 	// not-found gate.
-	sysPrompt, ok := h.assistantSystemPrompt(r.Context(), slug, tz)
+	sysPrompt, ok := h.assistantSystemPrompt(r.Context(), slug, tz, req.Language)
 	if !ok {
 		h.writeError(w, http.StatusNotFound, "event type not found")
 		return
@@ -246,7 +250,7 @@ func assistantToolStatus(name string) string {
 
 // assistantSystemPrompt builds the system prompt from the (active+public) event type's
 // public details + intake questions. Returns ok=false if the slug isn't bookable.
-func (h *Handler) assistantSystemPrompt(ctx context.Context, slug, tz string) (string, bool) {
+func (h *Handler) assistantSystemPrompt(ctx context.Context, slug, tz, lang string) (string, bool) {
 	et, err := h.loadBookableEventType(ctx, slug)
 	if err != nil {
 		return "", false
@@ -279,14 +283,16 @@ func (h *Handler) assistantSystemPrompt(ctx context.Context, slug, tz string) (s
 	}
 
 	today := time.Now().UTC().Format("2006-01-02")
-	// i18n.Default(): the assistant's own reply language is a separate, not-yet-built
-	// setting (internal-docs/i18n-plan.md) — this locationLabel call just needs *a*
-	// locale for the prompt text, independent of that.
+	// locationLabel just needs *a* locale for the prompt text — this is independent of the
+	// reply-language directive below, which drives what language the model actually replies
+	// in (see the assistant section of internal-docs/i18n-plan.md).
+	replyLang := i18n.Resolve("", lang).EnglishName()
 	prompt := fmt.Sprintf(`You are a concise scheduling assistant helping a visitor book "%s" (a %d-minute %s meeting).
 Today is %s. The visitor's timezone is %s — show times in that timezone and state it once early on; if they name a different timezone, use theirs.
+Reply in %s, regardless of what language the visitor writes in.
 Intake questions: %s
 
-%s`, name, duration, locationLabel(locType, "", i18n.Default()), today, tz, questions, assistantBaseRules)
+%s`, name, duration, locationLabel(locType, "", i18n.Default()), today, tz, replyLang, questions, assistantBaseRules)
 
 	// Admin "Additional instructions" — appended, never replacing the rules above.
 	var extra string
