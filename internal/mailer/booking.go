@@ -78,7 +78,7 @@ func (d BookingData) LocaleCode() string { return d.locale().Code }
 
 // Tf is T with fmt.Sprintf-style argument substitution, for keys like "Hi %s,".
 func (d BookingData) Tf(key string, args ...any) string {
-	return fmt.Sprintf(d.locale().T(key), args...)
+	return d.locale().Tf(key, args...)
 }
 
 // Brand is the display name for the email wordmark/footer.

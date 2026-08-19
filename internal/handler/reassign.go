@@ -10,6 +10,7 @@ import (
 
 	"github.com/calnode/calnode/internal/booking"
 	"github.com/calnode/calnode/internal/calendar"
+	"github.com/calnode/calnode/internal/i18n"
 	"github.com/calnode/calnode/internal/mailer"
 	"github.com/calnode/calnode/internal/webhook"
 )
@@ -97,15 +98,15 @@ func (h *Handler) ReassignBooking(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Capture the old host + calendar event + summary fields before the move.
-	var oldHostID, extEventID, etName, orgName, orgEmail string
+	var oldHostID, extEventID, etName, orgName, orgEmail, orgLocale string
 	err = h.db.QueryRowContext(r.Context(), `
 		SELECT b.host_id, COALESCE(b.external_event_id,''), et.name,
-		       COALESCE(a.name,''), COALESCE(a.email,'')
+		       COALESCE(a.name,''), COALESCE(a.email,''), COALESCE(a.locale,'')
 		FROM bookings b
 		JOIN event_types et ON et.id = b.event_type_id
 		LEFT JOIN booking_attendees a ON a.booking_id = b.id AND a.is_organizer = 1
 		WHERE b.id = ?`, id).
-		Scan(&oldHostID, &extEventID, &etName, &orgName, &orgEmail)
+		Scan(&oldHostID, &extEventID, &etName, &orgName, &orgEmail, &orgLocale)
 	if errors.Is(err, sql.ErrNoRows) {
 		h.writeError(w, http.StatusNotFound, "booking not found")
 		return
@@ -162,9 +163,10 @@ func (h *Handler) ReassignBooking(w http.ResponseWriter, r *http.Request) {
 					h.logger.Error("reassign: delete old calendar event", "error", err, "booking_id", bCopy.ID)
 				}
 			}
+			loc := i18n.Get(orgLocale) // nil (→ English) if empty/unrecognized; i18n.Locale.T handles nil safely
 			newEventID, _, err := gc.CreateEvent(ctx, newHostID, calendar.CreateEventParams{
-				Summary:        etName + " with " + orgName,
-				Description:    "Booking ID: " + bCopy.ID,
+				Summary:        loc.Tf("calendar_event_summary", etName, orgName),
+				Description:    loc.Tf("calendar_event_booking_id", bCopy.ID),
 				Location:       bCopy.LocationValue, // keep the existing Meet link (don't mint a new one)
 				Start:          bCopy.StartAt,
 				End:            bCopy.EndAt,

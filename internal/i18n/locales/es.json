@@ -141,5 +141,7 @@
   "email_subject_rescheduled": "Reserva reprogramada: %s",
   "email_subject_reminder": "Recordatorio: %s se acerca",
   "email_booking_with": "Reserva con %s",
-  "email_manage_this_booking": "Gestionar esta reserva:"
+  "email_manage_this_booking": "Gestionar esta reserva:",
+  "calendar_event_summary": "%s con %s",
+  "calendar_event_booking_id": "ID de la reserva: %s"
 }

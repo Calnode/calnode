@@ -141,5 +141,7 @@
   "email_subject_rescheduled": "Booking rescheduled: %s",
   "email_subject_reminder": "Reminder: %s is coming up",
   "email_booking_with": "Booking with %s",
-  "email_manage_this_booking": "Manage this booking:"
+  "email_manage_this_booking": "Manage this booking:",
+  "calendar_event_summary": "%s with %s",
+  "calendar_event_booking_id": "Booking ID: %s"
 }

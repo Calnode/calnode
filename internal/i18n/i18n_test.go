@@ -90,6 +90,22 @@ func TestEnglishName(t *testing.T) {
 	}
 }
 
+func TestTf(t *testing.T) {
+	if got := Get("es").Tf("calendar_event_summary", "30-Minute Call", "Bob Booker"); got != "30-Minute Call con Bob Booker" {
+		t.Errorf("Tf(calendar_event_summary) = %q", got)
+	}
+	if got := Default().Tf("calendar_event_booking_id", "01J4TEST"); got != "Booking ID: 01J4TEST" {
+		t.Errorf("Tf(calendar_event_booking_id) = %q", got)
+	}
+	// nil Locale (e.g. i18n.Get("") for a booking with no stored locale) must still work —
+	// mirrors T's nil-safety, since Tf is used the same way from calendar_reconcile.go and
+	// reassign.go on a possibly-nil i18n.Get(orgLocale) result.
+	var nilLocale *Locale
+	if got := nilLocale.Tf("calendar_event_summary", "X", "Y"); got != "X with Y" {
+		t.Errorf("nil Locale Tf() = %q, want English fallback", got)
+	}
+}
+
 func TestFormatDateTime(t *testing.T) {
 	// Monday 2026-06-22, 09:05 — a fixed reference so weekday/month names are unambiguous.
 	moment := time.Date(2026, time.June, 22, 9, 5, 0, 0, time.UTC)

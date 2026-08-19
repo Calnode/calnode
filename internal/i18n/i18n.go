@@ -129,6 +129,11 @@ func (l *Locale) T(key string) string {
 	return key
 }
 
+// Tf is T with fmt.Sprintf-style argument substitution, for keys like "Hi %s,".
+func (l *Locale) Tf(key string, args ...any) string {
+	return fmt.Sprintf(l.T(key), args...)
+}
+
 // EnglishName returns this locale's language name in English (e.g. "Spanish" for es) — for
 // contexts that are deliberately kept in English (like the booking assistant's system
 // prompt; see assistantBaseRules in internal/handler/booking_assistant.go) but still need

@@ -1030,8 +1030,11 @@ func (h *Handler) createHostEventsAndNotify(ctx context.Context, b *booking.Book
 		// also lives on the booking row for back-compat.
 		if gc != nil {
 			eventID, link, err := gc.CreateEvent(ctx, host.UserID, calendar.CreateEventParams{
-				Summary:        in.EventTypeName + " with " + in.OrganizerName,
-				Description:    "Booking ID: " + b.ID,
+				// The attendee is added as a calendar invitee below, so this text reaches
+				// them via the provider's own native invite (Google/Outlook/CalDAV) —
+				// follows their locale like the confirmation email, not English/host-fixed.
+				Summary:        bData.Tf("calendar_event_summary", in.EventTypeName, in.OrganizerName),
+				Description:    bData.Tf("calendar_event_booking_id", b.ID),
 				Location:       hostEventLocation(meetURL, livekitHostURL, bData.LocationValue), // empty until the primary creates it; secondary hosts get the link
 				Start:          b.StartAt,
 				End:            b.EndAt,
