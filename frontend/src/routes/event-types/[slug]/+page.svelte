@@ -324,15 +324,19 @@
 				routing_mode: routingMode,
 				rr_strategy: rrStrategy,
 				reminders,
-				msg_confirmation: msg_confirmation.trim() || null,
-				msg_cancellation: msg_cancellation.trim() || null,
-				msg_reschedule: msg_reschedule.trim() || null,
-				msg_reminder: msg_reminder.trim() || null,
-				msg_greeting: msg_greeting.trim() || null,
-				subj_confirmation: subj_confirmation.trim() || null,
-				subj_cancellation: subj_cancellation.trim() || null,
-				subj_reschedule: subj_reschedule.trim() || null,
-				subj_reminder: subj_reminder.trim() || null,
+				// Not `|| null`: this form always saves the whole page state, so a blanked
+				// field must send '' to actually clear it. The API treats null as "leave
+				// unchanged" (for partial-PATCH callers), which would silently keep the old
+				// value here — the field would look cleared in the UI but persist server-side.
+				msg_confirmation: msg_confirmation.trim(),
+				msg_cancellation: msg_cancellation.trim(),
+				msg_reschedule: msg_reschedule.trim(),
+				msg_reminder: msg_reminder.trim(),
+				msg_greeting: msg_greeting.trim(),
+				subj_confirmation: subj_confirmation.trim(),
+				subj_cancellation: subj_cancellation.trim(),
+				subj_reschedule: subj_reschedule.trim(),
+				subj_reminder: subj_reminder.trim(),
 			});
 			if (routingMode === 'round_robin') {
 				await api.put(`/v1/event-types/${slug}/hosts`, {

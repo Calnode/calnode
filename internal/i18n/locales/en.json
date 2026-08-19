@@ -110,6 +110,7 @@
   "month_short_nov": "Nov",
   "month_short_dec": "Dec",
   "clock_format": "12h",
+  "date_format": "%[1]s %[2]d %[3]s %[4]d",
 
   "email_greeting": "Hi %s,",
   "email_confirmed_lead": "Your booking is confirmed.",

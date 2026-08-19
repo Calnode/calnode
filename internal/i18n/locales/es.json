@@ -110,6 +110,7 @@
   "month_short_nov": "nov",
   "month_short_dec": "dic",
   "clock_format": "24h",
+  "date_format": "%[1]s %[2]d %[3]s %[4]d",
 
   "email_greeting": "Hola %s,",
   "email_confirmed_lead": "Tu reserva está confirmada.",

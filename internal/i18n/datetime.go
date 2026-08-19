@@ -29,8 +29,16 @@ var monthKeys = [13]string{
 // FormatDate returns t's short weekday, day, month, and year in this locale — e.g.
 // "Mon 22 Jun 2026" (English) or "lun 22 jun 2026" (Spanish). Callers convert t into the
 // desired zone first (t.In(loc)) — this only handles the locale, not the timezone.
+//
+// The token *order* is itself a locale key ("date_format"), not hardcoded — English and
+// Spanish both happen to use weekday-day-month-year, but that's not universal (US English
+// wants "Jan 2, 2006"; a CJK locale wants day/month reversed with no spaces and its own
+// connecting characters, e.g. "2026年6月22日"). Explicit argument indices (%[1]s etc.) let
+// a locale's pattern reorder the four components freely, or drop the weekday/change
+// separators, without any Go code change — see internal-docs/i18n-plan.md's date-pattern
+// finding. Args are fixed: 1=weekday, 2=day, 3=month, 4=year.
 func (l *Locale) FormatDate(t time.Time) string {
-	return fmt.Sprintf("%s %d %s %d", l.T(dowKeys[t.Weekday()]), t.Day(), l.T(monthKeys[t.Month()]), t.Year())
+	return fmt.Sprintf(l.T("date_format"), l.T(dowKeys[t.Weekday()]), t.Day(), l.T(monthKeys[t.Month()]), t.Year())
 }
 
 // FormatTimeOfDay returns just the clock time, honoring the locale's 12h/24h preference

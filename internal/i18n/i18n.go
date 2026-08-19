@@ -30,9 +30,20 @@ type Locale struct {
 }
 
 var (
-	locales   = map[string]*Locale{}
-	supported []language.Tag
-	matcher   language.Matcher
+	locales = map[string]*Locale{}
+	// supported and supportedCodes are parallel, same-length, same-order slices:
+	// supported[i] is the language.Tag used for matching, supportedCodes[i] is the
+	// original locales/*.json filename it came from. They're kept separate rather than
+	// deriving one from the other via tag.String() because BCP-47 canonicalization can
+	// rewrite a tag ("pt-br" -> "pt-BR", "zh-hans" -> "zh-Hans", "iw" -> "he"): a locale
+	// file with an uncanonical (if still valid-looking) name would round-trip to a
+	// *different* string than its own map key, so locales[supported[index].String()]
+	// would silently miss and return nil — a nil-Locale panic on the hottest public page
+	// the moment someone adds e.g. locales/pt-br.json. Indexing supportedCodes instead
+	// makes the lookup exact regardless of how the tag canonicalizes.
+	supported      []language.Tag
+	supportedCodes []string
+	matcher        language.Matcher
 )
 
 func init() {
@@ -67,8 +78,10 @@ func init() {
 		}
 	}
 	sort.Strings(otherCodes)
+	supportedCodes = append(supportedCodes, DefaultCode)
 	supported = append(supported, language.Make(DefaultCode))
 	for _, code := range otherCodes {
+		supportedCodes = append(supportedCodes, code)
 		supported = append(supported, language.Make(code))
 	}
 	matcher = language.NewMatcher(supported)
@@ -93,8 +106,11 @@ type LocaleOption struct {
 // first, then the rest alphabetically by code (mirroring the internal `supported` order).
 func SupportedLocales() []LocaleOption {
 	out := make([]LocaleOption, 0, len(supported))
-	for _, tag := range supported {
-		out = append(out, LocaleOption{Code: tag.String(), Name: display.Self.Name(tag)})
+	for i, tag := range supported {
+		// Code is the original locale-file code (see supportedCodes' doc comment), not
+		// tag.String() — a caller round-trips this through ?lang=<code>/Get(code), which
+		// is keyed on the original filename, not its BCP-47 canonicalization.
+		out = append(out, LocaleOption{Code: supportedCodes[i], Name: display.Self.Name(tag)})
 	}
 	return out
 }
@@ -134,7 +150,10 @@ func ResolveWithFallback(acceptLanguage, override, fallbackCode string) *Locale 
 	if confidence == language.No {
 		return fallback
 	}
-	return locales[supported[index].String()]
+	if l := locales[supportedCodes[index]]; l != nil {
+		return l
+	}
+	return fallback // defensive: should be unreachable, but never return a nil Locale
 }
 
 // T looks up key in this locale, falling back to English, then to the key itself so a

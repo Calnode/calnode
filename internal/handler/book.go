@@ -327,9 +327,13 @@ func (h *Handler) PublicEventType(w http.ResponseWriter, r *http.Request) {
 	// like book.html/manage.html) resolves its own locale client-side (navigator.language,
 	// or an explicit lang="" attribute on <calnode-booking>) and sends it as ?lang= here.
 	// Returning the whole string table once, on this call, lets the widget cache it and
-	// avoid a second fetch — this endpoint carries no Cache-Control, so varying the body
-	// by locale is safe (see internal-docs/i18n-plan.md).
-	loc := h.resolveLocale(r)
+	// avoid a second fetch. The body varies by Accept-Language/Cookie, and this route is
+	// CORS-wrapped (public embed use) — Add (not Set) so we don't clobber the "Vary: Origin"
+	// PublicCORS already adds when EmbedAllowedOrigins is configured; without our own Vary, a
+	// forced-TTL reverse proxy/CDN rule (Cloudflare "Cache Everything", etc. — see DEPLOY.md)
+	// could serve one visitor's language to everyone despite the absent Cache-Control.
+	w.Header().Add("Vary", "Accept-Language, Cookie")
+	loc := h.resolveLocaleWithFallback(r, brand.FallbackLocale)
 	i18nJSON, err := loc.JSON()
 	if err != nil {
 		h.logger.ErrorContext(r.Context(), "public event type: marshal i18n strings", "error", err)
@@ -442,7 +446,7 @@ func (h *Handler) BookPage(w http.ResponseWriter, r *http.Request) {
 	}
 	qjson, _ := json.Marshal(qmap)
 
-	loc := h.resolveLocale(r)
+	loc := h.resolveLocaleWithFallback(r, brand.FallbackLocale)
 	i18nJSON, _ := loc.JSON()
 
 	data := bookPageData{

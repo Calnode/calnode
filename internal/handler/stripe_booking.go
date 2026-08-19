@@ -113,12 +113,12 @@ func (h *Handler) confirmPaidBooking(ctx context.Context, bookingID, paymentInte
 	// Reconstruct the confirmation context from the booking's event type + organizer.
 	var in bookingConfirmationInput
 	if err := h.db.QueryRowContext(ctx, `
-		SELECT et.name, et.slug, et.location_type, a.name, a.email, a.iana_timezone
+		SELECT et.name, et.slug, et.location_type, a.name, a.email, a.iana_timezone, a.locale
 		FROM bookings b
 		JOIN event_types et ON et.id = b.event_type_id
 		JOIN booking_attendees a ON a.booking_id = b.id AND a.is_organizer = 1
 		WHERE b.id = ?`, bookingID).
-		Scan(&in.EventTypeName, &in.EventTypeSlug, &in.LocationType, &in.OrganizerName, &in.OrganizerEmail, &in.OrganizerTimezone); err != nil {
+		Scan(&in.EventTypeName, &in.EventTypeSlug, &in.LocationType, &in.OrganizerName, &in.OrganizerEmail, &in.OrganizerTimezone, &in.OrganizerLocale); err != nil {
 		h.logger.ErrorContext(ctx, "stripe: load confirmation input", "error", err, "booking_id", bookingID)
 		return
 	}

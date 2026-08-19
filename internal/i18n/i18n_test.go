@@ -3,6 +3,8 @@ package i18n
 import (
 	"testing"
 	"time"
+
+	"golang.org/x/text/language"
 )
 
 func TestResolve(t *testing.T) {
@@ -107,6 +109,60 @@ func TestResolveWithFallback(t *testing.T) {
 	}
 }
 
+// TestResolve_uncanonicalLocaleFilenameDoesNotPanic guards against a real regression: a
+// locale file whose name doesn't round-trip through BCP-47 canonicalization used to make
+// Resolve/ResolveWithFallback return a nil *Locale for an exact match on that code —
+// callers doing loc.Code on the result would panic. E.g. language.Make("pt-br").String()
+// canonicalizes to "pt-BR", "zh-hans" to "zh-Hans", "iw" to "he" — all plausible filenames
+// someone adds for a new locale. This rigs the package's real locale tables with an
+// uncanonical code and restores them afterward, since they're normally built once by
+// init() from the embedded locale files.
+func TestResolve_uncanonicalLocaleFilenameDoesNotPanic(t *testing.T) {
+	origLocales, origSupported, origCodes, origMatcher := locales, supported, supportedCodes, matcher
+	t.Cleanup(func() {
+		locales, supported, supportedCodes, matcher = origLocales, origSupported, origCodes, origMatcher
+	})
+
+	const uncanonical = "pt-br" // language.Make("pt-br").String() == "pt-BR", not "pt-br"
+	locales = map[string]*Locale{
+		DefaultCode: origLocales[DefaultCode],
+		uncanonical: {Code: uncanonical, strings: map[string]string{"back": "Voltar"}},
+	}
+	supportedCodes = []string{DefaultCode, uncanonical}
+	supported = []language.Tag{language.Make(DefaultCode), language.Make(uncanonical)}
+	matcher = language.NewMatcher(supported)
+
+	for _, tag := range supported {
+		if tag.String() == uncanonical {
+			t.Fatalf("test setup invalid: %q already canonicalizes to itself, doesn't exercise the bug", uncanonical)
+		}
+	}
+
+	got := ResolveWithFallback("pt-BR,pt;q=0.9", "", DefaultCode)
+	if got == nil {
+		t.Fatal("ResolveWithFallback returned nil for a locale whose filename doesn't canonicalize to itself")
+	}
+	if got.Code != uncanonical {
+		t.Errorf("Code = %q, want %q (the original locale-file code)", got.Code, uncanonical)
+	}
+
+	// Exact override lookup goes through the same Get(), unaffected by this — sanity check.
+	if got := Get(uncanonical); got == nil || got.Code != uncanonical {
+		t.Errorf("Get(%q) = %v, want the rigged locale", uncanonical, got)
+	}
+
+	opts := SupportedLocales()
+	found := false
+	for _, o := range opts {
+		if o.Code == uncanonical {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("SupportedLocales() should return the original code %q, got %+v", uncanonical, opts)
+	}
+}
+
 func TestEnglishName(t *testing.T) {
 	if got := Get("es").EnglishName(); got != "Spanish" {
 		t.Errorf("Get(%q).EnglishName() = %q, want %q", "es", got, "Spanish")
@@ -133,6 +189,21 @@ func TestTf(t *testing.T) {
 	var nilLocale *Locale
 	if got := nilLocale.Tf("calendar_event_summary", "X", "Y"); got != "X with Y" {
 		t.Errorf("nil Locale Tf() = %q, want English fallback", got)
+	}
+}
+
+// TestFormatDate_patternIsDataDrivenPerLocale proves date_format actually controls the
+// token order — not just that en/es (which happen to agree on ordering) still render
+// correctly. A future locale that wants "month day, year" (US English) or a different
+// component order entirely needs only a new date_format value, no Go code change.
+func TestFormatDate_patternIsDataDrivenPerLocale(t *testing.T) {
+	l := &Locale{Code: "us-en-test", strings: map[string]string{
+		"date_format":     "%[3]s %[2]d, %[4]d", // "Jun 22, 2026" — no weekday, month first
+		"month_short_jun": "Jun",
+	}}
+	moment := time.Date(2026, time.June, 22, 9, 5, 0, 0, time.UTC)
+	if got := l.FormatDate(moment); got != "Jun 22, 2026" {
+		t.Errorf("FormatDate with a reordered date_format = %q, want %q", got, "Jun 22, 2026")
 	}
 }
 

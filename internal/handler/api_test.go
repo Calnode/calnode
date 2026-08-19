@@ -353,6 +353,44 @@ func TestPatchEventType_emptyNameRejected(t *testing.T) {
 	}
 }
 
+// TestPatchEventType_msgFields_nullVsEmptyString locks in the contract the admin UI's
+// save button depends on: JSON null means "leave this field unchanged" (for partial-PATCH
+// callers), while an empty string means "clear it". The event-types settings page always
+// saves the whole form, so it must send "" (not null) to actually clear a blanked custom
+// message — sending null there would silently keep the old value while the UI shows blank.
+func TestPatchEventType_msgFields_nullVsEmptyString(t *testing.T) {
+	h, key, _ := setupWorkspace(t)
+	slug, _ := seedEventTypeHTTP(t, h, key)
+
+	patch := func(body string) map[string]any {
+		t.Helper()
+		req := authReq(http.MethodPatch, "/v1/event-types/"+slug, body, key)
+		req.SetPathValue("slug", slug)
+		rec := httptest.NewRecorder()
+		h.RequireAuth(h.PatchEventType)(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("patch %s: %d — %s", body, rec.Code, rec.Body.String())
+		}
+		var out map[string]any
+		json.Unmarshal(rec.Body.Bytes(), &out) //nolint:errcheck
+		return out
+	}
+
+	patch(`{"msg_greeting":"Custom hello","msg_confirmation":"Custom note"}`)
+
+	afterNull := patch(`{"msg_greeting":null,"msg_confirmation":null}`)
+	if afterNull["msg_greeting"] != "Custom hello" || afterNull["msg_confirmation"] != "Custom note" {
+		t.Errorf("null should leave fields unchanged, got msg_greeting=%v msg_confirmation=%v",
+			afterNull["msg_greeting"], afterNull["msg_confirmation"])
+	}
+
+	afterEmpty := patch(`{"msg_greeting":"","msg_confirmation":""}`)
+	if afterEmpty["msg_greeting"] != nil || afterEmpty["msg_confirmation"] != nil {
+		t.Errorf("empty string should clear the fields, got msg_greeting=%v msg_confirmation=%v",
+			afterEmpty["msg_greeting"], afterEmpty["msg_confirmation"])
+	}
+}
+
 func TestDeleteEventType(t *testing.T) {
 	h, key, _ := setupWorkspace(t)
 	slug, _ := seedEventTypeHTTP(t, h, key)

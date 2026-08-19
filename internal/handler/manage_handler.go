@@ -76,7 +76,7 @@ func (h *Handler) ManagePage(w http.ResponseWriter, r *http.Request) {
 
 	b, err := h.bookingSvc.ValidateManageToken(r.Context(), token)
 	if errors.Is(err, booking.ErrTokenNotFound) {
-		h.renderManage(w, r, managePageData{TokenInvalid: true})
+		h.renderManage(w, r, managePageData{TokenInvalid: true}, h.resolveLocale(r))
 		return
 	}
 	if err != nil {
@@ -136,10 +136,13 @@ func (h *Handler) ManagePage(w http.ResponseWriter, r *http.Request) {
 		OrganizerTZ:     orgTZ,
 		Status:          b.Status,
 	}
-	h.renderManage(w, r, data)
+	h.renderManage(w, r, data, loc)
 }
 
-func (h *Handler) renderManage(w http.ResponseWriter, r *http.Request, data managePageData) {
+// renderManage finishes populating data (tracking/branding/locale) and executes the
+// template. loc is the request's already-resolved locale — the caller resolves it (a DB
+// read for the operator's fallback setting), so this doesn't redundantly re-resolve it.
+func (h *Handler) renderManage(w http.ResponseWriter, r *http.Request, data managePageData, loc *i18n.Locale) {
 	track := h.loadTrackingSettings(r.Context())
 	dlFields, _ := json.Marshal(track.DataLayerFields)
 	data.HeadHTML = template.HTML(track.HeadHTML) // #nosec G203 -- admin-only "code injection" feature (Settings -> Tracking); intentionally raw, documented, gated by requireAdmin on the settings endpoint
@@ -159,7 +162,6 @@ func (h *Handler) renderManage(w http.ResponseWriter, r *http.Request, data mana
 	data.CSSVersion = bookingCSSVersion
 	data.BookingLogicJS = template.JS(bookingLogicJS) // #nosec G203 -- our own bundled JS source constant, not user input
 	data.DemoMode = h.demoMode
-	loc := h.resolveLocale(r)
 	data.Locale = loc.Code
 	data.T = loc.T
 	i18nJSON, _ := loc.JSON()

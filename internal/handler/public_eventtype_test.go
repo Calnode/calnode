@@ -103,6 +103,33 @@ func TestPublicEventType_assistantGreeting(t *testing.T) {
 	}
 }
 
+// TestPublicEventType_varyHeader is a regression test: the response body varies by
+// Accept-Language/Cookie (locale, i18n string table, location_label, assistant_greeting),
+// and this endpoint is CORS-wrapped for the embed widget — without Vary, a reverse
+// proxy/CDN with a forced-TTL cache rule (Cloudflare "Cache Everything", etc.) could serve
+// one visitor's language to every subsequent visitor, even though there's no explicit
+// Cache-Control on this endpoint. See internal-docs/i18n-plan.md's caching finding.
+func TestPublicEventType_varyHeader(t *testing.T) {
+	h, apiKey, _ := setupWorkspace(t)
+	slug, _ := seedEventTypeHTTP(t, h, apiKey)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/event-types/"+slug+"/public", nil)
+	req.SetPathValue("slug", slug)
+	rec := httptest.NewRecorder()
+	h.PublicEventType(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("public: %d — %s", rec.Code, rec.Body.String())
+	}
+	vary := rec.Header().Values("Vary")
+	joined := strings.Join(vary, ", ")
+	if !strings.Contains(joined, "Accept-Language") {
+		t.Errorf("Vary header %v missing Accept-Language", vary)
+	}
+	if !strings.Contains(joined, "Cookie") {
+		t.Errorf("Vary header %v missing Cookie (the calnode_lang override)", vary)
+	}
+}
+
 func TestPublicEventType_404ForUnknown(t *testing.T) {
 	h, _, _ := setupWorkspace(t)
 	req := httptest.NewRequest(http.MethodGet, "/v1/event-types/nope/public", nil)
