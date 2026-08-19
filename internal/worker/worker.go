@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/calnode/calnode/internal/i18n"
 	"github.com/calnode/calnode/internal/mailer"
 	"github.com/calnode/calnode/internal/netutil"
 	"github.com/calnode/calnode/internal/webhook"
@@ -290,16 +291,18 @@ func (w *Worker) sendReminder(ctx context.Context, payload string) error {
 	}
 
 	// Load organizer attendee.
+	var locale string
 	orgErr := w.db.QueryRowContext(ctx, `
-		SELECT name, email, iana_timezone
+		SELECT name, email, iana_timezone, locale
 		FROM booking_attendees WHERE booking_id = ? AND is_organizer = 1`, p.BookingID).
-		Scan(&d.OrganizerName, &d.OrganizerEmail, &d.OrganizerTimezone)
+		Scan(&d.OrganizerName, &d.OrganizerEmail, &d.OrganizerTimezone, &locale)
 	if orgErr == sql.ErrNoRows {
 		return nil // no organizer attendee (data integrity gap); skip silently
 	}
 	if orgErr != nil {
 		return fmt.Errorf("worker: reminder: load organizer: %w", orgErr)
 	}
+	d.Locale = i18n.Get(locale)
 
 	// Brand the reminder email with the instance wordmark/logo.
 	_ = w.db.QueryRowContext(ctx, `

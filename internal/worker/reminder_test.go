@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -70,6 +71,49 @@ func TestWorker_sendsReminderForConfirmedBooking(t *testing.T) {
 	database.QueryRowContext(ctx, `SELECT status FROM jobs WHERE id = 'job-r1'`).Scan(&jobStatus)
 	if jobStatus != "done" {
 		t.Errorf("job status = %q; want done", jobStatus)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// reminder.send: attendee locale drives the email language
+// ---------------------------------------------------------------------------
+
+func TestWorker_reminderRespectsAttendeeLocale(t *testing.T) {
+	database, svc := setup(t)
+	ctx := context.Background()
+
+	pastRunAt := time.Now().UTC().Add(-time.Second).Format(time.RFC3339)
+	bookingStart := time.Now().UTC().Add(25 * time.Hour).Format(time.RFC3339)
+
+	database.ExecContext(ctx,
+		`INSERT INTO event_types (id, user_id, slug, name, duration_minutes)
+		 VALUES ('et-r2','host-01','rem-test-2','Reminder Meeting',30)`)
+	database.ExecContext(ctx,
+		`INSERT INTO bookings (id, event_type_id, host_id, start_at, end_at, status)
+		 VALUES ('bk-r2','et-r2','host-01',?,?,'confirmed')`, bookingStart, bookingStart)
+	database.ExecContext(ctx,
+		`INSERT INTO booking_attendees (id, booking_id, name, email, iana_timezone, is_organizer, locale)
+		 VALUES ('att-r2','bk-r2','Ana','ana@example.com','UTC',1,'es')`)
+	database.ExecContext(ctx, `
+		INSERT INTO jobs (id, type, payload, run_at, status, attempts, max_attempts)
+		VALUES ('job-r2','reminder.send','{"booking_id":"bk-r2"}',?,'pending',0,3)`,
+		pastRunAt)
+
+	m := &captureMailer{}
+	w := worker.New(database, svc, slog.Default(),
+		worker.WithMailer(m),
+		worker.WithHTTPClient(&http.Client{}))
+	w.Poll(ctx)
+
+	if len(m.sent) != 1 {
+		t.Fatalf("sent %d emails; want 1", len(m.sent))
+	}
+	msg := m.sent[0]
+	if !strings.Contains(msg.Subject, "Recordatorio") {
+		t.Errorf("Subject = %q; want the Spanish reminder subject", msg.Subject)
+	}
+	if !strings.Contains(msg.Text, "Hola Ana,") {
+		t.Errorf("Text missing Spanish greeting: %q", msg.Text)
 	}
 }
 

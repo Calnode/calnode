@@ -13,7 +13,7 @@ import (
 // The plain-text body (booking.go) stays the multipart/alternative fallback.
 
 const htmlLayout = `{{define "layout"}}<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<html lang="{{.LocaleCode}}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
 <body style="margin:0;padding:0;background:#f4f4f5;">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;"><tr><td align="center" style="padding:24px 12px;">
 <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;max-width:480px;background:#ffffff;border:1px solid #e4e4e7;border-radius:8px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
@@ -33,18 +33,18 @@ const htmlLayout = `{{define "layout"}}<!doctype html>
 {{define "cardOpen"}}<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f5;border-radius:8px;margin-bottom:20px;"><tr><td style="padding:14px 18px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="font-size:14px;color:#18181b;">{{end}}
 {{define "cardClose"}}</table></td></tr></table>{{end}}
 
-{{define "mngBtn"}}{{if .ManageURL}}<a href="{{.ManageURL}}" style="display:block;text-align:center;text-decoration:none;background:#18181b;color:#ffffff;font-size:14px;font-weight:500;padding:11px 16px;border-radius:8px;margin-bottom:10px;">Manage booking</a>{{end}}{{end}}
+{{define "mngBtn"}}{{if .ManageURL}}<a href="{{.ManageURL}}" style="display:block;text-align:center;text-decoration:none;background:#18181b;color:#ffffff;font-size:14px;font-weight:500;padding:11px 16px;border-radius:8px;margin-bottom:10px;">{{.T "email_manage_button"}}</a>{{end}}{{end}}
 
 {{define "calBtns"}}<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
-<td width="50%" style="padding-right:5px;"><a href="{{.GoogleCalURL}}" style="display:block;text-align:center;text-decoration:none;border:1px solid #d4d4d8;color:#18181b;font-size:13px;font-weight:500;padding:9px 8px;border-radius:8px;">Google Calendar</a></td>
-<td width="50%" style="padding-left:5px;"><a href="{{.OutlookCalURL}}" style="display:block;text-align:center;text-decoration:none;border:1px solid #d4d4d8;color:#18181b;font-size:13px;font-weight:500;padding:9px 8px;border-radius:8px;">Outlook</a></td>
+<td width="50%" style="padding-right:5px;"><a href="{{.GoogleCalURL}}" style="display:block;text-align:center;text-decoration:none;border:1px solid #d4d4d8;color:#18181b;font-size:13px;font-weight:500;padding:9px 8px;border-radius:8px;">{{.T "email_calendar_google"}}</a></td>
+<td width="50%" style="padding-left:5px;"><a href="{{.OutlookCalURL}}" style="display:block;text-align:center;text-decoration:none;border:1px solid #d4d4d8;color:#18181b;font-size:13px;font-weight:500;padding:9px 8px;border-radius:8px;">{{.T "email_calendar_outlook"}}</a></td>
 </tr></table>{{end}}
 
-{{define "ref"}}<p style="margin:20px 0 0;font-size:12px;color:#a1a1aa;">Booking reference: {{.BookingID}}</p>{{end}}
+{{define "ref"}}<p style="margin:20px 0 0;font-size:12px;color:#a1a1aa;">{{.Tf "email_booking_reference" .BookingID}}</p>{{end}}
 
 {{define "note"}}{{if .CustomNote}}<div style="margin:16px 0 0;padding-top:16px;border-top:1px solid #e4e4e7;color:#52525b;font-size:13px;white-space:pre-line;">{{.CustomNote}}</div>{{end}}{{end}}
 
-{{define "rebook"}}<a href="{{.BaseURL}}/book/{{.EventTypeSlug}}" style="display:block;text-align:center;text-decoration:none;background:#18181b;color:#ffffff;font-size:14px;font-weight:500;padding:11px 16px;border-radius:8px;">Book again</a>{{end}}`
+{{define "rebook"}}<a href="{{.BaseURL}}/book/{{.EventTypeSlug}}" style="display:block;text-align:center;text-decoration:none;background:#18181b;color:#ffffff;font-size:14px;font-weight:500;padding:11px 16px;border-radius:8px;">{{.T "email_rebook_button"}}</a>{{end}}`
 
 // row markup shared by the content templates (label + value cell).
 const labelTD = `<td style="color:#71717a;padding:5px 0;width:84px;vertical-align:top;">`
@@ -67,13 +67,13 @@ func renderHTML(t *template.Template, d BookingData) string {
 }
 
 var htmlConfirmOrg = content(`{{define "content"}}
-<p style="margin:0 0 4px;">Hi {{.OrganizerName}},</p>
-<p style="margin:0 0 20px;color:#52525b;">Your booking is confirmed.</p>
+<p style="margin:0 0 4px;">{{.Tf "email_greeting" .OrganizerName}}</p>
+<p style="margin:0 0 20px;color:#52525b;">{{.T "email_confirmed_lead"}}</p>
 {{template "cardOpen" .}}
-<tr>` + labelTD + `Event</td><td style="padding:5px 0;font-weight:500;vertical-align:top;">{{.EventTypeName}}</td></tr>
-<tr>` + labelTD + `With</td>` + valueTD + `{{.HostName}}</td></tr>
-<tr>` + labelTD + `When</td>` + valueTD + `{{.WhenFmt}}</td></tr>
-{{if .LocationValue}}<tr>` + labelTD + `Location</td><td style="padding:5px 0;vertical-align:top;word-break:break-word;">{{.LocationValue}}</td></tr>{{end}}
+<tr>` + labelTD + `{{.T "email_label_event"}}</td><td style="padding:5px 0;font-weight:500;vertical-align:top;">{{.EventTypeName}}</td></tr>
+<tr>` + labelTD + `{{.T "email_label_with"}}</td>` + valueTD + `{{.HostName}}</td></tr>
+<tr>` + labelTD + `{{.T "email_label_when"}}</td>` + valueTD + `{{.WhenFmt}}</td></tr>
+{{if .LocationValue}}<tr>` + labelTD + `{{.T "email_label_location"}}</td><td style="padding:5px 0;vertical-align:top;word-break:break-word;">{{.LocationValue}}</td></tr>{{end}}
 {{template "cardClose" .}}
 {{template "mngBtn" .}}
 {{template "calBtns" .}}
@@ -94,13 +94,13 @@ var htmlConfirmHost = content(`{{define "content"}}
 {{end}}`)
 
 var htmlCancelOrg = content(`{{define "content"}}
-<p style="margin:0 0 4px;">Hi {{.OrganizerName}},</p>
-<p style="margin:0 0 20px;color:#52525b;">Your booking has been cancelled.</p>
+<p style="margin:0 0 4px;">{{.Tf "email_greeting" .OrganizerName}}</p>
+<p style="margin:0 0 20px;color:#52525b;">{{.T "email_cancelled_lead"}}</p>
 {{template "cardOpen" .}}
-<tr>` + labelTD + `Event</td><td style="padding:5px 0;font-weight:500;vertical-align:top;">{{.EventTypeName}}</td></tr>
-<tr>` + labelTD + `With</td>` + valueTD + `{{.HostName}}</td></tr>
-<tr>` + labelTD + `When</td>` + valueTD + `{{.WhenFmt}}</td></tr>
-{{if .CancellationReason}}<tr>` + labelTD + `Reason</td>` + valueTD + `{{.CancellationReason}}</td></tr>{{end}}
+<tr>` + labelTD + `{{.T "email_label_event"}}</td><td style="padding:5px 0;font-weight:500;vertical-align:top;">{{.EventTypeName}}</td></tr>
+<tr>` + labelTD + `{{.T "email_label_with"}}</td>` + valueTD + `{{.HostName}}</td></tr>
+<tr>` + labelTD + `{{.T "email_label_when"}}</td>` + valueTD + `{{.WhenFmt}}</td></tr>
+{{if .CancellationReason}}<tr>` + labelTD + `{{.T "email_label_reason"}}</td>` + valueTD + `{{.CancellationReason}}</td></tr>{{end}}
 {{template "cardClose" .}}
 {{template "rebook" .}}
 {{template "note" .}}
@@ -119,14 +119,14 @@ var htmlCancelHost = content(`{{define "content"}}
 {{end}}`)
 
 var htmlRescheduleOrg = content(`{{define "content"}}
-<p style="margin:0 0 4px;">Hi {{.OrganizerName}},</p>
-<p style="margin:0 0 20px;color:#52525b;">Your booking has been rescheduled.</p>
+<p style="margin:0 0 4px;">{{.Tf "email_greeting" .OrganizerName}}</p>
+<p style="margin:0 0 20px;color:#52525b;">{{.T "email_rescheduled_lead"}}</p>
 {{template "cardOpen" .}}
-<tr>` + labelTD + `Event</td><td style="padding:5px 0;font-weight:500;vertical-align:top;">{{.EventTypeName}}</td></tr>
-<tr>` + labelTD + `With</td>` + valueTD + `{{.HostName}}</td></tr>
-<tr><td style="color:#a1a1aa;padding:5px 0;width:84px;vertical-align:top;text-decoration:line-through;">Was</td><td style="padding:5px 0;vertical-align:top;color:#a1a1aa;text-decoration:line-through;">{{.PreviousStartFmt}}</td></tr>
-<tr>` + labelTD + `Now</td><td style="padding:5px 0;font-weight:500;vertical-align:top;">{{.WhenFmt}}</td></tr>
-{{if .LocationValue}}<tr>` + labelTD + `Location</td><td style="padding:5px 0;vertical-align:top;word-break:break-word;">{{.LocationValue}}</td></tr>{{end}}
+<tr>` + labelTD + `{{.T "email_label_event"}}</td><td style="padding:5px 0;font-weight:500;vertical-align:top;">{{.EventTypeName}}</td></tr>
+<tr>` + labelTD + `{{.T "email_label_with"}}</td>` + valueTD + `{{.HostName}}</td></tr>
+<tr><td style="color:#a1a1aa;padding:5px 0;width:84px;vertical-align:top;text-decoration:line-through;">{{.T "email_label_was"}}</td><td style="padding:5px 0;vertical-align:top;color:#a1a1aa;text-decoration:line-through;">{{.PreviousStartFmt}}</td></tr>
+<tr>` + labelTD + `{{.T "email_label_now"}}</td><td style="padding:5px 0;font-weight:500;vertical-align:top;">{{.WhenFmt}}</td></tr>
+{{if .LocationValue}}<tr>` + labelTD + `{{.T "email_label_location"}}</td><td style="padding:5px 0;vertical-align:top;word-break:break-word;">{{.LocationValue}}</td></tr>{{end}}
 {{template "cardClose" .}}
 {{template "mngBtn" .}}
 {{template "calBtns" .}}
@@ -148,13 +148,13 @@ var htmlRescheduleHost = content(`{{define "content"}}
 {{end}}`)
 
 var htmlReminderOrg = content(`{{define "content"}}
-<p style="margin:0 0 4px;">Hi {{.OrganizerName}},</p>
-<p style="margin:0 0 20px;color:#52525b;">This is a reminder that your booking is coming up.</p>
+<p style="margin:0 0 4px;">{{.Tf "email_greeting" .OrganizerName}}</p>
+<p style="margin:0 0 20px;color:#52525b;">{{.T "email_reminder_lead"}}</p>
 {{template "cardOpen" .}}
-<tr>` + labelTD + `Event</td><td style="padding:5px 0;font-weight:500;vertical-align:top;">{{.EventTypeName}}</td></tr>
-<tr>` + labelTD + `With</td>` + valueTD + `{{.HostName}}</td></tr>
-<tr>` + labelTD + `When</td>` + valueTD + `{{.WhenFmt}}</td></tr>
-{{if .LocationValue}}<tr>` + labelTD + `Location</td><td style="padding:5px 0;vertical-align:top;word-break:break-word;">{{.LocationValue}}</td></tr>{{end}}
+<tr>` + labelTD + `{{.T "email_label_event"}}</td><td style="padding:5px 0;font-weight:500;vertical-align:top;">{{.EventTypeName}}</td></tr>
+<tr>` + labelTD + `{{.T "email_label_with"}}</td>` + valueTD + `{{.HostName}}</td></tr>
+<tr>` + labelTD + `{{.T "email_label_when"}}</td>` + valueTD + `{{.WhenFmt}}</td></tr>
+{{if .LocationValue}}<tr>` + labelTD + `{{.T "email_label_location"}}</td><td style="padding:5px 0;vertical-align:top;word-break:break-word;">{{.LocationValue}}</td></tr>{{end}}
 {{template "cardClose" .}}
 {{template "mngBtn" .}}
 {{template "calBtns" .}}

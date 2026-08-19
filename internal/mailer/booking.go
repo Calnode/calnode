@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"text/template"
 	"time"
+
+	"github.com/calnode/calnode/internal/i18n"
 )
 
 // BookingData carries all the information needed to render booking emails.
@@ -49,6 +51,34 @@ type BookingData struct {
 	// emails. Set for host notifications — the manage token is the attendee's
 	// self-serve link, not something the host should action from email.
 	HideManageLink bool
+	// Locale drives T/Tf and all date/time formatting below — the attendee's stored
+	// booking_attendees.locale at send time, resolved by the caller. nil (the zero
+	// value) falls back to English via locale(). Host-facing sends (SendConfirmationToHost
+	// etc.) explicitly clear this to keep host emails in English regardless of the
+	// attendee's language — see those functions' doc comments. Translation is
+	// attendee-facing only, same "public-facing" scope as book.html/manage.html/embed.js;
+	// host is the operator, out of scope (see internal-docs/i18n-plan.md).
+	Locale *i18n.Locale
+}
+
+// locale returns d.Locale, or English if unset.
+func (d BookingData) locale() *i18n.Locale {
+	if d.Locale != nil {
+		return d.Locale
+	}
+	return i18n.Default()
+}
+
+// T looks up a translation key in this booking's resolved locale.
+func (d BookingData) T(key string) string { return d.locale().T(key) }
+
+// LocaleCode returns the resolved locale's code (e.g. "es"), for the HTML email's
+// <html lang="…"> attribute.
+func (d BookingData) LocaleCode() string { return d.locale().Code }
+
+// Tf is T with fmt.Sprintf-style argument substitution, for keys like "Hi %s,".
+func (d BookingData) Tf(key string, args ...any) string {
+	return fmt.Sprintf(d.locale().T(key), args...)
 }
 
 // Brand is the display name for the email wordmark/footer.
@@ -87,27 +117,34 @@ func (d BookingData) BannerOpacityCSS() string {
 	return strconv.FormatFloat(float64(o)/100, 'f', -1, 64)
 }
 
-// WhenFmt renders the booking time as a single human line in the organizer's
-// timezone, e.g. "Mon 22 Jun 2026, 9:00 AM – 9:20 AM NZST".
+// WhenFmt renders the booking time as a single human line in the organizer's timezone and
+// resolved locale, e.g. "Mon 22 Jun 2026, 9:00 AM – 9:20 AM NZST" (English) or
+// "lun 22 jun 2026, 21:00 – 21:20 NZST" (Spanish, 24h clock).
 func (d BookingData) WhenFmt() string {
-	loc, err := time.LoadLocation(d.OrganizerTimezone)
+	tzLoc, err := time.LoadLocation(d.OrganizerTimezone)
 	if err != nil {
-		loc = time.UTC
+		tzLoc = time.UTC
 	}
-	return d.StartAt.In(loc).Format("Mon 2 Jan 2006, 3:04 PM") + " – " + d.EndAt.In(loc).Format("3:04 PM MST")
+	l := d.locale()
+	start, end := d.StartAt.In(tzLoc), d.EndAt.In(tzLoc)
+	return l.FormatDateTime(start) + " – " + l.FormatTimeOfDay(end) + " " + end.Format("MST")
 }
 
-// StartFmt returns StartAt formatted in the organizer's timezone.
-func (d BookingData) StartFmt() string { return inTZ(d.StartAt, d.OrganizerTimezone) }
+// StartFmt returns StartAt formatted in the organizer's timezone and resolved locale.
+func (d BookingData) StartFmt() string { return inTZ(d.StartAt, d.OrganizerTimezone, d.locale()) }
 
-// EndFmt returns EndAt formatted in the organizer's timezone.
-func (d BookingData) EndFmt() string { return inTZ(d.EndAt, d.OrganizerTimezone) }
+// EndFmt returns EndAt formatted in the organizer's timezone and resolved locale.
+func (d BookingData) EndFmt() string { return inTZ(d.EndAt, d.OrganizerTimezone, d.locale()) }
 
-// PreviousStartFmt returns PreviousStartAt formatted in the organizer's timezone.
-func (d BookingData) PreviousStartFmt() string { return inTZ(d.PreviousStartAt, d.OrganizerTimezone) }
+// PreviousStartFmt returns PreviousStartAt formatted in the organizer's timezone and locale.
+func (d BookingData) PreviousStartFmt() string {
+	return inTZ(d.PreviousStartAt, d.OrganizerTimezone, d.locale())
+}
 
-// PreviousEndFmt returns PreviousEndAt formatted in the organizer's timezone.
-func (d BookingData) PreviousEndFmt() string { return inTZ(d.PreviousEndAt, d.OrganizerTimezone) }
+// PreviousEndFmt returns PreviousEndAt formatted in the organizer's timezone and locale.
+func (d BookingData) PreviousEndFmt() string {
+	return inTZ(d.PreviousEndAt, d.OrganizerTimezone, d.locale())
+}
 
 // subjectOr returns the custom subject override when set, else the default.
 func (d BookingData) subjectOr(def string) string {
@@ -117,19 +154,20 @@ func (d BookingData) subjectOr(def string) string {
 	return def
 }
 
-func inTZ(t time.Time, tz string) string {
-	loc, err := time.LoadLocation(tz)
+func inTZ(t time.Time, tz string, l *i18n.Locale) string {
+	tzLoc, err := time.LoadLocation(tz)
 	if err != nil {
-		loc = time.UTC
+		tzLoc = time.UTC
 	}
-	return t.In(loc).Format("Mon 2 Jan 2006, 3:04 PM MST")
+	tt := t.In(tzLoc)
+	return l.FormatDateTime(tt) + " " + tt.Format("MST")
 }
 
 // calDetails is the shared "add to calendar" description for the link builders.
 func (d BookingData) calDetails() string {
-	s := "Booking with " + d.HostName
+	s := d.Tf("email_booking_with", d.HostName)
 	if d.ManageURL != "" {
-		s += "\nManage this booking: " + d.ManageURL
+		s += "\n" + d.T("email_manage_this_booking") + " " + d.ManageURL
 	}
 	return s
 }
@@ -168,7 +206,7 @@ func (d BookingData) OutlookCalURL() string {
 func SendConfirmationToAttendee(ctx context.Context, m Mailer, d BookingData) error {
 	msg := Message{
 		To:      []string{d.OrganizerEmail},
-		Subject: d.subjectOr("Booking confirmed: " + d.EventTypeName),
+		Subject: d.subjectOr(d.Tf("email_subject_confirmed", d.EventTypeName)),
 		Text:    render(confirmOrgTmpl, d),
 		HTML:    renderHTML(htmlConfirmOrg, d),
 	}
@@ -187,6 +225,7 @@ func SendConfirmationToHost(ctx context.Context, m Mailer, d BookingData) error 
 		return nil
 	}
 	d.HideManageLink = true
+	d.Locale = nil // host emails stay English regardless of the attendee's locale — see BookingData.Locale
 	msg := Message{
 		To:      []string{d.HostEmail},
 		Subject: "New booking: " + d.EventTypeName + " with " + d.OrganizerName,
@@ -226,7 +265,7 @@ func SendCancellationToAttendee(ctx context.Context, m Mailer, d BookingData) er
 	}
 	msg := Message{
 		To:      []string{d.OrganizerEmail},
-		Subject: d.subjectOr("Booking cancelled: " + d.EventTypeName),
+		Subject: d.subjectOr(d.Tf("email_subject_cancelled", d.EventTypeName)),
 		Text:    render(cancelOrgTmpl, d),
 		HTML:    renderHTML(htmlCancelOrg, d),
 	}
@@ -245,6 +284,7 @@ func SendCancellationToHost(ctx context.Context, m Mailer, d BookingData) error 
 		return nil
 	}
 	d.HideManageLink = true
+	d.Locale = nil // host emails stay English regardless of the attendee's locale — see BookingData.Locale
 	msg := Message{
 		To:      []string{d.HostEmail},
 		Subject: "Booking cancelled: " + d.EventTypeName + " with " + d.OrganizerName,
@@ -282,7 +322,7 @@ func SendCancellation(ctx context.Context, m Mailer, d BookingData) error {
 func SendRescheduleToAttendee(ctx context.Context, m Mailer, d BookingData) error {
 	msg := Message{
 		To:      []string{d.OrganizerEmail},
-		Subject: d.subjectOr("Booking rescheduled: " + d.EventTypeName),
+		Subject: d.subjectOr(d.Tf("email_subject_rescheduled", d.EventTypeName)),
 		Text:    render(rescheduleOrgTmpl, d),
 		HTML:    renderHTML(htmlRescheduleOrg, d),
 	}
@@ -301,6 +341,7 @@ func SendRescheduleToHost(ctx context.Context, m Mailer, d BookingData) error {
 		return nil
 	}
 	d.HideManageLink = true
+	d.Locale = nil // host emails stay English regardless of the attendee's locale — see BookingData.Locale
 	msg := Message{
 		To:      []string{d.HostEmail},
 		Subject: "Booking rescheduled: " + d.EventTypeName + " with " + d.OrganizerName,
@@ -337,7 +378,7 @@ func SendReschedule(ctx context.Context, m Mailer, d BookingData) error {
 func SendReminder(ctx context.Context, m Mailer, d BookingData) error {
 	if err := m.Send(ctx, Message{
 		To:      []string{d.OrganizerEmail},
-		Subject: d.subjectOr("Reminder: " + d.EventTypeName + " is coming up"),
+		Subject: d.subjectOr(d.Tf("email_subject_reminder", d.EventTypeName)),
 		Text:    render(reminderOrgTmpl, d),
 		HTML:    renderHTML(htmlReminderOrg, d),
 	}); err != nil {
@@ -355,13 +396,13 @@ func RenderBody(emailType string, d BookingData) (subject, body, html string, ok
 	var textTmpl *template.Template
 	switch emailType {
 	case "confirmation":
-		def, textTmpl = "Booking confirmed: "+d.EventTypeName, confirmOrgTmpl
+		def, textTmpl = d.Tf("email_subject_confirmed", d.EventTypeName), confirmOrgTmpl
 	case "cancellation":
-		def, textTmpl = "Booking cancelled: "+d.EventTypeName, cancelOrgTmpl
+		def, textTmpl = d.Tf("email_subject_cancelled", d.EventTypeName), cancelOrgTmpl
 	case "reschedule":
-		def, textTmpl = "Booking rescheduled: "+d.EventTypeName, rescheduleOrgTmpl
+		def, textTmpl = d.Tf("email_subject_rescheduled", d.EventTypeName), rescheduleOrgTmpl
 	case "reminder":
-		def, textTmpl = "Reminder: "+d.EventTypeName+" is coming up", reminderOrgTmpl
+		def, textTmpl = d.Tf("email_subject_reminder", d.EventTypeName), reminderOrgTmpl
 	default:
 		return "", "", "", false
 	}
@@ -377,32 +418,32 @@ func render(t *template.Template, d BookingData) string {
 }
 
 var confirmOrgTmpl = template.Must(template.New("confirm-org").Parse(
-	`Hi {{.OrganizerName}},
+	`{{.Tf "email_greeting" .OrganizerName}}
 
-Your booking has been confirmed.
+{{.T "email_confirmed_lead"}}
 
-Event:    {{.EventTypeName}}
-With:     {{.HostName}}
-Start:    {{.StartFmt}}
-End:      {{.EndFmt}}{{if .LocationValue}}
-Location: {{.LocationValue}}{{end}}
+{{.T "email_label_event"}}:    {{.EventTypeName}}
+{{.T "email_label_with"}}:     {{.HostName}}
+{{.T "email_label_start"}}:    {{.StartFmt}}
+{{.T "email_label_end"}}:      {{.EndFmt}}{{if .LocationValue}}
+{{.T "email_label_location"}}: {{.LocationValue}}{{end}}
 
-Add to your calendar:
-  Google:  {{.GoogleCalURL}}
-  Outlook: {{.OutlookCalURL}}
+{{.T "email_add_to_calendar"}}
+  {{.T "email_calendar_google"}}:  {{.GoogleCalURL}}
+  {{.T "email_calendar_outlook"}}: {{.OutlookCalURL}}
 
-Booking reference: {{.BookingID}}
+{{.Tf "email_booking_reference" .BookingID}}
 {{if .ManageURL}}
-To reschedule or cancel, visit:
+{{.T "email_manage_link_intro"}}
 {{.ManageURL}}
 {{else}}
-To cancel, visit:
+{{.T "email_cancel_link_intro"}}
 {{.BaseURL}}/book/{{.EventTypeSlug}}
 {{end}}{{if .CustomNote}}
 ---
 {{.CustomNote}}
 {{end}}
-— Calnode
+— {{.Brand}}
 `))
 
 var confirmHostTmpl = template.Must(template.New("confirm-host").Parse(
@@ -422,23 +463,23 @@ Booking reference: {{.BookingID}}
 `))
 
 var cancelOrgTmpl = template.Must(template.New("cancel-org").Parse(
-	`Hi {{.OrganizerName}},
+	`{{.Tf "email_greeting" .OrganizerName}}
 
-Your booking has been cancelled.
+{{.T "email_cancelled_lead"}}
 
-Event:    {{.EventTypeName}}
-With:     {{.HostName}}
-Start:    {{.StartFmt}}
-End:      {{.EndFmt}}{{if .CancellationReason}}
-Reason:   {{.CancellationReason}}{{end}}
+{{.T "email_label_event"}}:  {{.EventTypeName}}
+{{.T "email_label_with"}}:   {{.HostName}}
+{{.T "email_label_start"}}:  {{.StartFmt}}
+{{.T "email_label_end"}}:    {{.EndFmt}}{{if .CancellationReason}}
+{{.T "email_label_reason"}}: {{.CancellationReason}}{{end}}
 
-To rebook, visit:
+{{.T "email_rebook_intro"}}
 {{.BaseURL}}/book/{{.EventTypeSlug}}
 {{if .CustomNote}}
 ---
 {{.CustomNote}}
 {{end}}
-— Calnode
+— {{.Brand}}
 `))
 
 var cancelHostTmpl = template.Must(template.New("cancel-host").Parse(
@@ -458,30 +499,30 @@ Booking reference: {{.BookingID}}
 `))
 
 var rescheduleOrgTmpl = template.Must(template.New("reschedule-org").Parse(
-	`Hi {{.OrganizerName}},
+	`{{.Tf "email_greeting" .OrganizerName}}
 
-Your booking has been rescheduled.
+{{.T "email_rescheduled_lead"}}
 
-Event:    {{.EventTypeName}}
-With:     {{.HostName}}
-Was:      {{.PreviousStartFmt}}
-Now:      {{.StartFmt}}
-End:      {{.EndFmt}}{{if .LocationValue}}
-Location: {{.LocationValue}}{{end}}
+{{.T "email_label_event"}}:    {{.EventTypeName}}
+{{.T "email_label_with"}}:     {{.HostName}}
+{{.T "email_label_was"}}:      {{.PreviousStartFmt}}
+{{.T "email_label_now"}}:      {{.StartFmt}}
+{{.T "email_label_end"}}:      {{.EndFmt}}{{if .LocationValue}}
+{{.T "email_label_location"}}: {{.LocationValue}}{{end}}
 
-Add to your calendar (updated time):
-  Google:  {{.GoogleCalURL}}
-  Outlook: {{.OutlookCalURL}}
+{{.T "email_add_to_calendar_updated"}}
+  {{.T "email_calendar_google"}}:  {{.GoogleCalURL}}
+  {{.T "email_calendar_outlook"}}: {{.OutlookCalURL}}
 
-Booking reference: {{.BookingID}}
+{{.Tf "email_booking_reference" .BookingID}}
 {{if .ManageURL}}
-To reschedule or cancel again, visit:
+{{.T "email_manage_link_intro_reschedule"}}
 {{.ManageURL}}
 {{end}}{{if .CustomNote}}
 ---
 {{.CustomNote}}
 {{end}}
-— Calnode
+— {{.Brand}}
 `))
 
 var rescheduleHostTmpl = template.Must(template.New("reschedule-host").Parse(
@@ -502,27 +543,27 @@ Booking reference: {{.BookingID}}
 `))
 
 var reminderOrgTmpl = template.Must(template.New("reminder-org").Parse(
-	`Hi {{.OrganizerName}},
+	`{{.Tf "email_greeting" .OrganizerName}}
 
-This is a reminder that your booking is coming up.
+{{.T "email_reminder_lead"}}
 
-Event:    {{.EventTypeName}}
-With:     {{.HostName}}
-Start:    {{.StartFmt}}
-End:      {{.EndFmt}}{{if .LocationValue}}
-Location: {{.LocationValue}}{{end}}
+{{.T "email_label_event"}}:    {{.EventTypeName}}
+{{.T "email_label_with"}}:     {{.HostName}}
+{{.T "email_label_start"}}:    {{.StartFmt}}
+{{.T "email_label_end"}}:      {{.EndFmt}}{{if .LocationValue}}
+{{.T "email_label_location"}}: {{.LocationValue}}{{end}}
 
-Add to your calendar:
-  Google:  {{.GoogleCalURL}}
-  Outlook: {{.OutlookCalURL}}
+{{.T "email_add_to_calendar"}}
+  {{.T "email_calendar_google"}}:  {{.GoogleCalURL}}
+  {{.T "email_calendar_outlook"}}: {{.OutlookCalURL}}
 
-Booking reference: {{.BookingID}}
+{{.Tf "email_booking_reference" .BookingID}}
 {{if .ManageURL}}
-To reschedule or cancel, visit:
+{{.T "email_manage_link_intro"}}
 {{.ManageURL}}
 {{end}}{{if .CustomNote}}
 ---
 {{.CustomNote}}
 {{end}}
-— Calnode
+— {{.Brand}}
 `))

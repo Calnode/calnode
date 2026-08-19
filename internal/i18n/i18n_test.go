@@ -1,6 +1,9 @@
 package i18n
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestResolve(t *testing.T) {
 	cases := []struct {
@@ -84,6 +87,29 @@ func TestEnglishName(t *testing.T) {
 	var nilLocale *Locale
 	if got := nilLocale.EnglishName(); got != "English" {
 		t.Errorf("nil locale EnglishName() = %q, want %q", got, "English")
+	}
+}
+
+func TestFormatDateTime(t *testing.T) {
+	// Monday 2026-06-22, 09:05 — a fixed reference so weekday/month names are unambiguous.
+	moment := time.Date(2026, time.June, 22, 9, 5, 0, 0, time.UTC)
+
+	if got := Default().FormatDateTime(moment); got != "Mon 22 Jun 2026, 9:05 AM" {
+		t.Errorf("English FormatDateTime = %q", got)
+	}
+	if got := Get("es").FormatDateTime(moment); got != "lun 22 jun 2026, 09:05" {
+		t.Errorf("Spanish FormatDateTime = %q", got)
+	}
+
+	// Hour cycle follows the locale's clock_format, not a hardcoded 12-hour default —
+	// this is the actual review-flagged bug: emails must agree with the page, which
+	// already renders Spanish times in 24h via Intl.DateTimeFormat.
+	afternoon := time.Date(2026, time.June, 22, 15, 30, 0, 0, time.UTC)
+	if got := Default().FormatTimeOfDay(afternoon); got != "3:30 PM" {
+		t.Errorf("English FormatTimeOfDay = %q, want 12h clock", got)
+	}
+	if got := Get("es").FormatTimeOfDay(afternoon); got != "15:30" {
+		t.Errorf("Spanish FormatTimeOfDay = %q, want 24h clock", got)
 	}
 }
 

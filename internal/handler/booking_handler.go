@@ -511,6 +511,7 @@ func (h *Handler) createBookingForSlug(ctx context.Context, slug string, startAt
 		OrganizerName:     organizer.Name,
 		OrganizerEmail:    organizer.Email,
 		OrganizerTimezone: organizer.IANATimezone,
+		OrganizerLocale:   organizer.Locale,
 	})
 	return b, nil
 }
@@ -872,6 +873,7 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 		OrganizerName:     req.Name,
 		OrganizerEmail:    req.Email,
 		OrganizerTimezone: req.Timezone,
+		OrganizerLocale:   i18n.Resolve("", req.Language).Code,
 	})
 }
 
@@ -884,6 +886,9 @@ type bookingConfirmationInput struct {
 	OrganizerName     string
 	OrganizerEmail    string
 	OrganizerTimezone string
+	// OrganizerLocale is the attendee's resolved locale code (e.g. "es") — same value
+	// stored on booking_attendees.locale, threaded into the confirmation email.
+	OrganizerLocale string
 }
 
 // hostPrefsOrDefault loads a host's notification prefs, defaulting to allOnPrefs and
@@ -1100,6 +1105,7 @@ func (h *Handler) dispatchBookingConfirmation(b *booking.Booking, in bookingConf
 		EndAt:             b.EndAt,
 		LocationValue:     b.LocationValue,
 		BaseURL:           h.publicURL(),
+		Locale:            i18n.Get(in.OrganizerLocale),
 	}
 	h.applyBranding(ctx, &bData)
 	// Every assigned host attends (Group books several; round-robin/Normal one).
@@ -1632,10 +1638,12 @@ func (h *Handler) loadCancellationData(ctx context.Context, b *booking.Booking) 
 	}
 
 	// Organizer attendee.
+	var locale string
 	_ = h.db.QueryRowContext(ctx, `
-		SELECT name, email, iana_timezone
+		SELECT name, email, iana_timezone, locale
 		FROM booking_attendees WHERE booking_id = ? AND is_organizer = 1`, b.ID).
-		Scan(&d.OrganizerName, &d.OrganizerEmail, &d.OrganizerTimezone)
+		Scan(&d.OrganizerName, &d.OrganizerEmail, &d.OrganizerTimezone, &locale)
+	d.Locale = i18n.Get(locale)
 
 	return d, nil
 }
