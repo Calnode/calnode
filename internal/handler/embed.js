@@ -22,9 +22,35 @@
   var BASE = SELF ? new URL(SELF.src).origin : window.location.origin;
 
   var TZ = (Intl.DateTimeFormat().resolvedOptions().timeZone) || 'UTC';
-  var MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
-  var DOW = ['Mo','Tu','We','Th','Fr','Sa','Su']; // Monday-first, matching /book
   var STEP_BP = 560; // below this width → step-flow (one view at a time)
+
+  // i18n — the server resolves locale from the browser's own Accept-Language header
+  // automatically (fetch() always sends it; not CORS-blocked), so no client-side
+  // detection is needed for the default auto-detect path. An explicit lang="" attribute
+  // on <calnode-booking> (a host page choosing to force a language) is sent as ?lang= on
+  // the /public call, matching the ?lang= override semantics on book.html/manage.html.
+  // /public returns the resolved {locale, i18n} once; cached on the instance and reused
+  // by every subsequent render, not refetched per-request.
+  function langOverride(el) {
+    var v = el.getAttribute('lang');
+    return v ? v.split('-')[0] : '';
+  }
+  // t: pure lookup, not a method — mirrors internal/i18n.Locale.T (falls back to the
+  // key itself if the string table hasn't loaded yet or the key is missing).
+  function t(i18n, key) { return (i18n && i18n[key]) || key; }
+  // dowLabels: Monday-first weekday header labels via Intl, matching
+  // BookingLogic.dowLabels in booking-logic.js (not literally shared code — this widget
+  // doesn't import that module — but the same approach, replacing what used to be a
+  // hardcoded English DOW array).
+  function dowLabels(locale) {
+    var out = [];
+    var monday = new Date(Date.UTC(2024, 0, 1));
+    for (var i = 0; i < 7; i++) {
+      var day = new Date(monday.getTime() + i * 86400000);
+      out.push(new Intl.DateTimeFormat(locale || [], { weekday: 'short', timeZone: 'UTC' }).format(day).slice(0, 2));
+    }
+    return out;
+  }
 
   var SVG_CLOCK = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
   var SVG_PIN = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>';
@@ -50,8 +76,10 @@
   }
 
   function dayKey(iso) { return new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(iso)); }
-  function timeLabel(iso) { return new Intl.DateTimeFormat([], { timeZone: TZ, hour: 'numeric', minute: '2-digit' }).format(new Date(iso)); }
-  function shortDay(iso) { return new Intl.DateTimeFormat([], { timeZone: TZ, weekday: 'short', month: 'short', day: 'numeric' }).format(new Date(iso)); }
+  // locale is the resolved server-side locale (this.locale), not the browser's own
+  // ([]) — see the matching fix/comment in book.html / internal-docs/i18n-plan.md.
+  function timeLabel(iso, locale) { return new Intl.DateTimeFormat(locale || [], { timeZone: TZ, hour: 'numeric', minute: '2-digit' }).format(new Date(iso)); }
+  function shortDay(iso, locale) { return new Intl.DateTimeFormat(locale || [], { timeZone: TZ, weekday: 'short', month: 'short', day: 'numeric' }).format(new Date(iso)); }
   function ymd(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
   function startOfMonth(d) { return new Date(d.getFullYear(), d.getMonth(), 1); }
   function endOfMonth(d) { return new Date(d.getFullYear(), d.getMonth() + 1, 0); }
@@ -59,14 +87,14 @@
   function mondayIndex(d) { return (d.getDay() + 6) % 7; }
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   // Group host label: "Alex", "Alex & Sam", "Alex, Sam & Jo", "A, B, C & 2 others".
-  function hostsLabel(hosts) {
+  function hostsLabel(hosts, i18n) {
     function fn(h) { return String(h.name || '').split(' ')[0]; }
     var n = hosts.length;
     if (n === 0) return '';
     if (n === 1) return hosts[0].name || '';
     if (n === 2) return fn(hosts[0]) + ' & ' + fn(hosts[1]);
     if (n === 3) return fn(hosts[0]) + ', ' + fn(hosts[1]) + ' & ' + fn(hosts[2]);
-    return fn(hosts[0]) + ', ' + fn(hosts[1]) + ', ' + fn(hosts[2]) + ' & ' + (n - 3) + (n - 3 === 1 ? ' other' : ' others');
+    return fn(hosts[0]) + ', ' + fn(hosts[1]) + ', ' + fn(hosts[2]) + ' & ' + (n - 3) + ' ' + (n - 3 === 1 ? t(i18n, 'other') : t(i18n, 'others'));
   }
   function money(cents, cur) {
     var amt = (cents / 100).toFixed(2);
@@ -164,19 +192,29 @@
 
     async load() {
       this.wrap.innerHTML = '';
+      // Not translated: no string table exists yet until /public resolves below — the
+      // widget can't know the language before its first network request completes.
       this.wrap.appendChild(el('div', { class: 'loading', text: 'Loading…' }));
       try {
+        var lang = langOverride(this);
+        var publicPath = '/v1/event-types/' + encodeURIComponent(this.slug) + '/public' + (lang ? '?lang=' + encodeURIComponent(lang) : '');
         var r = await Promise.all([
-          api('/v1/event-types/' + encodeURIComponent(this.slug) + '/public'),
+          api(publicPath),
           api('/v1/event-types/' + encodeURIComponent(this.slug) + '/questions'),
         ]);
         this.info = r[0];
+        this.locale = this.info.locale || '';
+        this.i18n = this.info.i18n || {};
+        this.dow = dowLabels(this.locale);
+        this.setAttribute('lang', this.locale || 'en'); // accessibility: announce the resolved language
         this.questions = (r[1] && r[1].items) || [];
         this.ensureAsstDrawer();
         await this.loadMonth();
         this.render();
       } catch (e) {
         this.wrap.innerHTML = '';
+        // Same bootstrapping limitation as the "Loading…" text above — if /public itself
+        // failed, there's no string table to translate this with.
         this.wrap.appendChild(el('div', { class: 'loading', text: 'Could not load this booking page.' }));
       }
     }
@@ -241,13 +279,13 @@
       var kids = [head, meta];
       if (this.info.assistant_enabled) {
         var self = this;
-        var asstLink = el('button', { class: 'asst-link', type: 'button', html: SVG_SPARK + ' Book by chat ' + SVG_CHEV2 });
+        var asstLink = el('button', { class: 'asst-link', type: 'button', html: SVG_SPARK + ' ' + t(this.i18n, 'book_by_chat') + ' ' + SVG_CHEV2 });
         asstLink.addEventListener('click', function () { self.toggleAsst(); });
         kids.push(asstLink);
       }
       if (this.info.description) {
         kids.push(el('div', { class: 'description', text: this.info.description }));
-        kids.push(el('button', { class: 'desc-toggle', type: 'button', text: 'Show more' }));
+        kids.push(el('button', { class: 'desc-toggle', type: 'button', text: t(this.i18n, 'show_more') }));
       }
       return el('aside', { class: 'info' }, kids);
     }
@@ -260,18 +298,18 @@
       if (this.asstPanel || !this.info || !this.info.assistant_enabled) return;
       var self = this;
       var log = el('div', { class: 'asst-log' }, [
-        el('div', { class: 'asst-msg bot', text: "Hi! Tell me roughly when you'd like to meet — e.g. \"Tuesday afternoon\" — and I'll find a time. You can always use the calendar instead." }),
+        el('div', { class: 'asst-msg bot', text: t(this.i18n, 'assistant_greeting') }),
       ]);
-      var input = el('input', { class: 'asst-input', type: 'text', placeholder: "Type when you're free…", maxlength: '500', 'aria-label': 'Message the booking assistant' });
-      var sendBtn = el('button', { class: 'asst-send', type: 'submit', text: 'Send' });
+      var input = el('input', { class: 'asst-input', type: 'text', placeholder: t(this.i18n, 'assistant_input_placeholder'), maxlength: '500', 'aria-label': t(this.i18n, 'assistant_input_aria') });
+      var sendBtn = el('button', { class: 'asst-send', type: 'submit', text: t(this.i18n, 'send') });
       var form = el('form', { class: 'asst-row', autocomplete: 'off' }, [input, sendBtn]);
-      var closeBtn = el('button', { class: 'asst-close', type: 'button', 'aria-label': 'Close', html: SVG_X });
-      var headRow = el('div', { class: 'asst-head-row' }, [el('span', { class: 'asst-title', html: SVG_SPARK + ' Book by chat' }), closeBtn]);
+      var closeBtn = el('button', { class: 'asst-close', type: 'button', 'aria-label': t(this.i18n, 'close'), html: SVG_X });
+      var headRow = el('div', { class: 'asst-head-row' }, [el('span', { class: 'asst-title', html: SVG_SPARK + ' ' + t(this.i18n, 'book_by_chat') }), closeBtn]);
       // Persistent AI-disclosure notice (EU AI Act Art. 50(1)) — text must match the
       // "assistant_disclosure" key in internal/i18n/locales/en.json; keep in sync on edit.
-      var disclosure = el('p', { class: 'asst-disclosure', role: 'note', text: "You're chatting with an automated assistant, not a person." });
+      var disclosure = el('p', { class: 'asst-disclosure', role: 'note', text: t(this.i18n, 'assistant_disclosure') });
       var head = el('div', { class: 'asst-head' }, [headRow, disclosure]);
-      var panel = el('div', { class: 'asst-panel', role: 'dialog', 'aria-label': 'Book by chat' }, [head, log, form]);
+      var panel = el('div', { class: 'asst-panel', role: 'dialog', 'aria-label': t(this.i18n, 'book_by_chat') }, [head, log, form]);
       panel.hidden = true;
       this.root.appendChild(panel);
       this.asstPanel = panel; this.asstLog = log; this.asstInput = input; this.asstSend = sendBtn;
@@ -344,7 +382,7 @@
         if (booking) this.dispatchEvent(new CustomEvent('calnode:booked', { bubbles: true, composed: true, detail: booking }));
       } catch (e) {
         if (typing.parentNode) typing.remove();
-        this.asstAdd('Sorry — something went wrong. Please use the calendar.', 'note');
+        this.asstAdd(t(this.i18n, 'assistant_error'), 'note');
       } finally {
         this.asstBusy = false; this.asstSend.disabled = false; this.asstInput.focus();
       }
@@ -352,22 +390,23 @@
 
     // syncDesc clamps the description to 2 lines (via the shared .clamp class) only
     // when the widget is too narrow for the 3-column layout; the toggle shows only
-    // when the clamped text overflows.
+    // when the clamped text overflows. (Local var renamed toggle, not t — t is the
+    // module-level i18n lookup function and would otherwise be shadowed here.)
     syncDesc() {
       var d = this.card && this.card.querySelector('.description');
-      var t = this.card && this.card.querySelector('.desc-toggle');
-      if (!d || !t) return;
-      if (this.cw > 719) { d.classList.remove('clamp'); t.classList.remove('visible'); return; }
-      if (this.descExpanded) { d.classList.remove('clamp'); t.textContent = 'Show less'; t.classList.add('visible'); return; }
+      var toggle = this.card && this.card.querySelector('.desc-toggle');
+      if (!d || !toggle) return;
+      if (this.cw > 719) { d.classList.remove('clamp'); toggle.classList.remove('visible'); return; }
+      if (this.descExpanded) { d.classList.remove('clamp'); toggle.textContent = t(this.i18n, 'show_less'); toggle.classList.add('visible'); return; }
       d.classList.add('clamp');
-      t.textContent = 'Show more';
-      t.classList.toggle('visible', d.scrollHeight > d.clientHeight + 1);
+      toggle.textContent = t(this.i18n, 'show_more');
+      toggle.classList.toggle('visible', d.scrollHeight > d.clientHeight + 1);
     }
 
     calPane() {
       var self = this, st = this.state, first = st.month;
       var grid = el('div', { class: 'cal-grid' });
-      DOW.forEach(function (d) { grid.appendChild(el('div', { class: 'ch', text: d })); });
+      this.dow.forEach(function (d) { grid.appendChild(el('div', { class: 'ch', text: d })); });
       for (var i = 0; i < mondayIndex(first); i++) grid.appendChild(el('div', { class: 'cd', text: '' }));
       var days = endOfMonth(first).getDate(), todayKey = ymd(new Date());
       for (var d = 1; d <= days; d++) {
@@ -379,16 +418,16 @@
         else btn.addEventListener('click', (function (k) { return function () { self.state.day = k; self.state.view = 'pick'; self.render(); }; })(key));
         grid.appendChild(btn);
       }
-      var prev = el('button', { 'aria-label': 'Previous month', html: SVG_PREV });
+      var prev = el('button', { 'aria-label': t(this.i18n, 'prev_month_aria'), html: SVG_PREV });
       prev.disabled = !(startOfMonth(first) > startOfMonth(new Date()));
       prev.addEventListener('click', function () { self.nav(-1); });
-      var next = el('button', { 'aria-label': 'Next month', html: SVG_NEXT });
+      var next = el('button', { 'aria-label': t(this.i18n, 'next_month_aria'), html: SVG_NEXT });
       next.addEventListener('click', function () { self.nav(1); });
       var nav = el('div', { class: 'cal-nav' }, [
-        el('span', { class: 'month-label', text: MONTH_NAMES[first.getMonth()] + ' ' + first.getFullYear() }),
+        el('span', { class: 'month-label', text: first.toLocaleDateString(this.locale, { month: 'long', year: 'numeric' }) }),
         prev, next,
       ]);
-      return el('section', { class: 'cal-col' }, [nav, grid, el('p', { class: 'tz-label', text: 'Times shown in ' + TZ })]);
+      return el('section', { class: 'cal-col' }, [nav, grid, el('p', { class: 'tz-label', text: t(this.i18n, 'times_shown_in') + TZ })]);
     }
 
     rightPane() {
@@ -400,28 +439,28 @@
         var list = (st.slotsByDay[st.day] || []).slice().sort(function (a, b) { return a.start < b.start ? -1 : 1; });
         var listEl = el('div', { class: 'slots-list' });
         list.forEach(function (s) {
-          var b = el('button', { class: 'slot-btn', text: timeLabel(s.start) });
+          var b = el('button', { class: 'slot-btn', text: timeLabel(s.start, self.locale) });
           b.addEventListener('click', function () { self.state.slot = s; self.state.view = 'form'; self.render(); });
           listEl.appendChild(b);
         });
-        inner = el('div', {}, [el('p', { class: 'slots-header', text: list[0] ? shortDay(list[0].start) : '' }), listEl]);
+        inner = el('div', {}, [el('p', { class: 'slots-header', text: list[0] ? shortDay(list[0].start, self.locale) : '' }), listEl]);
       } else {
-        inner = el('p', { class: 'hint', text: 'Select a day to see available times.' });
+        inner = el('p', { class: 'hint', text: t(this.i18n, 'select_day_hint') });
       }
       return el('section', { class: 'right-col' }, [inner]);
     }
 
     formView(slot) {
       var self = this;
-      var back = el('button', { class: 'back-btn', html: SVG_BACK + ' Back' });
+      var back = el('button', { class: 'back-btn', html: SVG_BACK + ' ' + t(this.i18n, 'back') });
       back.addEventListener('click', function () { self.state.view = 'pick'; self.render(); });
       var form = el('form', { novalidate: 'novalidate' });
       var hp = el('input', { type: 'text', tabindex: '-1', autocomplete: 'off' });
       form.appendChild(el('div', { 'aria-hidden': 'true', style: 'position:absolute;left:-5000px;height:0;width:0;overflow:hidden;' }, [hp]));
-      var name = el('input', { type: 'text', required: 'required', autocomplete: 'name', placeholder: 'Your full name' });
-      var email = el('input', { type: 'email', required: 'required', autocomplete: 'email', placeholder: 'you@example.com' });
-      form.appendChild(el('div', { class: 'field' }, [el('label', { text: 'Name' }), name]));
-      form.appendChild(el('div', { class: 'field' }, [el('label', { text: 'Email' }), email]));
+      var name = el('input', { type: 'text', required: 'required', autocomplete: 'name', placeholder: t(this.i18n, 'name_placeholder') });
+      var email = el('input', { type: 'email', required: 'required', autocomplete: 'email', placeholder: t(this.i18n, 'email_placeholder') });
+      form.appendChild(el('div', { class: 'field' }, [el('label', { text: t(this.i18n, 'name_label') }), name]));
+      form.appendChild(el('div', { class: 'field' }, [el('label', { text: t(this.i18n, 'email_label') }), email]));
       var qInputs = [];
       this.questions.forEach(function (q) {
         var inp, field;
@@ -429,7 +468,7 @@
           inp = el('input', { type: 'checkbox' });
           field = el('div', { class: 'field' }, [el('div', { class: 'field-checkbox' }, [inp, el('label', { html: esc(q.label) + (q.required ? ' <span class="required-star">*</span>' : '') })])]);
         } else if (q.type === 'select') {
-          inp = el('select', {}, [el('option', { value: '', text: 'Choose an option' })].concat((q.options || []).map(function (o) { return el('option', { value: o, text: o }); })));
+          inp = el('select', {}, [el('option', { value: '', text: t(self.i18n, 'choose_option') })].concat((q.options || []).map(function (o) { return el('option', { value: o, text: o }); })));
           if (q.required) inp.required = true;
           field = el('div', { class: 'field' }, [el('label', { html: esc(q.label) + (q.required ? ' <span class="required-star">*</span>' : '') }), inp]);
         } else {
@@ -441,12 +480,12 @@
         qInputs.push({ q: q, inp: inp });
       });
       var errBox = el('p', { class: 'form-error' });
-      var cta = el('button', { class: 'btn-primary', type: 'submit', text: 'Confirm booking' });
+      var cta = el('button', { class: 'btn-primary', type: 'submit', text: t(this.i18n, 'confirm_booking') });
       form.appendChild(errBox); form.appendChild(cta);
       form.addEventListener('submit', function (e) {
         e.preventDefault();
         errBox.textContent = '';
-        cta.disabled = true; cta.textContent = 'Booking…';
+        cta.disabled = true; cta.textContent = t(self.i18n, 'confirming');
         var answers = [];
         qInputs.forEach(function (x) {
           var v = x.inp.type === 'checkbox' ? (x.inp.checked ? 'Yes' : '') : x.inp.value;
@@ -458,27 +497,29 @@
         }).then(function (r) {
           return r.json().then(function (data) { return { ok: r.ok, data: data }; });
         }).then(function (res) {
-          if (!res.ok) throw new Error(res.data && res.data.error ? res.data.error : 'Could not complete booking.');
+          // res.data.error (when present) is a raw message from the booking API, not
+          // translated yet — see the matching gap noted in book.html.
+          if (!res.ok) throw new Error(res.data && res.data.error ? res.data.error : t(self.i18n, 'booking_failed_error'));
           // Paid event types: the server returns a Stripe Checkout URL. Send the visitor
           // there (top window, so it isn't trapped in the host page's frame).
           if (res.data && res.data.checkout_url) { (window.top || window).location.href = res.data.checkout_url; return; }
           self.state.view = 'confirm'; self.render();
           self.dispatchEvent(new CustomEvent('calnode:booked', { bubbles: true, composed: true, detail: res.data }));
         }).catch(function (err) {
-          errBox.textContent = err.message || 'Could not complete booking.';
-          cta.disabled = false; cta.textContent = 'Confirm booking';
+          errBox.textContent = err.message || t(self.i18n, 'booking_failed_error');
+          cta.disabled = false; cta.textContent = t(self.i18n, 'confirm_booking');
         });
       });
-      return el('div', {}, [back, el('p', { class: 'slot-label', text: shortDay(slot.start) + ' · ' + timeLabel(slot.start) }), form]);
+      return el('div', {}, [back, el('p', { class: 'slot-label', text: shortDay(slot.start, this.locale) + ' · ' + timeLabel(slot.start, this.locale) }), form]);
     }
 
     confirmView(slot) {
       return el('div', {}, [
         el('div', { class: 'confirm-icon', html: SVG_CHECK }),
         el('div', { class: 'confirm-view' }, [
-          el('h3', { text: 'Booking confirmed' }),
-          el('p', { class: 'when', text: shortDay(slot.start) + ' · ' + timeLabel(slot.start) }),
-          el('p', { class: 'sub', text: 'A confirmation email has been sent to you.' }),
+          el('h3', { text: t(this.i18n, 'booking_confirmed') }),
+          el('p', { class: 'when', text: shortDay(slot.start, this.locale) + ' · ' + timeLabel(slot.start, this.locale) }),
+          el('p', { class: 'sub', text: t(this.i18n, 'confirmation_email_sent') }),
         ]),
       ]);
     }
@@ -508,14 +549,14 @@
       // In step-flow, a slots/form view needs a back-to-calendar affordance.
       if (this.narrow && (this.state.view === 'pick' && this.state.day)) {
         var rc = this.card.querySelector('.right-col');
-        var back = el('button', { class: 'back-btn', html: SVG_BACK + ' Back' });
+        var back = el('button', { class: 'back-btn', html: SVG_BACK + ' ' + t(this.i18n, 'back') });
         back.addEventListener('click', function () { self.state.day = null; self.render(); });
         rc.insertBefore(back, rc.firstChild);
       }
       var toggle = this.card.querySelector('.desc-toggle');
       if (toggle) toggle.addEventListener('click', function () { self.descExpanded = !self.descExpanded; self.syncDesc(); });
       this.wrap.appendChild(this.card);
-      this.wrap.appendChild(el('div', { class: 'powered', html: 'Powered by <a href="https://calnode.com" target="_blank" rel="noopener">Calnode</a>' }));
+      this.wrap.appendChild(el('div', { class: 'powered', html: t(this.i18n, 'powered_by') + ' <a href="https://calnode.com" target="_blank" rel="noopener">Calnode</a>' }));
       this.applyStep();
       this.cw = this.wrap.getBoundingClientRect().width || this.cw;
       requestAnimationFrame(function () { self.syncDesc(); });
@@ -542,6 +583,9 @@
     var widget = document.createElement('calnode-booking');
     widget.setAttribute('slug', slug);
     widget.setAttribute('data-modal', '');
+    // Not translated: this popup-chrome close button is created synchronously, before
+    // the inner <calnode-booking> has loaded and resolved a locale (same bootstrapping
+    // gap as the widget's own initial "Loading…" state).
     var close = el('button', { class: 'x', html: SVG_X, 'aria-label': 'Close' });
     var overlay = el('div', { class: 'ovl' }, [el('div', { class: 'wrap' }, [close, widget])]);
     function shut() { hostEl.remove(); document.removeEventListener('keydown', onKey); }

@@ -27,6 +27,8 @@
   "loading": "Loading…",
   "no_available_times": "No available times.",
   "could_not_load_times": "Could not load times. Please try again.",
+  "could_not_load_booking_page": "Could not load this booking page.",
+  "times_shown_in": "Times shown in ",
   "payment_received": "Payment received",
   "payment_confirmed_sub": "Your booking is confirmed — a confirmation email is on its way.",
   "assistant_error": "Sorry — something went wrong. Please use the calendar below.",
@@ -47,6 +49,7 @@
   "demo_public_label": "Public demo",
   "demo_public_text": "data here is visible to everyone and resets automatically. Don't enter anything private.",
   "demo_view_source": "View source",
+  "powered_by": "Powered by",
 
   "duration_min": "%d min",
   "duration_hour_one": "1 hour",

@@ -5,8 +5,6 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-
-	"github.com/calnode/calnode/internal/i18n"
 )
 
 // The embed widget script and the stylesheet it pulls are linked WITHOUT a version
@@ -47,17 +45,21 @@ func TestEmbedJS_etagRevalidation(t *testing.T) {
 }
 
 // EU AI Act Art. 50(1): the embed widget's "Book by chat" drawer must carry the same
-// persistent AI-disclosure notice as the hosted booking page (book.html) — text must match
-// the "assistant_disclosure" key in internal/i18n/locales/en.json, since embed.js can't
-// share a Go/i18n lookup across a JS asset (see internal-docs/i18n-plan.md).
+// persistent AI-disclosure notice as the hosted booking page (book.html). embed.js now
+// fetches its strings (including "assistant_disclosure") from the same server-side
+// locale JSON book.html reads via {{.T}} — see PublicEventType's "i18n" response field
+// and internal-docs/i18n-plan.md — so drift is structurally impossible rather than
+// something to string-match for. This guards that the *wiring* is actually there: the
+// disclosure element pulls from the fetched i18n map (t(this.i18n, 'assistant_disclosure')),
+// not a hardcoded literal that could silently diverge again.
 func TestEmbedJS_assistantDisclosure(t *testing.T) {
 	h := &Handler{}
 	rec := httptest.NewRecorder()
 	h.EmbedJS(rec, httptest.NewRequest(http.MethodGet, "/embed.js", nil))
 	body := rec.Body.String()
 
-	if !strings.Contains(body, i18n.Default().T("assistant_disclosure")) {
-		t.Fatal("embed.js is missing the AI-disclosure notice, or it has drifted from the assistant_disclosure locale key")
+	if !strings.Contains(body, `t(this.i18n, 'assistant_disclosure')`) {
+		t.Fatal("embed.js disclosure no longer reads from the shared i18n lookup - it may have regressed to a hardcoded literal that can drift from book.html")
 	}
 	if !strings.Contains(body, `role: 'note'`) && !strings.Contains(body, `'role': 'note'`) {
 		t.Error("embed.js disclosure element is missing role: 'note' (accessibility exposure)")

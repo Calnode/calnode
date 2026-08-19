@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<!--
+  Local test harness for the embeddable booking widget (embed.js). Serve with the
+  "embed-test" launch.json config (python -m http.server 8099 --directory docs) alongside
+  the "calnode-server" config (go run ./cmd/calnode on :3000), then open
+  http://localhost:8099/embed-local.html. Swap the slug below for a real event type on
+  your local instance.
+-->
+<html>
+<head><meta charset="utf-8"><title>Calnode embed - local test</title></head>
+<body style="font-family: sans-serif; max-width: 900px; margin: 2rem auto;">
+<h1>English (auto-detect via Accept-Language)</h1>
+<calnode-booking slug="20-min-call"></calnode-booking>
+
+<h1>Forced Spanish (lang="es" attribute override)</h1>
+<calnode-booking slug="20-min-call" lang="es"></calnode-booking>
+
+<h1>Popup mode</h1>
+<button data-calnode-popup="20-min-call">Book a call</button>
+
+<script src="http://localhost:3000/embed.js"></script>
+</body>
+</html>

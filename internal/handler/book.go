@@ -308,13 +308,26 @@ func (h *Handler) PublicEventType(w http.ResponseWriter, r *http.Request) {
 	}
 
 	brand := h.loadBranding(r.Context())
+	// The embed widget (a separate JS runtime on a third-party site, not server-rendered
+	// like book.html/manage.html) resolves its own locale client-side (navigator.language,
+	// or an explicit lang="" attribute on <calnode-booking>) and sends it as ?lang= here.
+	// Returning the whole string table once, on this call, lets the widget cache it and
+	// avoid a second fetch — this endpoint carries no Cache-Control, so varying the body
+	// by locale is safe (see internal-docs/i18n-plan.md).
+	loc := h.resolveLocale(r)
+	i18nJSON, err := loc.JSON()
+	if err != nil {
+		h.logger.ErrorContext(r.Context(), "public event type: marshal i18n strings", "error", err)
+		h.writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
 	h.writeJSON(w, http.StatusOK, map[string]any{
 		"slug":              slug,
 		"name":              name,
 		"description":       description,
 		"duration_minutes":  durMins,
 		"location_type":     locType,
-		"location_label":    locationLabel(locType, locValue, h.resolveLocale(r)),
+		"location_label":    locationLabel(locType, locValue, loc),
 		"max_future_days":   maxDays,
 		"assistant_enabled": h.getLLM() != nil,
 		"price_cents":       priceCents,
@@ -323,6 +336,8 @@ func (h *Handler) PublicEventType(w http.ResponseWriter, r *http.Request) {
 		"business_name":     brand.BusinessName,
 		"logo_url":          abs(brand.LogoURL),
 		"banner_url":        abs(brand.BannerURL),
+		"locale":            loc.Code,
+		"i18n":              json.RawMessage(i18nJSON),
 	})
 }
 

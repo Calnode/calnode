@@ -27,6 +27,8 @@
   "loading": "Cargando…",
   "no_available_times": "No hay horarios disponibles.",
   "could_not_load_times": "No se pudieron cargar los horarios. Inténtalo de nuevo.",
+  "could_not_load_booking_page": "No se pudo cargar esta página de reservas.",
+  "times_shown_in": "Horarios mostrados en ",
   "payment_received": "Pago recibido",
   "payment_confirmed_sub": "Tu reserva está confirmada; recibirás un correo de confirmación en breve.",
   "assistant_error": "Lo sentimos, algo salió mal. Usa el calendario de abajo.",
@@ -47,6 +49,7 @@
   "demo_public_label": "Demo pública",
   "demo_public_text": "los datos aquí son visibles para todos y se reinician automáticamente. No introduzcas información privada.",
   "demo_view_source": "Ver código fuente",
+  "powered_by": "Con la tecnología de",
 
   "duration_min": "%d min",
   "duration_hour_one": "1 hora",
