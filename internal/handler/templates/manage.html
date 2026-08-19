@@ -262,6 +262,7 @@ body {
   const MAX_DAYS    = {{.MaxFutureDays}};
   const CURRENT_ISO = {{.CurrentStartISO}};
   const ORG_TZ      = {{.OrganizerTZ}};
+  const LOCALE      = "{{.Locale}}";
 
   let TZ = Intl.DateTimeFormat().resolvedOptions().timeZone || ORG_TZ || 'UTC';
 
@@ -277,14 +278,16 @@ body {
   const $ = id => document.getElementById(id);
   const pad = n => String(n).padStart(2, '0');
 
-  function fmtTime(iso) { return BookingLogic.formatTime(iso, TZ); }
+  // LOCALE (resolved server-side), not [] (the browser's own) — see the matching
+  // comment in book.html / internal-docs/i18n-plan.md.
+  function fmtTime(iso) { return BookingLogic.formatTime(iso, TZ, LOCALE); }
   function fmtDate(d) {
-    return d.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
+    return d.toLocaleDateString(LOCALE, { weekday: 'long', month: 'long', day: 'numeric' });
   }
   function fmtDatetime(iso) {
     const d = new Date(iso);
-    return d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', timeZone: TZ }) +
-           ' · ' + d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', timeZone: TZ });
+    return d.toLocaleDateString(LOCALE, { weekday: 'short', month: 'short', day: 'numeric', timeZone: TZ }) +
+           ' · ' + d.toLocaleTimeString(LOCALE, { hour: 'numeric', minute: '2-digit', timeZone: TZ });
   }
   function toDateStr(y, m, d) { return `${y}-${pad(m+1)}-${pad(d)}`; }
 
@@ -310,7 +313,7 @@ body {
 
   // ── Calendar ────────────────────────────────────────────────────────────────
   // Locale-aware via Intl (BookingLogic.dowLabels), not a hardcoded English array.
-  const DOW_LABELS = BookingLogic.dowLabels();
+  const DOW_LABELS = BookingLogic.dowLabels(LOCALE);
   function dowIndex(date) { return BookingLogic.dowIndex(date); } // 0 = Monday
 
   async function loadMonthAvailability(y, m) {
@@ -342,7 +345,7 @@ body {
     const daysInMonth = new Date(navYear, navMonth + 1, 0).getDate();
     const startOffset = dowIndex(first);
 
-    $('month-label').textContent = first.toLocaleDateString([], { month: 'long', year: 'numeric' });
+    $('month-label').textContent = first.toLocaleDateString(LOCALE, { month: 'long', year: 'numeric' });
 
     const thisMonFirst = new Date(today.getFullYear(), today.getMonth(), 1);
     const navFirst = new Date(navYear, navMonth, 1);

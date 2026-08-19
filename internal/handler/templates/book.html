@@ -316,9 +316,13 @@ body {
     nameEl.textContent = defaultName;
   }
 
-  function fmtTime(iso) { return BookingLogic.formatTime(iso, TZ); }
+  // LOCALE (the resolved server-side locale, not the browser's own) drives these, not
+  // [] — otherwise a visitor who picked a language via the switcher, or whose
+  // Accept-Language differs from navigator.language, would see translated chrome next
+  // to month/day names in a different language. See internal-docs/i18n-plan.md.
+  function fmtTime(iso) { return BookingLogic.formatTime(iso, TZ, LOCALE); }
   function fmtDate(d) {
-    return d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+    return d.toLocaleDateString(LOCALE, { weekday: 'short', month: 'short', day: 'numeric' });
   }
   function toDateStr(y, m, d) { return `${y}-${pad(m+1)}-${pad(d)}`; }
 
@@ -432,7 +436,7 @@ body {
     const startOffset = dowIndex(first); // 0=Mon offset
 
     $('month-label').textContent =
-      first.toLocaleDateString([], { month: 'long', year: 'numeric' });
+      first.toLocaleDateString(LOCALE, { month: 'long', year: 'numeric' });
 
     const thisMonFirst = new Date(today.getFullYear(), today.getMonth(), 1);
     const navFirst     = new Date(navYear, navMonth, 1);
