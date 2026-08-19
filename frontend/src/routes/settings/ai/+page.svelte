@@ -134,6 +134,11 @@
 				<Label for="ai-extra">Additional instructions</Label>
 				<Textarea id="ai-extra" rows={4} bind:value={extraInstructions}
 					placeholder="e.g. Keep a warm, professional tone. We're a law firm — mention that consultations are confidential." />
+				<p class="text-xs text-muted-foreground">
+					The assistant replies in each visitor's own language automatically. Writing these
+					instructions in a different language than your visitors works, but is somewhat less
+					reliable — for best results, write them in whichever language most of your visitors use.
+				</p>
 			</div>
 			{#if settings?.base_prompt}
 				<details class="mt-4">
