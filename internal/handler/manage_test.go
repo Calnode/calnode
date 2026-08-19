@@ -152,8 +152,12 @@ func TestManagePage_validToken(t *testing.T) {
 	if !strings.Contains(body, "Reschedule") {
 		t.Error("body should contain 'Reschedule' action")
 	}
-	if strings.Contains(body, "expired or invalid") {
-		t.Error("body should not show 'expired or invalid' for valid token")
+	// Not a literal-text check: the translated "expired or invalid" string now lives
+	// unconditionally in the injected __CALNODE_I18N JSON blob (same as book.html's
+	// __CALNODE_I18N), so its presence in body text doesn't indicate the state was
+	// rendered. Check the structural hook instead.
+	if strings.Contains(body, `id="token-invalid-view"`) {
+		t.Error("body should not render the invalid-token view for a valid token")
 	}
 }
 

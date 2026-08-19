@@ -62,11 +62,12 @@ type managePageData struct {
 	BookingLogicJS template.JS
 	// DemoMode shows the "public demo" banner + a noindex meta tag (see internal/demo).
 	DemoMode bool
-	// Locale/T serve the shared partials (_shared.html) this page renders — its own
-	// strings aren't extracted yet (internal-docs/i18n-plan.md scopes this session to
-	// book.html), but the shared chrome (cookie banner, footer, calendar nav) is.
-	Locale string
-	T      func(string) string
+	// Locale/T/I18NJSON — same pattern as bookPageData: T resolves a single translation
+	// key server-side; I18NJSON is the same locale's full string table, injected as
+	// window.__CALNODE_I18N for this page's own JS (reschedule/cancel flow).
+	Locale   string
+	T        func(string) string
+	I18NJSON template.JS
 }
 
 // ManagePage renders the attendee manage page for a booking (reschedule / cancel).
@@ -161,6 +162,8 @@ func (h *Handler) renderManage(w http.ResponseWriter, r *http.Request, data mana
 	loc := h.resolveLocale(r)
 	data.Locale = loc.Code
 	data.T = loc.T
+	i18nJSON, _ := loc.JSON()
+	data.I18NJSON = template.JS(i18nJSON) // #nosec G203 -- json.Marshal output, which escapes <,>,& by default; safe for embedding in a <script> block
 
 	h.persistLangOverride(w, r)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")

@@ -4,10 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-<title>Manage booking — {{.EventTypeName}}</title>
+<title>{{call .T "manage_booking_title"}} — {{.EventTypeName}}</title>
 {{template "demoNoindex" .}}
 {{template "trackingHead" .}}
 {{.HeadHTML}}
+{{/* SAFE (generic.html-templates.security.var-in-script-tag): .I18NJSON is server-built via
+     json.Marshal (HTML-escapes <,>,& by default), same pattern as .DataLayerFields below —
+     never raw/attacker-controlled data. */}}
+<script>window.__CALNODE_I18N = {{.I18NJSON}};</script>  <!-- nosemgrep: generic.html-templates.security.var-in-script-tag.var-in-script-tag -->
 {{if .DataLayerEnabled}}
 <script>
   window.dataLayer = window.dataLayer || [];
@@ -113,14 +117,14 @@ body {
 {{end}}
 
 {{if .TokenInvalid}}
-<div class="card">
+<div class="card" id="token-invalid-view">
   <section class="right-col">
     <div class="state-page">
       <div class="state-icon warn" aria-hidden="true">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
       </div>
-      <h2>Link expired or invalid</h2>
-      <p>This manage link has expired or is no longer valid. Please check your confirmation email for a valid link, or contact the host for a new one.</p>
+      <h2>{{call .T "link_expired_title"}}</h2>
+      <p>{{call .T "link_expired_text"}}</p>
     </div>
   </section>
 </div>
@@ -141,7 +145,7 @@ body {
     {{if and (not .TokenInvalid) (ne .Status "cancelled")}}
     <p class="tz-label">
       <span class="tz-wrapper">
-        <select id="tz-select" aria-label="Timezone"></select>
+        <select id="tz-select" aria-label="{{call .T "timezone_aria"}}"></select>
         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
       </span>
       <span id="tz-sizer" aria-hidden="true"></span>
@@ -155,17 +159,17 @@ body {
       <div class="state-icon info" aria-hidden="true">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </div>
-      <h2>Booking already cancelled</h2>
-      <p>This booking has been cancelled. To book a new time, visit the event page.</p>
+      <h2>{{call .T "booking_already_cancelled_title"}}</h2>
+      <p>{{call .T "booking_already_cancelled_text"}}</p>
     </div>
   </section>
 
   {{else}}
   <!-- Calendar column (only shown while picking a new time) -->
-  <section id="cal-col" class="cal-col hidden" aria-label="Date picker">
+  <section id="cal-col" class="cal-col hidden" aria-label="{{call .T "date_picker_aria"}}">
     <button class="back-btn cal-back" id="resched-back-main">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-      Back
+      {{call .T "back"}}
     </button>
     {{template "calendarGrid" .}}
   </section>
@@ -174,59 +178,59 @@ body {
 
     <!-- Main: current booking + actions -->
     <div id="main-view">
-      <p class="scheduled-label">Scheduled for</p>
+      <p class="scheduled-label">{{call .T "scheduled_for"}}</p>
       <p class="scheduled-time" id="current-time"></p>
-      <button class="btn-primary" id="reschedule-btn">Reschedule</button>
-      <button class="btn-secondary" id="cancel-btn">Cancel booking</button>
+      <button class="btn-primary" id="reschedule-btn">{{call .T "reschedule"}}</button>
+      <button class="btn-secondary" id="cancel-btn">{{call .T "cancel_booking"}}</button>
     </div>
 
     <!-- Reschedule: pick a new time -->
     <div id="reschedule-view" class="hidden">
       <button class="back-btn" id="back-to-main-btn">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-        Back
+        {{call .T "back"}}
       </button>
-      <p class="slots-header" id="slots-date">Select a date</p>
-      <div id="slots-list" class="slots-list"><p class="hint">Pick a day from the calendar.</p></div>
+      <p class="slots-header" id="slots-date">{{call .T "select_a_date"}}</p>
+      <div id="slots-list" class="slots-list"><p class="hint">{{call .T "pick_day_hint"}}</p></div>
     </div>
 
     <!-- Confirm reschedule -->
     <div id="confirm-reschedule-view" class="hidden">
       <button class="back-btn" id="back-to-picker-btn">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-        Back
+        {{call .T "back"}}
       </button>
-      <p class="section-title">Confirm reschedule?</p>
+      <p class="section-title">{{call .T "confirm_reschedule_question"}}</p>
       <div class="confirm-times">
-        <div class="row"><span class="row-label">Was</span><span class="row-val" id="prev-time"></span></div>
-        <div class="row"><span class="row-label">Now</span><span class="row-val new" id="new-time"></span></div>
+        <div class="row"><span class="row-label">{{call .T "was_label"}}</span><span class="row-val" id="prev-time"></span></div>
+        <div class="row"><span class="row-label">{{call .T "now_label"}}</span><span class="row-val new" id="new-time"></span></div>
       </div>
       <p id="reschedule-error" class="form-error" role="alert" aria-live="assertive"></p>
-      <button class="btn-primary" id="confirm-reschedule-btn">Confirm reschedule</button>
+      <button class="btn-primary" id="confirm-reschedule-btn">{{call .T "confirm_reschedule"}}</button>
     </div>
 
     <!-- Cancel confirm -->
     <div id="cancel-confirm-view" class="hidden">
       <button class="back-btn" id="back-to-main-from-cancel-btn">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-        Back
+        {{call .T "back"}}
       </button>
-      <p class="section-title">Cancel this booking?</p>
-      <p class="hint" style="margin-bottom:1rem">This can't be undone. A cancellation email will be sent to you and the host.</p>
+      <p class="section-title">{{call .T "cancel_this_booking_question"}}</p>
+      <p class="hint" style="margin-bottom:1rem">{{call .T "cancel_booking_notice"}}</p>
       <div class="field">
-        <label for="cancel-reason">Reason (optional)</label>
-        <input id="cancel-reason" type="text" placeholder="e.g. schedule conflict" maxlength="200">
+        <label for="cancel-reason">{{call .T "reason_optional_label"}}</label>
+        <input id="cancel-reason" type="text" placeholder="{{call .T "reason_placeholder"}}" maxlength="200">
       </div>
       <p id="cancel-error" class="form-error" role="alert" aria-live="assertive"></p>
-      <button class="btn-secondary" id="confirm-cancel-btn" style="margin-top:0">Yes, cancel booking</button>
+      <button class="btn-secondary" id="confirm-cancel-btn" style="margin-top:0">{{call .T "yes_cancel_booking"}}</button>
     </div>
 
     <!-- Success: rescheduled -->
     <div id="success-reschedule-view" class="hidden">
       <div class="state-page">
         <div class="state-icon check" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
-        <h2>Booking rescheduled</h2>
-        <p>Your booking has been moved to <strong id="success-new-time"></strong>. A confirmation email has been sent.</p>
+        <h2>{{call .T "booking_rescheduled_title"}}</h2>
+        <p>{{call .T "booking_rescheduled_prefix"}}<strong id="success-new-time"></strong>. {{call .T "confirmation_email_sent"}}</p>
       </div>
     </div>
 
@@ -234,8 +238,8 @@ body {
     <div id="success-cancel-view" class="hidden">
       <div class="state-page">
         <div class="state-icon check" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
-        <h2>Booking cancelled</h2>
-        <p>Your booking has been cancelled. A confirmation email has been sent.</p>
+        <h2>{{call .T "booking_cancelled_title"}}</h2>
+        <p>{{call .T "booking_cancelled_text"}} {{call .T "confirmation_email_sent"}}</p>
       </div>
     </div>
 
@@ -263,6 +267,8 @@ body {
   const CURRENT_ISO = {{.CurrentStartISO}};
   const ORG_TZ      = {{.OrganizerTZ}};
   const LOCALE      = "{{.Locale}}";
+  const I18N        = window.__CALNODE_I18N || {};
+  function t(key) { return I18N[key] || key; } // key itself as a last-resort fallback, matching Locale.T server-side
 
   let TZ = Intl.DateTimeFormat().resolvedOptions().timeZone || ORG_TZ || 'UTC';
 
@@ -396,7 +402,7 @@ body {
 
   function fillSlots(list) {
     if (!slotsCache.length) {
-      list.innerHTML = '<p class="hint">No available times for this date.</p>';
+      list.innerHTML = `<p class="hint">${t('no_available_times')}</p>`;
       return;
     }
     list.innerHTML = slotsCache.map((s, i) => `<button class="slot-btn" data-i="${i}">${fmtTime(s.start)}</button>`).join('');
@@ -417,7 +423,7 @@ body {
       return;
     }
     // Fallback (clicked before the month load finished): fetch just this day.
-    list.innerHTML = '<p class="hint">Loading…</p>';
+    list.innerHTML = `<p class="hint">${t('loading')}</p>`;
     try {
       const r = await fetch(`/v1/event-types/${SLUG}/slots?from=${ds}&to=${ds}&tz=${encodeURIComponent(TZ)}`);
       if (!r.ok) throw new Error(r.status);
@@ -425,7 +431,7 @@ body {
       slotsCache = (data.slots || []).filter(s => s.start !== CURRENT_ISO);
       fillSlots(list);
     } catch {
-      list.innerHTML = '<p class="form-error">Could not load available times. Please try again.</p>';
+      list.innerHTML = `<p class="form-error">${t('could_not_load_times')}</p>`;
     }
   }
 
@@ -446,8 +452,8 @@ body {
     showView('reschedule-view');
     setRStep('cal'); // mobile: start on the calendar step
     if (!pickedDate) {
-      $('slots-date').textContent = 'Select a date';
-      $('slots-list').innerHTML = '<p class="hint">Pick a day from the calendar.</p>';
+      $('slots-date').textContent = t('select_a_date');
+      $('slots-list').innerHTML = `<p class="hint">${t('pick_day_hint')}</p>`;
     }
     loadMonthAvailability(navYear, navMonth);
   });
@@ -465,20 +471,20 @@ body {
   $('confirm-reschedule-btn').addEventListener('click', async () => {
     if (!pickedSlot) return;
     const btn = $('confirm-reschedule-btn'), errEl = $('reschedule-error');
-    btn.disabled = true; btn.textContent = 'Rescheduling…'; errEl.textContent = '';
+    btn.disabled = true; btn.textContent = t('rescheduling'); errEl.textContent = '';
     try {
       const r = await fetch(`/manage/${TOKEN}/reschedule`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ start_at: pickedSlot.start }),
       });
       if (r.status === 409) {
-        errEl.textContent = 'That slot is no longer available. Please choose another time.';
-        btn.disabled = false; btn.textContent = 'Confirm reschedule'; return;
+        errEl.textContent = t('slot_no_longer_available_error');
+        btn.disabled = false; btn.textContent = t('confirm_reschedule'); return;
       }
       if (!r.ok) {
         const data = await r.json().catch(() => ({}));
-        errEl.textContent = data.error || 'Reschedule failed. Please try again.';
-        btn.disabled = false; btn.textContent = 'Confirm reschedule'; return;
+        errEl.textContent = data.error || t('reschedule_failed_error');
+        btn.disabled = false; btn.textContent = t('confirm_reschedule'); return;
       }
       $('success-new-time').textContent = fmtDate(pickedDate) + ' · ' + fmtTime(pickedSlot.start);
       showView('success-reschedule-view');
@@ -494,28 +500,28 @@ body {
         });
       }
     } catch {
-      errEl.textContent = 'Network error. Please check your connection and try again.';
-      btn.disabled = false; btn.textContent = 'Confirm reschedule';
+      errEl.textContent = t('network_error');
+      btn.disabled = false; btn.textContent = t('confirm_reschedule');
     }
   });
 
   // ── Confirm cancel ──────────────────────────────────────────────────────────
   $('confirm-cancel-btn').addEventListener('click', async () => {
     const btn = $('confirm-cancel-btn'), errEl = $('cancel-error');
-    btn.disabled = true; btn.textContent = 'Cancelling…'; errEl.textContent = '';
+    btn.disabled = true; btn.textContent = t('cancelling'); errEl.textContent = '';
     try {
       const r = await fetch(`/manage/${TOKEN}/cancel`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ reason: $('cancel-reason').value.trim() }),
       });
       if (r.status === 409) {
-        errEl.textContent = 'This booking is already cancelled.';
-        btn.disabled = false; btn.textContent = 'Yes, cancel booking'; return;
+        errEl.textContent = t('already_cancelled_error');
+        btn.disabled = false; btn.textContent = t('yes_cancel_booking'); return;
       }
       if (!r.ok) {
         const data = await r.json().catch(() => ({}));
-        errEl.textContent = data.error || 'Cancellation failed. Please try again.';
-        btn.disabled = false; btn.textContent = 'Yes, cancel booking'; return;
+        errEl.textContent = data.error || t('cancellation_failed_error');
+        btn.disabled = false; btn.textContent = t('yes_cancel_booking'); return;
       }
       showView('success-cancel-view');
       if (window.__CALNODE_DL && typeof calnodePush === 'function') {
@@ -530,8 +536,8 @@ body {
         });
       }
     } catch {
-      errEl.textContent = 'Network error. Please check your connection and try again.';
-      btn.disabled = false; btn.textContent = 'Yes, cancel booking';
+      errEl.textContent = t('network_error');
+      btn.disabled = false; btn.textContent = t('yes_cancel_booking');
     }
   });
 
