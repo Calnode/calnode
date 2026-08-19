@@ -12,8 +12,9 @@ const langCookie = "calnode_lang"
 
 // resolveLocale picks the locale for a public-page request: an explicit ?lang= override
 // wins (and gets persisted to a cookie so it survives without the query param on later
-// visits), then a previously-set langCookie, then Accept-Language, then English. See
-// internal-docs/i18n-plan.md.
+// visits), then a previously-set langCookie, then Accept-Language matching a supported
+// locale, then the operator's configured fallback (server_settings.fallback_locale,
+// English by default). See internal-docs/i18n-plan.md.
 func (h *Handler) resolveLocale(r *http.Request) *i18n.Locale {
 	override := r.URL.Query().Get("lang")
 	if override == "" {
@@ -21,7 +22,8 @@ func (h *Handler) resolveLocale(r *http.Request) *i18n.Locale {
 			override = c.Value
 		}
 	}
-	return i18n.Resolve(r.Header.Get("Accept-Language"), override)
+	fallback := h.loadBranding(r.Context()).FallbackLocale
+	return i18n.ResolveWithFallback(r.Header.Get("Accept-Language"), override, fallback)
 }
 
 // persistLangOverride sets langCookie when the request carries a valid ?lang= switch, so

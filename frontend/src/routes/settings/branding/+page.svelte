@@ -6,6 +6,7 @@
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
 	import * as Dialog from '$lib/components/ui/dialog';
+	import * as Select from '$lib/components/ui/select';
 	import { toast } from 'svelte-sonner';
 	import { saveOnCmdS } from '$lib/save-shortcut';
 	import { createAsyncFlag } from '$lib/async-action.svelte';
@@ -20,6 +21,8 @@
 		banner_opacity: number;
 		privacy_url: string;
 		terms_url: string;
+		fallback_locale: string;
+		supported_locales: { code: string; name: string }[];
 	};
 
 	// Both logo and banner share the same upload/crop dialog; cropTarget picks
@@ -37,6 +40,8 @@
 	let bannerOpacity = $state(100);
 	let privacyUrl = $state('');
 	let termsUrl = $state('');
+	let fallbackLocale = $state('en');
+	let supportedLocales = $state<{ code: string; name: string }[]>([]);
 	let fileInput = $state<HTMLInputElement | undefined>();
 	let bannerFileInput = $state<HTMLInputElement | undefined>();
 
@@ -76,6 +81,8 @@
 		bannerOpacity = b.banner_opacity || 100;
 		privacyUrl = b.privacy_url ?? '';
 		termsUrl = b.terms_url ?? '';
+		fallbackLocale = b.fallback_locale || 'en';
+		supportedLocales = b.supported_locales ?? [];
 	}, 'Could not load branding settings'));
 
 	async function onFileChange(target: CropTarget) {
@@ -158,7 +165,8 @@
 				logo_opacity: logoOpacity,
 				banner_opacity: bannerOpacity,
 				privacy_url: privacyUrl,
-				terms_url: termsUrl
+				terms_url: termsUrl,
+				fallback_locale: fallbackLocale
 			});
 			businessName = b.business_name ?? '';
 			logoHeight = b.logo_height || 28;
@@ -166,6 +174,7 @@
 			bannerOpacity = b.banner_opacity || 100;
 			privacyUrl = b.privacy_url ?? '';
 			termsUrl = b.terms_url ?? '';
+			fallbackLocale = b.fallback_locale || 'en';
 			toast.success('Branding saved');
 		}, 'Could not save branding settings');
 	}
@@ -291,6 +300,35 @@
 				<p class="text-xs text-muted-foreground">Leave a field blank to hide that link. Must be a full http(s):// URL.</p>
 			</div>
 		</div>
+
+		{#if supportedLocales.length > 1}
+			<div class="rounded-lg border bg-card p-6">
+				<h2 class="text-sm font-semibold">Language</h2>
+				<p class="mt-0.5 text-xs text-muted-foreground">
+					Your public booking pages and emails are translated per visitor — most see their
+					browser's language automatically. This sets what a visitor sees when their browser
+					asks for a language you don't support (e.g. an operator serving mostly Spanish-speaking
+					customers might prefer Spanish here instead of English).
+				</p>
+				<div class="mt-4 max-w-xs space-y-1.5">
+					<Label for="fallback-locale">Fallback language</Label>
+					<Select.Root
+						type="single"
+						value={fallbackLocale}
+						onValueChange={(v) => { if (v) fallbackLocale = v; }}
+					>
+						<Select.Trigger id="fallback-locale" class="w-full">
+							{supportedLocales.find((l) => l.code === fallbackLocale)?.name ?? 'Select…'}
+						</Select.Trigger>
+						<Select.Content>
+							{#each supportedLocales as loc}
+								<Select.Item value={loc.code} label={loc.name}>{loc.name}</Select.Item>
+							{/each}
+						</Select.Content>
+					</Select.Root>
+				</div>
+			</div>
+		{/if}
 
 		<Button onclick={save} disabled={savingFlag.active}>{savingFlag.active ? 'Saving…' : 'Save'}</Button>
 	</div>

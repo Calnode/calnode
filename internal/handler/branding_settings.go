@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/calnode/calnode/internal/i18n"
 	"github.com/calnode/calnode/internal/mailer"
 	"github.com/disintegration/imaging"
 	_ "golang.org/x/image/webp"
@@ -40,6 +41,9 @@ type brandingSettings struct {
 	BannerOpacity int    // 20–100; CSS opacity for the banner. 100 = fully opaque
 	PrivacyURL    string // operator's Privacy Policy URL (absolute http[s]); "" = hidden
 	TermsURL      string // operator's Terms URL (absolute http[s]); "" = hidden
+	// FallbackLocale is what a visitor sees when their browser doesn't ask for any
+	// locale Calnode supports — defaults to "en". See i18n.ResolveWithFallback.
+	FallbackLocale string
 }
 
 // loadBranding reads the brand identity from the singleton settings row.
@@ -49,9 +53,10 @@ func (h *Handler) loadBranding(ctx context.Context) brandingSettings {
 		SELECT COALESCE(business_name,''), COALESCE(logo_url,''),
 		       COALESCE(logo_height,28), COALESCE(logo_opacity,100),
 		       COALESCE(banner_url,''), COALESCE(banner_opacity,100),
-		       COALESCE(privacy_url,''), COALESCE(terms_url,'')
+		       COALESCE(privacy_url,''), COALESCE(terms_url,''),
+		       COALESCE(fallback_locale,'en')
 		FROM server_settings WHERE id = 1`).Scan(&b.BusinessName, &b.LogoURL, &b.LogoHeight, &b.LogoOpacity,
-		&b.BannerURL, &b.BannerOpacity, &b.PrivacyURL, &b.TermsURL)
+		&b.BannerURL, &b.BannerOpacity, &b.PrivacyURL, &b.TermsURL, &b.FallbackLocale)
 	if b.LogoHeight <= 0 {
 		b.LogoHeight = 28
 	}
@@ -60,6 +65,9 @@ func (h *Handler) loadBranding(ctx context.Context) brandingSettings {
 	}
 	if b.BannerOpacity <= 0 || b.BannerOpacity > 100 {
 		b.BannerOpacity = 100
+	}
+	if i18n.Get(b.FallbackLocale) == nil {
+		b.FallbackLocale = i18n.DefaultCode
 	}
 	return b
 }
@@ -127,14 +135,16 @@ func (h *Handler) GetBranding(w http.ResponseWriter, r *http.Request) {
 	}
 	b := h.loadBranding(r.Context())
 	h.writeJSON(w, http.StatusOK, map[string]any{
-		"business_name":  b.BusinessName,
-		"logo_url":       b.LogoURL,
-		"logo_height":    b.LogoHeight,
-		"logo_opacity":   b.LogoOpacity,
-		"banner_url":     b.BannerURL,
-		"banner_opacity": b.BannerOpacity,
-		"privacy_url":    b.PrivacyURL,
-		"terms_url":      b.TermsURL,
+		"business_name":     b.BusinessName,
+		"logo_url":          b.LogoURL,
+		"logo_height":       b.LogoHeight,
+		"logo_opacity":      b.LogoOpacity,
+		"banner_url":        b.BannerURL,
+		"banner_opacity":    b.BannerOpacity,
+		"privacy_url":       b.PrivacyURL,
+		"terms_url":         b.TermsURL,
+		"fallback_locale":   b.FallbackLocale,
+		"supported_locales": i18n.SupportedLocales(),
 	})
 }
 
@@ -146,12 +156,13 @@ func (h *Handler) PatchBranding(w http.ResponseWriter, r *http.Request) {
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 8<<10)
 	var req struct {
-		BusinessName  string `json:"business_name"`
-		LogoHeight    int    `json:"logo_height"`
-		LogoOpacity   int    `json:"logo_opacity"`
-		BannerOpacity int    `json:"banner_opacity"`
-		PrivacyURL    string `json:"privacy_url"`
-		TermsURL      string `json:"terms_url"`
+		BusinessName   string `json:"business_name"`
+		LogoHeight     int    `json:"logo_height"`
+		LogoOpacity    int    `json:"logo_opacity"`
+		BannerOpacity  int    `json:"banner_opacity"`
+		PrivacyURL     string `json:"privacy_url"`
+		TermsURL       string `json:"terms_url"`
+		FallbackLocale string `json:"fallback_locale"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.writeError(w, http.StatusBadRequest, "invalid JSON")
@@ -170,6 +181,14 @@ func (h *Handler) PatchBranding(w http.ResponseWriter, r *http.Request) {
 	termsURL, ok := validatedLegalURL(req.TermsURL)
 	if !ok {
 		h.writeError(w, http.StatusBadRequest, "terms link must be a full http(s) URL")
+		return
+	}
+	req.FallbackLocale = strings.TrimSpace(req.FallbackLocale)
+	if req.FallbackLocale == "" {
+		req.FallbackLocale = i18n.DefaultCode
+	}
+	if i18n.Get(req.FallbackLocale) == nil {
+		h.writeError(w, http.StatusBadRequest, "fallback_locale is not a supported language code")
 		return
 	}
 	// Clamp logo height to a sane range; 0/omitted falls back to the small default.
@@ -204,8 +223,8 @@ func (h *Handler) PatchBranding(w http.ResponseWriter, r *http.Request) {
 	}
 	if _, err := h.db.ExecContext(r.Context(), `
 		UPDATE server_settings SET business_name = ?, logo_height = ?, logo_opacity = ?,
-		       banner_opacity = ?, privacy_url = ?, terms_url = ?, updated_at = datetime('now')
-		WHERE id = 1`, req.BusinessName, req.LogoHeight, req.LogoOpacity, req.BannerOpacity, privacyURL, termsURL); err != nil {
+		       banner_opacity = ?, privacy_url = ?, terms_url = ?, fallback_locale = ?, updated_at = datetime('now')
+		WHERE id = 1`, req.BusinessName, req.LogoHeight, req.LogoOpacity, req.BannerOpacity, privacyURL, termsURL, req.FallbackLocale); err != nil {
 		h.logger.ErrorContext(r.Context(), "branding settings: update", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal error")
 		return

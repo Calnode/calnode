@@ -77,6 +77,36 @@ func TestSupportedLocales(t *testing.T) {
 	}
 }
 
+func TestResolveWithFallback(t *testing.T) {
+	cases := []struct {
+		name           string
+		acceptLanguage string
+		override       string
+		fallback       string
+		wantCode       string
+	}{
+		{"no match falls back to configured fallback, not English", "fr;q=0.9,de;q=0.5", "", "es", "es"},
+		{"empty header falls back to configured fallback", "", "", "es", "es"},
+		{"garbage header falls back to configured fallback", "not a real header ;;;", "", "es", "es"},
+		{"invalid fallback code falls back to English", "fr;q=0.9,de;q=0.5", "", "xx", "en"},
+		{"empty fallback code falls back to English", "fr;q=0.9,de;q=0.5", "", "", "en"},
+		{"override still wins over the configured fallback", "en", "es", "en", "es"},
+		// A real (even weak) Accept-Language match must NOT be overridden by the
+		// fallback — the fallback is only for "nothing matched at all".
+		{"a real match is unaffected by the fallback setting", "es-MX,es;q=0.9", "", "en", "es"},
+		{"exact supported match is unaffected by the fallback setting", "es", "", "en", "es"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := ResolveWithFallback(c.acceptLanguage, c.override, c.fallback)
+			if got.Code != c.wantCode {
+				t.Errorf("ResolveWithFallback(%q, %q, %q) = %q, want %q",
+					c.acceptLanguage, c.override, c.fallback, got.Code, c.wantCode)
+			}
+		})
+	}
+}
+
 func TestEnglishName(t *testing.T) {
 	if got := Get("es").EnglishName(); got != "Spanish" {
 		t.Errorf("Get(%q).EnglishName() = %q, want %q", "es", got, "Spanish")

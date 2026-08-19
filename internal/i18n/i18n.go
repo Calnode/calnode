@@ -85,8 +85,8 @@ func Get(code string) *Locale { return locales[code] }
 // selects — a French speaker should see "Français", not whatever the current UI language
 // happens to be), never translated.
 type LocaleOption struct {
-	Code string
-	Name string
+	Code string `json:"code"`
+	Name string `json:"name"`
 }
 
 // SupportedLocales lists every configured locale for a language-switcher UI, English
@@ -102,16 +102,38 @@ func SupportedLocales() []LocaleOption {
 // Resolve picks the best-supported locale for a request, given the raw Accept-Language
 // header value and an optional override (from a manual language-switcher cookie/param —
 // pass "" when there isn't one). An override wins outright if it's a supported code;
-// otherwise falls back to Accept-Language matching, then English.
+// otherwise falls back to Accept-Language matching, then English. Equivalent to
+// ResolveWithFallback with fallbackCode DefaultCode.
 func Resolve(acceptLanguage, override string) *Locale {
+	return ResolveWithFallback(acceptLanguage, override, DefaultCode)
+}
+
+// ResolveWithFallback is Resolve, but the "nothing matched" case returns fallbackCode's
+// locale instead of always English — the operator-configured fallback language (see
+// server_settings.fallback_locale) for a visitor whose browser doesn't ask for any
+// locale Calnode supports. An invalid/unsupported fallbackCode behaves like "" (English).
+//
+// This does NOT affect a real Accept-Language match, however weak — only the case where
+// language.Matcher itself reports zero confidence (nothing in the request matched
+// anything). Distinguishing that from a positional fallback matters: matcher.Match never
+// fails outright, it just returns supported[0] (English, by construction — see the
+// ordering note in init()) at low/no confidence when nothing lines up.
+func ResolveWithFallback(acceptLanguage, override, fallbackCode string) *Locale {
 	if l := Get(override); l != nil {
 		return l
 	}
+	fallback := Get(fallbackCode)
+	if fallback == nil {
+		fallback = Default()
+	}
 	tags, _, err := language.ParseAcceptLanguage(acceptLanguage)
 	if err != nil || len(tags) == 0 {
-		return Default()
+		return fallback
 	}
-	_, index, _ := matcher.Match(tags...)
+	_, index, confidence := matcher.Match(tags...)
+	if confidence == language.No {
+		return fallback
+	}
 	return locales[supported[index].String()]
 }
 
