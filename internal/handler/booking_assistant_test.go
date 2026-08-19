@@ -86,6 +86,60 @@ func TestBookingAssistant_findThenBook(t *testing.T) {
 	}
 }
 
+func TestBookingAssistant_bookedAttendeeStoresLanguage(t *testing.T) {
+	// The model calls book directly (skips find_available_slots — irrelevant to this test).
+	mock := scriptedLLM(t,
+		`{"choices":[{"message":{"role":"assistant","tool_calls":[{"id":"c1","type":"function","function":{"name":"book","arguments":"{\"slot_start\":\"2027-05-03T10:00:00Z\",\"name\":\"Pat\",\"email\":\"pat2@example.com\"}"}}]}}]}`,
+		`{"choices":[{"message":{"role":"assistant","content":"Booked!"}}]}`,
+	)
+	defer mock.Close()
+
+	h, database, apiKey, _ := setupWorkspaceWithDB(t)
+	erec := httptest.NewRecorder()
+	h.RequireAuth(h.CreateEventType)(erec, authReq(http.MethodPost, "/v1/event-types",
+		`{"slug":"ai-call-es","name":"AI Call ES","duration_minutes":30,"location_type":"phone","location_value":"+1 555 000 1111","max_future_days":0}`, apiKey))
+	if erec.Code != http.StatusCreated {
+		t.Fatalf("create event type: %d — %s", erec.Code, erec.Body.String())
+	}
+	seedFullAvailability(t, h, apiKey)
+
+	prec := httptest.NewRecorder()
+	h.RequireAuth(h.PatchLLMSettings)(prec, authReq(http.MethodPatch, "/v1/settings/llm",
+		`{"enabled":true,"endpoint":"`+mock.URL+`","model":"m","api_key":"k"}`, apiKey))
+	if prec.Code != http.StatusOK {
+		t.Fatalf("enable llm: %d — %s", prec.Code, prec.Body.String())
+	}
+
+	areq := httptest.NewRequest(http.MethodPost, "/v1/event-types/ai-call-es/assistant",
+		strings.NewReader(`{"messages":[{"role":"user","content":"book me"}],"timezone":"UTC","language":"es"}`))
+	areq.SetPathValue("slug", "ai-call-es")
+	arec := httptest.NewRecorder()
+	h.BookingAssistant(arec, areq)
+	if arec.Code != http.StatusOK {
+		t.Fatalf("assistant: %d — %s", arec.Code, arec.Body.String())
+	}
+
+	var resp struct {
+		Booking *struct{ ID string } `json:"booking"`
+	}
+	if err := json.Unmarshal(arec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode: %v (%s)", err, arec.Body.String())
+	}
+	if resp.Booking == nil {
+		t.Fatalf("expected a booking; reply body: %s", arec.Body.String())
+	}
+
+	var locale string
+	if err := database.QueryRow(
+		`SELECT locale FROM booking_attendees WHERE booking_id = ? AND is_organizer = 1`, resp.Booking.ID,
+	).Scan(&locale); err != nil {
+		t.Fatalf("query stored locale: %v", err)
+	}
+	if locale != "es" {
+		t.Errorf("assistant-booked attendee should store locale \"es\" (from the request's language field), got %q", locale)
+	}
+}
+
 func TestBookingAssistant_languageDirective(t *testing.T) {
 	var captured []byte
 	mock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

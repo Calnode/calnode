@@ -165,10 +165,14 @@ func (s *Service) Create(ctx context.Context, p CreateParams) (*Booking, error) 
 	if tz == "" {
 		tz = "UTC"
 	}
+	locale := p.Organizer.Locale
+	if locale == "" {
+		locale = "en"
+	}
 	_, err = tx.ExecContext(ctx, `
-		INSERT INTO booking_attendees (id, booking_id, name, email, iana_timezone, is_organizer)
-		VALUES (?, ?, ?, ?, ?, 1)`,
-		uid.New(), bookingID, p.Organizer.Name, p.Organizer.Email, tz)
+		INSERT INTO booking_attendees (id, booking_id, name, email, iana_timezone, is_organizer, locale)
+		VALUES (?, ?, ?, ?, ?, 1, ?)`,
+		uid.New(), bookingID, p.Organizer.Name, p.Organizer.Email, tz, locale)
 	if err != nil {
 		return nil, fmt.Errorf("booking: insert attendee: %w", err)
 	}

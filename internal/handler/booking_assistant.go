@@ -119,6 +119,10 @@ func (h *Handler) BookingAssistant(w http.ResponseWriter, r *http.Request) {
 	if tz == "" {
 		tz = "UTC"
 	}
+	// Resolved once and reused both for the "reply in %s" prompt directive and, if the
+	// model ends up booking, as the attendee's stored locale (see runAssistantTool's
+	// "book" case) — same value driving both, no reason to resolve it twice.
+	lang := i18n.Resolve("", req.Language).Code
 	if len(req.Messages) == 0 || len(req.Messages) > assistantMaxMessages {
 		h.writeError(w, http.StatusBadRequest, "conversation is empty or too long")
 		return
@@ -126,7 +130,7 @@ func (h *Handler) BookingAssistant(w http.ResponseWriter, r *http.Request) {
 
 	// Event-type context for the system prompt (active+public only). Doubles as the
 	// not-found gate.
-	sysPrompt, ok := h.assistantSystemPrompt(r.Context(), slug, tz, req.Language)
+	sysPrompt, ok := h.assistantSystemPrompt(r.Context(), slug, tz, lang)
 	if !ok {
 		h.writeError(w, http.StatusNotFound, "event type not found")
 		return
@@ -205,7 +209,7 @@ func (h *Handler) BookingAssistant(w http.ResponseWriter, r *http.Request) {
 			if sse {
 				sendSSE(map[string]any{"type": "status", "text": assistantToolStatus(tc.Function.Name)})
 			}
-			result, bk := h.runAssistantTool(r.Context(), slug, tz, tc.Function.Name, tc.Function.Arguments)
+			result, bk := h.runAssistantTool(r.Context(), slug, tz, lang, tc.Function.Name, tc.Function.Arguments)
 			if bk != nil {
 				booked = bk
 			}
@@ -353,7 +357,7 @@ func (h *Handler) assistantTools() []llm.Tool {
 // runAssistantTool executes one model tool call against the deterministic cores, scoped to
 // this slug. Returns the tool-result text (fed back to the model) and, if a booking was
 // made, its summary.
-func (h *Handler) runAssistantTool(ctx context.Context, slug, tz, name, argsJSON string) (string, *assistantBooking) {
+func (h *Handler) runAssistantTool(ctx context.Context, slug, tz, lang, name, argsJSON string) (string, *assistantBooking) {
 	switch name {
 	case "find_available_slots":
 		var args struct {
@@ -405,7 +409,7 @@ func (h *Handler) runAssistantTool(ctx context.Context, slug, tz, name, argsJSON
 			raw[i] = booking.Answer{QuestionID: a.QuestionID, Value: a.Value}
 		}
 		b, err := h.createBookingForSlug(ctx, slug, startAt,
-			booking.Attendee{Name: args.Name, Email: args.Email, IANATimezone: tz}, raw)
+			booking.Attendee{Name: args.Name, Email: args.Email, IANATimezone: tz, Locale: lang}, raw)
 		if err != nil {
 			return "error: " + assistantBookError(err), nil
 		}

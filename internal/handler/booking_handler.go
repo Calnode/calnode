@@ -14,6 +14,7 @@ import (
 
 	"github.com/calnode/calnode/internal/booking"
 	"github.com/calnode/calnode/internal/calendar"
+	"github.com/calnode/calnode/internal/i18n"
 	"github.com/calnode/calnode/internal/mailer"
 	"github.com/calnode/calnode/internal/slots"
 	"github.com/calnode/calnode/internal/uid"
@@ -618,8 +619,14 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 		Name          string `json:"name"`
 		Email         string `json:"email"`
 		Timezone      string `json:"timezone"`
-		Company       string `json:"company"` // honeypot: a hidden form field; must stay empty
-		Answers       []struct {
+		// Language is the resolved page locale code (e.g. "es") the client already knows —
+		// sent explicitly rather than re-derived from Accept-Language/cookie server-side,
+		// since the embed widget's cross-origin fetch can't rely on the same-origin
+		// calnode_lang cookie, and a site owner's forced lang= override wouldn't be visible
+		// from headers alone. See internal-docs/i18n-plan.md.
+		Language string `json:"language"`
+		Company  string `json:"company"` // honeypot: a hidden form field; must stay empty
+		Answers  []struct {
 			QuestionID string `json:"question_id"`
 			Value      string `json:"value"`
 		} `json:"answers"`
@@ -768,6 +775,7 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 			Name:         req.Name,
 			Email:        req.Email,
 			IANATimezone: req.Timezone,
+			Locale:       i18n.Resolve("", req.Language).Code,
 		},
 		Answers:             answers,
 		MaxActivePerInvitee: et.MaxActiveBookings,

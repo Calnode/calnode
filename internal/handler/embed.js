@@ -493,7 +493,7 @@
         });
         fetch(BASE + '/v1/bookings', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ event_type_slug: self.slug, start_at: slot.start, name: name.value.trim(), email: email.value.trim().toLowerCase(), timezone: TZ, company: hp.value, answers: answers }),
+          body: JSON.stringify({ event_type_slug: self.slug, start_at: slot.start, name: name.value.trim(), email: email.value.trim().toLowerCase(), timezone: TZ, language: self.locale, company: hp.value, answers: answers }),
         }).then(function (r) {
           return r.json().then(function (data) { return { ok: r.ok, data: data }; });
         }).then(function (res) {

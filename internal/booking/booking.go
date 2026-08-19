@@ -35,6 +35,10 @@ type Attendee struct {
 	Name         string
 	Email        string
 	IANATimezone string
+	// Locale is the attendee's resolved page locale at booking time (e.g. "es"), captured
+	// once and stored — see internal/db/migrations/00051_booking_attendee_locale.sql for why
+	// this can't be reconstructed later. Empty defaults to English at the DB layer.
+	Locale string
 }
 
 // Answer is a booker's response to a custom event-type question.

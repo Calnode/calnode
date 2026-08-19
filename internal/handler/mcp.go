@@ -387,6 +387,8 @@ func (h *Handler) mcpCreateBooking(ctx context.Context, _ *mcp.CallToolRequest, 
 	}
 
 	// Shared creation path (also used by the conversational booking assistant + REST).
+	// Locale intentionally left unset (defaults to English at the DB layer) — an MCP
+	// caller is an agent/automation, not a browser with a resolved page locale.
 	b, err := h.createBookingForSlug(ctx, in.EventTypeID, startAt,
 		booking.Attendee{Name: in.AttendeeName, Email: in.AttendeeEmail, IANATimezone: tz}, raw)
 	if err != nil {
