@@ -9,7 +9,25 @@ import (
 	"golang.org/x/text/language"
 )
 
+// unsupportedTestTags are the language tags the resolution tests use to mean "the visitor
+// asked for something we don't ship". They must stay outside locales/ — this used to be
+// "fr"/"de", which silently became wrong the moment French and German were added (the
+// cases then asserted a fallback that no longer applied). assertUnsupported turns that
+// into a loud, self-explaining failure instead.
+var unsupportedTestTags = []string{"ja", "ko"}
+
+func assertUnsupported(t *testing.T) {
+	t.Helper()
+	for _, code := range unsupportedTestTags {
+		if Get(code) != nil {
+			t.Fatalf("locale %q now ships, so it can no longer stand in for an unsupported "+
+				"language here — pick another tag for unsupportedTestTags and update the cases below", code)
+		}
+	}
+}
+
 func TestResolve(t *testing.T) {
+	assertUnsupported(t)
 	cases := []struct {
 		name           string
 		acceptLanguage string
@@ -19,15 +37,15 @@ func TestResolve(t *testing.T) {
 		{"exact es", "es", "", "es"},
 		{"exact en", "en-US,en;q=0.9", "", "en"},
 		{"regional subtag falls back to primary", "es-MX,es;q=0.9", "", "es"},
-		{"unsupported language falls back to English", "fr-FR,fr;q=0.9", "", "en"},
+		{"unsupported language falls back to English", "ja-JP,ja;q=0.9", "", "en"},
 		{"empty header falls back to English", "", "", "en"},
 		{"garbage header falls back to English", "not a real header ;;;", "", "en"},
 		{"override wins over Accept-Language", "en", "es", "es"},
-		{"unsupported override is ignored", "es", "de", "es"},
-		// fr isn't supported, but es (an acceptable lower-preference language) is — falling
+		{"unsupported override is ignored", "es", "ja", "es"},
+		// ja isn't supported, but es (an acceptable lower-preference language) is — falling
 		// through to it beats giving up to the site default, per Accept-Language semantics.
-		{"unsupported top preference falls through to a supported lower one", "fr;q=0.9,es;q=0.5", "", "es"},
-		{"unsupported-only list falls back to English", "fr;q=0.9,de;q=0.5", "", "en"},
+		{"unsupported top preference falls through to a supported lower one", "ja;q=0.9,es;q=0.5", "", "es"},
+		{"unsupported-only list falls back to English", "ja;q=0.9,ko;q=0.5", "", "en"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -82,6 +100,7 @@ func TestSupportedLocales(t *testing.T) {
 }
 
 func TestResolveWithFallback(t *testing.T) {
+	assertUnsupported(t)
 	cases := []struct {
 		name           string
 		acceptLanguage string
@@ -89,11 +108,11 @@ func TestResolveWithFallback(t *testing.T) {
 		fallback       string
 		wantCode       string
 	}{
-		{"no match falls back to configured fallback, not English", "fr;q=0.9,de;q=0.5", "", "es", "es"},
+		{"no match falls back to configured fallback, not English", "ja;q=0.9,ko;q=0.5", "", "es", "es"},
 		{"empty header falls back to configured fallback", "", "", "es", "es"},
 		{"garbage header falls back to configured fallback", "not a real header ;;;", "", "es", "es"},
-		{"invalid fallback code falls back to English", "fr;q=0.9,de;q=0.5", "", "xx", "en"},
-		{"empty fallback code falls back to English", "fr;q=0.9,de;q=0.5", "", "", "en"},
+		{"invalid fallback code falls back to English", "ja;q=0.9,ko;q=0.5", "", "xx", "en"},
+		{"empty fallback code falls back to English", "ja;q=0.9,ko;q=0.5", "", "", "en"},
 		{"override still wins over the configured fallback", "en", "es", "en", "es"},
 		// A real (even weak) Accept-Language match must NOT be overridden by the
 		// fallback — the fallback is only for "nothing matched at all".

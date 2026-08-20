@@ -13,6 +13,7 @@ import (
 // is captured onto booking_attendees.locale, and that an unsupported/missing value falls
 // back to English rather than being stored as-is or left empty.
 func TestCreateBooking_storesAttendeeLocale(t *testing.T) {
+	requireUnsupported(t)
 	h, database, apiKey, _ := setupWorkspaceWithDB(t)
 	slug, _ := seedEventTypeHTTP(t, h, apiKey)
 
@@ -58,7 +59,7 @@ func TestCreateBooking_storesAttendeeLocale(t *testing.T) {
 		t.Errorf("language:\"es\" should store locale \"es\", got %q", got)
 	}
 
-	unsupportedID := create("2026-06-20T10:00:00Z", "fr")
+	unsupportedID := create("2026-06-20T10:00:00Z", unsupportedLocaleCodes[0])
 	if got := localeOf(unsupportedID); got != "en" {
 		t.Errorf("unsupported language should fall back to English, got %q", got)
 	}

@@ -2,6 +2,7 @@ package handler_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -26,8 +27,10 @@ func TestBrandingSettings_fallbackLocale_defaultsToEnglish(t *testing.T) {
 }
 
 func TestPatchBranding_fallbackLocale_rejectsUnsupportedCode(t *testing.T) {
+	requireUnsupported(t)
 	h, apiKey, _ := setupWorkspace(t)
-	req := authReq(http.MethodPatch, "/v1/settings/branding", `{"fallback_locale":"fr"}`, apiKey)
+	body := fmt.Sprintf(`{"fallback_locale":%q}`, unsupportedLocaleCodes[0])
+	req := authReq(http.MethodPatch, "/v1/settings/branding", body, apiKey)
 	rec := httptest.NewRecorder()
 	h.RequireAuth(h.PatchBranding)(rec, req)
 	if rec.Code != http.StatusBadRequest {
@@ -55,9 +58,10 @@ func TestPatchBranding_fallbackLocale_setsAndPersists(t *testing.T) {
 }
 
 // TestBookPage_respectsFallbackLocale is the end-to-end path: a visitor whose browser
-// asks for a language Calnode doesn't support (French) gets the operator's configured
+// asks for a language Calnode doesn't support gets the operator's configured
 // fallback (Spanish here), not the hardcoded English default.
 func TestBookPage_respectsFallbackLocale(t *testing.T) {
+	requireUnsupported(t)
 	h, apiKey, _ := setupWorkspace(t)
 	slug, _ := seedEventTypeHTTP(t, h, apiKey)
 
@@ -70,7 +74,8 @@ func TestBookPage_respectsFallbackLocale(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "/"+slug, nil)
 	req.SetPathValue("slug", slug)
-	req.Header.Set("Accept-Language", "fr;q=0.9,de;q=0.5") // neither supported
+	req.Header.Set("Accept-Language", fmt.Sprintf("%s;q=0.9,%s;q=0.5",
+		unsupportedLocaleCodes[0], unsupportedLocaleCodes[1]))
 	rec := httptest.NewRecorder()
 	h.BookPage(rec, req)
 	if rec.Code != http.StatusOK {

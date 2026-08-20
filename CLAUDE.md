@@ -114,6 +114,27 @@ client SDK**, not Svelte.
   pure logic (host/consent state machines) into testable functions. A dedicated tiny Svelte build
   is the last resort, not the first.
 
+## Languages (i18n) — data-driven, adding one touches no code
+
+Public surfaces (book.html, manage.html, embed.js, the four emails, calendar invite
+title/description) are translated; the **admin SPA is not**. Locale is resolved per request
+from `Accept-Language` + a `?lang=` override + the operator's fallback setting
+(`internal/handler/i18n.go`). Ships `en es fr de it pt nl sv`.
+
+**Adding a locale = adding `internal/i18n/locales/<code>.json`.** Nothing else. `init()`
+globs the directory; the switcher, the fallback dropdown and the public API payload all read
+`SupportedLocales()`. Name the file **BCP-47 canonical** (`pt-BR.json`, never `pt-br.json`).
+
+- Go has no locale date data, so `date_format`, `clock_format`, `dow_short_*` and
+  `month_short_*` are **keys in the JSON** (`internal/i18n/datetime.go`), not stdlib calls.
+- Three guards police a new file: same-keys, printf-verb parity (uses `fmt` as the oracle),
+  and `TestDateTablesMatchCLDR`, which cross-checks the date tables against `Intl` via node.
+  Run `go test ./internal/i18n/`.
+- Tests use `ja`/`ko` to mean "a language we don't ship" — if you add either,
+  `assertUnsupported`/`requireUnsupported` fail loudly and tell you what to change.
+- **Every non-English locale is an LLM draft with no native review.** Structure is verified;
+  wording is not. Say so before anyone markets a language.
+
 ## Conventions
 
 - `pnpm` (not npm). Use `pnpm exec <tool>` for local binaries.
