@@ -190,6 +190,14 @@ domains, Resend email, Google & Microsoft OAuth, Litestream backups, troubleshoo
 - **Zoom** — per-host OAuth; a Zoom-located booking mints a meeting under the assigned host's account
 - **Built-in video meetings (LiveKit)** — in-browser rooms as a booking location (no app or account for guests); host controls (end-for-all, hand-off **and reclaim** host, attendee screen-share toggle), **meeting recording** straight to your own **Litestream backup bucket** (the same one
   you already use for DB backup — no extra storage to provision) with in-app downloads, **recording consent** (notice + consent-or-leave), and an **AI notetaker** (Deepgram transcript → LLM notes). Headless-consumable: MCP `get_meeting_notes`/`get_transcript` + `recording.completed`/`transcript.ready`/`notes.ready` webhooks. BYO LiveKit endpoint (Cloud or self-hosted); configured in Settings → Video — see [docs/VIDEO.md](docs/VIDEO.md)
+- **8 languages** on every booker-facing surface - booking page, manage/reschedule page,
+  embed widget, all four emails, and the calendar invite: **English · Spanish · French ·
+  German · Italian · Portuguese · Dutch · Swedish**. Picked from `Accept-Language` with a
+  footer switcher and an operator-set fallback language; the booker's choice is stored on
+  the booking, so reminders arrive in the language they booked in. Adding a language is
+  adding one JSON file - no code change. *(The admin UI and the built-in video room are
+  English-only. Non-English translations are machine drafts without native review -
+  corrections by PR are very welcome.)*
 - Embeddable booking widget (Shadow-DOM web component; inline + popup)
 - Members, roles (owner/admin/member), email-token invitations
 - `Idempotency-Key` on booking creation; transactional double-booking guard

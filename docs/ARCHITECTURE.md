@@ -598,6 +598,12 @@ as the desired state:
 - **Teams on personal Microsoft accounts** — `teamsForBusiness` is work/school only,
   so a personal Microsoft account can't auto-mint Teams links; the organizer must
   supply a manual link (validated, and surfaced in the editor hint).
+- **LiveKit room is not translated** - the booking surfaces, emails and calendar invites
+  ship in 8 languages (§23), but the in-browser meeting UI is ~45 hardcoded English
+  strings. It has its own vanilla-JS asset pipeline and shares no string plumbing with
+  the Go templates, so it needs a small runtime `t()` of its own. Separate work, not hard.
+- **Plural rules are 2-form only** (§23) - shipping Polish, Russian or Arabic correctly
+  needs a real CLDR plural-category selector first.
 - **OAuth app verification** — the Google and Microsoft apps should go through
   publisher verification before wide public use to avoid "unverified app" warnings.
 
@@ -822,10 +828,131 @@ LLM summary) — the next build; consent-gated (§8.11/§15 of the PRD).
 
 ---
 
-## 23. Changelog
+## 23. Languages (i18n)
+
+Calnode ships **8 locales**: `en` (source) · `es` · `fr` · `de` · `it` · `pt` · `nl` · `sv`.
+
+### What is translated, and what is not
+
+Translation covers the surfaces a **booker** sees. It deliberately stops there.
+
+| Surface | Translated? |
+|---|---|
+| Booking page (`book.html`) | yes |
+| Manage page (`manage.html`) - reschedule/cancel | yes |
+| Embed widget (`embed.js`) | yes |
+| The four emails (confirm / cancel / reschedule / reminder) | yes |
+| Calendar invite title + description | yes |
+| Conversational booking assistant | yes (replies in the visitor's language) |
+| **Admin SPA** (`frontend/`) | **no** - English only, by design |
+| **LiveKit room** (`livekit-room.html` + `livekit-room.js`) | **no** - see below |
+| **Admin-authored content** (event names, descriptions, intake questions, custom email copy) | **no** - stored as the operator typed it |
+| IANA timezone identifiers | no - shown as `Europe/Berlin`, not localized |
+
+**The LiveKit room is the one real hole.** ~45 strings in the in-browser meeting UI
+(join/leave, mute, screen share, recording banner, consent prompts, chat) are hardcoded
+English. It was excluded because the room is vanilla JS with its own asset pipeline
+(`go:embed`-ed in the handler package, not the SPA build) and shares no template or string
+plumbing with the booking surfaces, so it needs its own small runtime `t()` rather than a
+reuse of `{{call .T}}`. Not hard; just genuinely separate work. Tracked in §18.
+
+Admin-authored content is a deliberate non-goal, not an oversight: an operator serving a
+German market writes their event descriptions in German, and a German visitor then gets a
+coherent page. The mismatch only shows for an operator serving several languages at once,
+which per-locale content overrides would solve if it is ever asked for.
+
+### How a locale is resolved
+
+Per request, in `internal/handler/i18n.go`, highest priority first:
+
+1. `?lang=<code>` override (the footer language switcher sets this)
+2. `Accept-Language`, negotiated with `golang.org/x/text/language`'s matcher - so
+   `de-AT` resolves to `de`, and a list like `ja;q=0.9,es;q=0.5` falls through to Spanish
+   rather than giving up
+3. The operator's **fallback language** setting (Settings → Branding), used only when
+   *nothing* matched. `confidence == language.No` is what separates "no match" from a
+   weak-but-real match; a real match is never overridden by the fallback
+4. English
+
+The booker's resolved locale is **persisted on the booking** (`booking_attendees.locale`,
+migration 00051) so that later emails - reminders, cancellations, the reschedule notice -
+arrive in the language they booked in, not the language of whoever triggered the send.
+Host-facing sends deliberately pass a nil locale and stay English.
+
+Pages that vary on this send `Vary: Accept-Language, Cookie`; the public event-type JSON
+endpoint adds it with `Header().Add` so it does not clobber the CORS middleware's
+`Vary: Origin`.
+
+### Adding a language is adding one file
+
+`internal/i18n/locales/<code>.json`. That is the whole change - no Go, no template, no
+frontend edit. `init()` globs the directory, and the language switcher, the fallback-language
+dropdown, and the public API payload all read `SupportedLocales()`. This was verified by
+adding six locales at once without touching code.
+
+Go's stdlib has **no locale data**, so anything a `time` format string would normally give
+you is a key in the JSON instead (`internal/i18n/datetime.go`): `date_format`, `clock_format`,
+`dow_short_*`, `month_short_*`. That also makes per-language date shape expressible - German
+carries its own `date_format` for the ordinal period ("Mo, 22. Jun 2026").
+
+Three guards police a new file (`go test ./internal/i18n/`):
+
+- `TestAllLocalesHaveTheSameKeys` - no missing or unknown keys.
+- `TestAllLocalesHaveMatchingFormatVerbs` - uses `fmt` **itself** as the oracle, so a locale
+  that drops or reorders a `%s`/`%d` fails the test instead of emitting `%!(EXTRA…)` to a
+  booker. An earlier hand-rolled parser for this was unsound (it missed indexed verbs like
+  `%+[2]d`); do not reintroduce one.
+- `TestDateTablesMatchCLDR` - shells out to `node` and compares every `dow_short_*`,
+  `month_short_*` and `clock_format` against `Intl`, skipping if node is absent. This is the
+  only check that can tell `dim.` from `dim`, or catch a 12h/24h call that is wrong for the
+  language. It caught a real drift on first run (`es` had `sep` where CLDR says `sept`).
+
+Two traps:
+
+- **Filenames must be BCP-47 canonical.** `pt-br.json` is wrong - `language.Make("pt-br")`
+  canonicalizes to `pt-BR`, and the mismatch used to return a nil `*Locale` for an exact
+  match. Fixed and regression-tested, but name the file correctly anyway.
+- **Tests use `ja`/`ko` to mean "a language we do not ship."** If you ever add one,
+  `assertUnsupported` / `requireUnsupported` fail loudly and name the fixture to change.
+  That guard exists because `fr`/`de` used to play that role and silently became wrong the
+  day those languages shipped.
+
+### Translation quality
+
+**Every non-English locale is an LLM draft with no native review.** The structure is
+verified by the guards above; the *wording* is not. Register was chosen per language rather
+than uniformly (`fr`/`de`/`it`/`pt` formal, `es`/`nl`/`sv` informal), matching what business
+booking pages do in each market, but that too is unreviewed. Corrections via PR are welcome
+and are the expected path to improving them. Do not describe a language as production-quality
+in marketing copy without a speaker reading the booking page, the manage page, and the four
+emails end to end.
+
+### Known limitations
+
+- **Plurals are 2-form only** (`duration_hour_one` / `duration_hours`). Languages with
+  richer CLDR plural categories (Polish, Russian, Arabic) need a real plural-rule selector
+  before they can ship correctly.
+- **`clock_format` is a boolean, not a pattern**, so "14:30 Uhr" or "14時30分" are not
+  expressible - only 12h vs 24h.
+- **No RTL layout support** (declared out of scope).
+- **No automated visual harness** for the Go-template surfaces, so per-language layout
+  checks (long German compounds overflowing buttons) are manual, desktop and mobile.
+
+---
+
+## 24. Changelog
 
 This doc tracks the code; when you change behaviour in an area above, update the
 matching section in the same PR. Notable rounds:
+
+- **2026-08-20 — Multi-language public surfaces (8 locales).** Booking page, manage page,
+  embed widget, the four emails, the calendar invite and the booking assistant now render in
+  `en es fr de it pt nl sv` (new §23). Locale is negotiated from `Accept-Language` with a
+  `?lang=` switcher and an operator fallback setting, and is **stored on the booking**
+  (migration 00051) so reminders match the language the booker used. Adding a language is
+  adding one JSON file - proven by adding six at once with no code change. Go has no locale
+  date data, so the date tables are keys in the JSON, cross-checked against `Intl`/CLDR by a
+  node-backed test. **Not translated: the admin SPA and the LiveKit room** (§18).
 
 - **2026-06-30 — Cookie consent + legal links + shared book/manage partials.** Native
   GA4/GTM (Settings → Tracking) is now consent-gated on book.html **and** manage.html:

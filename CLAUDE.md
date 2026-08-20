@@ -114,12 +114,16 @@ client SDK**, not Svelte.
   pure logic (host/consent state machines) into testable functions. A dedicated tiny Svelte build
   is the last resort, not the first.
 
-## Languages (i18n) — data-driven, adding one touches no code
+## Languages (i18n) - data-driven, adding one touches no code
 
 Public surfaces (book.html, manage.html, embed.js, the four emails, calendar invite
-title/description) are translated; the **admin SPA is not**. Locale is resolved per request
-from `Accept-Language` + a `?lang=` override + the operator's fallback setting
-(`internal/handler/i18n.go`). Ships `en es fr de it pt nl sv`.
+title/description) are translated. **NOT translated: the admin SPA, the LiveKit room**
+(`livekit-room.html`/`.js`, ~45 hardcoded strings - it has its own asset pipeline and shares
+no string plumbing with the Go templates), and admin-authored content (event names,
+descriptions, questions, custom email copy). Locale is resolved per request from
+`Accept-Language` + a `?lang=` override + the operator's fallback setting
+(`internal/handler/i18n.go`), and the booker's locale is stored on the booking so later
+reminders match. Ships `en es fr de it pt nl sv`. Full detail: ARCHITECTURE §23.
 
 **Adding a locale = adding `internal/i18n/locales/<code>.json`.** Nothing else. `init()`
 globs the directory; the switcher, the fallback dropdown and the public API payload all read
@@ -130,7 +134,7 @@ globs the directory; the switcher, the fallback dropdown and the public API payl
 - Three guards police a new file: same-keys, printf-verb parity (uses `fmt` as the oracle),
   and `TestDateTablesMatchCLDR`, which cross-checks the date tables against `Intl` via node.
   Run `go test ./internal/i18n/`.
-- Tests use `ja`/`ko` to mean "a language we don't ship" — if you add either,
+- Tests use `ja`/`ko` to mean "a language we don't ship". If you add either,
   `assertUnsupported`/`requireUnsupported` fail loudly and tell you what to change.
 - **Every non-English locale is an LLM draft with no native review.** Structure is verified;
   wording is not. Say so before anyone markets a language.

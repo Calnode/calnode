@@ -11,6 +11,40 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
 
 ## [Unreleased]
 
+### Added
+- **Multi-language public surfaces (8 locales).** The booking page, the manage
+  (reschedule/cancel) page, the embed widget, all four emails, the calendar invite
+  title/description, and the conversational booking assistant are now translated into
+  **English, Spanish, French, German, Italian, Portuguese, Dutch and Swedish**. The
+  locale is negotiated from `Accept-Language` (so `de-AT` resolves to `de`), overridable
+  by a footer language switcher (`?lang=`), with an operator-configurable fallback
+  language in Settings → Branding for visitors whose language is not shipped.
+- **The booker's locale is stored on the booking** (migration 00051), so later emails -
+  reminders, cancellations, reschedule notices - arrive in the language they booked in
+  rather than the language of whoever triggered the send. Host-facing sends stay English.
+- **Editable assistant greeting** (migration 00052) and **fallback-language setting**
+  (migration 00053).
+- Adding a language requires **no code change** - dropping
+  `internal/i18n/locales/<code>.json` in place is the entire task; the switcher, the
+  fallback dropdown and the public API payload all read `SupportedLocales()`. See
+  `docs/ARCHITECTURE.md` §23.
+
+### Fixed
+- Paid (Stripe) bookings always sent English email regardless of the language the booker
+  used, because the confirmation query did not select the stored attendee locale.
+- **Required checkboxes were not enforced.** A custom question of type `checkbox` marked
+  required could be submitted unticked, on both the booking page and the embed widget.
+  Now enforced client- and server-side, and the stored answer is canonicalised to
+  `yes`/`no` instead of varying by surface.
+- The public event-type endpoint returned language-dependent content without a `Vary`
+  header, so a shared cache could serve one visitor's language to another.
+
+### Notes
+- **Non-English translations are LLM drafts without native review.** Structure is
+  verified in CI (key parity, printf-verb parity, and a CLDR cross-check of the date
+  tables against `Intl`); wording is not. Corrections via PR are welcome.
+- The **built-in video room and the admin UI remain English-only.**
+
 ## [0.2.3] - 2026-08-18
 
 ### Security

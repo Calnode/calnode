@@ -72,6 +72,38 @@ Add a goose SQL file in `internal/db/migrations/` with the next number
 SQLite can't easily drop columns, so `ADD COLUMN` is reversible-by-convention only —
 prefer additive, nullable/defaulted columns.
 
+## Translations
+
+Calnode ships 8 locales (`en es fr de it pt nl sv`) across the booker-facing surfaces:
+booking page, manage/reschedule page, embed widget, the four emails, and the calendar
+invite. The admin UI and the built-in video room are English-only.
+
+**Translation PRs are very welcome** - both new languages and corrections to existing
+ones. **Every non-English locale is currently a machine draft with no native review**, so
+if you speak one of them, fixes are genuinely valuable and will be merged readily. Small,
+single-language PRs are easier to review than sweeping ones.
+
+**Adding a language is adding one file:** `internal/i18n/locales/<code>.json`. No Go,
+template, or frontend change is needed - `init()` globs the directory, and the language
+switcher, the fallback-language setting and the public API payload all read
+`SupportedLocales()`.
+
+1. Copy `internal/i18n/locales/en.json` and translate the values. Keep every key, keep
+   the key order (it keeps diffs readable), and keep printf verbs (`%s`, `%d`, `%q`)
+   intact - reordering them is fine with indexed verbs (`%[2]s`), dropping them is not.
+2. Name the file **BCP-47 canonical**: `pt-BR.json`, never `pt-br.json`.
+3. `dow_short_*`, `month_short_*`, `date_format` and `clock_format` are data, not code -
+   Go has no locale date tables. Match CLDR; the test below checks you against `Intl`.
+4. Run `go test ./internal/i18n/`. Three guards will tell you exactly what is wrong:
+   key parity, printf-verb parity (with `fmt` as the oracle), and a CLDR cross-check of
+   the date tables (needs `node` on PATH; skipped if absent).
+5. Eyeball the result: `go run ./cmd/calnode`, then
+   `http://localhost:3000/book/<slug>?lang=<code>` and the manage page. Long words
+   overflowing buttons is the usual surprise; check mobile width too.
+
+Background and the full list of limitations (2-form plurals, no RTL) are in
+[ARCHITECTURE.md §23](docs/ARCHITECTURE.md).
+
 ## Conventions
 
 - **`gofmt`** all Go; standard library style. The codebase favours small, clear
