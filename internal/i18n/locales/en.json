@@ -27,7 +27,6 @@
   "loading": "Loading…",
   "no_available_times": "No available times.",
   "could_not_load_times": "Could not load times. Please try again.",
-  "could_not_load_booking_page": "Could not load this booking page.",
   "times_shown_in": "Times shown in ",
   "payment_received": "Payment received",
   "payment_confirmed_sub": "Your booking is confirmed — a confirmation email is on its way.",
@@ -35,6 +34,9 @@
   "assistant_disclosure": "You're chatting with an automated assistant, not a person.",
   "other": "other",
   "others": "others",
+  "list_separator": ", ",
+  "list_conjunction": " & ",
+  "language_switcher_aria": "Language",
 
   "cookie_consent_aria": "Cookie consent",
   "cookie_text": "We use analytics cookies to understand how this booking page is used — set only if you accept.",
@@ -144,5 +146,18 @@
   "email_booking_with": "Booking with %s",
   "email_manage_this_booking": "Manage this booking:",
   "calendar_event_summary": "%s with %s",
-  "calendar_event_booking_id": "Booking ID: %s"
+  "calendar_event_booking_id": "Booking ID: %s",
+
+  "err_booking_limit": "You already have the maximum number of upcoming bookings for this event. Please cancel an existing booking or wait until one has passed before booking again.",
+  "err_email_throttled": "Too many bookings from this email address recently. Please try again later.",
+  "err_rate_limited": "rate limit exceeded",
+  "err_required_field": "required field %q is missing",
+  "err_invalid_option": "invalid option for %[1]q: %[2]q is not an allowed choice",
+
+  "assistant_unavailable": "The booking assistant isn't available right now — please pick a time from the calendar below.",
+  "assistant_trouble": "Sorry — I'm having trouble right now. Please pick a time from the calendar below.",
+  "assistant_iteration_cap": "Let's keep it simple — please pick a time from the calendar below.",
+  "assistant_status_slots": "Checking availability…",
+  "assistant_status_book": "Booking…",
+  "assistant_status_working": "Working…"
 }

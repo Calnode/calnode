@@ -111,7 +111,7 @@
        constructor there — `new URL(...)` silently threw "URL is not a constructor"
        and the switcher did nothing. A normal <script> has no such scope chain. */}}
   {{if gt (len (supportedLocales)) 1}}
-  <select id="lang-select" class="lang-select" aria-label="Language">
+  <select id="lang-select" class="lang-select" aria-label="{{call .T "language_switcher_aria"}}">
     {{range supportedLocales}}<option value="{{.Code}}"{{if eq .Code $.Locale}} selected{{end}}>{{.Name}}</option>{{end}}
   </select>
   <script>

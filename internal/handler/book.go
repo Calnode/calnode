@@ -147,7 +147,11 @@ func (h *Handler) displayHosts(ctx context.Context, etID, mode string) []hostDis
 	return out
 }
 
-// hostsLabel renders a group host list as "Alex, Sam & 2 others" (first names).
+// hostsLabel renders a group host list as "Alex, Sam & 2 others" (first names), or
+// "Alex, Sam y 2 más" in Spanish. The separator and conjunction are locale keys, not
+// hardcoded punctuation — translating only the trailing noun (as this used to) produces
+// a half-English "Alex, Sam & 2 otros", which reads worse than leaving it all English.
+// Mirrored in embed.js's own hostsLabel; keep the two in step.
 func hostsLabel(hosts []hostDisplay, loc *i18n.Locale) string {
 	first := func(name string) string {
 		for i, r := range name {
@@ -157,6 +161,7 @@ func hostsLabel(hosts []hostDisplay, loc *i18n.Locale) string {
 		}
 		return name
 	}
+	sep, and := loc.T("list_separator"), loc.T("list_conjunction")
 	n := len(hosts)
 	switch n {
 	case 0:
@@ -164,16 +169,16 @@ func hostsLabel(hosts []hostDisplay, loc *i18n.Locale) string {
 	case 1:
 		return hosts[0].Name
 	case 2:
-		return first(hosts[0].Name) + " & " + first(hosts[1].Name)
+		return first(hosts[0].Name) + and + first(hosts[1].Name)
 	case 3:
-		return first(hosts[0].Name) + ", " + first(hosts[1].Name) + " & " + first(hosts[2].Name)
+		return first(hosts[0].Name) + sep + first(hosts[1].Name) + and + first(hosts[2].Name)
 	default:
 		unit := loc.T("others")
 		if n-3 == 1 {
 			unit = loc.T("other")
 		}
-		return fmt.Sprintf("%s, %s, %s & %d %s",
-			first(hosts[0].Name), first(hosts[1].Name), first(hosts[2].Name), n-3, unit)
+		return fmt.Sprintf("%s%s%s%s%s%s%d %s",
+			first(hosts[0].Name), sep, first(hosts[1].Name), sep, first(hosts[2].Name), and, n-3, unit)
 	}
 }
 
@@ -345,6 +350,12 @@ func (h *Handler) PublicEventType(w http.ResponseWriter, r *http.Request) {
 		"name":               name,
 		"description":        description,
 		"duration_minutes":   durMins,
+		// duration_label is the translated, human form ("30 min", "1 hour", "1 hora") —
+		// the same server-computed label book.html/manage.html render, so the widget
+		// doesn't have to rebuild it from duration_minutes (it used to hardcode " min",
+		// which both skipped translation and disagreed with the pages for >= 60 min).
+		// duration_minutes stays for clients that want the raw number.
+		"duration_label":     durationLabel(durMins, loc),
 		"location_type":      locType,
 		"location_label":     locationLabel(locType, locValue, loc),
 		"max_future_days":    maxDays,

@@ -27,14 +27,16 @@
   "loading": "Cargando…",
   "no_available_times": "No hay horarios disponibles.",
   "could_not_load_times": "No se pudieron cargar los horarios. Inténtalo de nuevo.",
-  "could_not_load_booking_page": "No se pudo cargar esta página de reservas.",
   "times_shown_in": "Horarios mostrados en ",
   "payment_received": "Pago recibido",
   "payment_confirmed_sub": "Tu reserva está confirmada; recibirás un correo de confirmación en breve.",
   "assistant_error": "Lo sentimos, algo salió mal. Usa el calendario de abajo.",
   "assistant_disclosure": "Estás chateando con un asistente automatizado, no con una persona.",
-  "other": "otro",
-  "others": "otros",
+  "other": "más",
+  "others": "más",
+  "list_separator": ", ",
+  "list_conjunction": " y ",
+  "language_switcher_aria": "Idioma",
 
   "cookie_consent_aria": "Consentimiento de cookies",
   "cookie_text": "Usamos cookies analíticas para entender cómo se usa esta página de reservas; solo se activan si aceptas.",
@@ -144,5 +146,18 @@
   "email_booking_with": "Reserva con %s",
   "email_manage_this_booking": "Gestionar esta reserva:",
   "calendar_event_summary": "%s con %s",
-  "calendar_event_booking_id": "ID de la reserva: %s"
+  "calendar_event_booking_id": "ID de la reserva: %s",
+
+  "err_booking_limit": "Ya tienes el número máximo de reservas próximas para este evento. Cancela una reserva existente o espera a que pase alguna antes de volver a reservar.",
+  "err_email_throttled": "Demasiadas reservas desde esta dirección de correo recientemente. Inténtalo de nuevo más tarde.",
+  "err_rate_limited": "límite de solicitudes excedido",
+  "err_required_field": "falta el campo obligatorio %q",
+  "err_invalid_option": "opción no válida para %[1]q: %[2]q no es una opción permitida",
+
+  "assistant_unavailable": "El asistente de reservas no está disponible en este momento. Elige un horario en el calendario de abajo.",
+  "assistant_trouble": "Lo sentimos, estamos teniendo problemas. Elige un horario en el calendario de abajo.",
+  "assistant_iteration_cap": "Vamos a simplificarlo: elige un horario en el calendario de abajo.",
+  "assistant_status_slots": "Comprobando disponibilidad…",
+  "assistant_status_book": "Reservando…",
+  "assistant_status_working": "Trabajando…"
 }

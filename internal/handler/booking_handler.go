@@ -467,7 +467,9 @@ func (h *Handler) createBookingForSlug(ctx context.Context, slug string, startAt
 	if et.PriceCents > 0 {
 		return nil, errPaymentRequired
 	}
-	answers, err := h.validateAnswersCore(ctx, et.ID, rawAnswers)
+	// The attendee's own locale (set by the assistant from the page's resolved language;
+	// empty for MCP callers, which i18n.Get turns into nil → English).
+	answers, err := h.validateAnswersCore(ctx, et.ID, rawAnswers, i18n.Get(organizer.Locale))
 	if err != nil {
 		return nil, err
 	}
@@ -689,6 +691,12 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 		}()
 	}
 
+	// Locale for the booker-facing error messages below. Only errors a real booker can
+	// hit through the UI are translated (limit reached, throttled, intake validation);
+	// malformed-request messages ("start_at must be RFC3339") stay English, since those
+	// are reachable only by a broken client and read as API diagnostics, not UI copy.
+	loc := i18n.Resolve("", req.Language)
+
 	if req.EventTypeSlug == "" || req.StartAt == "" || req.Name == "" || req.Email == "" {
 		h.writeError(w, http.StatusBadRequest, "event_type_slug, start_at, name, and email are required")
 		return
@@ -724,14 +732,13 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 			req.Email, windowStart).Scan(&recent); err != nil {
 			h.logger.ErrorContext(r.Context(), "create booking: per-email throttle", "error", err)
 		} else if recent >= maxBookingsPerEmailPerHour {
-			h.writeError(w, http.StatusTooManyRequests,
-				"Too many bookings from this email address recently. Please try again later.")
+			h.writeError(w, http.StatusTooManyRequests, loc.T("err_email_throttled"))
 			return
 		}
 	}
 
 	// Validate intake question answers.
-	answers, err := h.validateAnswers(w, r, et.ID, req.Answers)
+	answers, err := h.validateAnswers(w, r, et.ID, loc, req.Answers)
 	if err != nil {
 		return // validateAnswers already wrote the error response
 	}
@@ -789,8 +796,7 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 		// Not 409 — the booking page treats 409 as "slot taken". Use 422 so its
 		// generic error branch surfaces this message verbatim to the invitee.
 		if errors.Is(err, booking.ErrBookingLimitReached) {
-			h.writeError(w, http.StatusUnprocessableEntity,
-				"You already have the maximum number of upcoming bookings for this event. Please cancel an existing booking or wait until one has passed before booking again.")
+			h.writeError(w, http.StatusUnprocessableEntity, loc.T("err_booking_limit"))
 			return
 		}
 		// A question was deleted between validateAnswers and the INSERT — return a

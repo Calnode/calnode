@@ -86,15 +86,19 @@
   function addMonths(d, n) { return new Date(d.getFullYear(), d.getMonth() + n, 1); }
   function mondayIndex(d) { return (d.getDay() + 6) % 7; }
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
-  // Group host label: "Alex", "Alex & Sam", "Alex, Sam & Jo", "A, B, C & 2 others".
+  // Group host label: "Alex", "Alex & Sam", "Alex, Sam & Jo", "A, B, C & 2 others" — or
+  // "Alex, Sam y 2 más" in Spanish. Separator and conjunction come from the locale, not
+  // hardcoded punctuation; translating only the trailing noun gives a half-English
+  // "Alex, Sam & 2 otros". Mirrors hostsLabel in book.go — keep the two in step.
   function hostsLabel(hosts, i18n) {
     function fn(h) { return String(h.name || '').split(' ')[0]; }
+    var sep = t(i18n, 'list_separator'), and = t(i18n, 'list_conjunction');
     var n = hosts.length;
     if (n === 0) return '';
     if (n === 1) return hosts[0].name || '';
-    if (n === 2) return fn(hosts[0]) + ' & ' + fn(hosts[1]);
-    if (n === 3) return fn(hosts[0]) + ', ' + fn(hosts[1]) + ' & ' + fn(hosts[2]);
-    return fn(hosts[0]) + ', ' + fn(hosts[1]) + ', ' + fn(hosts[2]) + ' & ' + (n - 3) + ' ' + (n - 3 === 1 ? t(i18n, 'other') : t(i18n, 'others'));
+    if (n === 2) return fn(hosts[0]) + and + fn(hosts[1]);
+    if (n === 3) return fn(hosts[0]) + sep + fn(hosts[1]) + and + fn(hosts[2]);
+    return fn(hosts[0]) + sep + fn(hosts[1]) + sep + fn(hosts[2]) + and + (n - 3) + ' ' + (n - 3 === 1 ? t(i18n, 'other') : t(i18n, 'others'));
   }
   function money(cents, cur) {
     var amt = (cents / 100).toFixed(2);
@@ -264,7 +268,7 @@
       // to line up under the title. On desktop these wrappers are plain blocks, so the
       // vertical column is unchanged.
       var titleKids = [];
-      var label = hostsLabel(hosts);
+      var label = hostsLabel(hosts, this.i18n);
       if (label) titleKids.push(el('p', { class: 'host-name', text: label }));
       titleKids.push(el('h1', { class: 'event-name', text: this.info.name }));
       var head = el('div', { class: 'info-head' }, [
@@ -272,7 +276,7 @@
         el('div', { class: 'titlewrap' }, titleKids),
       ]);
       var meta = el('ul', { class: 'meta' }, [
-        el('li', { html: SVG_CLOCK + ' ' + this.info.duration_minutes + ' min' }),
+        el('li', { html: SVG_CLOCK + ' ' + esc(this.info.duration_label || (this.info.duration_minutes + ' min')) }),
         this.info.location_label ? el('li', { html: SVG_PIN + ' ' + esc(this.info.location_label) }) : null,
         this.info.price_cents > 0 ? el('li', { html: SVG_CARD + ' ' + money(this.info.price_cents, this.info.currency) }) : null,
       ]);
@@ -495,10 +499,15 @@
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ event_type_slug: self.slug, start_at: slot.start, name: name.value.trim(), email: email.value.trim().toLowerCase(), timezone: TZ, language: self.locale, company: hp.value, answers: answers }),
         }).then(function (r) {
-          return r.json().then(function (data) { return { ok: r.ok, data: data }; });
+          return r.json().then(function (data) { return { ok: r.ok, status: r.status, data: data }; });
         }).then(function (res) {
-          // res.data.error (when present) is a raw message from the booking API, not
-          // translated yet — see the matching gap noted in book.html.
+          // 409 = the slot went while the form was open. Substitute our own translated
+          // copy, matching book.html/manage.html — this is the most common booking
+          // failure, and it used to surface the API's raw English message here.
+          if (res.status === 409) throw new Error(t(self.i18n, 'slot_taken_error'));
+          // Other failures: the API's message is translated server-side from the
+          // "language" field sent above (booker-reachable errors only — malformed-request
+          // messages stay English for API consumers), so showing it directly is correct.
           if (!res.ok) throw new Error(res.data && res.data.error ? res.data.error : t(self.i18n, 'booking_failed_error'));
           // Paid event types: the server returns a Stripe Checkout URL. Send the visitor
           // there (top window, so it isn't trapped in the host page's frame).
@@ -590,10 +599,18 @@
     widget.setAttribute('slug', slug);
     widget.setAttribute('data-modal', '');
     if (lang) widget.setAttribute('lang', lang);
-    // Not translated: this popup-chrome close button is created synchronously, before
-    // the inner <calnode-booking> has loaded and resolved a locale (same bootstrapping
-    // gap as the widget's own initial "Loading…" state).
+    // This popup-chrome close button is created synchronously, before the inner
+    // <calnode-booking> has fetched /public and resolved a locale, so it starts English.
+    // The widget sets its own lang attribute once loaded (and has populated .i18n by
+    // then — it assigns i18n first), so re-label off that mutation: a screen reader on a
+    // Spanish booking then announces "Cerrar" rather than "Close". If the widget never
+    // loads, the observer simply never fires and the English label stands.
     var close = el('button', { class: 'x', html: SVG_X, 'aria-label': 'Close' });
+    new MutationObserver(function (_, obs) {
+      if (!widget.i18n) return;
+      close.setAttribute('aria-label', t(widget.i18n, 'close'));
+      obs.disconnect();
+    }).observe(widget, { attributes: true, attributeFilter: ['lang'] });
     var overlay = el('div', { class: 'ovl' }, [el('div', { class: 'wrap' }, [close, widget])]);
     function shut() { hostEl.remove(); document.removeEventListener('keydown', onKey); }
     function onKey(e) { if (e.key === 'Escape') shut(); }

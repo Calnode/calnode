@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/calnode/calnode/internal/booking"
+	"github.com/calnode/calnode/internal/i18n"
 	"github.com/calnode/calnode/internal/uid"
 )
 
@@ -444,7 +445,7 @@ func (e *answerError) Error() string { return e.msg }
 
 // validateAnswers is the HTTP wrapper: it runs validateAnswersCore and translates the
 // result into a status code (400 for client-fault answer errors, 500 otherwise).
-func (h *Handler) validateAnswers(w http.ResponseWriter, r *http.Request, eventTypeID string, rawAnswers []struct {
+func (h *Handler) validateAnswers(w http.ResponseWriter, r *http.Request, eventTypeID string, loc *i18n.Locale, rawAnswers []struct {
 	QuestionID string `json:"question_id"`
 	Value      string `json:"value"`
 }) ([]booking.Answer, error) {
@@ -452,7 +453,7 @@ func (h *Handler) validateAnswers(w http.ResponseWriter, r *http.Request, eventT
 	for i, a := range rawAnswers {
 		in[i] = booking.Answer{QuestionID: a.QuestionID, Value: a.Value}
 	}
-	out, err := h.validateAnswersCore(r.Context(), eventTypeID, in)
+	out, err := h.validateAnswersCore(r.Context(), eventTypeID, in, loc)
 	if err != nil {
 		var ae *answerError
 		if errors.As(err, &ae) {
@@ -470,7 +471,12 @@ func (h *Handler) validateAnswers(w http.ResponseWriter, r *http.Request, eventT
 // questions and returns the canonical answer slice. Shared by the REST booking handler
 // and the MCP create_booking tool — no HTTP coupling. Client-fault problems are
 // returned as *answerError; DB failures as plain wrapped errors.
-func (h *Handler) validateAnswersCore(ctx context.Context, eventTypeID string, rawAnswers []booking.Answer) ([]booking.Answer, error) {
+// loc translates the two client-fault messages a real booker can actually trigger
+// (required field missing, invalid select option). The other two (unknown/duplicate
+// question_id) are only reachable from a malformed client, so they stay English as API
+// diagnostics. A nil loc is fine — i18n.Locale.T falls back to English — which is what
+// the MCP tool path passes when the caller has no browser locale.
+func (h *Handler) validateAnswersCore(ctx context.Context, eventTypeID string, rawAnswers []booking.Answer, loc *i18n.Locale) ([]booking.Answer, error) {
 	// Load all questions for this event type (label included for error messages).
 	rows, err := h.db.QueryContext(ctx, `
 		SELECT id, label, type, options, required
@@ -522,7 +528,7 @@ func (h *Handler) validateAnswersCore(ctx context.Context, eventTypeID string, r
 	for _, q := range questions {
 		val, answered := submitted[q.id]
 		if q.required && (!answered || strings.TrimSpace(val) == "") {
-			return nil, &answerError{fmt.Sprintf("required field %q is missing", q.label)}
+			return nil, &answerError{loc.Tf("err_required_field", q.label)}
 		}
 		if q.qtype == "select" && answered && val != "" {
 			valid := false
@@ -533,7 +539,7 @@ func (h *Handler) validateAnswersCore(ctx context.Context, eventTypeID string, r
 				}
 			}
 			if !valid {
-				return nil, &answerError{fmt.Sprintf("invalid option for %q: %q is not an allowed choice", q.label, val)}
+				return nil, &answerError{loc.Tf("err_invalid_option", q.label, val)}
 			}
 		}
 		if answered {

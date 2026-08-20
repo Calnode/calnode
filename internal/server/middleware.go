@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net"
@@ -12,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/calnode/calnode/internal/i18n"
 )
 
 type contextKey string
@@ -177,7 +180,14 @@ func RateLimit(limit int, period time.Duration) func(http.HandlerFunc) http.Hand
 				w.Header().Set("Retry-After", fmt.Sprintf("%d", int(period.Seconds())))
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusTooManyRequests)
-				fmt.Fprint(w, `{"error":"rate limit exceeded"}`)
+				// The public booking form renders this message verbatim in its error slot,
+				// so it's booker-facing. Middleware has no DB access (hence no operator
+				// fallback-locale) and the booking POST carries no ?lang=, so this resolves
+				// from Accept-Language alone — a slightly weaker signal than the pages use,
+				// but it beats unconditional English on an abuse path.
+				msg := i18n.Resolve(r.Header.Get("Accept-Language"), r.URL.Query().Get("lang")).T("err_rate_limited")
+				b, _ := json.Marshal(map[string]string{"error": msg})
+				_, _ = w.Write(b)
 				return
 			}
 			next(w, r)

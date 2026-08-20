@@ -248,3 +248,119 @@ func TestAllLocalesHaveTheSameKeys(t *testing.T) {
 		}
 	}
 }
+
+// formatVerbs extracts a string's printf verbs in order, normalising indexed verbs
+// ("%[2]d") to (index, verb) pairs so a reordered translation still compares equal to the
+// English original by argument identity rather than by position. Literal "%%" is skipped.
+// Returns a map of argument index -> verb letter; index 0 means "positional" (unindexed).
+func formatVerbs(s string) map[int]byte {
+	out := map[int]byte{}
+	nextPositional := 1
+	for i := 0; i < len(s); i++ {
+		if s[i] != '%' || i+1 >= len(s) {
+			continue
+		}
+		j := i + 1
+		if s[j] == '%' { // escaped literal percent, not a verb
+			i = j
+			continue
+		}
+		idx := 0
+		if s[j] == '[' { // explicit argument index, e.g. %[2]d
+			k := j + 1
+			for k < len(s) && s[k] >= '0' && s[k] <= '9' {
+				idx = idx*10 + int(s[k]-'0')
+				k++
+			}
+			if k >= len(s) || s[k] != ']' {
+				continue // malformed; leave it to Sprintf to complain
+			}
+			j = k + 1
+		}
+		// Skip flags/width/precision to reach the verb letter.
+		for j < len(s) && (s[j] == '+' || s[j] == '-' || s[j] == '#' || s[j] == ' ' ||
+			s[j] == '0' || s[j] == '.' || (s[j] >= '1' && s[j] <= '9')) {
+			j++
+		}
+		if j >= len(s) {
+			continue
+		}
+		if idx == 0 {
+			idx = nextPositional
+			nextPositional++
+		} else {
+			nextPositional = idx + 1
+		}
+		out[idx] = s[j]
+		i = j
+	}
+	return out
+}
+
+// TestAllLocalesHaveMatchingFormatVerbs is the guard that key-parity alone doesn't give.
+// Several keys are consumed via Tf/Sprintf (email subjects, the greeting, the booking
+// reference, calendar event titles, duration labels, date_format). If a translation's
+// verbs drift from English — wrong count, wrong type, wrong index — Sprintf doesn't error,
+// it silently emits "%!d(MISSING)" / "%!s(int=22)" / "%!(EXTRA string=…)" straight into a
+// confirmation email subject or a Google Calendar event title. go vet can't catch it
+// (Sprintf's format arg isn't constant, and template "{{.Tf …}}" calls are invisible to
+// it), and nothing else in the tree checks it.
+func TestAllLocalesHaveMatchingFormatVerbs(t *testing.T) {
+	en := Default()
+	for code, l := range locales {
+		if code == DefaultCode {
+			continue
+		}
+		for k, enVal := range en.strings {
+			locVal, ok := l.strings[k]
+			if !ok {
+				continue // key parity is TestAllLocalesHaveTheSameKeys' job
+			}
+			enVerbs, locVerbs := formatVerbs(enVal), formatVerbs(locVal)
+			if len(enVerbs) != len(locVerbs) {
+				t.Errorf("locale %q key %q: %d format verb(s) vs English's %d\n  en: %q\n  %s: %q",
+					code, k, len(locVerbs), len(enVerbs), enVal, code, locVal)
+				continue
+			}
+			for idx, enVerb := range enVerbs {
+				locVerb, ok := locVerbs[idx]
+				if !ok {
+					t.Errorf("locale %q key %q: missing argument %d (English uses %%%c for it)\n  en: %q\n  %s: %q",
+						code, k, idx, enVerb, enVal, code, locVal)
+					continue
+				}
+				if locVerb != enVerb {
+					t.Errorf("locale %q key %q: argument %d is %%%c but English uses %%%c (type mismatch → Sprintf corruption)\n  en: %q\n  %s: %q",
+						code, k, idx, locVerb, enVerb, enVal, code, locVal)
+				}
+			}
+		}
+	}
+}
+
+func TestFormatVerbs(t *testing.T) {
+	cases := []struct {
+		in   string
+		want map[int]byte
+	}{
+		{"no verbs here", map[int]byte{}},
+		{"Hi %s,", map[int]byte{1: 's'}},
+		{"%d hr %d min", map[int]byte{1: 'd', 2: 'd'}},
+		{"%[1]s %[2]d %[3]s %[4]d", map[int]byte{1: 's', 2: 'd', 3: 's', 4: 'd'}},
+		{"%[3]s %[2]d, %[4]d", map[int]byte{2: 'd', 3: 's', 4: 'd'}},
+		{"invalid option for %[1]q: %[2]q is not allowed", map[int]byte{1: 'q', 2: 'q'}},
+		{"100%% sure, %s", map[int]byte{1: 's'}}, // escaped percent isn't a verb
+	}
+	for _, c := range cases {
+		got := formatVerbs(c.in)
+		if len(got) != len(c.want) {
+			t.Errorf("formatVerbs(%q) = %v, want %v", c.in, got, c.want)
+			continue
+		}
+		for k, v := range c.want {
+			if got[k] != v {
+				t.Errorf("formatVerbs(%q)[%d] = %q, want %q", c.in, k, got[k], v)
+			}
+		}
+	}
+}

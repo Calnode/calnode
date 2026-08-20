@@ -30,6 +30,25 @@ func TestHostsLabel(t *testing.T) {
 			t.Errorf("hostsLabel(%d hosts) = %q; want %q", len(c.hosts), got, c.want)
 		}
 	}
+
+	// The separator and conjunction must follow the locale too. This used to translate
+	// only the trailing noun, yielding a half-English "Alex, Sam & 2 otros" on Spanish
+	// group/round-robin booking pages.
+	es := i18n.Get("es")
+	esCases := []struct {
+		hosts []hostDisplay
+		want  string
+	}{
+		{mk("Alex Johnson", "Sam Lee"), "Alex y Sam"},
+		{mk("Alex J", "Sam L", "Jo K"), "Alex, Sam y Jo"},
+		{mk("Alex J", "Sam L", "Jo K", "Pat M"), "Alex, Sam, Jo y 1 más"},
+		{mk("A B", "C D", "E F", "G H", "I J"), "A, C, E y 2 más"},
+	}
+	for _, c := range esCases {
+		if got := hostsLabel(c.hosts, es); got != c.want {
+			t.Errorf("hostsLabel(%d hosts, es) = %q; want %q", len(c.hosts), got, c.want)
+		}
+	}
 }
 
 func TestProviderMintsPlatform(t *testing.T) {

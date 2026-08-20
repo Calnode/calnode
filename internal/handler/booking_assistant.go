@@ -109,9 +109,15 @@ func (h *Handler) BookingAssistant(w http.ResponseWriter, r *http.Request) {
 	// one-shot JSON response (back-compat + non-streaming callers).
 	sse := strings.Contains(r.Header.Get("Accept"), "text/event-stream")
 
+	// Resolved up front (before the LLM-off check) because every booker-facing string in
+	// this handler — fallbacks and tool statuses alike — is rendered straight into the
+	// chat log by book.html/embed.js, including on the paths that return before the model
+	// is ever consulted.
+	loc := i18n.Resolve("", req.Language)
+
 	client := h.getLLM()
 	if client == nil {
-		h.assistantFallback(w, sse, "The booking assistant isn't available right now — please pick a time from the calendar below.")
+		h.assistantFallback(w, sse, loc.T("assistant_unavailable"))
 		return
 	}
 
@@ -119,10 +125,9 @@ func (h *Handler) BookingAssistant(w http.ResponseWriter, r *http.Request) {
 	if tz == "" {
 		tz = "UTC"
 	}
-	// Resolved once and reused both for the "reply in %s" prompt directive and, if the
-	// model ends up booking, as the attendee's stored locale (see runAssistantTool's
-	// "book" case) — same value driving both, no reason to resolve it twice.
-	lang := i18n.Resolve("", req.Language).Code
+	// Reused both for the "reply in %s" prompt directive and, if the model ends up
+	// booking, as the attendee's stored locale (see runAssistantTool's "book" case).
+	lang := loc.Code
 	if len(req.Messages) == 0 || len(req.Messages) > assistantMaxMessages {
 		h.writeError(w, http.StatusBadRequest, "conversation is empty or too long")
 		return
@@ -186,9 +191,9 @@ func (h *Handler) BookingAssistant(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			h.logger.ErrorContext(r.Context(), "assistant: llm", "error", err)
 			if sse {
-				sendSSE(map[string]any{"type": "fallback", "text": "Sorry — I'm having trouble right now. Please use the calendar below."})
+				sendSSE(map[string]any{"type": "fallback", "text": loc.T("assistant_trouble")})
 			} else {
-				h.writeJSON(w, http.StatusOK, assistantResponse{Reply: "Sorry — I'm having trouble right now. Please pick a time from the calendar below.", Fallback: true})
+				h.writeJSON(w, http.StatusOK, assistantResponse{Reply: loc.T("assistant_trouble"), Fallback: true})
 			}
 			return
 		}
@@ -207,7 +212,7 @@ func (h *Handler) BookingAssistant(w http.ResponseWriter, r *http.Request) {
 		// Execute the model's tool calls and feed results back.
 		for _, tc := range res.Message.ToolCalls {
 			if sse {
-				sendSSE(map[string]any{"type": "status", "text": assistantToolStatus(tc.Function.Name)})
+				sendSSE(map[string]any{"type": "status", "text": assistantToolStatus(tc.Function.Name, loc)})
 			}
 			result, bk := h.runAssistantTool(r.Context(), slug, tz, lang, tc.Function.Name, tc.Function.Arguments)
 			if bk != nil {
@@ -219,9 +224,9 @@ func (h *Handler) BookingAssistant(w http.ResponseWriter, r *http.Request) {
 
 	// Iteration cap hit without a final message — graceful fallback.
 	if sse {
-		sendSSE(map[string]any{"type": "fallback", "text": "Let's keep it simple — please pick a time from the calendar below."})
+		sendSSE(map[string]any{"type": "fallback", "text": loc.T("assistant_iteration_cap")})
 	} else {
-		h.writeJSON(w, http.StatusOK, assistantResponse{Reply: "Let's keep it simple — please pick a time from the calendar below.", Booking: booked, Fallback: true})
+		h.writeJSON(w, http.StatusOK, assistantResponse{Reply: loc.T("assistant_iteration_cap"), Booking: booked, Fallback: true})
 	}
 }
 
@@ -241,14 +246,14 @@ func (h *Handler) assistantFallback(w http.ResponseWriter, sse bool, msg string)
 }
 
 // assistantToolStatus is a short, booker-facing status shown while a tool runs.
-func assistantToolStatus(name string) string {
+func assistantToolStatus(name string, loc *i18n.Locale) string {
 	switch name {
 	case "find_available_slots":
-		return "Checking availability…"
+		return loc.T("assistant_status_slots")
 	case "book":
-		return "Booking…"
+		return loc.T("assistant_status_book")
 	default:
-		return "Working…"
+		return loc.T("assistant_status_working")
 	}
 }
 
