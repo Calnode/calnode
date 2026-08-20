@@ -11,6 +11,8 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-20
+
 ### Added
 - **Multi-language public surfaces (8 locales).** The booking page, the manage
   (reschedule/cancel) page, the embed widget, all four emails, the calendar invite
