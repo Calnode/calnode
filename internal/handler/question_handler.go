@@ -467,6 +467,19 @@ func (h *Handler) validateAnswers(w http.ResponseWriter, r *http.Request, eventT
 	return out, nil
 }
 
+// checkboxTicked reports whether a submitted checkbox value means "ticked". Liberal in
+// what it accepts — the two booking surfaces have historically sent "yes" and "Yes", and
+// MCP/API callers send whatever a model or integration picked — but validateAnswersCore is
+// strict in what it stores, canonicalising to "yes"/"no". Anything unrecognised (including
+// "no", "false", "") counts as unticked.
+func checkboxTicked(v string) bool {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "yes", "true", "1", "on", "checked":
+		return true
+	}
+	return false
+}
+
 // validateAnswersCore validates submitted intake answers against an event type's
 // questions and returns the canonical answer slice. Shared by the REST booking handler
 // and the MCP create_booking tool — no HTTP coupling. Client-fault problems are
@@ -527,6 +540,29 @@ func (h *Handler) validateAnswersCore(ctx context.Context, eventTypeID string, r
 	var out []booking.Answer
 	for _, q := range questions {
 		val, answered := submitted[q.id]
+
+		// Checkboxes are normalised and required-checked here rather than by the generic
+		// rule below, because "no" is a non-empty answer: the generic rule sees it as
+		// satisfied, so a required consent checkbox ("I agree to the terms") submitted
+		// unticked used to create the booking anyway. Normalising centrally also makes the
+		// stored value identical whichever surface produced it — the booking page sent
+		// "yes"/"no", the embed widget sent "Yes" or omitted the answer entirely, and MCP
+		// callers send whatever the model picked.
+		if q.qtype == "checkbox" {
+			ticked := answered && checkboxTicked(val)
+			if q.required && !ticked {
+				return nil, &answerError{loc.Tf("err_required_checkbox", q.label)}
+			}
+			if answered {
+				canonical := "no"
+				if ticked {
+					canonical = "yes"
+				}
+				out = append(out, booking.Answer{QuestionID: q.id, Value: canonical})
+			}
+			continue
+		}
+
 		if q.required && (!answered || strings.TrimSpace(val) == "") {
 			return nil, &answerError{loc.Tf("err_required_field", q.label)}
 		}

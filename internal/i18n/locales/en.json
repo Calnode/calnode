@@ -151,6 +151,7 @@
   "err_booking_limit": "You already have the maximum number of upcoming bookings for this event. Please cancel an existing booking or wait until one has passed before booking again.",
   "err_email_throttled": "Too many bookings from this email address recently. Please try again later.",
   "err_required_field": "required field %q is missing",
+  "err_required_checkbox": "%q must be checked",
   "err_invalid_option": "invalid option for %[1]q: %[2]q is not an allowed choice",
 
   "assistant_unavailable": "The booking assistant isn't available right now — please pick a time from the calendar below.",

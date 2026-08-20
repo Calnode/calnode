@@ -151,6 +151,7 @@
   "err_booking_limit": "Ya tienes el número máximo de reservas próximas para este evento. Cancela una reserva existente o espera a que pase alguna antes de volver a reservar.",
   "err_email_throttled": "Demasiadas reservas desde esta dirección de correo recientemente. Inténtalo de nuevo más tarde.",
   "err_required_field": "falta el campo obligatorio %q",
+  "err_required_checkbox": "Debes marcar %q",
   "err_invalid_option": "opción no válida para %[1]q: %[2]q no es una opción permitida",
 
   "assistant_unavailable": "El asistente de reservas no está disponible en este momento. Elige un horario en el calendario de abajo.",

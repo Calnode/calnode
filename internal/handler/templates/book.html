@@ -583,7 +583,11 @@ body {
       } else {
         value = input.value.trim();
       }
-      if (el.dataset.required === 'true' && input.type !== 'checkbox' && !value) {
+      // A checkbox's value is 'no' when unticked — non-empty, so `!value` never catches
+      // it. Test .checked instead; this used to skip checkboxes entirely, which let a
+      // required consent box through unticked.
+      const missing = input.type === 'checkbox' ? !input.checked : !value;
+      if (el.dataset.required === 'true' && missing) {
         errEl.textContent = t('required_fields_error');
         return;
       }

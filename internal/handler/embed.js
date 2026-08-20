@@ -470,6 +470,10 @@
         var inp, field;
         if (q.type === 'checkbox') {
           inp = el('input', { type: 'checkbox' });
+          // Native required on a checkbox means "must be ticked" — the browser blocks
+          // submit with its own prompt. This was the only branch not setting it, so a
+          // required consent box relied entirely on the server to reject it.
+          if (q.required) inp.required = true;
           field = el('div', { class: 'field' }, [el('div', { class: 'field-checkbox' }, [inp, el('label', { html: esc(q.label) + (q.required ? ' <span class="required-star">*</span>' : '') })])]);
         } else if (q.type === 'select') {
           inp = el('select', {}, [el('option', { value: '', text: t(self.i18n, 'choose_option') })].concat((q.options || []).map(function (o) { return el('option', { value: o, text: o }); })));
@@ -492,8 +496,14 @@
         cta.disabled = true; cta.textContent = t(self.i18n, 'confirming');
         var answers = [];
         qInputs.forEach(function (x) {
-          var v = x.inp.type === 'checkbox' ? (x.inp.checked ? 'Yes' : '') : x.inp.value;
-          if (v) answers.push({ question_id: x.q.id, value: v });
+          // Checkboxes always send an explicit yes/no, matching book.html — this used to
+          // send 'Yes' or omit the answer entirely, which both diverged from the booking
+          // page's stored value and made "declined" indistinguishable from "never asked".
+          if (x.inp.type === 'checkbox') {
+            answers.push({ question_id: x.q.id, value: x.inp.checked ? 'yes' : 'no' });
+          } else if (x.inp.value) {
+            answers.push({ question_id: x.q.id, value: x.inp.value });
+          }
         });
         fetch(BASE + '/v1/bookings', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
