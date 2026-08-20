@@ -288,13 +288,18 @@ body {
       ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
   function firstName(name) { return String(name).split(' ')[0]; }
+  // Third copy of this label logic (server-side hostsLabel in book.go renders the initial
+  // page; embed.js has its own). This one rewrites it in place once a slot is picked, so
+  // it must agree with book.go or the label visibly changes on selection. Separator and
+  // conjunction come from the locale — see hostsLabel in book.go.
   function hostsLabel(metas) {
+    const sep = t('list_separator'), and = t('list_conjunction');
     const n = metas.length;
     if (n === 0) return '';
     if (n === 1) return metas[0].name;
-    if (n === 2) return `${firstName(metas[0].name)} & ${firstName(metas[1].name)}`;
-    if (n === 3) return `${firstName(metas[0].name)}, ${firstName(metas[1].name)} & ${firstName(metas[2].name)}`;
-    return `${firstName(metas[0].name)}, ${firstName(metas[1].name)}, ${firstName(metas[2].name)} & ${n - 3} ${n - 3 === 1 ? t('other') : t('others')}`;
+    if (n === 2) return `${firstName(metas[0].name)}${and}${firstName(metas[1].name)}`;
+    if (n === 3) return `${firstName(metas[0].name)}${sep}${firstName(metas[1].name)}${and}${firstName(metas[2].name)}`;
+    return `${firstName(metas[0].name)}${sep}${firstName(metas[1].name)}${sep}${firstName(metas[2].name)}${and}${n - 3} ${n - 3 === 1 ? t('other') : t('others')}`;
   }
   function faceHTML(m, z) {
     const inner = m.avatar_url

@@ -76,16 +76,14 @@
   function addMonths(d, n) { return new Date(d.getFullYear(), d.getMonth() + n, 1); }
   function daysInMonth(year, month) { return new Date(year, month + 1, 0).getDate(); }
 
-  // formatHostsLabel — "Alex", "Alex & Sam", "Alex, Sam & Jo", "A, B, C & 2 others". Takes an
-  // array of host objects with a `name` (or plain strings).
-  function formatHostsLabel(hosts) {
-    var names = (hosts || []).map(function (h) { return (h && h.name) || h || ''; }).filter(Boolean);
-    if (names.length === 0) return '';
-    if (names.length === 1) return names[0];
-    if (names.length === 2) return names[0] + ' & ' + names[1];
-    if (names.length === 3) return names[0] + ', ' + names[1] + ' & ' + names[2];
-    return names[0] + ', ' + names[1] + ', ' + names[2] + ' & ' + (names.length - 3) + ' others';
-  }
+  // NOTE: there is deliberately no host-label helper here. Each surface builds its own
+  // (hostsLabel in book.go for the server-rendered page, in book.html's script for the
+  // post-slot-pick rewrite, and in embed.js), because the label needs the resolved locale's
+  // separator/conjunction keys and this module is locale-free by design. A copy used to
+  // live here, exported and unit-tested but called by nothing — which made it a trap: it
+  // hardcoded English " & " and would have silently un-translated the label for anyone who
+  // consolidated onto it. If these are ever unified, the shared version must take the
+  // locale's list_separator/list_conjunction, not hardcode punctuation.
 
   return {
     dateKeyFromISO: dateKeyFromISO,
@@ -98,7 +96,6 @@
     startOfMonth: startOfMonth,
     endOfMonth: endOfMonth,
     addMonths: addMonths,
-    daysInMonth: daysInMonth,
-    formatHostsLabel: formatHostsLabel
+    daysInMonth: daysInMonth
   };
 });

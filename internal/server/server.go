@@ -412,11 +412,11 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	mux.HandleFunc("GET /v1/event-types/{slug}/public", cors(h.PublicEventType))
 
 	// unthrottled is a CPU + API-quota abuse vector on an openly-public page.
-	slotsRL := RateLimit(60, time.Minute)
+	slotsRL := RateLimitPublic(60, time.Minute)
 	mux.HandleFunc("GET /v1/event-types/{slug}/slots", cors(slotsRL(h.GetSlots)))
 
 	// Conversational booking assistant (optional AI; public, anonymous → tighter limit).
-	assistantRL := RateLimit(15, time.Minute)
+	assistantRL := RateLimitPublic(15, time.Minute)
 	mux.HandleFunc("POST /v1/event-types/{slug}/assistant", cors(assistantRL(h.BookingAssistant)))
 	mux.HandleFunc("OPTIONS /v1/event-types/{slug}/assistant", cors(func(http.ResponseWriter, *http.Request) {}))
 
@@ -427,8 +427,8 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	mux.HandleFunc("PATCH /v1/event-types/{slug}/questions/{id}", h.RequireAuth(h.UpdateQuestion))
 	mux.HandleFunc("DELETE /v1/event-types/{slug}/questions/{id}", h.RequireAuth(h.DeleteQuestion))
 
-	bookingRL := RateLimit(20, time.Minute)
-	manageRL := RateLimit(30, time.Minute)
+	bookingRL := RateLimitPublic(20, time.Minute)
+	manageRL := RateLimitPublic(30, time.Minute)
 
 	// Bookings — public create is CORS-enabled for the widget; the JSON body makes it
 	// a non-simple request, so the OPTIONS preflight is handled too.

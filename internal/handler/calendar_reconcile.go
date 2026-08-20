@@ -155,8 +155,8 @@ func (h *Handler) reconcileCreations(ctx context.Context, gc *calendar.Service) 
 	cutoff := nowT.Add(-5 * time.Minute).Format(time.RFC3339)
 	type missing struct {
 		bookingID, userID, etName, orgName, orgEmail, orgLocale, startStr, endStr string
-		locationType, bookingLoc                                                 string
-		isPrimary                                                                bool
+		locationType, bookingLoc                                                  string
+		isPrimary                                                                 bool
 	}
 	var items []missing
 	rows, err := h.db.QueryContext(ctx, `

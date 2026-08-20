@@ -164,9 +164,31 @@ func PublicCORS(allowedOrigins []string) func(http.HandlerFunc) http.HandlerFunc
 }
 
 // RateLimit returns middleware that allows limit requests per period per remote IP.
-// Exceeding the limit returns 429 with a Retry-After header. The IP is the TCP remote
-// address only — see remoteIP for why proxy headers are never trusted here.
+// Exceeding the limit returns 429 with a Retry-After header and a fixed English body. The
+// IP is the TCP remote address only — see remoteIP for why proxy headers are never trusted
+// here. Use this for admin and machine-facing routes; see RateLimitPublic for the booking
+// surfaces.
 func RateLimit(limit int, period time.Duration) func(http.HandlerFunc) http.HandlerFunc {
+	return rateLimit(limit, period, false)
+}
+
+// RateLimitPublic is RateLimit for the public booking surfaces (slots, booking creation,
+// the manage links, the assistant), where the 429 body is rendered verbatim in the booking
+// form's error slot and so is booker-facing.
+//
+// Deliberately a separate constructor rather than translating in RateLimit: that one also
+// guards login, token, invite, avatar, settings and demo-reset routes, where translating
+// would put a stray Spanish string into the (entirely untranslated) admin SPA and make
+// machine consumers' 429 bodies vary by Accept-Language.
+//
+// Locale comes from Accept-Language alone — middleware has no DB access, so no operator
+// fallback-locale, and these requests carry no ?lang=. Weaker than the pages' resolution,
+// but it beats unconditional English on a path a real booker can hit.
+func RateLimitPublic(limit int, period time.Duration) func(http.HandlerFunc) http.HandlerFunc {
+	return rateLimit(limit, period, true)
+}
+
+func rateLimit(limit int, period time.Duration, translate bool) func(http.HandlerFunc) http.HandlerFunc {
 	rl := &rateLimiter{
 		windows: make(map[string]*rlWindow),
 		limit:   limit,
@@ -179,13 +201,16 @@ func RateLimit(limit int, period time.Duration) func(http.HandlerFunc) http.Hand
 			if !rl.allow(ip) {
 				w.Header().Set("Retry-After", fmt.Sprintf("%d", int(period.Seconds())))
 				w.Header().Set("Content-Type", "application/json")
+				if !translate {
+					w.WriteHeader(http.StatusTooManyRequests)
+					fmt.Fprint(w, `{"error":"rate limit exceeded"}`)
+					return
+				}
+				// Body varies by language, so say so — same reasoning as PublicEventType's
+				// Vary (Add, not Set, to compose with any Vary a wrapping middleware set).
+				w.Header().Add("Vary", "Accept-Language")
 				w.WriteHeader(http.StatusTooManyRequests)
-				// The public booking form renders this message verbatim in its error slot,
-				// so it's booker-facing. Middleware has no DB access (hence no operator
-				// fallback-locale) and the booking POST carries no ?lang=, so this resolves
-				// from Accept-Language alone — a slightly weaker signal than the pages use,
-				// but it beats unconditional English on an abuse path.
-				msg := i18n.Resolve(r.Header.Get("Accept-Language"), r.URL.Query().Get("lang")).T("err_rate_limited")
+				msg := i18n.Resolve(r.Header.Get("Accept-Language"), "").T("err_rate_limited")
 				b, _ := json.Marshal(map[string]string{"error": msg})
 				_, _ = w.Write(b)
 				return

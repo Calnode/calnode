@@ -48,17 +48,6 @@ test('month helpers', () => {
   assert.equal(B.daysInMonth(2026, 1), 28);
 });
 
-test('formatHostsLabel — 1/2/3/overflow', () => {
-  assert.equal(B.formatHostsLabel([]), '');
-  assert.equal(B.formatHostsLabel([{ name: 'Alex' }]), 'Alex');
-  assert.equal(B.formatHostsLabel([{ name: 'Alex' }, { name: 'Sam' }]), 'Alex & Sam');
-  assert.equal(B.formatHostsLabel([{ name: 'Alex' }, { name: 'Sam' }, { name: 'Jo' }]), 'Alex, Sam & Jo');
-  assert.equal(
-    B.formatHostsLabel([{ name: 'A' }, { name: 'B' }, { name: 'C' }, { name: 'D' }, { name: 'E' }]),
-    'A, B, C & 2 others'
-  );
-  assert.equal(B.formatHostsLabel(['Alex', 'Sam']), 'Alex & Sam'); // plain strings too
-});
 
 test('formatTime / formatDay respect tz', () => {
   const iso = '2026-06-15T02:00:00Z';

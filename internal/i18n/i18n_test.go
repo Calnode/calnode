@@ -1,6 +1,8 @@
 package i18n
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -249,62 +251,64 @@ func TestAllLocalesHaveTheSameKeys(t *testing.T) {
 	}
 }
 
-// formatVerbs extracts a string's printf verbs in order, normalising indexed verbs
-// ("%[2]d") to (index, verb) pairs so a reordered translation still compares equal to the
-// English original by argument identity rather than by position. Literal "%%" is skipped.
-// Returns a map of argument index -> verb letter; index 0 means "positional" (unindexed).
-func formatVerbs(s string) map[int]byte {
-	out := map[int]byte{}
-	nextPositional := 1
-	for i := 0; i < len(s); i++ {
-		if s[i] != '%' || i+1 >= len(s) {
+// enFormatArgs derives probe arguments for an English format string by walking its
+// printf verbs. It only ever parses ENGLISH — the strings we author and control, which
+// use plain %s/%d/%q or clean %[n]-indexed forms. Translations are never parsed; they're
+// checked by running them through fmt itself (see TestAllLocalesHaveMatchingFormatVerbs),
+// because hand-rolling a full printf parser to validate arbitrary translator input is
+// exactly the kind of thing that grows silent blind spots — Go accepts an argument index
+// after flags, width, OR precision ("%+[2]d", "%.2[1]f"), so a naive parser reports a
+// clean bill of health for a format that corrupts at runtime.
+//
+// Returns nil if the English string has no verbs.
+func enFormatArgs(t *testing.T, en string) []any {
+	t.Helper()
+	var args []any
+	for i := 0; i < len(en)-1; i++ {
+		if en[i] != '%' {
+			continue
+		}
+		if en[i+1] == '%' { // escaped literal percent
+			i++
 			continue
 		}
 		j := i + 1
-		if s[j] == '%' { // escaped literal percent, not a verb
-			i = j
-			continue
-		}
-		idx := 0
-		if s[j] == '[' { // explicit argument index, e.g. %[2]d
-			k := j + 1
-			for k < len(s) && s[k] >= '0' && s[k] <= '9' {
-				idx = idx*10 + int(s[k]-'0')
-				k++
+		if en[j] == '[' { // %[n] — index only tells us ordering, and fmt handles that
+			for j < len(en) && en[j] != ']' {
+				j++
 			}
-			if k >= len(s) || s[k] != ']' {
-				continue // malformed; leave it to Sprintf to complain
-			}
-			j = k + 1
-		}
-		// Skip flags/width/precision to reach the verb letter.
-		for j < len(s) && (s[j] == '+' || s[j] == '-' || s[j] == '#' || s[j] == ' ' ||
-			s[j] == '0' || s[j] == '.' || (s[j] >= '1' && s[j] <= '9')) {
 			j++
 		}
-		if j >= len(s) {
-			continue
+		if j >= len(en) {
+			break
 		}
-		if idx == 0 {
-			idx = nextPositional
-			nextPositional++
-		} else {
-			nextPositional = idx + 1
+		switch en[j] {
+		case 'd':
+			args = append(args, 42)
+		case 's', 'q', 'v':
+			args = append(args, "probe")
+		default:
+			t.Fatalf("unhandled verb %%%c in English string %q — extend enFormatArgs", en[j], en)
 		}
-		out[idx] = s[j]
 		i = j
 	}
-	return out
+	return args
 }
 
 // TestAllLocalesHaveMatchingFormatVerbs is the guard that key-parity alone doesn't give.
 // Several keys are consumed via Tf/Sprintf (email subjects, the greeting, the booking
 // reference, calendar event titles, duration labels, date_format). If a translation's
-// verbs drift from English — wrong count, wrong type, wrong index — Sprintf doesn't error,
-// it silently emits "%!d(MISSING)" / "%!s(int=22)" / "%!(EXTRA string=…)" straight into a
-// confirmation email subject or a Google Calendar event title. go vet can't catch it
-// (Sprintf's format arg isn't constant, and template "{{.Tf …}}" calls are invisible to
-// it), and nothing else in the tree checks it.
+// verbs drift from English — wrong count, wrong type, wrong index — Sprintf doesn't
+// error, it silently emits "%!d(MISSING)" / "%!s(int=22)" / "%!(EXTRA string=…)" straight
+// into a confirmation email subject or a Google Calendar event title. go vet can't catch
+// it (Sprintf's format arg isn't constant, and template "{{.Tf …}}" calls are invisible
+// to it), and nothing else in the tree checks it.
+//
+// The check runs each locale's string through fmt with arguments derived from English and
+// asserts the result carries no "%!" error marker — i.e. fmt is the oracle for what
+// actually corrupts, rather than a parser of ours second-guessing it. A legitimately
+// reordered or argument-dropping translation (e.g. a date_format that omits the weekday)
+// renders cleanly and passes; only genuine corruption trips it.
 func TestAllLocalesHaveMatchingFormatVerbs(t *testing.T) {
 	en := Default()
 	for code, l := range locales {
@@ -316,51 +320,59 @@ func TestAllLocalesHaveMatchingFormatVerbs(t *testing.T) {
 			if !ok {
 				continue // key parity is TestAllLocalesHaveTheSameKeys' job
 			}
-			enVerbs, locVerbs := formatVerbs(enVal), formatVerbs(locVal)
-			if len(enVerbs) != len(locVerbs) {
-				t.Errorf("locale %q key %q: %d format verb(s) vs English's %d\n  en: %q\n  %s: %q",
-					code, k, len(locVerbs), len(enVerbs), enVal, code, locVal)
-				continue
-			}
-			for idx, enVerb := range enVerbs {
-				locVerb, ok := locVerbs[idx]
-				if !ok {
-					t.Errorf("locale %q key %q: missing argument %d (English uses %%%c for it)\n  en: %q\n  %s: %q",
-						code, k, idx, enVerb, enVal, code, locVal)
-					continue
-				}
-				if locVerb != enVerb {
-					t.Errorf("locale %q key %q: argument %d is %%%c but English uses %%%c (type mismatch → Sprintf corruption)\n  en: %q\n  %s: %q",
-						code, k, idx, locVerb, enVerb, enVal, code, locVal)
-				}
+			// args is empty when English has no verbs, which is still the right probe: a
+			// translation that introduces one would consume an argument that never
+			// arrives and render "%!s(MISSING)". Passing args... (rather than omitting it)
+			// also keeps vet's printf checker happy about the non-constant format.
+			args := enFormatArgs(t, enVal)
+			if got := fmt.Sprintf(locVal, args...); strings.Contains(got, "%!") {
+				t.Errorf("locale %q key %q: format verbs don't match English — Sprintf corrupts\n  en: %q\n  %s: %q\n  renders as: %q",
+					code, k, enVal, code, locVal, got)
 			}
 		}
 	}
 }
 
-func TestFormatVerbs(t *testing.T) {
-	cases := []struct {
-		in   string
-		want map[int]byte
-	}{
-		{"no verbs here", map[int]byte{}},
-		{"Hi %s,", map[int]byte{1: 's'}},
-		{"%d hr %d min", map[int]byte{1: 'd', 2: 'd'}},
-		{"%[1]s %[2]d %[3]s %[4]d", map[int]byte{1: 's', 2: 'd', 3: 's', 4: 'd'}},
-		{"%[3]s %[2]d, %[4]d", map[int]byte{2: 'd', 3: 's', 4: 'd'}},
-		{"invalid option for %[1]q: %[2]q is not allowed", map[int]byte{1: 'q', 2: 'q'}},
-		{"100%% sure, %s", map[int]byte{1: 's'}}, // escaped percent isn't a verb
+// TestAllLocalesHaveMatchingFormatVerbs_catchesDrift pins that the guard above actually
+// fires, so it can't silently rot into a no-op. Each case is a real way a translation
+// breaks, including the flags-before-index form ("%+[2]d") that a naive left-to-right
+// parser misreads as having no second argument.
+func TestAllLocalesHaveMatchingFormatVerbs_catchesDrift(t *testing.T) {
+	cases := []struct{ name, en, translated string }{
+		{"wrong verb type", "Hi %s,", "Hola %d,"},
+		{"dropped verb", "Booking confirmed: %s", "Reserva confirmada"},
+		{"extra verb", "Booking confirmed", "Reserva confirmada: %s"},
+		{"out-of-range index", "%s with %s", "%[1]s con %[3]s"},
+		{"flags before index", "Hi %s,", "Hola %+[2]d %[1]s,"},
+		{"precision before index", "Hi %s,", "Hola %.2[2]f %[1]s,"},
 	}
 	for _, c := range cases {
-		got := formatVerbs(c.in)
-		if len(got) != len(c.want) {
-			t.Errorf("formatVerbs(%q) = %v, want %v", c.in, got, c.want)
-			continue
-		}
-		for k, v := range c.want {
-			if got[k] != v {
-				t.Errorf("formatVerbs(%q)[%d] = %q, want %q", c.in, k, got[k], v)
+		t.Run(c.name, func(t *testing.T) {
+			args := enFormatArgs(t, c.en)
+			got := fmt.Sprintf(c.translated, args...)
+			if !strings.Contains(got, "%!") {
+				t.Errorf("expected drift to corrupt, but %q rendered cleanly as %q", c.translated, got)
 			}
-		}
+		})
+	}
+}
+
+// TestAllLocalesHaveMatchingFormatVerbs_allowsLegitimateReordering guards the other
+// direction: a translation that reorders arguments, or deliberately omits a trailing one
+// via explicit indices (which suppress fmt's EXTRA check), must NOT be flagged.
+func TestAllLocalesHaveMatchingFormatVerbs_allowsLegitimateReordering(t *testing.T) {
+	cases := []struct{ name, en, translated string }{
+		{"reordered", "%s with %s", "%[2]s con %[1]s"},
+		{"date_format US style drops the weekday", "%[1]s %[2]d %[3]s %[4]d", "%[3]s %[2]d, %[4]d"},
+		{"date_format drops the year too", "%[1]s %[2]d %[3]s %[4]d", "%[2]d %[3]s"},
+		{"escaped percent is not a verb", "Hi %s,", "100%% seguro, %s"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			args := enFormatArgs(t, c.en)
+			if got := fmt.Sprintf(c.translated, args...); strings.Contains(got, "%!") {
+				t.Errorf("legitimate translation %q was flagged: rendered as %q", c.translated, got)
+			}
+		})
 	}
 }

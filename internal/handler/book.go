@@ -346,10 +346,10 @@ func (h *Handler) PublicEventType(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.writeJSON(w, http.StatusOK, map[string]any{
-		"slug":               slug,
-		"name":               name,
-		"description":        description,
-		"duration_minutes":   durMins,
+		"slug":             slug,
+		"name":             name,
+		"description":      description,
+		"duration_minutes": durMins,
 		// duration_label is the translated, human form ("30 min", "1 hour", "1 hora") —
 		// the same server-computed label book.html/manage.html render, so the widget
 		// doesn't have to rebuild it from duration_minutes (it used to hardcode " min",

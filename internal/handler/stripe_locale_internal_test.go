@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -17,13 +18,45 @@ import (
 
 // captureMailer records every Send call so the test can assert on the confirmation
 // email's resolved locale (mailer.BookingData.Locale, surfaced via <html lang="…">).
+// Mutex-guarded: confirmation side effects run in their own goroutine
+// (dispatchBookingConfirmation), so Send races the polling test goroutine without it —
+// caught by `go test -race`.
 type captureMailer struct {
+	mu   sync.Mutex
 	msgs []mailer.Message
 }
 
 func (c *captureMailer) Send(_ context.Context, msg mailer.Message) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.msgs = append(c.msgs, msg)
 	return nil
+}
+
+// find returns the first captured message addressed to to, or nil.
+func (c *captureMailer) find(to string) *mailer.Message {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for i := range c.msgs {
+		if len(c.msgs[i].To) > 0 && c.msgs[i].To[0] == to {
+			cp := c.msgs[i]
+			return &cp
+		}
+	}
+	return nil
+}
+
+// recipients lists every captured message's first To address, for failure messages.
+func (c *captureMailer) recipients() []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	out := make([]string, 0, len(c.msgs))
+	for _, m := range c.msgs {
+		if len(m.To) > 0 {
+			out = append(out, m.To[0])
+		}
+	}
+	return out
 }
 
 // TestConfirmPaidBooking_usesAttendeeLocale is a regression test: the Stripe webhook path
@@ -67,7 +100,9 @@ func TestConfirmPaidBooking_usesAttendeeLocale(t *testing.T) {
 	if etRec.Code != http.StatusCreated {
 		t.Fatalf("create event type: %d — %s", etRec.Code, etRec.Body.String())
 	}
-	var et struct{ ID string `json:"id"` }
+	var et struct {
+		ID string `json:"id"`
+	}
 	json.Unmarshal(etRec.Body.Bytes(), &et) //nolint:errcheck
 
 	// Create the booking through booking.Service.Create directly, NOT through the
@@ -121,19 +156,13 @@ func TestConfirmPaidBooking_usesAttendeeLocale(t *testing.T) {
 	var msg *mailer.Message
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
-		for i := range cap.msgs {
-			if len(cap.msgs[i].To) > 0 && cap.msgs[i].To[0] == "ana@example.com" {
-				msg = &cap.msgs[i]
-				break
-			}
-		}
-		if msg != nil {
+		if msg = cap.find("ana@example.com"); msg != nil {
 			break
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
 	if msg == nil {
-		t.Fatalf("no confirmation email was sent to the attendee (ana@example.com); sent: %+v", cap.msgs)
+		t.Fatalf("no confirmation email was sent to the attendee (ana@example.com); sent to: %v", cap.recipients())
 	}
 	if !strings.Contains(msg.HTML, `lang="es"`) {
 		t.Errorf("paid booking confirmation should render in the attendee's stored locale (es); got HTML head: %.300s", msg.HTML)
