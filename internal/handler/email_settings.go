@@ -163,16 +163,22 @@ func (s emailSecret) String() string {
 	return "smtp_pass_enc"
 }
 
+// execer is the subset of *sql.DB / *sql.Tx the settings writes need, so they can be run
+// inside a transaction. Saving email settings touches up to three columns across separate
+// statements; without a transaction a failure partway leaves the instance holding, say, a
+// new SMTP host with the previous password.
+type execer interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+}
+
 // storeEmailSecret encrypts and stores one secret, or clears it when value is empty.
-func (h *Handler) storeEmailSecret(w http.ResponseWriter, r *http.Request, which emailSecret, value string) bool {
+func (h *Handler) storeEmailSecret(ctx context.Context, db execer, which emailSecret, value string) error {
 	enc := ""
 	if value != "" {
 		var err error
 		enc, err = secret.Encrypt(h.encKey, value)
 		if err != nil {
-			h.logger.ErrorContext(r.Context(), "email settings: encrypt secret", "secret", which.String(), "error", err)
-			h.writeError(w, http.StatusInternalServerError, "internal error")
-			return false
+			return fmt.Errorf("encrypt %s: %w", which, err)
 		}
 	}
 
@@ -183,17 +189,13 @@ func (h *Handler) storeEmailSecret(w http.ResponseWriter, r *http.Request, which
 	case secretSMTPPass:
 		q = `UPDATE server_settings SET smtp_pass_enc = ?, updated_at = datetime('now') WHERE id = 1`
 	default:
-		h.logger.ErrorContext(r.Context(), "email settings: unknown secret", "secret", int(which))
-		h.writeError(w, http.StatusInternalServerError, "internal error")
-		return false
+		return fmt.Errorf("unknown email secret %d", int(which))
 	}
 
-	if _, err := h.db.ExecContext(r.Context(), q, enc); err != nil {
-		h.logger.ErrorContext(r.Context(), "email settings: store secret", "secret", which.String(), "error", err)
-		h.writeError(w, http.StatusInternalServerError, "internal error")
-		return false
+	if _, err := db.ExecContext(ctx, q, enc); err != nil {
+		return fmt.Errorf("store %s: %w", which, err)
 	}
-	return true
+	return nil
 }
 
 // PatchEmailSettings handles PATCH /v1/settings/email.
@@ -246,10 +248,19 @@ func (h *Handler) PatchEmailSettings(w http.ResponseWriter, r *http.Request) {
 		return 0
 	}
 
-	// Write the non-secret fields first, then each secret only if the caller supplied one.
-	// The previous shape branched on whether the password was present, which does not scale
-	// to a second optional secret without a combinatorial mess.
-	if _, err := h.db.ExecContext(r.Context(), `
+	// One transaction for all of it. Saving touches up to three statements (the non-secret
+	// columns, then each supplied secret), and a failure partway through would otherwise
+	// leave the instance holding a mismatched pair - a new SMTP host with the old password,
+	// or an API key without the From address it needs.
+	tx, err := h.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		h.logger.ErrorContext(r.Context(), "email settings: begin", "error", err)
+		h.writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	defer tx.Rollback() //nolint:errcheck // no-op once committed
+
+	if _, err := tx.ExecContext(r.Context(), `
 		UPDATE server_settings SET
 		  smtp_host = ?, smtp_port = ?, smtp_user = ?,
 		  smtp_tls = ?, smtp_starttls = ?,
@@ -265,16 +276,26 @@ func (h *Handler) PatchEmailSettings(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.SMTPPass != "" {
-		if !h.storeEmailSecret(w, r, secretSMTPPass, req.SMTPPass) {
+		if err := h.storeEmailSecret(r.Context(), tx, secretSMTPPass, req.SMTPPass); err != nil {
+			h.logger.ErrorContext(r.Context(), "email settings: smtp password", "error", err)
+			h.writeError(w, http.StatusInternalServerError, "internal error")
 			return
 		}
 	}
 	// A pointer, so "field omitted" (keep) is distinguishable from "" (clear). Without that
 	// an admin could never turn the API key back off and return to SMTP.
 	if req.ResendAPIKey != nil {
-		if !h.storeEmailSecret(w, r, secretResendAPIKey, *req.ResendAPIKey) {
+		if err := h.storeEmailSecret(r.Context(), tx, secretResendAPIKey, *req.ResendAPIKey); err != nil {
+			h.logger.ErrorContext(r.Context(), "email settings: resend key", "error", err)
+			h.writeError(w, http.StatusInternalServerError, "internal error")
 			return
 		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		h.logger.ErrorContext(r.Context(), "email settings: commit", "error", err)
+		h.writeError(w, http.StatusInternalServerError, "internal error")
+		return
 	}
 
 	// Hot-swap the live mailer so changes take effect immediately. Re-read from the DB
@@ -304,23 +325,39 @@ const testEmailTimeout = 12 * time.Second
 
 // testEmailErrorMessage turns a send failure into something an admin can act on.
 //
-// The case worth special-casing is "could not open a connection at all". Many hosting
-// platforms (Railway below Pro, and other constrained tiers) silently drop outbound SMTP
-// instead of refusing it, so the connection simply never completes. From the admin's side
-// that is indistinguishable from a typo, and they will burn an afternoon re-checking a
-// username and password that were correct all along. Name the likely cause instead.
-func testEmailErrorMessage(err error) string {
+// It takes the active transport because ErrUnreachable is raised by BOTH transports and the
+// right advice is opposite in each case. On SMTP, "could not connect" usually means the
+// platform is blocking the port and the fix is to switch to the HTTPS API. On the HTTPS
+// path, telling an admin to add a Resend API key is nonsense - they already have one, and
+// the cause is an ordinary network or provider outage.
+func testEmailErrorMessage(err error, transport EmailTransport) string {
 	switch {
+	case errors.Is(err, mailer.ErrEmailRejected):
+		// The provider understood the request and refused it. Its own explanation is far
+		// more useful than anything we could infer (unverified domain, revoked key, bad
+		// address), so lead with that.
+		return "Resend rejected the message: " + err.Error()
+
+	case errors.Is(err, mailer.ErrUnreachable) && transport == TransportResend:
+		return "Could not reach api.resend.com. Delivery is set to the Resend API over " +
+			"HTTPS, so this is a network or provider problem rather than a settings one. " +
+			"Check that outbound HTTPS is allowed and try again."
+
 	case errors.Is(err, mailer.ErrUnreachable):
 		return "Could not reach the SMTP server: the connection timed out or was refused. " +
 			"Many hosting platforms block outbound SMTP on their cheaper plans, which looks " +
 			"exactly like this even when your username and password are correct. If you use " +
 			"Resend, add an API key under Settings → Email to send over HTTPS instead, which " +
 			"is not blocked. Otherwise check the host, port and TLS mode."
+
+	case errors.Is(err, context.DeadlineExceeded) && transport == TransportResend:
+		return "Timed out talking to the Resend API. Check outbound HTTPS and try again."
+
 	case errors.Is(err, context.DeadlineExceeded):
 		return "Timed out sending the test email. The SMTP server accepted a connection but " +
 			"did not finish the exchange in time. Check the port and TLS mode (465 uses " +
 			"implicit TLS; 587 uses STARTTLS)."
+
 	default:
 		return "Failed to send test email: " + err.Error()
 	}
@@ -349,13 +386,22 @@ func (h *Handler) TestEmailConnection(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), testEmailTimeout)
 	defer cancel()
 
+	// Resolve the active transport so a failure can be explained in terms of the path
+	// actually in use. Best-effort: if this read fails the send is still attempted, and the
+	// message just falls back to the SMTP-flavoured advice.
+	transport := TransportSMTP
+	if cfg, cfgErr := LoadEmailSettingsFromDB(h.db, h.encKey); cfgErr == nil && cfg != nil {
+		_, transport = BuildMailer(*cfg)
+	}
+
 	if err := h.mailer.Send(ctx, mailer.Message{
 		To:      []string{user.Email},
 		Subject: "[TEST] Calnode email configuration",
 		Text:    "This is a test email from Calnode. If you received this, your email settings are working correctly.",
 	}); err != nil {
-		h.logger.ErrorContext(r.Context(), "email connection test: send", "error", err)
-		h.writeError(w, http.StatusInternalServerError, testEmailErrorMessage(err))
+		h.logger.ErrorContext(r.Context(), "email connection test: send",
+			"transport", string(transport), "error", err)
+		h.writeError(w, http.StatusInternalServerError, testEmailErrorMessage(err, transport))
 		return
 	}
 	h.writeJSON(w, http.StatusOK, map[string]any{"sent": true, "to": user.Email})

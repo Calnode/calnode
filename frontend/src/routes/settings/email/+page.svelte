@@ -32,8 +32,11 @@
 
 	// The server decides the transport; mirror its answer rather than re-deriving it here,
 	// so the page can never claim one path while another is delivering.
+	// clearResendKey has to win over the server's answer: once the admin has chosen to
+	// remove the key, the SMTP fields are about to become live again and must stop being
+	// dimmed, even though the server still reports transport === 'resend_api'.
 	const usingResend = $derived(
-		emailSettings?.transport === 'resend_api' || (!!resendApiKey && !clearResendKey),
+		!clearResendKey && (emailSettings?.transport === 'resend_api' || !!resendApiKey),
 	);
 
 	onMount(() => loadingFlag.run(async () => {
