@@ -9,6 +9,7 @@ import (
 	_ "image/gif"
 	_ "image/jpeg"
 	"image/png"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -238,6 +239,67 @@ func (h *Handler) brandingDir() string { return filepath.Join(h.dataDir, "brandi
 // Accepts multipart/form-data with a "logo" file field (JPEG/PNG/GIF/WebP, ≤5 MB).
 // Resized to fit 600×200 preserving aspect ratio, re-encoded as PNG (keeps
 // transparency), and stored on the data volume.
+// maxBrandingPixels bounds the DECODED size of an uploaded branding image.
+//
+// The 5 MB body limit bounds bytes on the wire, not pixels, and those are very different
+// numbers: a highly compressed PNG of 30000x30000 is a few hundred KB on disk and roughly
+// 3.6 GB once decoded. Checking dimensions before decoding is the only thing that stops
+// that, and it matters more here than the admin-only gate suggests - the process holds the
+// single SQLite connection, so an OOM takes the instance down rather than just failing the
+// upload. It does not even need an attacker: a genuine 12000x8000 camera PNG is well under
+// 5 MB compressed.
+//
+// 25 megapixels covers any camera or phone photo someone might reasonably use as a banner
+// (25 MP is about 6000x4167) and costs at most ~100 MB to decode at 4 bytes per pixel. The
+// result is resized to at most 1600x800 regardless, so nothing larger is ever useful.
+const maxBrandingPixels = 25_000_000
+
+// decodeBrandingImage validates and decodes an uploaded branding image.
+//
+// Returns (img, "", nil) on success; (nil, msg, nil) when the upload should be rejected
+// with 400 and msg shown to the admin; (nil, "", err) for an internal failure.
+func decodeBrandingImage(file io.Reader, label string) (image.Image, string, error) {
+	sniff := make([]byte, 512)
+	// io.ReadFull rather than a bare Read: Read is permitted to return fewer bytes than
+	// requested with no error, which would hand DetectContentType a short prefix and
+	// misclassify a perfectly valid image. A file shorter than 512 bytes yields
+	// ErrUnexpectedEOF, which is fine - n is still correct.
+	n, err := io.ReadFull(file, sniff)
+	if err != nil && err != io.ErrUnexpectedEOF && err != io.EOF {
+		return nil, "", fmt.Errorf("read %s: %w", label, err)
+	}
+	switch http.DetectContentType(sniff[:n]) {
+	case "image/jpeg", "image/png", "image/gif", "image/webp":
+	default:
+		return nil, label + " must be JPEG, PNG, GIF, or WebP", nil
+	}
+
+	var buf bytes.Buffer
+	buf.Write(sniff[:n])
+	if _, err := buf.ReadFrom(file); err != nil {
+		return nil, "", fmt.Errorf("read %s: %w", label, err)
+	}
+	data := buf.Bytes()
+
+	// Header only - DecodeConfig reads the dimensions without allocating the pixel buffer,
+	// which is the whole point: we learn how big the image claims to be before committing
+	// the memory to find out.
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(data))
+	if err != nil {
+		return nil, "could not decode image", nil
+	}
+	if int64(cfg.Width)*int64(cfg.Height) > maxBrandingPixels {
+		return nil, fmt.Sprintf("image is too large to process (%dx%d); please resize it below %d megapixels",
+			cfg.Width, cfg.Height, maxBrandingPixels/1_000_000), nil
+	}
+
+	img, _, err := image.Decode(bytes.NewReader(data))
+	if err != nil {
+		return nil, "could not decode image", nil
+	}
+	return img, "", nil
+}
+
 func (h *Handler) UploadBrandingLogo(w http.ResponseWriter, r *http.Request) {
 	if _, ok := h.requireAdmin(w, r); !ok {
 		return
@@ -254,25 +316,14 @@ func (h *Handler) UploadBrandingLogo(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	sniff := make([]byte, 512)
-	n, _ := file.Read(sniff)
-	switch http.DetectContentType(sniff[:n]) {
-	case "image/jpeg", "image/png", "image/gif", "image/webp":
-	default:
-		h.writeError(w, http.StatusBadRequest, "logo must be JPEG, PNG, GIF, or WebP")
-		return
-	}
-
-	var buf bytes.Buffer
-	buf.Write(sniff[:n])
-	if _, err := buf.ReadFrom(file); err != nil {
+	img, userMsg, err := decodeBrandingImage(file, "logo")
+	if err != nil {
 		h.logger.ErrorContext(r.Context(), "logo: read body", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	img, _, err := image.Decode(&buf)
-	if err != nil {
-		h.writeError(w, http.StatusBadRequest, "could not decode image")
+	if userMsg != "" {
+		h.writeError(w, http.StatusBadRequest, userMsg)
 		return
 	}
 
@@ -396,25 +447,14 @@ func (h *Handler) UploadBrandingBanner(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	sniff := make([]byte, 512)
-	n, _ := file.Read(sniff)
-	switch http.DetectContentType(sniff[:n]) {
-	case "image/jpeg", "image/png", "image/gif", "image/webp":
-	default:
-		h.writeError(w, http.StatusBadRequest, "banner must be JPEG, PNG, GIF, or WebP")
-		return
-	}
-
-	var buf bytes.Buffer
-	buf.Write(sniff[:n])
-	if _, err := buf.ReadFrom(file); err != nil {
+	img, userMsg, err := decodeBrandingImage(file, "banner")
+	if err != nil {
 		h.logger.ErrorContext(r.Context(), "banner: read body", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	img, _, err := image.Decode(&buf)
-	if err != nil {
-		h.writeError(w, http.StatusBadRequest, "could not decode image")
+	if userMsg != "" {
+		h.writeError(w, http.StatusBadRequest, userMsg)
 		return
 	}
 

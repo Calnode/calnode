@@ -369,7 +369,12 @@
 													<dt class="w-48 shrink-0 font-medium text-foreground">{a.label}</dt>
 													<dd class="text-muted-foreground {a.type !== 'checkbox' ? 'whitespace-pre-wrap' : ''}">
 														{#if a.type === 'checkbox'}
-															{a.value === 'yes' ? 'Yes' : 'No'}
+															<!-- Liberal comparison on purpose. Checkbox answers are canonicalised to
+															     "yes"/"no" on the way in now, but rows created before that landed hold
+															     whatever the surface sent - the embed widget sent "Yes". A strict
+															     === 'yes' renders those as "No", i.e. the opposite of what the guest
+															     ticked, which matters when the question is a consent checkbox. -->
+															{['yes', 'true', '1', 'on', 'checked'].includes(String(a.value).trim().toLowerCase()) ? 'Yes' : 'No'}
 														{:else}
 															{a.value || '—'}
 														{/if}

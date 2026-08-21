@@ -23,7 +23,23 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
   badges which path is actually live, so filled-in SMTP fields are never mistaken for SMTP
   delivery, and "Remove key" switches back.
 
+### Security
+- **Branding image uploads now check dimensions before decoding.** The 5 MB body limit
+  bounds bytes on the wire, not pixels: a highly compressed PNG of 30000x30000 is a few
+  hundred KB and decodes to gigabytes. Both the logo and banner endpoints now read the
+  image header first and reject anything over 25 megapixels. Admin-only, so this was never
+  remotely exploitable, but it did not need an attacker either - a genuine large camera
+  photo is well under 5 MB compressed, and an out-of-memory kill takes down the process
+  holding the single SQLite connection.
+
 ### Fixed
+- Checkbox answers in the admin bookings list are matched liberally. Answers are
+  canonicalised to `yes`/`no` on the way in, but rows created before that landed hold
+  whatever the surface sent (the embed widget sent `Yes`), and a strict comparison rendered
+  those as **No** - the opposite of what the guest ticked, which matters for consent
+  checkboxes. Historic rows now display correctly without rewriting stored data.
+- Branding uploads read the content-type sniff buffer with `io.ReadFull`. A short read
+  could hand the sniffer a truncated prefix and reject a valid image.
 - **A failed SMTP dial could hang for ~2 minutes.** `defaultSMTPTimeout` was applied only
   after the connection was established, so the dial itself fell back to the OS SYN-retry
   limit. Against a host that drops SMTP packets this stalled the background job queue,
