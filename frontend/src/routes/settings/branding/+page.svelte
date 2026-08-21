@@ -238,8 +238,10 @@
 				{/if}
 
 				<p class="text-xs text-muted-foreground">
-					Click the box to upload. PNG with a transparent background works best, on a light background. Any
-					shape — you can crop it next. Max 5 MB. Adjust size and opacity (preview updates live), then Save.
+					Click the box to upload. Shown at up to 600×160, so anything wider than it is tall works
+					best. PNG with a transparent background looks best on a light background. Any shape — you
+					can crop it next. JPEG, PNG, GIF or WebP, max 5 MB; it is re-encoded as a PNG. Adjust size
+					and opacity (preview updates live), then Save.
 				</p>
 			</div>
 
@@ -276,7 +278,8 @@
 
 				<p class="text-xs text-muted-foreground">
 					Shown full-width below your logo on booking emails and your public booking/manage pages — hidden
-					entirely if not set. Wide images work best, since it's always shown at full width. Max 5 MB.
+					entirely if not set. Displayed at up to 1600×800, so wide images work best. JPEG, PNG, GIF or
+					WebP, max 5 MB; it is re-encoded as a PNG.
 				</p>
 			</div>
 		</div>

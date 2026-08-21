@@ -168,9 +168,14 @@
 							<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
 						</div>
 					</button>
-					<div class="flex flex-col gap-1.5">
+					<!-- min-w-0 + flex-1 so this text column shrinks against the fixed-size avatar
+					     rather than pushing the row wide. Defensive: the settings shell itself stops
+					     laying out sensibly below ~600px (the nav and content sit in one flex row with
+					     no stacking breakpoint), so narrow viewports are already degraded for reasons
+					     this does not fix. -->
+					<div class="flex min-w-0 flex-1 flex-col gap-1.5">
 						<p class="text-sm font-medium">Profile photo</p>
-						<p class="text-xs text-muted-foreground">Click your avatar to {avatarUrl ? 'replace' : 'upload'} · JPEG, PNG, GIF or WebP · max 5 MB</p>
+						<p class="text-xs text-muted-foreground">Click your avatar to {avatarUrl ? 'replace' : 'upload'} · shown at 400×400, so square works best · JPEG, PNG, GIF or WebP, max 5 MB · saved as JPEG</p>
 						{#if avatarUrl}
 							<Button type="button" variant="ghost" size="sm" onclick={removeAvatar} class="w-fit text-destructive hover:text-destructive">Remove photo</Button>
 						{/if}
