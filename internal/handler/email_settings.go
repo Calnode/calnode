@@ -14,7 +14,7 @@ import (
 	"github.com/calnode/calnode/internal/secret"
 )
 
-// SMTPConfig holds decrypted SMTP settings loaded from the DB.
+// SMTPConfig holds decrypted email settings loaded from the DB.
 // Used by server.go to build the initial mailer on startup.
 type SMTPConfig struct {
 	Host     string
@@ -25,20 +25,61 @@ type SMTPConfig struct {
 	StartTLS bool
 	From     string
 	FromName string
+
+	// ResendAPIKey, when set, switches delivery to Resend's HTTPS API instead of SMTP.
+	ResendAPIKey string
+}
+
+// EmailTransport names the delivery path in use. Surfaced to the admin UI because
+// "SMTP settings are filled in" and "mail is going out over SMTP" can now differ.
+type EmailTransport string
+
+const (
+	TransportNone   EmailTransport = "none"
+	TransportResend EmailTransport = "resend_api"
+	TransportSMTP   EmailTransport = "smtp"
+)
+
+// BuildMailer picks the delivery transport for a config, and is the single place that
+// decision is made - both boot and the settings-save path call it, so they cannot drift.
+//
+// The rule is deliberately dumb: an API key means the admin wants the HTTPS API. It is
+// NOT probe-and-fallback. A startup probe would test reachability at boot rather than at
+// send time, a reachable TCP port is not the same thing as a working delivery path, and
+// silently switching transports makes "which path sent this message?" unanswerable while
+// masking a genuinely broken SMTP config. Explicit credentials say what the admin meant.
+//
+// An API key with no from address still selects Resend rather than quietly falling back to
+// SMTP: the provider then returns a specific complaint the test button can show, which
+// beats ignoring a key the admin deliberately pasted in.
+func BuildMailer(cfg SMTPConfig) (mailer.Mailer, EmailTransport) {
+	switch {
+	case cfg.ResendAPIKey != "":
+		return mailer.NewResend(cfg.ResendAPIKey, cfg.From, cfg.FromName), TransportResend
+	case cfg.Host != "":
+		return mailer.NewSMTP(cfg.Host, cfg.Port, cfg.User, cfg.Pass,
+			cfg.TLS, cfg.StartTLS, cfg.From, cfg.FromName), TransportSMTP
+	default:
+		return &mailer.Noop{}, TransportNone
+	}
 }
 
 // LoadEmailSettingsFromDB reads SMTP settings from server_settings and decrypts
 // the password. Returns nil (not an error) when smtp_host is empty — meaning
 // the settings have not been configured yet.
 func LoadEmailSettingsFromDB(db *sql.DB, encKey [32]byte) (*SMTPConfig, error) {
-	var host, port, user, passEnc, from, fromName string
+	var host, port, user, passEnc, from, fromName, resendEnc string
 	var smtpTLS, startTLS int
 	err := db.QueryRow(`
 		SELECT smtp_host, smtp_port, smtp_user, smtp_pass_enc,
-		       smtp_tls, smtp_starttls, email_from, email_from_name
+		       smtp_tls, smtp_starttls, email_from, email_from_name,
+		       resend_api_key_enc
 		FROM server_settings WHERE id = 1`).
-		Scan(&host, &port, &user, &passEnc, &smtpTLS, &startTLS, &from, &fromName)
-	if err == sql.ErrNoRows || host == "" {
+		Scan(&host, &port, &user, &passEnc, &smtpTLS, &startTLS, &from, &fromName, &resendEnc)
+	// An API key alone is a complete configuration, so "no smtp_host" no longer means
+	// "email is unconfigured" - checking only the host here would leave an API-key-only
+	// install silently unable to send.
+	if err == sql.ErrNoRows || (host == "" && resendEnc == "") {
 		return nil, nil
 	}
 	if err != nil {
@@ -51,10 +92,18 @@ func LoadEmailSettingsFromDB(db *sql.DB, encKey [32]byte) (*SMTPConfig, error) {
 			return nil, fmt.Errorf("decrypt smtp password: %w", err)
 		}
 	}
+	var resendKey string
+	if resendEnc != "" {
+		resendKey, err = secret.Decrypt(encKey, resendEnc)
+		if err != nil {
+			return nil, fmt.Errorf("decrypt resend api key: %w", err)
+		}
+	}
 	return &SMTPConfig{
 		Host: host, Port: port, User: user, Pass: pass,
 		TLS: smtpTLS != 0, StartTLS: startTLS != 0,
 		From: from, FromName: fromName,
+		ResendAPIKey: resendKey,
 	}, nil
 }
 
@@ -65,29 +114,58 @@ func (h *Handler) GetEmailSettings(w http.ResponseWriter, r *http.Request) {
 	if _, ok := h.requireAdmin(w, r); !ok {
 		return
 	}
-	var host, port, user, passEnc, from, fromName string
+	var host, port, user, passEnc, from, fromName, resendEnc string
 	var smtpTLS, startTLS int
 	err := h.db.QueryRowContext(r.Context(), `
 		SELECT smtp_host, smtp_port, smtp_user, smtp_pass_enc,
-		       smtp_tls, smtp_starttls, email_from, email_from_name
+		       smtp_tls, smtp_starttls, email_from, email_from_name,
+		       resend_api_key_enc
 		FROM server_settings WHERE id = 1`).
-		Scan(&host, &port, &user, &passEnc, &smtpTLS, &startTLS, &from, &fromName)
+		Scan(&host, &port, &user, &passEnc, &smtpTLS, &startTLS, &from, &fromName, &resendEnc)
 	if err != nil && err != sql.ErrNoRows {
 		h.logger.ErrorContext(r.Context(), "email settings: query", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+	// Report the transport the same way BuildMailer decides it, so the UI cannot claim one
+	// path while another is delivering. Secrets are never returned, only whether they exist.
+	_, transport := BuildMailer(SMTPConfig{Host: host, ResendAPIKey: resendEnc})
 	h.writeJSON(w, http.StatusOK, map[string]any{
-		"smtp_host":       host,
-		"smtp_port":       port,
-		"smtp_user":       user,
-		"smtp_pass_set":   passEnc != "",
-		"smtp_tls":        smtpTLS != 0,
-		"smtp_starttls":   startTLS != 0,
-		"email_from":      from,
-		"email_from_name": fromName,
-		"enabled":         h.isEmailEnabled(),
+		"smtp_host":          host,
+		"smtp_port":          port,
+		"smtp_user":          user,
+		"smtp_pass_set":      passEnc != "",
+		"smtp_tls":           smtpTLS != 0,
+		"smtp_starttls":      startTLS != 0,
+		"email_from":         from,
+		"email_from_name":    fromName,
+		"resend_api_key_set": resendEnc != "",
+		"transport":          string(transport),
+		"enabled":            h.isEmailEnabled(),
 	})
+}
+
+// storeEmailSecret encrypts and stores one secret column, or clears it when value is empty.
+// The column name is not caller-controlled - it is one of two constants at the call sites -
+// so interpolating it here cannot become injection.
+func (h *Handler) storeEmailSecret(w http.ResponseWriter, r *http.Request, column, value string) bool {
+	enc := ""
+	if value != "" {
+		var err error
+		enc, err = secret.Encrypt(h.encKey, value)
+		if err != nil {
+			h.logger.ErrorContext(r.Context(), "email settings: encrypt secret", "column", column, "error", err)
+			h.writeError(w, http.StatusInternalServerError, "internal error")
+			return false
+		}
+	}
+	q := fmt.Sprintf(`UPDATE server_settings SET %s = ?, updated_at = datetime('now') WHERE id = 1`, column)
+	if _, err := h.db.ExecContext(r.Context(), q, enc); err != nil { // #nosec G201 -- column is a constant from the call site, never user input
+		h.logger.ErrorContext(r.Context(), "email settings: store secret", "column", column, "error", err)
+		h.writeError(w, http.StatusInternalServerError, "internal error")
+		return false
+	}
+	return true
 }
 
 // PatchEmailSettings handles PATCH /v1/settings/email.
@@ -112,6 +190,9 @@ func (h *Handler) PatchEmailSettings(w http.ResponseWriter, r *http.Request) {
 		SMTPStartTLS  bool   `json:"smtp_starttls"`
 		EmailFrom     string `json:"email_from"`
 		EmailFromName string `json:"email_from_name"`
+		// Optional; omit to keep the existing key, send "" explicitly to clear it and
+		// fall back to SMTP.
+		ResendAPIKey *string `json:"resend_api_key"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.writeError(w, http.StatusBadRequest, "invalid JSON")
@@ -137,70 +218,53 @@ func (h *Handler) PatchEmailSettings(w http.ResponseWriter, r *http.Request) {
 		return 0
 	}
 
+	// Write the non-secret fields first, then each secret only if the caller supplied one.
+	// The previous shape branched on whether the password was present, which does not scale
+	// to a second optional secret without a combinatorial mess.
+	if _, err := h.db.ExecContext(r.Context(), `
+		UPDATE server_settings SET
+		  smtp_host = ?, smtp_port = ?, smtp_user = ?,
+		  smtp_tls = ?, smtp_starttls = ?,
+		  email_from = ?, email_from_name = ?,
+		  updated_at = datetime('now')
+		WHERE id = 1`,
+		req.SMTPHost, req.SMTPPort, req.SMTPUser,
+		boolToInt(req.SMTPTLS), boolToInt(req.SMTPStartTLS),
+		req.EmailFrom, req.EmailFromName); err != nil {
+		h.logger.ErrorContext(r.Context(), "email settings: update", "error", err)
+		h.writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
 	if req.SMTPPass != "" {
-		enc, err := secret.Encrypt(h.encKey, req.SMTPPass)
-		if err != nil {
-			h.logger.ErrorContext(r.Context(), "email settings: encrypt password", "error", err)
-			h.writeError(w, http.StatusInternalServerError, "internal error")
+		if !h.storeEmailSecret(w, r, "smtp_pass_enc", req.SMTPPass) {
 			return
 		}
-		_, err = h.db.ExecContext(r.Context(), `
-			UPDATE server_settings SET
-			  smtp_host = ?, smtp_port = ?, smtp_user = ?, smtp_pass_enc = ?,
-			  smtp_tls = ?, smtp_starttls = ?,
-			  email_from = ?, email_from_name = ?,
-			  updated_at = datetime('now')
-			WHERE id = 1`,
-			req.SMTPHost, req.SMTPPort, req.SMTPUser, enc,
-			boolToInt(req.SMTPTLS), boolToInt(req.SMTPStartTLS),
-			req.EmailFrom, req.EmailFromName)
-		if err != nil {
-			h.logger.ErrorContext(r.Context(), "email settings: update", "error", err)
-			h.writeError(w, http.StatusInternalServerError, "internal error")
-			return
-		}
-	} else {
-		_, err := h.db.ExecContext(r.Context(), `
-			UPDATE server_settings SET
-			  smtp_host = ?, smtp_port = ?, smtp_user = ?,
-			  smtp_tls = ?, smtp_starttls = ?,
-			  email_from = ?, email_from_name = ?,
-			  updated_at = datetime('now')
-			WHERE id = 1`,
-			req.SMTPHost, req.SMTPPort, req.SMTPUser,
-			boolToInt(req.SMTPTLS), boolToInt(req.SMTPStartTLS),
-			req.EmailFrom, req.EmailFromName)
-		if err != nil {
-			h.logger.ErrorContext(r.Context(), "email settings: update (keep pass)", "error", err)
-			h.writeError(w, http.StatusInternalServerError, "internal error")
+	}
+	// A pointer, so "field omitted" (keep) is distinguishable from "" (clear). Without that
+	// an admin could never turn the API key back off and return to SMTP.
+	if req.ResendAPIKey != nil {
+		if !h.storeEmailSecret(w, r, "resend_api_key_enc", *req.ResendAPIKey) {
 			return
 		}
 	}
 
-	// Hot-swap the live mailer so changes take effect immediately.
+	// Hot-swap the live mailer so changes take effect immediately. Re-read from the DB
+	// rather than rebuilding from the request: the request may legitimately omit secrets,
+	// and this way the running mailer always matches what was actually persisted.
 	if h.live != nil {
-		if req.SMTPHost != "" {
-			// Resolve the password: use what the caller sent, or fetch the stored one.
-			pass := req.SMTPPass
-			if pass == "" {
-				var enc string
-				if err := h.db.QueryRowContext(r.Context(),
-					`SELECT smtp_pass_enc FROM server_settings WHERE id = 1`).Scan(&enc); err != nil {
-					h.logger.WarnContext(r.Context(), "email settings: re-fetch enc pass failed, using empty pass", "error", err)
-				} else if enc != "" {
-					var decErr error
-					pass, decErr = secret.Decrypt(h.encKey, enc)
-					if decErr != nil {
-						h.logger.WarnContext(r.Context(), "email settings: decrypt stored pass failed, using empty pass", "error", decErr)
-					}
-				}
-			}
-			h.live.Swap(mailer.NewSMTP(
-				req.SMTPHost, req.SMTPPort, req.SMTPUser, pass,
-				req.SMTPTLS, req.SMTPStartTLS, req.EmailFrom, req.EmailFromName,
-			))
-		} else {
+		cfg, err := LoadEmailSettingsFromDB(h.db, h.encKey)
+		if err != nil {
+			h.logger.ErrorContext(r.Context(), "email settings: reload after save", "error", err)
+			h.writeError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		if cfg == nil {
 			h.live.Swap(&mailer.Noop{})
+		} else {
+			m, transport := BuildMailer(*cfg)
+			h.live.Swap(m)
+			h.logger.InfoContext(r.Context(), "mailer: reconfigured", "transport", string(transport))
 		}
 	}
 

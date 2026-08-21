@@ -86,12 +86,13 @@ func BuildHandler(ctx context.Context, cfg *config.Config, db *sql.DB, logger *s
 	}
 
 	switch {
-	case dbSMTP != nil && dbSMTP.Host != "":
-		live.Swap(mailer.NewSMTP(
-			dbSMTP.Host, dbSMTP.Port, dbSMTP.User, dbSMTP.Pass,
-			dbSMTP.TLS, dbSMTP.StartTLS, dbSMTP.From, dbSMTP.FromName,
-		))
-		logger.Info("mailer: configured from database", "host", dbSMTP.Host, "port", dbSMTP.Port)
+	case dbSMTP != nil:
+		// BuildMailer, not NewSMTP directly, so boot and the settings-save path pick the
+		// transport by the same rule. A Resend API key here means HTTPS delivery.
+		m, transport := handler.BuildMailer(*dbSMTP)
+		live.Swap(m)
+		logger.Info("mailer: configured from database",
+			"transport", string(transport), "host", dbSMTP.Host, "port", dbSMTP.Port)
 
 	case cfg.SMTPHost != "":
 		live.Swap(mailer.NewSMTP(

@@ -100,9 +100,27 @@ provider. With **Resend**:
 
 1. Verify your domain in Resend (add the SPF/DKIM/MX records it shows; **DNS-only** on Cloudflare).
 2. Create an API key.
-3. Settings → Email (or env): host `smtp.resend.com`, port `587`, username `resend`,
-   password = the API key, **STARTTLS on**, From `bookings@yourdomain`.
+3. Settings → Email. Pick **one** of:
+   - **Resend API key** (recommended): paste the key into the "Resend API key" field and
+     set From `bookings@yourdomain`. Delivery goes over HTTPS. Leave the SMTP fields empty.
+   - **SMTP**: host `smtp.resend.com`, port `587`, username `resend`, password = the API
+     key, **STARTTLS on**, From `bookings@yourdomain`.
 4. Send a test email.
+
+### If SMTP does not work, it may not be your fault
+
+**Many hosting platforms block outbound SMTP on their cheaper plans.** Railway disables it
+below Pro; other constrained tiers do the same. They block it by *dropping* the packets
+rather than refusing the connection, so from inside the container it looks exactly like a
+hang, and then exactly like a wrong password. No SMTP setting can work around it: ports 25,
+465, 587 and 2525 all behave identically, and it is not specific to Resend.
+
+The fix is the **Resend API key** field above, which sends over HTTPS on port 443. That is
+never blocked, and it is what Resend itself recommends regardless of platform.
+
+Which path is actually in use is shown as a badge at the top of Settings → Email, so
+"SMTP fields are filled in" is never mistaken for "mail is going out over SMTP". Setting an
+API key takes precedence over the SMTP fields; clearing it ("Remove key") switches back.
 
 > Email settings are stored **per instance** in that instance's DB — staging/prod/local each need their own.
 

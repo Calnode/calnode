@@ -11,6 +11,29 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
 
 ## [Unreleased]
 
+### Added
+- **Email can now be delivered over Resend's HTTPS API instead of SMTP.** Set a Resend
+  API key under Settings → Email and mail goes out over port 443. This exists because
+  **several hosting platforms block outbound SMTP on their cheaper plans** (Railway below
+  Pro among them) by dropping the packets rather than refusing the connection - which
+  looks like a hang, then like a wrong password, and cannot be fixed by changing any SMTP
+  setting. Ports 25/465/587/2525 are all affected and it is not provider-specific.
+- The transport follows the credentials you supply: an API key selects HTTPS, otherwise
+  SMTP, otherwise nothing. It does **not** probe and silently switch. Settings → Email
+  badges which path is actually live, so filled-in SMTP fields are never mistaken for SMTP
+  delivery, and "Remove key" switches back.
+
+### Fixed
+- **A failed SMTP dial could hang for ~2 minutes.** `defaultSMTPTimeout` was applied only
+  after the connection was established, so the dial itself fell back to the OS SYN-retry
+  limit. Against a host that drops SMTP packets this stalled the background job queue,
+  which shares a single SQLite connection, delaying every queued email behind it; the
+  email test button also appeared to hang rather than fail.
+- The email test button now explains failures instead of reporting "failed to send test
+  email". An unreachable server names the platform-block possibility and points at the API
+  key; a timeout after connecting points at the port/TLS mode; provider rejections are
+  shown verbatim.
+
 ## [0.3.0] - 2026-08-20
 
 ### Added

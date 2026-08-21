@@ -165,6 +165,10 @@ export type EmailSettings = {
 	smtp_starttls: boolean;
 	email_from: string;
 	email_from_name: string;
+	resend_api_key_set: boolean; // true when a key is stored; never returned directly
+	// Which path mail actually goes out over. "SMTP fields are filled in" and "mail is
+	// being delivered over SMTP" can differ, so the server reports the live answer.
+	transport: 'none' | 'smtp' | 'resend_api';
 	enabled: boolean;
 };
 

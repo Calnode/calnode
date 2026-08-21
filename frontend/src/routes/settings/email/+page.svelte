@@ -23,8 +23,18 @@
 	let smtpStartTLS = $state(true);
 	let emailFrom = $state('');
 	let emailFromName = $state('Calnode');
+	let resendApiKey = $state('');
+	// Distinct from "the field is blank": blank means keep the stored key, this means
+	// deliberately remove it and go back to SMTP.
+	let clearResendKey = $state(false);
 
 	let userEmail = $state('');
+
+	// The server decides the transport; mirror its answer rather than re-deriving it here,
+	// so the page can never claim one path while another is delivering.
+	const usingResend = $derived(
+		emailSettings?.transport === 'resend_api' || (!!resendApiKey && !clearResendKey),
+	);
 
 	onMount(() => loadingFlag.run(async () => {
 		const [me, email] = await Promise.all([
@@ -50,8 +60,13 @@
 				email_from: emailFrom, email_from_name: emailFromName,
 			};
 			if (smtpPass) body.smtp_pass = smtpPass;
+			// Omit the key entirely to keep the stored one; send "" only to clear it.
+			if (resendApiKey) body.resend_api_key = resendApiKey;
+			else if (clearResendKey) body.resend_api_key = '';
 			emailSettings = await api.patch<EmailSettings>('/v1/settings/email', body);
 			smtpPass = '';
+			resendApiKey = '';
+			clearResendKey = false;
 			toast.success('Email settings saved');
 		}, 'Could not save email settings');
 	}
@@ -61,7 +76,7 @@
 			try {
 				await api.post('/v1/settings/email/test');
 			} catch (e: any) {
-				if (e.message === 'Email is not configured — save SMTP settings first') {
+				if (e.message?.startsWith('Email is not configured')) {
 					throw new Error('Save your settings first, then try again.');
 				}
 				throw e;
@@ -85,17 +100,60 @@
 			<div class="mb-4 flex items-start justify-between gap-2">
 				<div>
 					<h2 class="text-sm font-semibold">Email</h2>
-					<p class="mt-0.5 text-xs text-muted-foreground">SMTP settings for sending booking emails.</p>
+					<p class="mt-0.5 text-xs text-muted-foreground">How Calnode sends booking emails.</p>
 				</div>
 				{#if emailSettings !== null}
 					<span class="flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium {emailSettings.enabled ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'}">
 						<span class="h-1.5 w-1.5 rounded-full {emailSettings.enabled ? 'bg-green-500' : 'bg-amber-400'}"></span>
-						{emailSettings.enabled ? 'Configured' : 'Not configured'}
+						{emailSettings.transport === 'resend_api'
+							? 'Sending via Resend API'
+							: emailSettings.transport === 'smtp'
+								? 'Sending via SMTP'
+								: 'Not configured'}
 					</span>
 				{/if}
 			</div>
 
 			<div class="space-y-4">
+				<div class="space-y-2 rounded-md border p-3">
+					<div class="flex items-center justify-between gap-4">
+						<div>
+							<p class="text-xs font-medium">Resend API key</p>
+							<p class="text-xs text-muted-foreground">
+								Sends over HTTPS instead of SMTP. Use this if your host blocks SMTP.
+							</p>
+						</div>
+					</div>
+					<Input id="resend-key" type="password"
+						placeholder={emailSettings?.resend_api_key_set ? '•••••••• (stored)' : 're_...'}
+						bind:value={resendApiKey}
+						disabled={clearResendKey} />
+					{#if emailSettings?.resend_api_key_set && !resendApiKey && !clearResendKey}
+						<div class="flex items-center justify-between gap-2">
+							<p class="text-xs text-muted-foreground">Stored — leave blank to keep it.</p>
+							<Button variant="ghost" size="sm" class="h-6 px-2 text-xs"
+								onclick={() => (clearResendKey = true)}>Remove key</Button>
+						</div>
+					{:else if clearResendKey}
+						<div class="flex items-center justify-between gap-2">
+							<p class="text-xs text-amber-700">Will be removed on save; SMTP will be used instead.</p>
+							<Button variant="ghost" size="sm" class="h-6 px-2 text-xs"
+								onclick={() => (clearResendKey = false)}>Undo</Button>
+						</div>
+					{/if}
+					<p class="text-xs text-muted-foreground">
+						Many hosts (including Railway below Pro) block outbound SMTP entirely, which
+						looks identical to a wrong password. An API key avoids that path.
+					</p>
+				</div>
+
+				<div class="space-y-4" class:opacity-60={usingResend}>
+					{#if usingResend}
+						<p class="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
+							Mail is being sent through the Resend API, so these SMTP settings are not in
+							use. They are kept so you can switch back by removing the key above.
+						</p>
+					{/if}
 				<div class="grid grid-cols-3 gap-3">
 					<div class="col-span-2 space-y-1.5">
 						<Label for="smtp-host">SMTP host</Label>
@@ -150,6 +208,7 @@
 						</div>
 						<Switch id="smtp-tls" bind:checked={smtpTLS} />
 					</div>
+				</div>
 				</div>
 			</div>
 

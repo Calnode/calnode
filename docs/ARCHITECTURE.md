@@ -428,9 +428,40 @@ as the desired state:
 
 ## 12. Notifications & email
 
-- `internal/mailer`: SMTP sender. The `From` header = `{EmailFromName} <{EmailFrom}>`
-  (`smtp.go: buildRaw`). Configurable in Settings → Email (`email_from`,
-  `email_from_name`) or env.
+- `internal/mailer`: two transports behind one `Mailer` interface. The `From` header =
+  `{EmailFromName} <{EmailFrom}>` (`smtp.go: buildRaw`). Configurable in Settings → Email
+  (`email_from`, `email_from_name`) or env.
+- **Two transports, chosen by credentials, not by probing** (`handler.BuildMailer`, the
+  single place the decision is made - boot and the settings-save path both call it):
+  - a **Resend API key** set (`resend_api_key_enc`, migration 00054) selects `resend.go`,
+    which posts to `api.resend.com` over HTTPS;
+  - otherwise an SMTP host selects `smtp.go`;
+  - neither selects `Noop`.
+
+  This exists because **SMTP is not universally available**: several platforms (Railway
+  below Pro among them) block outbound SMTP on cheaper plans by *dropping* packets, so it
+  presents as a hang and then as a credentials problem. No SMTP-layer setting can fix that.
+
+  Selection is deliberately **not** probe-and-fallback. A startup probe tests reachability
+  at boot rather than at send time, an open TCP port is not a working delivery path, and
+  silently switching transports makes "which path sent this?" unanswerable while masking a
+  genuinely broken SMTP config. Explicit credentials state intent. `GET /v1/settings/email`
+  returns the live `transport`, and the admin UI badges it, so filled-in SMTP fields are
+  never mistaken for SMTP delivery.
+- **The dial must stay bounded.** `defaultSMTPTimeout` once applied only via
+  `conn.SetDeadline`, which runs *after* the dial returns, leaving the dial itself bounded
+  by the OS SYN-retry limit (~2 min). Against a packet-dropping host that stalls the job
+  queue, which shares a single SQLite connection, so one unreachable mail server delays
+  every queued email behind it. Both dialers now carry the deadline (`newDialers`).
+- **`ErrUnreachable`** distinguishes "could not connect at all" from "connected, then
+  rejected", so `POST /v1/settings/email/test` can name the platform-block possibility
+  instead of reporting a generic failure. Both transports use it.
+- **Calendar invites over the API path:** the `.ics` is attached with its full MIME type,
+  `text/calendar; charset=utf-8; method=REQUEST`. The `method` parameter is what makes a
+  client render an RSVP-able event rather than a file. Resend's `content_type` field is set
+  explicitly for this and pinned by `TestICSAttachmentKeepsItsMethodParameter`, but their
+  docs do not commit to preserving parameters verbatim - **if invites ever arrive as plain
+  attachments, check this first**; the fallback is to carry the calendar part in the body.
 - Email types: confirmation, cancellation, reschedule, reminder — to attendee
   and/or host, gated by per-user notification prefs. Custom per-event-type notes +
   per-event "send test".
