@@ -2,17 +2,13 @@ package handler
 
 import (
 	"bytes"
-	"image"
-	_ "image/gif"
 	"image/jpeg"
-	_ "image/png"
 	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
 
 	"github.com/disintegration/imaging"
-	_ "golang.org/x/image/webp"
 )
 
 // avatarExts covers formats that may have been saved before the JPEG migration.
@@ -41,30 +37,17 @@ func (h *Handler) UploadAvatar(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	// Detect content type from the first 512 bytes.
-	sniff := make([]byte, 512)
-	n, _ := file.Read(sniff)
-	ct := http.DetectContentType(sniff[:n])
-	switch ct {
-	case "image/jpeg", "image/png", "image/gif", "image/webp":
-	default:
-		h.writeError(w, http.StatusBadRequest, "avatar must be JPEG, PNG, GIF, or WebP")
-		return
-	}
-
-	// Reassemble full stream so image.Decode sees it from the start.
-	var buf bytes.Buffer
-	buf.Write(sniff[:n])
-	if _, err := buf.ReadFrom(file); err != nil {
+	// Shared with the branding uploaders, which is the point: this endpoint is the one
+	// that most needs the dimension guard, because it is the only image upload NOT
+	// restricted to admins - any authenticated member can reach it.
+	img, userMsg, err := decodeUploadedImage(file, "avatar")
+	if err != nil {
 		h.logger.ErrorContext(r.Context(), "avatar: read body", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-
-	img, _, err := image.Decode(&buf)
-	if err != nil {
-		h.logger.ErrorContext(r.Context(), "avatar: decode image", "error", err)
-		h.writeError(w, http.StatusBadRequest, "could not decode image")
+	if userMsg != "" {
+		h.writeError(w, http.StatusBadRequest, userMsg)
 		return
 	}
 

@@ -24,13 +24,14 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
   delivery, and "Remove key" switches back.
 
 ### Security
-- **Branding image uploads now check dimensions before decoding.** The 5 MB body limit
+- **All three image uploads now check dimensions before decoding.** The 5 MB body limit
   bounds bytes on the wire, not pixels: a highly compressed PNG of 30000x30000 is a few
   hundred KB and decodes to gigabytes. Both the logo and banner endpoints now read the
-  image header first and reject anything over 25 megapixels. Admin-only, so this was never
-  remotely exploitable, but it did not need an attacker either - a genuine large camera
-  photo is well under 5 MB compressed, and an out-of-memory kill takes down the process
-  holding the single SQLite connection.
+  image header first and reject anything over 25 megapixels. The branding logo and banner
+  are admin-only, but **the user avatar upload is not** - any authenticated member could
+  send a ~160 KB file that decoded to hundreds of megabytes, and an out-of-memory kill
+  takes down the process holding the single SQLite connection. It did not need a malicious
+  user either: a genuine large camera photo is well under 5 MB compressed.
 
 ### Fixed
 - Checkbox answers in the admin bookings list are matched liberally. Answers are

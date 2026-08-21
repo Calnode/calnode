@@ -24,10 +24,10 @@ func pngOfSize(t *testing.T, w, h int) []byte {
 	return buf.Bytes()
 }
 
-// TestDecodeBrandingImage_rejectsDecompressionBomb is the real guard. The 5 MB body limit
+// TestDecodeUploadedImage_rejectsDecompressionBomb is the real guard. The 5 MB body limit
 // bounds bytes, not pixels, so without a dimension check a few hundred KB of PNG can
 // allocate gigabytes. This builds an actual bomb rather than asserting against a stub.
-func TestDecodeBrandingImage_rejectsDecompressionBomb(t *testing.T) {
+func TestDecodeUploadedImage_rejectsDecompressionBomb(t *testing.T) {
 	const dim = 12000 // 144 megapixels
 	bomb := pngOfSize(t, dim, dim)
 
@@ -42,7 +42,7 @@ func TestDecodeBrandingImage_rejectsDecompressionBomb(t *testing.T) {
 	t.Logf("%dx%d PNG is only %d KB on the wire but %d megapixels decoded (~%d MB as Gray, ~%d MB as NRGBA)",
 		dim, dim, len(bomb)/1024, (dim*dim)/1_000_000, (dim*dim)/(1<<20), (dim*dim*4)/(1<<20))
 
-	img, userMsg, err := decodeBrandingImage(bytes.NewReader(bomb), "banner")
+	img, userMsg, err := decodeUploadedImage(bytes.NewReader(bomb), "banner")
 	if err != nil {
 		t.Fatalf("unexpected internal error: %v", err)
 	}
@@ -55,8 +55,8 @@ func TestDecodeBrandingImage_rejectsDecompressionBomb(t *testing.T) {
 }
 
 // A normal image must still work - a guard that rejects everything is not a fix.
-func TestDecodeBrandingImage_acceptsOrdinaryImage(t *testing.T) {
-	img, userMsg, err := decodeBrandingImage(bytes.NewReader(pngOfSize(t, 1200, 400)), "banner")
+func TestDecodeUploadedImage_acceptsOrdinaryImage(t *testing.T) {
+	img, userMsg, err := decodeUploadedImage(bytes.NewReader(pngOfSize(t, 1200, 400)), "banner")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -73,8 +73,8 @@ func TestDecodeBrandingImage_acceptsOrdinaryImage(t *testing.T) {
 
 // A camera-sized photo is the case the cap must NOT break: someone uploading a phone or
 // DSLR shot as a banner is ordinary use, not an attack.
-func TestDecodeBrandingImage_acceptsCameraSizedPhoto(t *testing.T) {
-	_, userMsg, err := decodeBrandingImage(bytes.NewReader(pngOfSize(t, 4032, 3024)), "banner") // 12 MP
+func TestDecodeUploadedImage_acceptsCameraSizedPhoto(t *testing.T) {
+	_, userMsg, err := decodeUploadedImage(bytes.NewReader(pngOfSize(t, 4032, 3024)), "banner") // 12 MP
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -84,8 +84,8 @@ func TestDecodeBrandingImage_acceptsCameraSizedPhoto(t *testing.T) {
 }
 
 // Non-images are refused on content type, before any decode is attempted.
-func TestDecodeBrandingImage_rejectsNonImage(t *testing.T) {
-	_, userMsg, err := decodeBrandingImage(strings.NewReader("<html><body>not an image</body></html>"), "logo")
+func TestDecodeUploadedImage_rejectsNonImage(t *testing.T) {
+	_, userMsg, err := decodeUploadedImage(strings.NewReader("<html><body>not an image</body></html>"), "logo")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -94,15 +94,15 @@ func TestDecodeBrandingImage_rejectsNonImage(t *testing.T) {
 	}
 }
 
-// TestDecodeBrandingImage_shortInputDoesNotMisclassify guards the io.ReadFull fix. A file
+// TestDecodeUploadedImage_shortInputDoesNotMisclassify guards the io.ReadFull fix. A file
 // under 512 bytes returns ErrUnexpectedEOF from ReadFull; treating that as a failure, or
 // sniffing a short prefix, would reject a perfectly valid small image.
-func TestDecodeBrandingImage_shortInputDoesNotMisclassify(t *testing.T) {
+func TestDecodeUploadedImage_shortInputDoesNotMisclassify(t *testing.T) {
 	tiny := pngOfSize(t, 1, 1)
 	if len(tiny) >= 512 {
 		t.Skipf("1x1 PNG is %d bytes, not short enough to exercise the path", len(tiny))
 	}
-	img, userMsg, err := decodeBrandingImage(bytes.NewReader(tiny), "logo")
+	img, userMsg, err := decodeUploadedImage(bytes.NewReader(tiny), "logo")
 	if err != nil {
 		t.Fatalf("a %d-byte PNG produced an internal error: %v", len(tiny), err)
 	}
@@ -111,5 +111,26 @@ func TestDecodeBrandingImage_shortInputDoesNotMisclassify(t *testing.T) {
 	}
 	if img == nil {
 		t.Error("expected the small image to decode")
+	}
+}
+
+// TestDecodeUploadedImage_avatarPathIsGuarded pins the reason this helper is shared rather
+// than copied. The branding uploads are admin-only, so an unguarded decode there is a
+// self-inflicted wound. The avatar endpoint is RequireAuth only - any authenticated member,
+// including the lowest-privileged role, can reach it - so it is the one endpoint where an
+// unbounded decode lets a non-admin take the process down, and it holds the single SQLite
+// connection. It was originally missed precisely because it had its own copy of the
+// preamble.
+func TestDecodeUploadedImage_avatarPathIsGuarded(t *testing.T) {
+	bomb := pngOfSize(t, 12000, 12000)
+	img, userMsg, err := decodeUploadedImage(bytes.NewReader(bomb), "avatar")
+	if err != nil {
+		t.Fatalf("unexpected internal error: %v", err)
+	}
+	if img != nil {
+		t.Error("the avatar path decoded a 144 MP image; the guard is not applied there")
+	}
+	if !strings.Contains(userMsg, "too large") {
+		t.Errorf("userMsg = %q, want a too-large rejection", userMsg)
 	}
 }
