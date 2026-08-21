@@ -145,23 +145,51 @@ func (h *Handler) GetEmailSettings(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// storeEmailSecret encrypts and stores one secret column, or clears it when value is empty.
-// The column name is not caller-controlled - it is one of two constants at the call sites -
-// so interpolating it here cannot become injection.
-func (h *Handler) storeEmailSecret(w http.ResponseWriter, r *http.Request, column, value string) bool {
+// emailSecret identifies which encrypted settings column to write. A closed type rather
+// than a column-name string: the SQL below is then fully static, so there is no formatted
+// query for gosec to flag (G201) and no suppression comment asserting safety that a later
+// edit could quietly invalidate. Two columns do not justify dynamic SQL.
+type emailSecret int
+
+const (
+	secretSMTPPass emailSecret = iota
+	secretResendAPIKey
+)
+
+func (s emailSecret) String() string {
+	if s == secretResendAPIKey {
+		return "resend_api_key_enc"
+	}
+	return "smtp_pass_enc"
+}
+
+// storeEmailSecret encrypts and stores one secret, or clears it when value is empty.
+func (h *Handler) storeEmailSecret(w http.ResponseWriter, r *http.Request, which emailSecret, value string) bool {
 	enc := ""
 	if value != "" {
 		var err error
 		enc, err = secret.Encrypt(h.encKey, value)
 		if err != nil {
-			h.logger.ErrorContext(r.Context(), "email settings: encrypt secret", "column", column, "error", err)
+			h.logger.ErrorContext(r.Context(), "email settings: encrypt secret", "secret", which.String(), "error", err)
 			h.writeError(w, http.StatusInternalServerError, "internal error")
 			return false
 		}
 	}
-	q := fmt.Sprintf(`UPDATE server_settings SET %s = ?, updated_at = datetime('now') WHERE id = 1`, column)
-	if _, err := h.db.ExecContext(r.Context(), q, enc); err != nil { // #nosec G201 -- column is a constant from the call site, never user input
-		h.logger.ErrorContext(r.Context(), "email settings: store secret", "column", column, "error", err)
+
+	var q string
+	switch which {
+	case secretResendAPIKey:
+		q = `UPDATE server_settings SET resend_api_key_enc = ?, updated_at = datetime('now') WHERE id = 1`
+	case secretSMTPPass:
+		q = `UPDATE server_settings SET smtp_pass_enc = ?, updated_at = datetime('now') WHERE id = 1`
+	default:
+		h.logger.ErrorContext(r.Context(), "email settings: unknown secret", "secret", int(which))
+		h.writeError(w, http.StatusInternalServerError, "internal error")
+		return false
+	}
+
+	if _, err := h.db.ExecContext(r.Context(), q, enc); err != nil {
+		h.logger.ErrorContext(r.Context(), "email settings: store secret", "secret", which.String(), "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal error")
 		return false
 	}
@@ -237,14 +265,14 @@ func (h *Handler) PatchEmailSettings(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.SMTPPass != "" {
-		if !h.storeEmailSecret(w, r, "smtp_pass_enc", req.SMTPPass) {
+		if !h.storeEmailSecret(w, r, secretSMTPPass, req.SMTPPass) {
 			return
 		}
 	}
 	// A pointer, so "field omitted" (keep) is distinguishable from "" (clear). Without that
 	// an admin could never turn the API key back off and return to SMTP.
 	if req.ResendAPIKey != nil {
-		if !h.storeEmailSecret(w, r, "resend_api_key_enc", *req.ResendAPIKey) {
+		if !h.storeEmailSecret(w, r, secretResendAPIKey, *req.ResendAPIKey) {
 			return
 		}
 	}
