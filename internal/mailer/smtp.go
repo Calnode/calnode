@@ -16,12 +16,20 @@ import (
 	"github.com/calnode/calnode/internal/uid"
 )
 
-// defaultSMTPTimeout bounds the entire SMTP conversation (StartTLS, Auth, MAIL/RCPT/DATA,
-// Quit) when ctx carries no deadline of its own. net/smtp's Client has no context support
-// past the initial dial — every call after that blocks on the raw connection with no
-// timeout unless one is set here, which previously meant a stalled or misconfigured server
-// (e.g. a port/TLS-mode mismatch) could hang the request — and therefore the caller — forever
-// with no error surfaced. A var, not a const, so tests can shrink it instead of waiting 30s.
+// defaultSMTPTimeout bounds the entire SMTP exchange, dial included, when ctx carries no
+// deadline of its own. net/smtp's Client has no context support past the initial dial -
+// every call after that blocks on the raw connection with no timeout unless one is set
+// here, which previously meant a stalled or misconfigured server (e.g. a port/TLS-mode
+// mismatch) could hang the request, and therefore the caller, forever with no error
+// surfaced. A var, not a const, so tests can shrink it instead of waiting 30s.
+//
+// The deadline MUST also be set on the dialer, not only via conn.SetDeadline after the
+// dial returns. Several hosting platforms (Railway below Pro, and others) silently drop
+// outbound SMTP packets rather than refusing the connection, so the TCP handshake gets no
+// answer at all and the dial falls back to the OS SYN-retry limit - roughly 2 minutes on
+// Linux. That is far past this timeout, and it stalls the background job queue, which
+// shares a single SQLite connection: one unreachable mail host holds up every reminder
+// behind it. Bounding the dial turns a 2-minute hang into a prompt, reportable failure.
 var defaultSMTPTimeout = 30 * time.Second
 
 // SMTP sends email via an SMTP server.
@@ -52,6 +60,17 @@ func NewSMTP(host, port, username, password string, implicitTLS, startTLS bool, 
 	}
 }
 
+// newDialers builds the dialers Send uses, both bounded by deadline. Extracted so a test
+// can assert the DIAL is bounded and not just the post-connect conversation - see the
+// comment on defaultSMTPTimeout for why an unbounded dial is a real production problem.
+func newDialers(deadline time.Time, host string) (net.Dialer, tls.Dialer) {
+	return net.Dialer{Deadline: deadline},
+		tls.Dialer{
+			NetDialer: &net.Dialer{Deadline: deadline},
+			Config:    &tls.Config{ServerName: host},
+		}
+}
+
 func (s *SMTP) Send(ctx context.Context, msg Message) error {
 	addr := net.JoinHostPort(s.host, s.port)
 	raw := s.buildRaw(msg)
@@ -66,8 +85,10 @@ func (s *SMTP) Send(ctx context.Context, msg Message) error {
 
 	var c *smtp.Client
 
+	tcpDialer, tlsDialer := newDialers(deadline, s.host)
+
 	if s.implicitTLS {
-		d := tls.Dialer{Config: &tls.Config{ServerName: s.host}}
+		d := tlsDialer
 		conn, err := d.DialContext(ctx, "tcp", addr)
 		if err != nil {
 			return fmt.Errorf("mailer: tls dial %s: %w", addr, err)
@@ -82,7 +103,7 @@ func (s *SMTP) Send(ctx context.Context, msg Message) error {
 			return fmt.Errorf("mailer: smtp client: %w", err)
 		}
 	} else {
-		var nd net.Dialer
+		nd := tcpDialer
 		conn, err := nd.DialContext(ctx, "tcp", addr)
 		if err != nil {
 			return fmt.Errorf("mailer: dial %s: %w", addr, err)
