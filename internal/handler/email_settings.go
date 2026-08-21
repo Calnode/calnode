@@ -1,11 +1,14 @@
 package handler
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/calnode/calnode/internal/mailer"
 	"github.com/calnode/calnode/internal/secret"
@@ -204,6 +207,33 @@ func (h *Handler) PatchEmailSettings(w http.ResponseWriter, r *http.Request) {
 	h.GetEmailSettings(w, r)
 }
 
+// testEmailTimeout bounds the interactive test-send. Short on purpose: see the call site.
+const testEmailTimeout = 12 * time.Second
+
+// testEmailErrorMessage turns a send failure into something an admin can act on.
+//
+// The case worth special-casing is "could not open a connection at all". Many hosting
+// platforms (Railway below Pro, and other constrained tiers) silently drop outbound SMTP
+// instead of refusing it, so the connection simply never completes. From the admin's side
+// that is indistinguishable from a typo, and they will burn an afternoon re-checking a
+// username and password that were correct all along. Name the likely cause instead.
+func testEmailErrorMessage(err error) string {
+	switch {
+	case errors.Is(err, mailer.ErrUnreachable):
+		return "Could not reach the SMTP server: the connection timed out or was refused. " +
+			"Many hosting platforms block outbound SMTP on their cheaper plans, which looks " +
+			"exactly like this even when your username and password are correct. If you use " +
+			"Resend, add an API key under Settings → Email to send over HTTPS instead, which " +
+			"is not blocked. Otherwise check the host, port and TLS mode."
+	case errors.Is(err, context.DeadlineExceeded):
+		return "Timed out sending the test email. The SMTP server accepted a connection but " +
+			"did not finish the exchange in time. Check the port and TLS mode (465 uses " +
+			"implicit TLS; 587 uses STARTTLS)."
+	default:
+		return "Failed to send test email: " + err.Error()
+	}
+}
+
 // TestEmailConnection handles POST /v1/settings/email/test.
 // Admin-only. Sends a plain connection-check email to the authenticated user's address.
 func (h *Handler) TestEmailConnection(w http.ResponseWriter, r *http.Request) {
@@ -221,13 +251,19 @@ func (h *Handler) TestEmailConnection(w http.ResponseWriter, r *http.Request) {
 			"Email is not configured — save SMTP settings first")
 		return
 	}
-	if err := h.mailer.Send(r.Context(), mailer.Message{
+	// Bound this well under the default send timeout. This endpoint is interactive: an
+	// admin is watching a spinner, and a long wait reads as "broken UI" rather than
+	// "email is misconfigured". Background sends keep the longer default.
+	ctx, cancel := context.WithTimeout(r.Context(), testEmailTimeout)
+	defer cancel()
+
+	if err := h.mailer.Send(ctx, mailer.Message{
 		To:      []string{user.Email},
 		Subject: "[TEST] Calnode email configuration",
-		Text:    "This is a test email from Calnode. If you received this, your SMTP settings are working correctly.",
+		Text:    "This is a test email from Calnode. If you received this, your email settings are working correctly.",
 	}); err != nil {
 		h.logger.ErrorContext(r.Context(), "email connection test: send", "error", err)
-		h.writeError(w, http.StatusInternalServerError, "failed to send test email")
+		h.writeError(w, http.StatusInternalServerError, testEmailErrorMessage(err))
 		return
 	}
 	h.writeJSON(w, http.StatusOK, map[string]any{"sent": true, "to": user.Email})

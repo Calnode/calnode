@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"mime"
 	"net"
@@ -60,6 +61,14 @@ func NewSMTP(host, port, username, password string, implicitTLS, startTLS bool, 
 	}
 }
 
+// ErrUnreachable marks a failure to establish a TCP connection to the SMTP host at all,
+// as opposed to the host answering and then rejecting us (bad credentials, relay denied,
+// TLS mismatch). The distinction is worth surfacing: an unreachable host on an otherwise
+// healthy network usually means the platform is blocking outbound SMTP, which no amount of
+// correcting the username and password will fix. Callers use errors.Is to give the admin
+// that specific advice instead of a generic "failed to send".
+var ErrUnreachable = errors.New("smtp host unreachable")
+
 // newDialers builds the dialers Send uses, both bounded by deadline. Extracted so a test
 // can assert the DIAL is bounded and not just the post-connect conversation - see the
 // comment on defaultSMTPTimeout for why an unbounded dial is a real production problem.
@@ -91,7 +100,7 @@ func (s *SMTP) Send(ctx context.Context, msg Message) error {
 		d := tlsDialer
 		conn, err := d.DialContext(ctx, "tcp", addr)
 		if err != nil {
-			return fmt.Errorf("mailer: tls dial %s: %w", addr, err)
+			return fmt.Errorf("mailer: tls dial %s: %w: %w", addr, ErrUnreachable, err)
 		}
 		if err := conn.SetDeadline(deadline); err != nil {
 			conn.Close() // #nosec G104 -- already returning a more specific error; nothing actionable on close error
@@ -106,7 +115,7 @@ func (s *SMTP) Send(ctx context.Context, msg Message) error {
 		nd := tcpDialer
 		conn, err := nd.DialContext(ctx, "tcp", addr)
 		if err != nil {
-			return fmt.Errorf("mailer: dial %s: %w", addr, err)
+			return fmt.Errorf("mailer: dial %s: %w: %w", addr, ErrUnreachable, err)
 		}
 		if err := conn.SetDeadline(deadline); err != nil {
 			conn.Close() // #nosec G104 -- already returning a more specific error; nothing actionable on close error
