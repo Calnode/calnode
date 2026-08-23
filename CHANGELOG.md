@@ -11,6 +11,8 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-08-24
+
 ### Added
 - **Email can now be delivered over Resend's HTTPS API instead of SMTP.** Set a Resend
   API key under Settings → Email and mail goes out over port 443. This exists because
