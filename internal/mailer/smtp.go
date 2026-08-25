@@ -136,11 +136,10 @@ func (s *SMTP) Send(ctx context.Context, msg Message) error {
 	defer c.Close()
 
 	if s.username != "" {
-		auth := smtp.PlainAuth("", s.username, s.password, s.host)
+		// Our specific server refuses PLAIN and requires LOGIN
+		auth := LoginAuth(s.username, s.password)
 		if err := c.Auth(auth); err != nil {
-			// Don't wrap err — SMTP auth responses can contain server-side
-			// detail that may expose credential information in logs.
-			return fmt.Errorf("mailer: SMTP authentication failed")
+			return fmt.Errorf("mailer: SMTP authentication failed: %w", err)
 		}
 	}
 
