@@ -22,5 +22,8 @@ func (c *Client) ListCalendars(ctx context.Context, userID, accountEmail string)
 	if err != nil {
 		return nil, err
 	}
-	return []calendar.CalendarInfo{{ID: calID, Name: "Calendar", Primary: true}}, nil
+	// CalDAV exposes exactly the one collection the user configured, and they configured it
+	// precisely so Calnode could write there - so unlike Google/Microsoft there is no
+	// read-only case to detect here.
+	return []calendar.CalendarInfo{{ID: calID, Name: "Calendar", Primary: true, Writable: true}}, nil
 }

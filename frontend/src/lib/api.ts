@@ -142,6 +142,7 @@ export type CalendarPick = {
 	id: string;
 	name: string;
 	primary: boolean;
+	writable: boolean; // false for a read-only shared calendar: valid for conflicts, not as a write target
 	check_conflicts: boolean;
 	is_destination: boolean;
 };

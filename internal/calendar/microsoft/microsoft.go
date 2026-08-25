@@ -242,6 +242,33 @@ func (c *Client) buildClient(ctx context.Context, userID, accessEnc, refreshEnc,
 // httpClient returns an authorized *http.Client for one matching connection (LIMIT 1),
 // filtered by check_conflicts / is_destination (-1 means any). Returns (nil, nil) when no
 // matching connection exists. Used for the single destination write.
+// destinationCalendarID returns the Graph calendar id the user picked as the write target
+// inside their destination account, or "" to use the account's default calendar.
+//
+// Microsoft needs this separately from the other providers because it does not carry a
+// calendar id on the write at all: events POST to /me/events, which is the default
+// calendar by definition. Targeting a specific one means a different URL
+// (/me/calendars/{id}/events), so the id has to reach the request builder rather than
+// being swapped into a field the way Google's and CalDAV's are.
+func (c *Client) destinationCalendarID(ctx context.Context, userID string) (string, error) {
+	var accountEmail string
+	switch err := c.db.QueryRowContext(ctx,
+		`SELECT COALESCE(account_email,'') FROM calendar_connections
+		 WHERE user_id = ? AND provider = ? AND is_destination = 1 LIMIT 1`,
+		userID, providerName).Scan(&accountEmail); err {
+	case nil:
+	case sql.ErrNoRows:
+		return "", nil
+	default:
+		return "", fmt.Errorf("microsoft: destination account: %w", err)
+	}
+	calID, ok, err := connstore.DestinationCalendarID(ctx, c.db, userID, providerName, accountEmail)
+	if err != nil || !ok {
+		return "", err
+	}
+	return calID, nil
+}
+
 func (c *Client) httpClient(ctx context.Context, userID string, checkConflicts, isDestination int) (*http.Client, error) {
 	q := `SELECT access_token_enc, COALESCE(refresh_token_enc,''), calendar_id, COALESCE(expiry_at,''), COALESCE(account_email,'')
 	      FROM calendar_connections WHERE user_id = ? AND provider = ?`

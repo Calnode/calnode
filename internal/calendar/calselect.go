@@ -106,6 +106,21 @@ func (s *Service) SetAccountCalendars(ctx context.Context, userID, provider, acc
 			`UPDATE connection_calendars SET is_destination = 0 WHERE user_id = ?`, userID); err != nil {
 			return err
 		}
+		// Move the ACCOUNT-level destination to this account too, or the choice silently
+		// does nothing: the write path picks the account via calendar_connections first and
+		// only then looks for a calendar inside it. Picking a calendar in account B while
+		// account A is the destination would otherwise keep writing to A's primary, which
+		// is exactly the "I chose it and nothing changed" failure this feature exists to fix.
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE calendar_connections SET is_destination = 0 WHERE user_id = ?`, userID); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE calendar_connections SET is_destination = 1
+			 WHERE user_id = ? AND provider = ? AND account_email = ?`,
+			userID, provider, accountEmail); err != nil {
+			return err
+		}
 	}
 	if _, err := tx.ExecContext(ctx,
 		`DELETE FROM connection_calendars WHERE user_id = ? AND provider = ? AND account_email = ?`,

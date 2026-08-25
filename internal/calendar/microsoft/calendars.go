@@ -33,6 +33,8 @@ type msCalListResp struct {
 		ID                string `json:"id"`
 		Name              string `json:"name"`
 		IsDefaultCalendar bool   `json:"isDefaultCalendar"`
+		// Graph reports this per calendar; false for one shared with the user read-only.
+		CanEdit bool `json:"canEdit"`
 	} `json:"value"`
 }
 
@@ -65,7 +67,9 @@ func (c *Client) ListCalendars(ctx context.Context, userID, accountEmail string)
 		if name == "" {
 			name = it.ID
 		}
-		out = append(out, calendar.CalendarInfo{ID: it.ID, Name: name, Primary: it.IsDefaultCalendar})
+		out = append(out, calendar.CalendarInfo{
+			ID: it.ID, Name: name, Primary: it.IsDefaultCalendar, Writable: it.CanEdit,
+		})
 	}
 	return out, nil
 }

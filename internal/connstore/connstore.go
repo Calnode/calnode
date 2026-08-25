@@ -71,3 +71,36 @@ func ResolveFlags(ctx context.Context, tx Execer, userID, provider, accountEmail
 		return 0, 0, false, fmt.Errorf("connstore: flag lookup: %w", err)
 	}
 }
+
+// DestinationCalendarID returns the sub-calendar within one connected account that the
+// user picked as the write target, from connection_calendars.
+//
+// Why this is separate from calendar_connections.is_destination: those are two different
+// questions. The connections row answers "which connected ACCOUNT do bookings go to";
+// this answers "which calendar INSIDE that account". A Google account exposes many
+// calendars and only ever writes to the account row's calendar_id, which is "primary" -
+// so without this, a user who picks their work calendar gets conflict checking against it
+// (conflicts.go already honours the selection) while bookings still land in their personal
+// primary. That mismatch is what discussion #10 reported.
+//
+// ok=false means the account has no explicit sub-calendar choice, and the caller must keep
+// the account-level calendar_id. That is the upgrade path: every existing install has rows
+// seeded from calendar_connections with is_destination copied across, so behaviour is
+// unchanged until someone actively picks a different calendar.
+func DestinationCalendarID(ctx context.Context, q Execer, userID, provider, accountEmail string) (calendarID string, ok bool, err error) {
+	switch err := q.QueryRowContext(ctx,
+		`SELECT calendar_id FROM connection_calendars
+		 WHERE user_id = ? AND provider = ? AND account_email = ? AND is_destination = 1
+		 LIMIT 1`,
+		userID, provider, accountEmail).Scan(&calendarID); err {
+	case nil:
+		if calendarID == "" {
+			return "", false, nil
+		}
+		return calendarID, true, nil
+	case sql.ErrNoRows:
+		return "", false, nil
+	default:
+		return "", false, fmt.Errorf("connstore: destination calendar: %w", err)
+	}
+}

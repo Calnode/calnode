@@ -34,6 +34,8 @@ type calListResp struct {
 		Summary string `json:"summary"`
 		Primary bool   `json:"primary"`
 		Deleted bool   `json:"deleted"`
+		// "owner" | "writer" | "reader" | "freeBusyReader"
+		AccessRole string `json:"accessRole"`
 	} `json:"items"`
 }
 
@@ -70,7 +72,10 @@ func (c *Client) ListCalendars(ctx context.Context, userID, accountEmail string)
 		if name == "" {
 			name = it.ID
 		}
-		out = append(out, calendar.CalendarInfo{ID: it.ID, Name: name, Primary: it.Primary})
+		out = append(out, calendar.CalendarInfo{
+			ID: it.ID, Name: name, Primary: it.Primary,
+			Writable: it.AccessRole == "owner" || it.AccessRole == "writer",
+		})
 	}
 	return out, nil
 }

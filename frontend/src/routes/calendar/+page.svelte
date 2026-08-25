@@ -156,6 +156,12 @@
 		}
 	}
 
+	// Exclusive within this account's list. The backend clears the flag across every other
+	// account when it saves, so the UI only has to keep this list consistent.
+	function pickDestination(chosen: CalendarPick) {
+		pickerCals = pickerCals.map((c) => ({ ...c, is_destination: c.id === chosen.id }));
+	}
+
 	async function savePicker(c: CalendarConnection) {
 		pickerSaving = true;
 		pickerErr = '';
@@ -241,7 +247,7 @@
 
 <div class="mb-8">
 	<h1 class="text-2xl font-semibold tracking-tight">Calendar</h1>
-	<p class="mt-1 text-sm text-muted-foreground">Connect one or more calendars — all are checked for conflicts, and bookings are written to the one you choose.</p>
+	<p class="mt-1 text-sm text-muted-foreground">Connect one or more accounts. Choose which calendars are checked for conflicts, and which single calendar bookings are written into.</p>
 </div>
 
 {#if error}
@@ -303,13 +309,36 @@
 								{:else if pickerCals.length === 0}
 									<p class="text-xs text-muted-foreground">No calendars found for this account.</p>
 								{:else}
-									<p class="text-xs text-muted-foreground">Choose which calendars in this account are checked for conflicts.</p>
+									<p class="text-xs text-muted-foreground">
+										Tick the calendars to check for conflicts, and choose the one bookings are
+										written into.
+									</p>
 									<div class="space-y-1.5">
+										<div class="flex items-center gap-2 pb-1 text-xs font-medium text-muted-foreground">
+											<span class="w-10 shrink-0 text-center">Check</span>
+											<span class="w-10 shrink-0 text-center">Book</span>
+											<span>Calendar</span>
+										</div>
 										{#each pickerCals as cal (cal.id)}
-											<label class="flex cursor-pointer items-center gap-2 text-sm">
-												<input type="checkbox" bind:checked={cal.check_conflicts} disabled={pickerSaving} />
-												<span class="truncate">{cal.name}{#if cal.primary}<span class="ml-1 text-xs text-muted-foreground">(primary)</span>{/if}</span>
-											</label>
+											<div class="flex items-center gap-2 text-sm">
+												<span class="w-10 shrink-0 text-center">
+													<input type="checkbox" bind:checked={cal.check_conflicts} disabled={pickerSaving}
+														aria-label="Check {cal.name} for conflicts" />
+												</span>
+												<span class="w-10 shrink-0 text-center">
+													<!-- One destination per account in the UI; the API enforces one per user
+													     across all accounts and moves the account-level destination to match. -->
+													<input type="radio" name="subcal-destination" disabled={pickerSaving || !cal.writable}
+														checked={cal.is_destination}
+														onchange={() => pickDestination(cal)}
+														aria-label="Write bookings into {cal.name}" />
+												</span>
+												<span class="truncate">
+													{cal.name}
+													{#if cal.primary}<span class="ml-1 text-xs text-muted-foreground">(primary)</span>{/if}
+													{#if !cal.writable}<span class="ml-1 text-xs text-muted-foreground">(read-only)</span>{/if}
+												</span>
+											</div>
 										{/each}
 									</div>
 									<div class="flex items-center gap-2 pt-1">

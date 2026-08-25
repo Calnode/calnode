@@ -201,6 +201,16 @@ func (c *Client) httpClient(ctx context.Context, userID string, checkConflicts, 
 	if err != nil {
 		return nil, "", fmt.Errorf("gcal: load connection: %w", err)
 	}
+
+	// The connections row only ever holds the account's default calendar ("primary"). If
+	// the user picked a specific calendar inside this account, that is the write target.
+	if isDestination == 1 {
+		if subCal, ok, sErr := connstore.DestinationCalendarID(ctx, c.db, userID, "google", accountEmail); sErr != nil {
+			return nil, "", sErr
+		} else if ok {
+			calID = subCal
+		}
+	}
 	hc, err := c.buildClient(ctx, userID, accessEnc, refreshEnc, calID, expiryStr, accountEmail)
 	if err != nil {
 		return nil, "", err

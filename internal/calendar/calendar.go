@@ -30,6 +30,10 @@ type CalendarInfo struct {
 	ID      string `json:"id"`      // provider calendar id ("primary", an address, a URL)
 	Name    string `json:"name"`    // display name
 	Primary bool   `json:"primary"` // the account's default calendar
+	// Writable reports whether events can be created here. A calendar shared with the user
+	// read-only is perfectly valid for conflict checking but cannot be a write target, and
+	// finding that out at booking time means a failed booking rather than a disabled radio.
+	Writable bool `json:"writable"`
 }
 
 // CalendarSelection is a CalendarInfo plus the user's per-calendar settings.

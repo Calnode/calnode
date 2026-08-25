@@ -95,7 +95,19 @@ func (c *Client) CreateEvent(ctx context.Context, userID string, p calendar.Crea
 	if err != nil {
 		return "", "", fmt.Errorf("microsoft: create event marshal: %w", err)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.apiBase+"/me/events", bytes.NewReader(body))
+	// Default calendar unless the user picked a specific one inside the account. Update and
+	// cancel stay on /me/events/{id}, which Graph resolves across all of the user's
+	// calendars, so only creation needs to be calendar-scoped.
+	createURL := c.apiBase + "/me/events"
+	destCal, err := c.destinationCalendarID(ctx, userID)
+	if err != nil {
+		return "", "", err
+	}
+	if destCal != "" {
+		createURL = c.apiBase + "/me/calendars/" + url.PathEscape(destCal) + "/events"
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, createURL, bytes.NewReader(body))
 	if err != nil {
 		return "", "", fmt.Errorf("microsoft: create event request: %w", err)
 	}

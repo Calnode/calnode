@@ -168,6 +168,17 @@ func (c *Client) loadConn(ctx context.Context, userID string, checkConflicts, is
 		return conn{}, false, fmt.Errorf("caldav: decrypt password: %w", err)
 	}
 	cn.password = string(pw)
+
+	// For CalDAV the "calendar id" IS the collection URL, so picking a different calendar
+	// inside the account is just a different URL to PUT into. Only applies to the write
+	// target; conflict checking already reads every selected collection.
+	if isDestination == 1 {
+		if subCal, ok, sErr := connstore.DestinationCalendarID(ctx, c.db, userID, "caldav", cn.username); sErr != nil {
+			return conn{}, false, sErr
+		} else if ok {
+			cn.calURL = subCal
+		}
+	}
 	return cn, true, nil
 }
 
