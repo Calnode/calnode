@@ -118,7 +118,7 @@ func TestCreateEvent_returnsIDAndTeamsLink(t *testing.T) {
 	c.apiBase = srv.URL
 
 	start := time.Date(2026, 6, 22, 21, 0, 0, 0, time.UTC)
-	id, join, err := c.CreateEvent(context.Background(), "u1", calendar.CreateEventParams{
+	id, join, _, err := c.CreateEvent(context.Background(), "u1", calendar.CreateEventParams{
 		Summary:        "Intro call",
 		Start:          start,
 		End:            start.Add(30 * time.Minute),
@@ -140,7 +140,7 @@ func TestCreateEvent_returnsIDAndTeamsLink(t *testing.T) {
 func TestCreateEvent_noConnection(t *testing.T) {
 	c := newTestClient(t)
 	seedUser(t, c.db, "u2") // no token saved
-	id, join, err := c.CreateEvent(context.Background(), "u2", calendar.CreateEventParams{Summary: "x"})
+	id, join, _, err := c.CreateEvent(context.Background(), "u2", calendar.CreateEventParams{Summary: "x"})
 	if err != nil || id != "" || join != "" {
 		t.Errorf("want no-op (\"\",\"\",nil); got %q,%q,%v", id, join, err)
 	}
@@ -162,7 +162,7 @@ func TestUpdateEvent_patchesNewTime(t *testing.T) {
 	c.apiBase = srv.URL
 
 	start := time.Date(2026, 6, 22, 21, 0, 0, 0, time.UTC)
-	if err := c.UpdateEvent(context.Background(), "u1", "evt-1", start, start.Add(30*time.Minute)); err != nil {
+	if err := c.UpdateEvent(context.Background(), "u1", "", "evt-1", start, start.Add(30*time.Minute)); err != nil {
 		t.Fatalf("UpdateEvent: %v", err)
 	}
 	if gotMethod != http.MethodPatch {
@@ -180,7 +180,7 @@ func TestUpdateEvent_emptyIDNoOp(t *testing.T) {
 	c := newTestClient(t)
 	connect(t, c, "u1")
 	// No server set; an empty eventID must short-circuit before any HTTP call.
-	if err := c.UpdateEvent(context.Background(), "u1", "", time.Now(), time.Now()); err != nil {
+	if err := c.UpdateEvent(context.Background(), "u1", "", "", time.Now(), time.Now()); err != nil {
 		t.Errorf("UpdateEvent(emptyID): %v; want nil no-op", err)
 	}
 }
@@ -197,7 +197,7 @@ func TestCancelEvent_deletes(t *testing.T) {
 	defer srv.Close()
 	c.apiBase = srv.URL
 
-	if err := c.CancelEvent(context.Background(), "u1", "evt-1"); err != nil {
+	if err := c.CancelEvent(context.Background(), "u1", "", "evt-1"); err != nil {
 		t.Fatalf("CancelEvent: %v", err)
 	}
 	if gotMethod != http.MethodDelete {
@@ -218,7 +218,7 @@ func TestCancelEvent_alreadyGoneIsOK(t *testing.T) {
 	defer srv.Close()
 	c.apiBase = srv.URL
 
-	if err := c.CancelEvent(context.Background(), "u1", "evt-1"); err != nil {
+	if err := c.CancelEvent(context.Background(), "u1", "", "evt-1"); err != nil {
 		t.Errorf("CancelEvent(404): %v; want nil (already gone is fine)", err)
 	}
 }

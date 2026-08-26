@@ -63,10 +63,10 @@ type graphEventResp struct {
 // CreateEvent creates a Graph event on the user's default calendar and returns its
 // ID and, when p.AddMeet is set, the Teams join URL. Graph emails attendees its own
 // invite. Returns ("", "", nil) if the user has no is_destination connection.
-func (c *Client) CreateEvent(ctx context.Context, userID string, p calendar.CreateEventParams) (string, string, error) {
+func (c *Client) CreateEvent(ctx context.Context, userID string, p calendar.CreateEventParams) (string, string, string, error) {
 	hc, err := c.httpClient(ctx, userID, -1, 1)
 	if err != nil || hc == nil {
-		return "", "", err
+		return "", "", "", err
 	}
 
 	reqBody := graphEventReq{
@@ -93,7 +93,7 @@ func (c *Client) CreateEvent(ctx context.Context, userID string, p calendar.Crea
 
 	body, err := json.Marshal(reqBody)
 	if err != nil {
-		return "", "", fmt.Errorf("microsoft: create event marshal: %w", err)
+		return "", "", "", fmt.Errorf("microsoft: create event marshal: %w", err)
 	}
 	// Default calendar unless the user picked a specific one inside the account. Update and
 	// cancel stay on /me/events/{id}, which Graph resolves across all of the user's
@@ -101,7 +101,7 @@ func (c *Client) CreateEvent(ctx context.Context, userID string, p calendar.Crea
 	createURL := c.apiBase + "/me/events"
 	destCal, err := c.destinationCalendarID(ctx, userID)
 	if err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
 	if destCal != "" {
 		createURL = c.apiBase + "/me/calendars/" + url.PathEscape(destCal) + "/events"
@@ -109,33 +109,37 @@ func (c *Client) CreateEvent(ctx context.Context, userID string, p calendar.Crea
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, createURL, bytes.NewReader(body))
 	if err != nil {
-		return "", "", fmt.Errorf("microsoft: create event request: %w", err)
+		return "", "", "", fmt.Errorf("microsoft: create event request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := hc.Do(req)
 	if err != nil {
-		return "", "", fmt.Errorf("microsoft: create event call: %w", err)
+		return "", "", "", fmt.Errorf("microsoft: create event call: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
-		return "", "", fmt.Errorf("microsoft: create event status %d: %s", resp.StatusCode, graphErrBody(resp))
+		return "", "", "", fmt.Errorf("microsoft: create event status %d: %s", resp.StatusCode, graphErrBody(resp))
 	}
 
 	var evResp graphEventResp
 	if err := json.NewDecoder(resp.Body).Decode(&evResp); err != nil {
-		return "", "", fmt.Errorf("microsoft: create event decode: %w", err)
+		return "", "", "", fmt.Errorf("microsoft: create event decode: %w", err)
 	}
 	join := ""
 	if evResp.OnlineMeeting != nil {
 		join = evResp.OnlineMeeting.JoinURL
 	}
-	return evResp.ID, join, nil
+	return evResp.ID, join, destCal, nil
 }
 
 // UpdateEvent moves an existing event to a new start/end (reschedule). Graph
 // notifies attendees. No-op if eventID is empty or the user has no connection.
-func (c *Client) UpdateEvent(ctx context.Context, userID, eventID string, start, end time.Time) error {
+//
+// calendarID is accepted for interface parity but deliberately unused: Graph addresses an
+// event by id at /me/events/{id} regardless of which of the user's calendars holds it, so
+// unlike Google and CalDAV there is nothing to re-target.
+func (c *Client) UpdateEvent(ctx context.Context, userID, calendarID, eventID string, start, end time.Time) error {
 	if eventID == "" {
 		return nil
 	}
@@ -174,7 +178,9 @@ func (c *Client) UpdateEvent(ctx context.Context, userID, eventID string, start,
 
 // CancelEvent deletes a Graph event by ID (Graph notifies attendees). No-op if
 // eventID is empty or the user has no connection.
-func (c *Client) CancelEvent(ctx context.Context, userID, eventID string) error {
+// calendarID is unused here for the same reason as UpdateEvent: /me/events/{id} resolves
+// across all of the user's calendars.
+func (c *Client) CancelEvent(ctx context.Context, userID, calendarID, eventID string) error {
 	if eventID == "" {
 		return nil
 	}

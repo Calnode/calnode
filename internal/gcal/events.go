@@ -77,10 +77,10 @@ func (r calEventResp) meetLink() string {
 // CreateEvent creates a Google Calendar event and returns its event ID and, when
 // p.AddMeet is set, the generated Google Meet URL. Returns ("", "", nil) if the
 // user has no is_destination connection.
-func (c *Client) CreateEvent(ctx context.Context, userID string, p calendar.CreateEventParams) (string, string, error) {
+func (c *Client) CreateEvent(ctx context.Context, userID string, p calendar.CreateEventParams) (string, string, string, error) {
 	hc, calID, err := c.DestinationClient(ctx, userID)
 	if err != nil || hc == nil {
-		return "", "", err
+		return "", "", "", err
 	}
 
 	attendees := []calEventAttendee{}
@@ -110,7 +110,7 @@ func (c *Client) CreateEvent(ctx context.Context, userID string, p calendar.Crea
 
 	body, err := json.Marshal(reqBody)
 	if err != nil {
-		return "", "", fmt.Errorf("gcal: create event marshal: %w", err)
+		return "", "", "", fmt.Errorf("gcal: create event marshal: %w", err)
 	}
 
 	apiURL := c.apiBase + "/calendars/" + url.PathEscape(calID) + "/events?sendUpdates=all"
@@ -119,37 +119,47 @@ func (c *Client) CreateEvent(ctx context.Context, userID string, p calendar.Crea
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewReader(body))
 	if err != nil {
-		return "", "", fmt.Errorf("gcal: create event request: %w", err)
+		return "", "", "", fmt.Errorf("gcal: create event request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := hc.Do(req)
 	if err != nil {
-		return "", "", fmt.Errorf("gcal: create event call: %w", err)
+		return "", "", "", fmt.Errorf("gcal: create event call: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", "", fmt.Errorf("gcal: create event status %d", resp.StatusCode)
+		return "", "", "", fmt.Errorf("gcal: create event status %d", resp.StatusCode)
 	}
 
 	var evResp calEventResp
 	if err := json.NewDecoder(resp.Body).Decode(&evResp); err != nil {
-		return "", "", fmt.Errorf("gcal: create event decode: %w", err)
+		return "", "", "", fmt.Errorf("gcal: create event decode: %w", err)
 	}
-	return evResp.ID, evResp.meetLink(), nil
+	return evResp.ID, evResp.meetLink(), calID, nil
 }
 
 // UpdateEvent moves an existing event to a new start/end (used on reschedule).
 // Returns nil if eventID is empty or the user has no connection. sendUpdates=all
 // so the attendee is notified of the new time.
-func (c *Client) UpdateEvent(ctx context.Context, userID, eventID string, start, end time.Time) error {
+func (c *Client) UpdateEvent(ctx context.Context, userID, calendarID, eventID string, start, end time.Time) error {
 	if eventID == "" {
 		return nil
 	}
 	hc, calID, err := c.DestinationClient(ctx, userID)
 	if err != nil || hc == nil {
 		return err
+	}
+	// Act on the calendar the event was created in, not wherever the destination points
+	// now. Empty means the booking predates that being recorded, so fall back.
+	//
+	// Limitation: this only rescues a change of calendar WITHIN the connected account. If
+	// the host moves their destination to a different account entirely, hc is that other
+	// account's client and the old event is out of reach - correcting that needs the
+	// account recorded too, which is a bigger change than the bug currently justifies.
+	if calendarID != "" {
+		calID = calendarID
 	}
 
 	body, err := json.Marshal(struct {
@@ -184,13 +194,23 @@ func (c *Client) UpdateEvent(ctx context.Context, userID, eventID string, start,
 
 // CancelEvent deletes a Google Calendar event by its event ID.
 // Returns nil if eventID is empty or the user has no connection.
-func (c *Client) CancelEvent(ctx context.Context, userID, eventID string) error {
+func (c *Client) CancelEvent(ctx context.Context, userID, calendarID, eventID string) error {
 	if eventID == "" {
 		return nil
 	}
 	hc, calID, err := c.DestinationClient(ctx, userID)
 	if err != nil || hc == nil {
 		return err
+	}
+	// Act on the calendar the event was created in, not wherever the destination points
+	// now. Empty means the booking predates that being recorded, so fall back.
+	//
+	// Limitation: this only rescues a change of calendar WITHIN the connected account. If
+	// the host moves their destination to a different account entirely, hc is that other
+	// account's client and the old event is out of reach - correcting that needs the
+	// account recorded too, which is a bigger change than the bug currently justifies.
+	if calendarID != "" {
+		calID = calendarID
 	}
 
 	apiURL := c.apiBase + "/calendars/" + url.PathEscape(calID) + "/events/" + url.PathEscape(eventID) + "?sendUpdates=all"

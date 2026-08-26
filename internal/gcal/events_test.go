@@ -60,7 +60,7 @@ func TestCreateEvent_returnsEventID(t *testing.T) {
 	c.apiBase = srv.URL
 	saveDestinationConnection(t, c, "user-1", "primary")
 
-	eventID, _, err := c.CreateEvent(context.Background(), "user-1", calendar.CreateEventParams{
+	eventID, _, _, err := c.CreateEvent(context.Background(), "user-1", calendar.CreateEventParams{
 		Summary:        "30-Minute Call with Bob",
 		Description:    "Booking ID: abc123",
 		Start:          time.Date(2026, 6, 15, 9, 0, 0, 0, time.UTC),
@@ -83,7 +83,7 @@ func TestCreateEvent_withMeet_requestsConferenceAndReturnsLink(t *testing.T) {
 	c.apiBase = srv.URL
 	saveDestinationConnection(t, c, "user-1", "primary")
 
-	eventID, meetURL, err := c.CreateEvent(context.Background(), "user-1", calendar.CreateEventParams{
+	eventID, meetURL, _, err := c.CreateEvent(context.Background(), "user-1", calendar.CreateEventParams{
 		Summary: "Meet Call",
 		Start:   time.Date(2026, 6, 15, 9, 0, 0, 0, time.UTC),
 		End:     time.Date(2026, 6, 15, 9, 30, 0, 0, time.UTC),
@@ -116,7 +116,7 @@ func TestCreateEvent_withoutMeet_noConferenceRequested(t *testing.T) {
 	c.apiBase = srv.URL
 	saveDestinationConnection(t, c, "user-1", "primary")
 
-	_, meetURL, err := c.CreateEvent(context.Background(), "user-1", calendar.CreateEventParams{
+	_, meetURL, _, err := c.CreateEvent(context.Background(), "user-1", calendar.CreateEventParams{
 		Summary: "Plain Call",
 		Start:   time.Date(2026, 6, 15, 9, 0, 0, 0, time.UTC),
 		End:     time.Date(2026, 6, 15, 9, 30, 0, 0, time.UTC),
@@ -165,7 +165,7 @@ func TestCreateEvent_sendsCorrectFields(t *testing.T) {
 
 func TestCreateEvent_notConnected_returnsEmpty(t *testing.T) {
 	c := newTestClient(t)
-	eventID, _, err := c.CreateEvent(context.Background(), "user-no-connection", calendar.CreateEventParams{
+	eventID, _, _, err := c.CreateEvent(context.Background(), "user-no-connection", calendar.CreateEventParams{
 		Summary: "Test",
 		Start:   time.Now(),
 		End:     time.Now().Add(time.Hour),
@@ -185,7 +185,7 @@ func TestCreateEvent_nonOK_returnsError(t *testing.T) {
 	c.apiBase = srv.URL
 	saveDestinationConnection(t, c, "user-1", "primary")
 
-	_, _, err := c.CreateEvent(context.Background(), "user-1", calendar.CreateEventParams{
+	_, _, _, err := c.CreateEvent(context.Background(), "user-1", calendar.CreateEventParams{
 		Start: time.Now(),
 		End:   time.Now().Add(time.Hour),
 	})
@@ -203,7 +203,7 @@ func TestCreateEvent_onlyDestinationConnections(t *testing.T) {
 	c.db.ExecContext(context.Background(),                          //nolint:errcheck
 		`UPDATE calendar_connections SET is_destination = 0 WHERE user_id = ?`, "user-1")
 
-	eventID, _, err := c.CreateEvent(context.Background(), "user-1", calendar.CreateEventParams{
+	eventID, _, _, err := c.CreateEvent(context.Background(), "user-1", calendar.CreateEventParams{
 		Start: time.Now(), End: time.Now().Add(time.Hour),
 	})
 	if err != nil {
@@ -225,7 +225,7 @@ func TestCancelEvent_success(t *testing.T) {
 	c.apiBase = srv.URL
 	saveDestinationConnection(t, c, "user-1", "primary")
 
-	if err := c.CancelEvent(context.Background(), "user-1", "event-to-delete"); err != nil {
+	if err := c.CancelEvent(context.Background(), "user-1", "", "event-to-delete"); err != nil {
 		t.Errorf("CancelEvent: %v", err)
 	}
 }
@@ -241,7 +241,7 @@ func TestCancelEvent_goneIsNotAnError(t *testing.T) {
 	c.apiBase = srv.URL
 	saveDestinationConnection(t, c, "user-1", "primary")
 
-	if err := c.CancelEvent(context.Background(), "user-1", "already-gone"); err != nil {
+	if err := c.CancelEvent(context.Background(), "user-1", "", "already-gone"); err != nil {
 		t.Errorf("CancelEvent on 410: %v (want nil)", err)
 	}
 }
@@ -257,14 +257,14 @@ func TestCancelEvent_emptyEventID_noOp(t *testing.T) {
 	c.apiBase = srv.URL
 	saveDestinationConnection(t, c, "user-1", "primary")
 
-	if err := c.CancelEvent(context.Background(), "user-1", ""); err != nil {
+	if err := c.CancelEvent(context.Background(), "user-1", "", ""); err != nil {
 		t.Errorf("CancelEvent(\"\") = %v; want nil", err)
 	}
 }
 
 func TestCancelEvent_notConnected_returnsNil(t *testing.T) {
 	c := newTestClient(t)
-	if err := c.CancelEvent(context.Background(), "user-no-connection", "some-event"); err != nil {
+	if err := c.CancelEvent(context.Background(), "user-no-connection", "", "some-event"); err != nil {
 		t.Errorf("CancelEvent for unconnected user: %v", err)
 	}
 }
@@ -279,7 +279,7 @@ func TestCancelEvent_serverError_returnsError(t *testing.T) {
 	c.apiBase = srv.URL
 	saveDestinationConnection(t, c, "user-1", "primary")
 
-	if err := c.CancelEvent(context.Background(), "user-1", "event-id"); err == nil {
+	if err := c.CancelEvent(context.Background(), "user-1", "", "event-id"); err == nil {
 		t.Error("expected error for 500 response")
 	}
 }
@@ -300,7 +300,7 @@ func TestUpdateEvent_sendsPatchWithNewTimes(t *testing.T) {
 	saveDestinationConnection(t, c, "user-1", "primary")
 
 	start := time.Date(2027, 6, 18, 10, 0, 0, 0, time.UTC)
-	if err := c.UpdateEvent(context.Background(), "user-1", "evt-1", start, start.Add(30*time.Minute)); err != nil {
+	if err := c.UpdateEvent(context.Background(), "user-1", "", "evt-1", start, start.Add(30*time.Minute)); err != nil {
 		t.Fatalf("UpdateEvent: %v", err)
 	}
 	if gotMethod != http.MethodPatch {
@@ -324,7 +324,7 @@ func TestUpdateEvent_emptyEventID_noOp(t *testing.T) {
 	c.apiBase = srv.URL
 	saveDestinationConnection(t, c, "user-1", "primary")
 
-	if err := c.UpdateEvent(context.Background(), "user-1", "", time.Now(), time.Now()); err != nil {
+	if err := c.UpdateEvent(context.Background(), "user-1", "", "", time.Now(), time.Now()); err != nil {
 		t.Errorf("UpdateEvent(\"\") = %v; want nil", err)
 	}
 }

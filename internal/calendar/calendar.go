@@ -66,9 +66,17 @@ type Provider interface {
 
 	// Operations
 	FreeBusy(ctx context.Context, userID string, from, to time.Time) ([]slots.Interval, error)
-	CreateEvent(ctx context.Context, userID string, p CreateEventParams) (eventID, joinURL string, err error)
-	UpdateEvent(ctx context.Context, userID, eventID string, start, end time.Time) error
-	CancelEvent(ctx context.Context, userID, eventID string) error
+
+	// CreateEvent writes to the user's destination calendar and also returns WHICH calendar
+	// that was, so the caller can store it against the booking. Update and Cancel then act
+	// on that stored calendar rather than re-resolving the current destination, which would
+	// break every existing booking the moment a host changes their destination.
+	CreateEvent(ctx context.Context, userID string, p CreateEventParams) (eventID, joinURL, calendarID string, err error)
+
+	// calendarID is the one CreateEvent reported. Empty means "resolve the destination the
+	// old way" - correct for bookings made before that was recorded.
+	UpdateEvent(ctx context.Context, userID, calendarID, eventID string, start, end time.Time) error
+	CancelEvent(ctx context.Context, userID, calendarID, eventID string) error
 }
 
 // Service holds the configured providers and dispatches per-user operations to
@@ -309,27 +317,30 @@ func (s *Service) FreeBusy(ctx context.Context, userID string, from, to time.Tim
 	return out, nil
 }
 
-// CreateEvent creates an event on the user's DESTINATION calendar; returns ("","",nil) if
-// they have no destination.
-func (s *Service) CreateEvent(ctx context.Context, userID string, p CreateEventParams) (string, string, error) {
+// CreateEvent creates an event on the user's DESTINATION calendar. Returns the event id,
+// the join URL, and the calendar it was written to; ("","","",nil) if they have no
+// destination. Persist the calendar id alongside the event id.
+func (s *Service) CreateEvent(ctx context.Context, userID string, p CreateEventParams) (string, string, string, error) {
 	if pr := s.providerForDestination(ctx, userID); pr != nil {
 		return pr.CreateEvent(ctx, userID, p)
 	}
-	return "", "", nil
+	return "", "", "", nil
 }
 
-// UpdateEvent moves an event on the user's DESTINATION calendar.
-func (s *Service) UpdateEvent(ctx context.Context, userID, eventID string, start, end time.Time) error {
+// UpdateEvent moves an event. calendarID is the one recorded at creation; empty falls back
+// to the user's current destination.
+func (s *Service) UpdateEvent(ctx context.Context, userID, calendarID, eventID string, start, end time.Time) error {
 	if pr := s.providerForDestination(ctx, userID); pr != nil {
-		return pr.UpdateEvent(ctx, userID, eventID, start, end)
+		return pr.UpdateEvent(ctx, userID, calendarID, eventID, start, end)
 	}
 	return nil
 }
 
-// CancelEvent deletes an event on the user's DESTINATION calendar.
-func (s *Service) CancelEvent(ctx context.Context, userID, eventID string) error {
+// CancelEvent deletes an event. calendarID is the one recorded at creation; empty falls
+// back to the user's current destination.
+func (s *Service) CancelEvent(ctx context.Context, userID, calendarID, eventID string) error {
 	if pr := s.providerForDestination(ctx, userID); pr != nil {
-		return pr.CancelEvent(ctx, userID, eventID)
+		return pr.CancelEvent(ctx, userID, calendarID, eventID)
 	}
 	return nil
 }

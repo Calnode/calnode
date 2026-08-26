@@ -16,10 +16,10 @@ import (
 // iCalendar object. CalDAV has no native online-meeting link, so AddMeet is ignored and the
 // returned joinURL is always empty. The returned eventID is the absolute resource URL, which
 // UpdateEvent/CancelEvent use directly. Returns ("","",nil) if the user has no destination.
-func (c *Client) CreateEvent(ctx context.Context, userID string, p calendar.CreateEventParams) (string, string, error) {
+func (c *Client) CreateEvent(ctx context.Context, userID string, p calendar.CreateEventParams) (string, string, string, error) {
 	cn, ok, err := c.loadConn(ctx, userID, -1, 1)
 	if err != nil || !ok {
-		return "", "", err
+		return "", "", "", err
 	}
 	id := uid.New()
 	resourceURL := joinURL(cn.calURL, id+".ics")
@@ -27,18 +27,21 @@ func (c *Client) CreateEvent(ctx context.Context, userID string, p calendar.Crea
 
 	status, _, err := c.putICS(ctx, resourceURL, cn.username, cn.password, ics, "*", "")
 	if err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
 	if status != http.StatusCreated && status != http.StatusNoContent && status != http.StatusOK {
-		return "", "", fmt.Errorf("caldav: create event returned status %d", status)
+		return "", "", "", fmt.Errorf("caldav: create event returned status %d", status)
 	}
-	return resourceURL, "", nil
+	// The event id is already the absolute resource URL, so it carries its own location and
+	// Update/Cancel need nothing extra. Report the collection anyway for symmetry with the
+	// other providers and so the stored value is meaningful if it is ever inspected.
+	return resourceURL, "", cn.calURL, nil
 }
 
 // UpdateEvent moves an existing event to new start/end times. CalDAV has no partial update, so
 // it GETs the current object, rewrites DTSTART/DTEND (and bumps SEQUENCE/DTSTAMP), and PUTs it
 // back — preserving summary, description, location, and attendees.
-func (c *Client) UpdateEvent(ctx context.Context, userID, eventID string, start, end time.Time) error {
+func (c *Client) UpdateEvent(ctx context.Context, userID, calendarID, eventID string, start, end time.Time) error {
 	cn, ok, err := c.loadConn(ctx, userID, -1, 1)
 	if err != nil || !ok {
 		return err
@@ -65,7 +68,7 @@ func (c *Client) UpdateEvent(ctx context.Context, userID, eventID string, start,
 }
 
 // CancelEvent deletes the event resource from the destination calendar.
-func (c *Client) CancelEvent(ctx context.Context, userID, eventID string) error {
+func (c *Client) CancelEvent(ctx context.Context, userID, calendarID, eventID string) error {
 	cn, ok, err := c.loadConn(ctx, userID, -1, 1)
 	if err != nil || !ok {
 		return err

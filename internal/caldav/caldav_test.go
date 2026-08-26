@@ -216,7 +216,7 @@ func TestConnect_discoverFreeBusyWriteback(t *testing.T) {
 	}
 
 	// CreateEvent PUTs an .ics to the destination; CancelEvent DELETEs it.
-	eventID, joinURL, err := c.CreateEvent(ctx, "u1", calendar.CreateEventParams{
+	eventID, joinURL, _, err := c.CreateEvent(ctx, "u1", calendar.CreateEventParams{
 		Summary: "Intro call", Start: from.Add(15 * time.Hour), End: from.Add(16 * time.Hour),
 		OrganizerName: "Wynne", OrganizerEmail: "w@x.com",
 	})
@@ -232,7 +232,7 @@ func TestConnect_discoverFreeBusyWriteback(t *testing.T) {
 	if !strings.HasPrefix(eventID, srv.URL) || !strings.HasSuffix(eventID, ".ics") {
 		t.Errorf("eventID = %q, want absolute .ics URL", eventID)
 	}
-	if err := c.CancelEvent(ctx, "u1", eventID); err != nil {
+	if err := c.CancelEvent(ctx, "u1", "", eventID); err != nil {
 		t.Fatalf("CancelEvent: %v", err)
 	}
 	if !strings.HasSuffix(delPath, ".ics") {

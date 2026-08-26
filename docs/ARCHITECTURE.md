@@ -402,6 +402,35 @@ native meeting platform.
 
 ---
 
+### Which calendar a booking is written to
+
+Two layers, and they are easy to confuse:
+
+- `calendar_connections.is_destination` picks the **account**.
+- `connection_calendars.is_destination` picks the **calendar inside that account**
+  (`connstore.DestinationCalendarID`). Empty means "use the account's default", which is
+  every install until someone actively chooses otherwise.
+
+Each provider applies the choice where its own write target lives: Google and CalDAV swap
+the calendar id (for CalDAV that id *is* the collection URL); Microsoft posts to
+`/me/events`, which is the default calendar by definition, so a chosen calendar means a
+different URL (`/me/calendars/{id}/events`). Graph's update/delete address an event by id
+across all calendars, so only creation is calendar-scoped there.
+
+Saving a sub-calendar destination also moves the account-level destination to that account,
+or the choice silently does nothing when the picked calendar lives in a different account
+from the current destination.
+
+**`booking_hosts.external_calendar_id` records where each event actually went** (migration
+00055). Reschedule and cancel use it rather than re-resolving the current destination -
+otherwise changing the destination orphans every existing booking: the provider 404s, the
+booking cancels in Calnode, and the meeting stays on the host's calendar with nothing
+surfaced. Empty means "resolve the old way", correct for bookings that predate the column.
+Known limit: this rescues a change of calendar *within* an account, not a move to a
+different account, which would need the account recorded too.
+
+---
+
 ## 11. Calendar reconciler (self-healing)
 
 `internal/handler/calendar_reconcile.go`. Calendar side effects are best-effort and
