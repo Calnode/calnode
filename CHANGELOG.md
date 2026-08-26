@@ -12,6 +12,20 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
 ## [Unreleased]
 
 ### Fixed
+- **"calendar connection not found" when choosing where bookings are written.** The
+  destination endpoint looked the account up by its `calendar_connections` row id, but that
+  id is recreated on every OAuth token refresh - and opening the calendar picker can trigger
+  one - so a page loaded moments earlier held a dead id. Now keyed on the account identity,
+  as the calendar endpoints already were.
+- **Disconnecting a calendar could silently do nothing.** The same stale-id lookup, but its
+  miss branch returned success, so the API answered `204` having deleted nothing and the
+  account simply stayed on the page with no error. Now keyed on account identity, and a
+  genuinely unknown account is reported rather than swallowed.
+- **Disconnecting left the account's calendar selections behind.** `connection_calendars`
+  has no foreign key on purpose (one would cascade-delete a user's selections on every token
+  refresh), so disconnect flows have to clear the rows themselves - and none did, despite
+  migration 00049 stating they did. Reconnecting the same address silently inherited stale
+  picks, including a write target pointing at a calendar the user may no longer have.
 - **The public booking page rendered blank for any event type with a dropdown
   question.** `book.html` built the dropdown's placeholder with `.T` inside the questions
   range, where the dot is the question rather than the page, so the template aborted

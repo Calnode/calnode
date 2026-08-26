@@ -79,7 +79,10 @@
 	let busy = $state(false);
 	let justConnected = $state(false);
 	let disconnectOpen = $state(false);
-	let pendingDisconnectId = $state<string | null>(null);
+	// The connection object, not its id: the id is recreated on every OAuth token refresh
+	// (which opening the calendar picker can trigger), so a stale one strands the request.
+	// Both endpoints key on provider + account_email instead.
+	let pendingDisconnect = $state<CalendarConnection | null>(null);
 
 	const providers = $derived(status?.providers ?? []);
 	const connections = $derived(status?.connections ?? []);
@@ -180,11 +183,14 @@
 		}
 	}
 
-	async function setDestination(id: string) {
+	async function setDestination(c: CalendarConnection) {
 		busy = true;
 		error = '';
 		try {
-			await api.post(`/v1/calendar/connections/${id}/destination`, {});
+			await api.post(`/v1/calendar/connections/${c.id}/destination`, {
+				provider: c.provider,
+				account_email: c.account_email ?? ''
+			});
 			await load();
 		} catch (e: any) {
 			error = e.message;
@@ -193,22 +199,24 @@
 		}
 	}
 
-	function askDisconnect(id: string) {
-		pendingDisconnectId = id;
+	function askDisconnect(c: CalendarConnection) {
+		pendingDisconnect = c;
 		disconnectOpen = true;
 	}
 
 	async function doDisconnect() {
-		if (!pendingDisconnectId) return;
+		if (!pendingDisconnect) return;
+		const c = pendingDisconnect;
 		busy = true;
 		try {
-			await api.del(`/v1/calendar/connections/${pendingDisconnectId}`);
+			const q = new URLSearchParams({ provider: c.provider, account: c.account_email ?? '' });
+			await api.del(`/v1/calendar/connections/${c.id}?${q}`);
 			await load();
 		} catch (e: any) {
 			error = e.message;
 		} finally {
 			busy = false;
-			pendingDisconnectId = null;
+			pendingDisconnect = null;
 		}
 	}
 
@@ -289,10 +297,10 @@
 						</div>
 						<div class="flex shrink-0 items-center gap-4">
 							<label class="flex cursor-pointer items-center gap-1.5 text-sm text-muted-foreground">
-								<input type="radio" name="destination" checked={c.is_destination} disabled={busy} onchange={() => setDestination(c.id)} />
+								<input type="radio" name="destination" checked={c.is_destination} disabled={busy} onchange={() => setDestination(c)} />
 								Add bookings here
 							</label>
-							<Button variant="ghost" size="sm" onclick={() => askDisconnect(c.id)} disabled={busy}>Disconnect</Button>
+							<Button variant="ghost" size="sm" onclick={() => askDisconnect(c)} disabled={busy}>Disconnect</Button>
 						</div>
 						</div>
 						<div class="mt-2 pl-8">

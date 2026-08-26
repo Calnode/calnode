@@ -105,7 +105,7 @@ func TestConnectionManagement(t *testing.T) {
 	}
 
 	// Switch destination to c2.
-	if err := svc.SetDestination(ctx, "u1", "c2"); err != nil {
+	if err := svc.SetDestination(ctx, "u1", "google", "personal@x.test"); err != nil {
 		t.Fatalf("SetDestination: %v", err)
 	}
 	var destID string
@@ -114,13 +114,13 @@ func TestConnectionManagement(t *testing.T) {
 		t.Errorf("destination = %q after SetDestination; want c2", destID)
 	}
 
-	// Setting a connection that isn't theirs fails.
-	if err := svc.SetDestination(ctx, "u1", "nope"); err == nil {
-		t.Error("SetDestination on unknown id should error")
+	// An account they do not have fails.
+	if err := svc.SetDestination(ctx, "u1", "google", "nobody@x.test"); err == nil {
+		t.Error("SetDestination on an unknown account should error")
 	}
 
 	// Disconnect the destination (c2) → the survivor (c1) is promoted.
-	if err := svc.DisconnectOne(ctx, "u1", "c2"); err != nil {
+	if err := svc.DisconnectOne(ctx, "u1", "google", "personal@x.test"); err != nil {
 		t.Fatalf("DisconnectOne: %v", err)
 	}
 	conns, _ = svc.Connections(ctx, "u1")

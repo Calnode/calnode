@@ -231,7 +231,23 @@ func (h *Handler) SetCalendarDestination(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	user, _ := userFromContext(r.Context())
-	if err := svc.SetDestination(r.Context(), user.ID, r.PathValue("id")); err != nil {
+	// Account identity, not the {id} path value: that id is recreated on every token
+	// refresh, and opening the calendar picker can trigger one, so a page loaded moments
+	// earlier holds a dead id. The {id} stays in the route for URL shape only.
+	r.Body = http.MaxBytesReader(w, r.Body, 8<<10)
+	var destReq struct {
+		Provider string `json:"provider"`
+		Account  string `json:"account_email"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&destReq); err != nil {
+		h.writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	if destReq.Provider == "" {
+		h.writeError(w, http.StatusBadRequest, "provider is required")
+		return
+	}
+	if err := svc.SetDestination(r.Context(), user.ID, destReq.Provider, destReq.Account); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			h.writeError(w, http.StatusNotFound, "calendar connection not found")
 			return
@@ -252,7 +268,13 @@ func (h *Handler) DisconnectCalendarConnection(w http.ResponseWriter, r *http.Re
 		return
 	}
 	user, _ := userFromContext(r.Context())
-	if err := svc.DisconnectOne(r.Context(), user.ID, r.PathValue("id")); err != nil {
+	// Account identity, not the volatile {id} - same reason as SetCalendarDestination.
+	provider := r.URL.Query().Get("provider")
+	if provider == "" {
+		h.writeError(w, http.StatusBadRequest, "provider is required")
+		return
+	}
+	if err := svc.DisconnectOne(r.Context(), user.ID, provider, r.URL.Query().Get("account")); err != nil {
 		h.logger.ErrorContext(r.Context(), "calendar disconnect one", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal error")
 		return

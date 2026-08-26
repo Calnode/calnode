@@ -97,13 +97,10 @@ func TestSaveConnection_multiAccountDestinationInvariants(t *testing.T) {
 	}
 
 	// Promote b, then re-save b (a "refresh") — destination must stay b, password updated.
-	var bID string
-	if err := c.db.QueryRowContext(ctx, `SELECT id FROM calendar_connections WHERE account_email='b@icloud.com'`).Scan(&bID); err != nil {
-		t.Fatalf("find b: %v", err)
-	}
+	// Addressed by account, not row id: the id changes on exactly the refresh below.
 	svc := calendar.NewService(c.db)
 	svc.Register(c)
-	if err := svc.SetDestination(ctx, "u1", bID); err != nil {
+	if err := svc.SetDestination(ctx, "u1", "caldav", "b@icloud.com"); err != nil {
 		t.Fatalf("set dest b: %v", err)
 	}
 	if err := c.saveConnection(ctx, "u1", "b@icloud.com", "pw2-rotated", "https://x/cal/b/"); err != nil {
