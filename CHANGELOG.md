@@ -11,6 +11,16 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
 
 ## [Unreleased]
 
+### Fixed
+- **The public booking page rendered blank for any event type with a dropdown
+  question.** `book.html` built the dropdown's placeholder with `.T` inside the questions
+  range, where the dot is the question rather than the page, so the template aborted
+  partway through writing the response. The result was a **200 with correct headers and a
+  truncated body**: everything up to the dropdown was present and the calendar, the slot
+  picker and every script were silently missing, so the event type could not be booked at
+  all. Introduced in 0.3.0 with the i18n work and not caught because no test rendered a
+  select question.
+
 ## [0.4.0] - 2026-08-24
 
 ### Added

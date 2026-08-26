@@ -212,7 +212,12 @@ body {
           {{else if eq .QType "select"}}
           <label for="ans-{{.ID}}">{{.Label}}{{if .Required}} <span class="required-star">*</span>{{end}}</label>
           <select id="ans-{{.ID}}" name="ans-{{.ID}}"{{if .Required}} required{{end}}>  <!-- nosemgrep: generic.html-templates.security.unquoted-attribute-var.unquoted-attribute-var -->
-            <option value="">{{call .T "choose_option"}}</option>
+            <!-- $.T, not .T: inside the questions range the dot is the question, which has
+                 no T method, and html/template aborts the page mid-write when it hits that,
+                 truncating the response before the calendar and scripts are emitted. Note
+                 template actions are parsed inside HTML comments too, so do not write one
+                 in here. -->
+            <option value="">{{call $.T "choose_option"}}</option>
             {{range .Options}}<option value="{{.}}">{{.}}</option>{{end}}
           </select>
           {{else}}
