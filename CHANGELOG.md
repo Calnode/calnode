@@ -11,6 +11,8 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-08-26
+
 ### Fixed
 - **"calendar connection not found" when choosing where bookings are written.** The
   destination endpoint looked the account up by its `calendar_connections` row id, but that
