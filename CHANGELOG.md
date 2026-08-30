@@ -11,6 +11,8 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-08-30
+
 ### Fixed
 - **Slot interval is now configurable, and defaults to the meeting length.** Reported as
   "bookable timeslots are always 30 minutes apart regardless of duration" (#13). Interval
