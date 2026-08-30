@@ -298,7 +298,10 @@
 	async function saveET() {
 		if (!form.name.trim()) { toast.error('Name is required.'); return; }
 		if (form.duration_minutes < 5) { toast.error('Duration must be at least 5 minutes.'); return; }
-		if (form.slot_interval_minutes < 5) { toast.error('Slot interval must be at least 5 minutes.'); return; }
+		// Matches the API, which only requires a positive value. A stricter floor here would
+		// make an event type configured below it via the API unsaveable from the editor -
+		// including when the person is editing something else entirely.
+		if (form.slot_interval_minutes < 1) { toast.error('Slot interval must be at least 1 minute.'); return; }
 		if (form.max_active_bookings < 0) { toast.error('Max active bookings cannot be negative (0 = unlimited).'); return; }
 		if (routingMode === 'round_robin' && rotationHosts.length === 0) {
 			toast.error('Add at least one person to the rotation'); return;
@@ -546,7 +549,7 @@
 			</div>
 			<div class="space-y-1.5">
 				<Label for="et-slot">Slot interval (minutes)</Label>
-				<Input id="et-slot" type="number" min="5" step="5" bind:value={form.slot_interval_minutes} />
+				<Input id="et-slot" type="number" min="1" step="5" bind:value={form.slot_interval_minutes} />
 				<p class="text-xs text-muted-foreground">
 					How often a booking can start. Usually the same as the duration. Set it lower to
 					offer more start times, or higher to keep slots on the hour.

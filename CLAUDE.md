@@ -163,6 +163,20 @@ The rule: a Resend API key selects HTTPS, else an SMTP host selects SMTP, else `
 - Adding a secret to email settings: use `storeEmailSecret`, and make the JSON field a
   **pointer** so "omitted" (keep) stays distinguishable from `""` (clear).
 
+## Event types: slot interval is not the duration
+
+`slot_interval_minutes` = how often a booking may **start**. `duration_minutes` = how long it
+**runs**. Deliberately independent (a 45-min meeting offered on the hour is valid). New event
+types default the interval to the duration; existing ones keep what is stored, so a change of
+default is never retroactive. `slots.Generate` refuses a non-positive interval, so create and
+update both validate it - an unvalidated `0` yields an event type with no bookable times and
+no explanation. Reported as issue #13, where the setting being absent from the admin UI looked
+exactly like duration being ignored.
+
+Keep the editor's floor aligned with the API's (`>= 1`). A stricter client-side minimum makes
+an event type configured below it via the API unsaveable from the editor, even when the person
+is editing an unrelated field.
+
 ## Conventions
 
 - `pnpm` (not npm). Use `pnpm exec <tool>` for local binaries.

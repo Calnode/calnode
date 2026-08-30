@@ -250,6 +250,16 @@ members.
     ⇒ not offered (kept consistent with booking-time assignment, which always needs
     a rotation pick).
   - `fixed`/default: the single host if free.
+- **Slot interval is NOT the duration.** `slot_interval_minutes` is how often a booking may
+  *start*; `duration_minutes` is how long it *runs*. They are deliberately independent, which
+  is what lets a 45-minute meeting be offered on the hour. New event types default the
+  interval to the duration (a fixed default of 30 was wrong in both directions: a 15-minute
+  event offered slots every 30 minutes, a 90-minute one offered starts it could not honour),
+  and the editor exposes it. **Existing event types keep whatever is stored** - the default
+  only applies at create. Reported as issue #13, where the invisible setting looked like
+  duration being ignored. `slots.Generate` rejects a non-positive interval, so both create
+  and update validate it; a `0` would otherwise leave an event type with no bookable times
+  and nothing explaining why.
 - Handler: `internal/handler/slots_handler.go: GetSlots`. Resolves the host pool by
   mode (role-tagged), then loads each host's availability **concurrently**
   (goroutines) — the slow part is one Google free/busy round-trip per host, so
@@ -734,6 +744,13 @@ types that have required questions.
   - **Connected apps** admin page (`/connections`, `GET`/`DELETE /v1/oauth/connections`)
     lists the grants a user authorized and revokes one (deletes the token → immediate
     loss of `/mcp` access). Per-user scoped, like API keys.
+    The page also surfaces the connector URL itself (`<origin>/mcp`) with a copy button -
+    it previously listed grants without ever saying how to create one. The URL is built
+    from `window.location.origin`, not a configured `BASE_URL`: whatever host the admin
+    reached the page on is by definition resolvable, whereas a configured value can be
+    stale or internal. Copy failure is surfaced explicitly, because `navigator.clipboard`
+    is unavailable outside a secure context and a self-hosted instance on plain http is
+    exactly that case.
 
 **MCP surface — design decision (2026-06-22).** The MCP intentionally exposes only the
 **booking lifecycle** (discover → slots → book → view/list/reschedule/cancel), not
