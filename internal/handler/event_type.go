@@ -230,9 +230,20 @@ func (h *Handler) CreateEventType(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	slotInterval := 30
+	// Default the slot interval to the meeting length rather than a fixed 30. The two are
+	// genuinely independent - interval is how often a slot STARTS, duration is how long it
+	// runs - and keeping them separate is deliberate: a 45-minute meeting offered on the
+	// hour is a reasonable thing to want. But a fixed default of 30 is the wrong guess in
+	// both directions: a 15-minute event offered every 30 minutes wastes half the host's
+	// day, and a 90-minute one offers starts that mostly cannot be honoured. Matching the
+	// duration is what people expect until they say otherwise, and it stays editable.
+	slotInterval := req.DurationMinutes
 	if req.SlotIntervalMinutes != nil {
 		slotInterval = *req.SlotIntervalMinutes
+	}
+	if slotInterval <= 0 {
+		h.writeError(w, http.StatusBadRequest, "slot_interval_minutes must be positive")
+		return
 	}
 	// Location is usually omitted at create (the quick-create form only sets
 	// slug/name/duration) and configured later in the editor. When omitted, pick a
@@ -477,6 +488,12 @@ func (h *Handler) PatchEventType(w http.ResponseWriter, r *http.Request) {
 		set("duration_minutes", *req.DurationMinutes)
 	}
 	if req.SlotIntervalMinutes != nil {
+		// slots.Generate refuses a non-positive interval, so an unvalidated 0 here would
+		// leave the event type with no bookable times at all and no clue why.
+		if *req.SlotIntervalMinutes <= 0 {
+			h.writeError(w, http.StatusBadRequest, "slot_interval_minutes must be positive")
+			return
+		}
 		set("slot_interval_minutes", *req.SlotIntervalMinutes)
 	}
 	if req.LocationType != nil {

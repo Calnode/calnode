@@ -62,7 +62,7 @@
 	const isOnlineMeeting = (t: string) => t === 'google_meet' || t === 'teams';
 
 	let form = $state({
-		name: '', description: '', duration_minutes: 30,
+		name: '', description: '', duration_minutes: 30, slot_interval_minutes: 30,
 		is_active: true, is_public: true,
 		location_type: 'link', location_value: '',
 		buffer_before_minutes: 0, buffer_after_minutes: 0,
@@ -259,6 +259,7 @@
 				name: et.name,
 				description: et.description ?? '',
 				duration_minutes: et.duration_minutes,
+				slot_interval_minutes: et.slot_interval_minutes,
 				is_active: et.is_active,
 				is_public: et.is_public,
 				location_type: et.location_type,
@@ -297,6 +298,7 @@
 	async function saveET() {
 		if (!form.name.trim()) { toast.error('Name is required.'); return; }
 		if (form.duration_minutes < 5) { toast.error('Duration must be at least 5 minutes.'); return; }
+		if (form.slot_interval_minutes < 5) { toast.error('Slot interval must be at least 5 minutes.'); return; }
 		if (form.max_active_bookings < 0) { toast.error('Max active bookings cannot be negative (0 = unlimited).'); return; }
 		if (routingMode === 'round_robin' && rotationHosts.length === 0) {
 			toast.error('Add at least one person to the rotation'); return;
@@ -310,6 +312,7 @@
 				name: form.name.trim(),
 				description: form.description.trim() || null,
 				duration_minutes: Number(form.duration_minutes),
+				slot_interval_minutes: Number(form.slot_interval_minutes),
 				is_active: form.is_active,
 				is_public: form.is_public,
 				location_type: form.location_type,
@@ -502,6 +505,9 @@
 		<dt class="text-muted-foreground">Name</dt><dd class="font-medium">{et.name}</dd>
 		{#if et.description}<dt class="text-muted-foreground">Description</dt><dd class="whitespace-pre-line">{et.description}</dd>{/if}
 		<dt class="text-muted-foreground">Duration</dt><dd>{et.duration_minutes} min</dd>
+		{#if et.slot_interval_minutes !== et.duration_minutes}
+			<dt class="text-muted-foreground">Slot interval</dt><dd>{et.slot_interval_minutes} min</dd>
+		{/if}
 		<dt class="text-muted-foreground">Location</dt><dd>{LOCATION_TYPES.find((l) => l.value === et?.location_type)?.label ?? et.location_type}{#if et.location_value} · {et.location_value}{/if}</dd>
 		<dt class="text-muted-foreground">Routing</dt><dd class="capitalize">{et.routing_mode.replace('_', ' ')}</dd>
 		<dt class="text-muted-foreground">Status</dt><dd>{et.is_active ? 'Active' : 'Inactive'} · {et.is_public ? 'Listed' : 'Unlisted (link only)'}</dd>
@@ -536,6 +542,15 @@
 			<div class="space-y-1.5">
 				<Label for="et-dur">Duration (minutes)</Label>
 				<Input id="et-dur" type="number" min="5" step="5" bind:value={form.duration_minutes} />
+				<p class="text-xs text-muted-foreground">How long the meeting runs.</p>
+			</div>
+			<div class="space-y-1.5">
+				<Label for="et-slot">Slot interval (minutes)</Label>
+				<Input id="et-slot" type="number" min="5" step="5" bind:value={form.slot_interval_minutes} />
+				<p class="text-xs text-muted-foreground">
+					How often a booking can start. Usually the same as the duration. Set it lower to
+					offer more start times, or higher to keep slots on the hour.
+				</p>
 			</div>
 			<div class="col-span-2 space-y-1.5">
 				<Label for="et-desc">Description</Label>

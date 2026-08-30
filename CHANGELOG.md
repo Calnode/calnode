@@ -11,6 +11,26 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
 
 ## [Unreleased]
 
+### Fixed
+- **Slot interval is now configurable, and defaults to the meeting length.** Reported as
+  "bookable timeslots are always 30 minutes apart regardless of duration" (#13). Interval
+  and duration are deliberately separate settings - interval is how often a booking may
+  *start*, duration is how long it *runs* - but the interval was not exposed anywhere in
+  the admin UI, so every event type was stuck on the schema default of 30 unless you drove
+  the REST API by hand. It now appears in the event-type editor, and new event types
+  default it to their duration instead of a fixed 30, which was the wrong guess in both
+  directions: a 15-minute event offered slots every 30 minutes, and a 90-minute one offered
+  starts it could not honour. **Existing event types keep their stored value** until edited.
+- `slot_interval_minutes` is validated on create and update. Slot generation refuses a
+  non-positive interval, so a `0` previously left an event type with no bookable times and
+  nothing explaining why.
+
+### Added
+- **The Connected apps page now shows the MCP connector URL, with a copy button.** It
+  listed what was connected but never said how to connect anything: the only guidance was
+  in the empty state, referred to "its URL" without showing one, and vanished once the
+  first app was approved.
+
 ## [0.5.0] - 2026-08-26
 
 ### Fixed
