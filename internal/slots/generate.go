@@ -56,43 +56,119 @@ type Request struct {
 // Generate runs the slot-generation algorithm (§9) and returns bookable slots
 // rendered in the booker's timezone, ordered by start time.
 func Generate(req Request) ([]Slot, error) {
+	free, _, err := generate(req, false)
+	return free, err
+}
+
+// GenerateWithTaken runs the same algorithm and additionally reports the starts a
+// booking or calendar conflict took away, for event types that show those greyed out
+// rather than hiding them.
+//
+// "Taken" is defined by difference rather than by inspecting reasons: a start is taken
+// if it WOULD have been offered with no busy intervals at all, and is not offered with
+// the real ones. That definition is what makes it correct for every routing mode
+// without special-casing any of them, and it is why a start outside the host's working
+// hours, one removed by the minimum-notice rule, or one lost to a host pool that cannot
+// satisfy the routing mode can never be reported as taken: those are absent from both
+// passes, so they cancel out.
+//
+// That distinction is the whole point. Greying a slot says "somebody booked this", and
+// saying it about a time the host simply does not work would be worse than showing
+// nothing at all.
+//
+// Buffers do count as taken, deliberately: a start inside the buffer around an adjacent
+// meeting genuinely cannot be booked, and the booker has no way to tell that apart from
+// the meeting itself.
+//
+// Taken slots carry no HostIDs. The caller only needs the time, and naming the host
+// would say which specific person is busy, which is more than the feature needs to
+// disclose.
+func GenerateWithTaken(req Request) (free, taken []Slot, err error) {
+	return generate(req, true)
+}
+
+// params holds the derived scalars every pass needs, computed once.
+type params struct {
+	dur              time.Duration
+	interval         time.Duration
+	bufBefore        time.Duration
+	bufAfter         time.Duration
+	minNotice        time.Time
+	maxFuture        time.Time
+	dateFrom, dateTo time.Time
+}
+
+func newParams(req Request) params {
+	p := params{
+		dur:       time.Duration(req.Event.DurationMinutes) * time.Minute,
+		interval:  time.Duration(req.Event.SlotIntervalMinutes) * time.Minute,
+		bufBefore: time.Duration(req.Event.BufferBeforeMinutes) * time.Minute,
+		bufAfter:  time.Duration(req.Event.BufferAfterMinutes) * time.Minute,
+		minNotice: req.Now.Add(time.Duration(req.Event.MinNoticeMinutes) * time.Minute),
+		// Truncate to UTC midnight so weekday matching and date arithmetic are
+		// consistent regardless of what time-of-day the caller passes.
+		dateFrom: req.DateFrom.UTC().Truncate(24 * time.Hour),
+		dateTo:   req.DateTo.UTC().Truncate(24 * time.Hour),
+	}
+	if req.Event.MaxFutureDays > 0 {
+		p.maxFuture = req.Now.Add(time.Duration(req.Event.MaxFutureDays) * 24 * time.Hour)
+	} else {
+		p.maxFuture = req.Now.Add(365 * 24 * time.Hour) // 0 = no configured limit; use 1-year guard
+	}
+	return p
+}
+
+func generate(req Request, wantTaken bool) (free, taken []Slot, err error) {
 	if req.Event.DurationMinutes <= 0 {
-		return nil, fmt.Errorf("slots: DurationMinutes must be positive")
+		return nil, nil, fmt.Errorf("slots: DurationMinutes must be positive")
 	}
 	if req.Event.SlotIntervalMinutes <= 0 {
-		return nil, fmt.Errorf("slots: SlotIntervalMinutes must be positive")
+		return nil, nil, fmt.Errorf("slots: SlotIntervalMinutes must be positive")
 	}
 	if req.BookerTZ == nil {
-		return nil, fmt.Errorf("slots: BookerTZ must not be nil")
+		return nil, nil, fmt.Errorf("slots: BookerTZ must not be nil")
 	}
 	for i, h := range req.Hosts {
 		if h.Location == nil {
-			return nil, fmt.Errorf("slots: Hosts[%d] (%s) Location must not be nil", i, h.HostID)
+			return nil, nil, fmt.Errorf("slots: Hosts[%d] (%s) Location must not be nil", i, h.HostID)
 		}
 	}
+	p := newParams(req)
 
-	// Truncate to UTC midnight so weekday matching and date arithmetic are
-	// consistent regardless of what time-of-day the caller passes.
-	dateFrom := req.DateFrom.UTC().Truncate(24 * time.Hour)
-	dateTo := req.DateTo.UTC().Truncate(24 * time.Hour)
-
-	dur := time.Duration(req.Event.DurationMinutes) * time.Minute
-	interval := time.Duration(req.Event.SlotIntervalMinutes) * time.Minute
-	bufBefore := time.Duration(req.Event.BufferBeforeMinutes) * time.Minute
-	bufAfter := time.Duration(req.Event.BufferAfterMinutes) * time.Minute
-	minNotice := req.Now.Add(time.Duration(req.Event.MinNoticeMinutes) * time.Minute)
-	var maxFuture time.Time
-	if req.Event.MaxFutureDays > 0 {
-		maxFuture = req.Now.Add(time.Duration(req.Event.MaxFutureDays) * 24 * time.Hour)
-	} else {
-		maxFuture = req.Now.Add(365 * 24 * time.Hour) // 0 = no configured limit; use 1-year guard
+	perStart, err := hostsByStart(req, p, true)
+	if err != nil {
+		return nil, nil, err
+	}
+	free = offer(req, p, perStart)
+	if !wantTaken {
+		return free, nil, nil
 	}
 
-	// perStart[slotStartUTC] = set of host IDs that have that start free.
-	type hostSet map[string]bool
-	perStart := make(map[time.Time]hostSet)
+	// The same walk with every host's busy list ignored: what the calendar would offer
+	// if nothing were booked.
+	perStartIgnoringBusy, err := hostsByStart(req, p, false)
+	if err != nil {
+		return nil, nil, err
+	}
+	offered := make(map[time.Time]bool, len(free))
+	for _, s := range free {
+		offered[s.Start] = true
+	}
+	for _, s := range offer(req, p, perStartIgnoringBusy) {
+		if !offered[s.Start] {
+			taken = append(taken, Slot{Start: s.Start, End: s.End})
+		}
+	}
+	return free, taken, nil
+}
 
-	for d := dateFrom; !d.After(dateTo); d = d.AddDate(0, 0, 1) {
+// hostsByStart walks every candidate start in the range and records which hosts have it
+// free. applyBusy=false ignores the busy lists entirely, which is how the "nothing is
+// booked" comparison pass is built.
+func hostsByStart(req Request, p params, applyBusy bool) (map[time.Time]map[string]bool, error) {
+	perStart := make(map[time.Time]map[string]bool)
+
+	for d := p.dateFrom; !d.After(p.dateTo); d = d.AddDate(0, 0, 1) {
 		for _, host := range req.Hosts {
 			windows, err := resolveDay(host.Location, d, host.Rules, host.Overrides)
 			if err != nil {
@@ -102,50 +178,54 @@ func Generate(req Request) ([]Slot, error) {
 				continue
 			}
 
-			busy := expandBusy(host.Busy, bufBefore, bufAfter)
-			free := subtract(windows, busy)
+			avail := windows
+			if applyBusy {
+				avail = subtract(windows, expandBusy(host.Busy, p.bufBefore, p.bufAfter))
+			}
 
-			for _, f := range free {
+			for _, f := range avail {
 				// Align the first slot start up to the nearest interval boundary
 				// (epoch-aligned so slots land on :00/:15/:30/:45 etc.).
-				t := alignUp(f.Start, interval)
-				for ; !t.Add(dur).After(f.End); t = t.Add(interval) {
-					if t.Before(minNotice) {
+				t := alignUp(f.Start, p.interval)
+				for ; !t.Add(p.dur).After(f.End); t = t.Add(p.interval) {
+					if t.Before(p.minNotice) {
 						continue
 					}
-					if t.After(maxFuture) {
+					if t.After(p.maxFuture) {
 						break
 					}
 					if perStart[t] == nil {
-						perStart[t] = make(hostSet)
+						perStart[t] = make(map[string]bool)
 					}
 					perStart[t][host.HostID] = true
 				}
 			}
 		}
 	}
+	return perStart, nil
+}
 
-	// Collect and sort candidate start times.
+// offer applies the routing mode to decide which starts to surface, in order.
+func offer(req Request, p params, perStart map[time.Time]map[string]bool) []Slot {
 	starts := make([]time.Time, 0, len(perStart))
 	for t := range perStart {
 		starts = append(starts, t)
 	}
 	sort.Slice(starts, func(i, j int) bool { return starts[i].Before(starts[j]) })
 
-	// Apply routing mode to decide which slots to surface.
-	slots := make([]Slot, 0, len(starts))
+	out := make([]Slot, 0, len(starts))
 	for _, t := range starts {
 		hostIDs := pickHosts(req.Hosts, perStart[t], req.Event.RoutingMode)
 		if len(hostIDs) == 0 {
 			continue
 		}
-		slots = append(slots, Slot{
+		out = append(out, Slot{
 			Start:   t.In(req.BookerTZ),
-			End:     t.Add(dur).In(req.BookerTZ),
+			End:     t.Add(p.dur).In(req.BookerTZ),
 			HostIDs: hostIDs,
 		})
 	}
-	return slots, nil
+	return out
 }
 
 // pickHosts applies routing mode logic and returns the host(s) to surface for a
