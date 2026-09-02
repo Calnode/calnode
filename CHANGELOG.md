@@ -11,6 +11,38 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
 
 ## [Unreleased]
 
+### Added
+- **Filter and page the bookings list.** The bookings page now filters by event type,
+  host, team and status alongside the existing Upcoming/Past and Mine/All toggles, and
+  pages through results 25 at a time instead of rendering everything at once. Requested
+  in [#15](https://github.com/Calnode/calnode/discussions/15), tracked as
+  [#18](https://github.com/Calnode/calnode/issues/18).
+
+  `GET /v1/bookings` gained `event_type`, `host`, `team`, `status`, `when`, `from`,
+  `to`, `order`, `limit` and `offset` query parameters, and its response now carries
+  `total`, `counts` and the active `limit`/`offset` beside `items`. MCP `list_bookings`
+  gained `team_id`, `limit` and `offset`, and returns `total`.
+
+### Fixed
+- **`status=cancelled` returned nothing, on every surface.** Both booking list queries
+  hardcoded an exclusion of cancelled bookings and then filtered on top of that result,
+  so asking for cancelled bookings could never match anything - including through the
+  MCP tool whose own schema advertises `cancelled` as a valid value. There was no way at
+  all to view a cancelled booking. An explicit status now replaces the default exclusion
+  instead of being applied after it; omitting it still hides cancelled bookings.
+- **Filtering by host missed the meetings that person attends but doesn't lead.** The
+  host filter compared `bookings.host_id` only, while visibility has always counted a
+  user as hosting a booking if they are the primary host *or* an assigned host. Group
+  meetings someone was on were therefore invisible when filtering to them.
+
+### Changed
+- **Bookings are selected in SQL rather than in the browser.** `GET /v1/bookings` and
+  MCP `list_bookings` previously loaded every booking the caller could see and then
+  filtered and sorted the result in Go or in Svelte, running follow-up queries whose
+  `IN` clause held every booking id returned, against a single-connection pool. Both now
+  share one filtered, ordered, paginated query, so displaying a page of results no
+  longer costs a full workspace scan.
+
 ## [0.6.0] - 2026-08-30
 
 ### Fixed

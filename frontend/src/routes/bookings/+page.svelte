@@ -6,6 +6,7 @@
 	import { Button, buttonVariants } from '$lib/components/ui/button';
 	import { Badge } from '$lib/components/ui/badge';
 	import * as Tooltip from '$lib/components/ui/tooltip';
+	import * as Select from '$lib/components/ui/select';
 	import { DatePicker } from '$lib/components/ui/date-picker';
 	import { ConfirmDialog } from '$lib/components/ui/confirm-dialog';
 
@@ -18,21 +19,32 @@
 	const isAdmin = $derived($currentUser?.is_admin ?? false);
 	let scope = $state<'mine' | 'all'>('mine');
 
-	// Time filter. "Past" is keyed on end_at, not start_at — a meeting that has
-	// started but not finished stays under Upcoming until it actually ends.
+	// Filtering, sorting and paging all happen in SQL now. They used to happen here,
+	// over a response that contained every booking the user could see - which meant
+	// the page got slower with every booking ever made, and the server did unbounded
+	// work to render 25 rows.
 	let timeFilter = $state<'upcoming' | 'past'>('upcoming');
-	const isPast = (b: Booking) => new Date(b.end_at).getTime() < Date.now();
-	const visible = $derived(
-		items
-			.filter((bk) => (timeFilter === 'past' ? isPast(bk) : !isPast(bk)))
-			.sort((x, y) => {
-				const dx = new Date(x.start_at).getTime();
-				const dy = new Date(y.start_at).getTime();
-				return timeFilter === 'past' ? dy - dx : dx - dy; // past: most recent first; upcoming: soonest first
-			})
+	let fEventType = $state('');
+	let fHost = $state('');
+	let fTeam = $state('');
+	let fStatus = $state('');
+
+	const PAGE_SIZE = 25;
+	let offset = $state(0);
+	let total = $state(0);
+	let counts = $state({ upcoming: 0, past: 0 });
+
+	// Options for the filter selects, fetched once.
+	let eventTypes = $state<{ slug: string; name: string }[]>([]);
+	let members = $state<{ id: string; name: string }[]>([]);
+	let teams = $state<{ id: string; name: string }[]>([]);
+
+	const hasFilters = $derived(!!(fEventType || fHost || fTeam || fStatus));
+	const pageStart = $derived(total === 0 ? 0 : offset + 1);
+	const pageEnd = $derived(Math.min(offset + items.length, total));
+	const eventTypeName = $derived(
+		(slug: string) => eventTypes.find((e) => e.slug === slug)?.name ?? slug
 	);
-	const upcomingCount = $derived(items.filter((b) => !isPast(b)).length);
-	const pastCount = $derived(items.length - upcomingCount);
 
 	let reschedulingId = $state<string | null>(null);
 	let reschedulingSlug = $state('');
@@ -64,11 +76,33 @@
 		}
 	}
 
+	function query(): string {
+		const p = new URLSearchParams();
+		if (scope === 'all' && isAdmin) p.set('scope', 'all');
+		p.set('when', timeFilter);
+		// Past reads most-recent-first, upcoming soonest-first. Server-side now: sorting
+		// a page in the browser would only ever sort that page.
+		p.set('order', timeFilter === 'past' ? 'desc' : 'asc');
+		if (fEventType) p.set('event_type', fEventType);
+		if (fHost) p.set('host', fHost);
+		if (fTeam) p.set('team', fTeam);
+		if (fStatus) p.set('status', fStatus);
+		p.set('limit', String(PAGE_SIZE));
+		p.set('offset', String(offset));
+		return p.toString();
+	}
+
 	async function load() {
 		try {
-			const q = scope === 'all' && isAdmin ? '?scope=all' : '';
-			const res = await api.get<{ items: Booking[] }>(`/v1/bookings${q}`);
-			items = res.items;
+			const res = await api.get<{
+				items: Booking[];
+				total: number;
+				counts: { upcoming: number; past: number };
+			}>(`/v1/bookings?${query()}`);
+			items = res.items ?? [];
+			total = res.total ?? 0;
+			counts = res.counts ?? { upcoming: 0, past: 0 };
+			error = '';
 		} catch (e: any) {
 			error = e.message;
 		} finally {
@@ -76,11 +110,56 @@
 		}
 	}
 
+	// Any change to what is being asked for starts again at the first page - staying on
+	// page 3 of a filter that now matches four things shows an empty table.
+	async function reload() {
+		offset = 0;
+		loading = true;
+		await load();
+	}
+
 	async function setScope(s: 'mine' | 'all') {
 		if (scope === s) return;
 		scope = s;
+		// Host and team only mean anything across the workspace.
+		if (s === 'mine') { fHost = ''; fTeam = ''; }
+		await reload();
+	}
+
+	async function setTimeFilter(t: 'upcoming' | 'past') {
+		if (timeFilter === t) return;
+		timeFilter = t;
+		await reload();
+	}
+
+	function clearFilters() {
+		fEventType = fHost = fTeam = fStatus = '';
+		reload();
+	}
+
+	async function goTo(newOffset: number) {
+		offset = Math.max(0, newOffset);
 		loading = true;
 		await load();
+	}
+
+	// Filter options. Failures are silent: a missing dropdown is a smaller problem than
+	// an error banner over a working table, and members can't list users anyway.
+	async function loadFilterOptions() {
+		try {
+			const res = await api.get<{ items: { slug: string; name: string }[] }>('/v1/event-types');
+			eventTypes = res.items ?? [];
+		} catch { /* leave the dropdown empty */ }
+		if (!isAdmin) return;
+		try {
+			// /v1/users returns a bare array, not an { items } envelope like the others.
+			// Archived members are excluded by default, which is what we want here.
+			members = (await api.get<{ id: string; name: string }[]>('/v1/users')) ?? [];
+		} catch { /* leave the dropdown empty */ }
+		try {
+			const res = await api.get<{ items: { id: string; name: string }[] }>('/v1/teams');
+			teams = res.items ?? [];
+		} catch { /* leave the dropdown empty */ }
 	}
 
 	// Refresh re-fetches in place (no full-page "Loading…" flash) — just spins the button.
@@ -93,7 +172,10 @@
 		refreshing = false;
 	}
 
-	onMount(load);
+	onMount(() => {
+		load();
+		loadFilterOptions();
+	});
 
 	let confirmOpen = $state(false);
 	let pendingCancelId = $state<string | null>(null);
@@ -216,21 +298,87 @@
 
 {#if error}<p class="mb-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>{/if}
 
-{#if loading}
-	<p class="py-8 text-sm text-muted-foreground">Loading…</p>
-{:else if items.length === 0}
+{#if counts.upcoming === 0 && counts.past === 0 && !hasFilters && !loading}
 	<div class="rounded-lg border border-dashed bg-card p-12 text-center">
 		<p class="text-sm font-medium">No bookings yet</p>
 		<p class="mt-1 text-sm text-muted-foreground">Bookings will appear here once attendees schedule time with you.</p>
 	</div>
 {:else}
-	<div class="mb-4 inline-flex rounded-md border p-0.5 text-sm">
-		<button type="button" class="rounded px-3 py-1 transition-colors {timeFilter === 'upcoming' ? 'bg-muted font-medium' : 'text-muted-foreground hover:text-foreground'}" onclick={() => (timeFilter = 'upcoming')}>Upcoming ({upcomingCount})</button>
-		<button type="button" class="rounded px-3 py-1 transition-colors {timeFilter === 'past' ? 'bg-muted font-medium' : 'text-muted-foreground hover:text-foreground'}" onclick={() => (timeFilter = 'past')}>Past ({pastCount})</button>
+	<div class="mb-4 flex flex-wrap items-center gap-2">
+		<div class="inline-flex rounded-md border p-0.5 text-sm">
+			<button type="button" class="rounded px-3 py-1 transition-colors {timeFilter === 'upcoming' ? 'bg-muted font-medium' : 'text-muted-foreground hover:text-foreground'}" onclick={() => setTimeFilter('upcoming')}>Upcoming ({counts.upcoming})</button>
+			<button type="button" class="rounded px-3 py-1 transition-colors {timeFilter === 'past' ? 'bg-muted font-medium' : 'text-muted-foreground hover:text-foreground'}" onclick={() => setTimeFilter('past')}>Past ({counts.past})</button>
+		</div>
+
+		<div class="ml-auto flex flex-wrap items-center gap-2">
+			<Select.Root type="single" bind:value={fEventType} onValueChange={reload}>
+				<Select.Trigger class="h-9 w-[170px]" aria-label="Filter by event type">
+					{fEventType ? eventTypeName(fEventType) : 'All event types'}
+				</Select.Trigger>
+				<Select.Content>
+					<Select.Item value="" label="All event types">All event types</Select.Item>
+					{#each eventTypes as et}
+						<Select.Item value={et.slug} label={et.name}>{et.name}</Select.Item>
+					{/each}
+				</Select.Content>
+			</Select.Root>
+
+			{#if isAdmin && scope === 'all'}
+				<Select.Root type="single" bind:value={fHost} onValueChange={reload}>
+					<Select.Trigger class="h-9 w-[150px]" aria-label="Filter by host">
+						{members.find((m) => m.id === fHost)?.name ?? 'All hosts'}
+					</Select.Trigger>
+					<Select.Content>
+						<Select.Item value="" label="All hosts">All hosts</Select.Item>
+						{#each members as m}
+							<Select.Item value={m.id} label={m.name}>{m.name}</Select.Item>
+						{/each}
+					</Select.Content>
+				</Select.Root>
+
+				{#if teams.length > 0}
+					<Select.Root type="single" bind:value={fTeam} onValueChange={reload}>
+						<Select.Trigger class="h-9 w-[140px]" aria-label="Filter by team">
+							{teams.find((tm) => tm.id === fTeam)?.name ?? 'All teams'}
+						</Select.Trigger>
+						<Select.Content>
+							<Select.Item value="" label="All teams">All teams</Select.Item>
+							{#each teams as tm}
+								<Select.Item value={tm.id} label={tm.name}>{tm.name}</Select.Item>
+							{/each}
+						</Select.Content>
+					</Select.Root>
+				{/if}
+			{/if}
+
+			<Select.Root type="single" bind:value={fStatus} onValueChange={reload}>
+				<Select.Trigger class="h-9 w-[140px]" aria-label="Filter by status">
+					{fStatus || 'Any status'}
+				</Select.Trigger>
+				<Select.Content>
+					<Select.Item value="" label="Any status">Any status</Select.Item>
+					<Select.Item value="confirmed" label="Confirmed">Confirmed</Select.Item>
+					<Select.Item value="rescheduled" label="Rescheduled">Rescheduled</Select.Item>
+					<Select.Item value="cancelled" label="Cancelled">Cancelled</Select.Item>
+				</Select.Content>
+			</Select.Root>
+
+			{#if hasFilters}
+				<Button variant="ghost" size="sm" onclick={clearFilters}>Clear</Button>
+			{/if}
+		</div>
 	</div>
-	{#if visible.length === 0}
+
+	{#if loading}
+		<p class="py-8 text-sm text-muted-foreground">Loading…</p>
+	{:else if items.length === 0}
 		<div class="rounded-lg border border-dashed bg-card p-12 text-center">
-			<p class="text-sm text-muted-foreground">No {timeFilter} bookings.</p>
+			<p class="text-sm text-muted-foreground">
+				{hasFilters ? 'No bookings match these filters.' : `No ${timeFilter} bookings.`}
+			</p>
+			{#if hasFilters}
+				<Button variant="outline" size="sm" class="mt-3" onclick={clearFilters}>Clear filters</Button>
+			{/if}
 		</div>
 	{:else}
 	<div class="rounded-lg border bg-card overflow-hidden">
@@ -246,7 +394,7 @@
 				</tr>
 			</thead>
 			<tbody class="divide-y">
-				{#each visible as b}
+				{#each items as b}
 					<tr class="transition-colors hover:bg-muted/30">
 						<td class="px-4 py-3">
 							{#if b.attendees && b.attendees.length > 0}
@@ -449,6 +597,19 @@
 			</tbody>
 		</table>
 	</div>
+	{#if total > PAGE_SIZE}
+		<div class="mt-4 flex items-center justify-between gap-4">
+			<p class="text-sm text-muted-foreground">Showing {pageStart}–{pageEnd} of {total}</p>
+			<div class="flex items-center gap-2">
+				<Button variant="outline" size="sm" disabled={offset === 0} onclick={() => goTo(offset - PAGE_SIZE)}>
+					Previous
+				</Button>
+				<Button variant="outline" size="sm" disabled={pageEnd >= total} onclick={() => goTo(offset + PAGE_SIZE)}>
+					Next
+				</Button>
+			</div>
+		</div>
+	{/if}
 	{/if}
 {/if}
 

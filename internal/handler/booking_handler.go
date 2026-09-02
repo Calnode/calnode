@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -1197,28 +1198,148 @@ func (h *Handler) GetBooking(w http.ResponseWriter, r *http.Request) {
 	h.writeJSON(w, http.StatusOK, toBookingJSON(b))
 }
 
+// Bookings are paginated. The list used to be unbounded: it loaded every booking the
+// caller could see and then ran enrichment queries whose IN clause held every id
+// returned, against a single-connection pool (ARCHITECTURE §17). A page bounds both.
+const (
+	bookingsPageDefault = 50
+	bookingsPageMax     = 200
+)
+
+// bookingStatuses are the values bookings.status is allowed to hold. Filtering on
+// anything else is rejected rather than silently returning nothing.
+var bookingStatuses = map[string]bool{"confirmed": true, "cancelled": true, "rescheduled": true}
+
+// noSuchEventType is the id used when an event_type filter names a slug that doesn't
+// exist. It matches nothing. A sentinel rather than an error, because a stale filter
+// in a bookmarked URL should render an empty list, not a failure nobody can act on.
+const noSuchEventType = "\x00-no-such-event-type"
+
+// parseBookingListFilter turns the query string into a booking.ListFilter, applying
+// the visibility rule: members are pinned to bookings they host, and only an admin
+// may widen to the workspace with ?scope=all. Every other filter narrows further, so
+// a member passing host= or team= can never see more than their own bookings.
+func (h *Handler) parseBookingListFilter(ctx context.Context, q url.Values, user AuthUser) (booking.ListFilter, error) {
+	f := booking.ListFilter{
+		Now:    time.Now().UTC(),
+		Limit:  bookingsPageDefault,
+		HostID: q.Get("host"),
+		TeamID: q.Get("team"),
+		Order:  q.Get("order"),
+	}
+	if !(q.Get("scope") == "all" && user.IsAdmin) {
+		f.ViewerID = user.ID
+	}
+
+	if s := q.Get("status"); s != "" {
+		if !bookingStatuses[s] {
+			return f, fmt.Errorf("status must be one of confirmed, cancelled, rescheduled")
+		}
+		f.Status = s
+	}
+	if w := q.Get("when"); w != "" {
+		if w != "upcoming" && w != "past" {
+			return f, fmt.Errorf("when must be upcoming or past")
+		}
+		f.When = w
+	}
+	if slug := q.Get("event_type"); slug != "" {
+		var id string
+		if err := h.db.QueryRowContext(ctx, `SELECT id FROM event_types WHERE slug = ?`, slug).Scan(&id); err != nil {
+			f.EventTypeID = noSuchEventType
+		} else {
+			f.EventTypeID = id
+		}
+	}
+
+	var err error
+	if f.From, err = parseDayStart(q.Get("from")); err != nil {
+		return f, fmt.Errorf("from must be YYYY-MM-DD")
+	}
+	if f.To, err = parseDayStart(q.Get("to")); err != nil {
+		return f, fmt.Errorf("to must be YYYY-MM-DD")
+	}
+	if !f.To.IsZero() {
+		f.To = f.To.AddDate(0, 0, 1) // "to" names a day, and the whole of it is included
+	}
+
+	if v := q.Get("limit"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 {
+			return f, fmt.Errorf("limit must be a positive integer")
+		}
+		f.Limit = min(n, bookingsPageMax)
+	}
+	if v := q.Get("offset"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 0 {
+			return f, fmt.Errorf("offset must be a non-negative integer")
+		}
+		f.Offset = n
+	}
+	return f, nil
+}
+
+// parseDayStart parses a YYYY-MM-DD day into midnight UTC. Empty is the zero time,
+// meaning unbounded, not an error.
+func parseDayStart(s string) (time.Time, error) {
+	if s == "" {
+		return time.Time{}, nil
+	}
+	return time.Parse("2006-01-02", s)
+}
+
 // ListBookings handles GET /v1/bookings (admin — lists bookings for the current user).
 // Returns bookings enriched with event_type_slug and the organizer attendee.
+//
+// Filters (event_type, host, team, status, when, from, to) and pagination are applied
+// in SQL by booking.List; see parseBookingListFilter for the visibility rule.
 func (h *Handler) ListBookings(w http.ResponseWriter, r *http.Request) {
 	user, _ := userFromContext(r.Context())
 
-	// Members see only bookings they host. Admins/owners may request the whole
-	// workspace with ?scope=all (for team oversight); the scope is ignored for
-	// non-admins so it can't be used to escalate visibility.
-	allScope := r.URL.Query().Get("scope") == "all" && user.IsAdmin
-	var bookings []booking.Booking
-	var err error
-	if allScope {
-		bookings, err = h.bookingSvc.ListAll(r.Context())
-	} else {
-		bookings, err = h.bookingSvc.ListByHost(r.Context(), user.ID)
+	f, err := h.parseBookingListFilter(r.Context(), r.URL.Query(), user)
+	if err != nil {
+		h.writeError(w, http.StatusBadRequest, err.Error())
+		return
 	}
+
+	bookings, err := h.bookingSvc.List(r.Context(), f)
 	if err != nil {
 		h.logger.ErrorContext(r.Context(), "list bookings", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+	// Counts must be their own query, not len(bookings): the page is a slice of the
+	// match set and the tab labels describe the whole of it. Runs after List has
+	// drained its rows - querying inside an open cursor deadlocks the single
+	// connection pool.
+	counts, err := h.bookingSvc.Counts(r.Context(), f)
+	if err != nil {
+		h.logger.ErrorContext(r.Context(), "list bookings: counts", "error", err)
+		h.writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
 
+	items, err := h.enrichBookings(r.Context(), bookings, f.ViewerID == "")
+	if err != nil {
+		h.logger.ErrorContext(r.Context(), "list bookings: enrich", "error", err)
+		h.writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	h.writeJSON(w, http.StatusOK, map[string]any{
+		"items":  items,
+		"total":  counts.Total(),
+		"counts": map[string]int{"upcoming": counts.Upcoming, "past": counts.Past},
+		"limit":  f.Limit,
+		"offset": f.Offset,
+	})
+}
+
+// enrichBookings decorates one page of bookings with their event-type slug, the
+// organizer attendee, and (for the workspace view) the host's name. Bounded by the
+// page size, so the IN clauses stay small.
+func (h *Handler) enrichBookings(ctx context.Context, bookings []booking.Booking, withHostName bool) ([]bookingJSON, error) {
 	items := make([]bookingJSON, len(bookings))
 	idxByID := make(map[string]int, len(bookings))
 	for i := range bookings {
@@ -1226,13 +1347,10 @@ func (h *Handler) ListBookings(w http.ResponseWriter, r *http.Request) {
 		items[i].Attendees = []attendeeJSON{} // ensure non-null in JSON
 		idxByID[bookings[i].ID] = i
 	}
-
 	if len(items) == 0 {
-		h.writeJSON(w, http.StatusOK, map[string]any{"items": items})
-		return
+		return items, nil
 	}
 
-	// Build IN-clause args (booking IDs).
 	ids := make([]any, len(bookings))
 	for i, b := range bookings {
 		ids[i] = b.ID
@@ -1240,82 +1358,71 @@ func (h *Handler) ListBookings(w http.ResponseWriter, r *http.Request) {
 	ph := strings.Repeat("?,", len(ids))
 	ph = ph[:len(ph)-1]
 
-	// Fetch event type slugs via a single JOIN (payment fields already come from toBookingJSON).
-	etRows, err := h.db.QueryContext(r.Context(), // #nosec G701 -- ph is a fixed string of "?," placeholders (strings.Repeat above); every value is bound via ids..., never concatenated into the SQL text
+	// Event type slugs.
+	if err := h.scanPairs(ctx,
 		`SELECT b.id, COALESCE(et.slug, '') FROM bookings b
 		 LEFT JOIN event_types et ON et.id = b.event_type_id
-		 WHERE b.id IN (`+ph+`)`, ids...) // #nosec G202 -- ph is a fixed string of "?," placeholders (strings.Repeat above); every value is bound via ids..., never concatenated into the SQL text
-	if err != nil {
-		h.logger.ErrorContext(r.Context(), "list bookings: slugs", "error", err)
-		h.writeError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
-	defer etRows.Close()
-	for etRows.Next() {
-		var bid, slug string
-		if err := etRows.Scan(&bid, &slug); err != nil {
-			continue
-		}
-		if i, ok := idxByID[bid]; ok {
-			items[i].EventTypeSlug = slug
-		}
-	}
-	if err := etRows.Err(); err != nil {
-		h.logger.ErrorContext(r.Context(), "list bookings: slugs scan", "error", err)
-		h.writeError(w, http.StatusInternalServerError, "internal error")
-		return
+		 WHERE b.id IN (`+ph+`)`, ids, // #nosec G202 -- ph is a fixed string of "?," placeholders; every value is bound via ids...
+		func(bid, val string) {
+			if i, ok := idxByID[bid]; ok {
+				items[i].EventTypeSlug = val
+			}
+		}); err != nil {
+		return nil, err
 	}
 
-	// In the admin "All bookings" view, label each row with its host's name so the
-	// admin can tell whose booking it is.
-	if allScope {
-		hRows, err := h.db.QueryContext(r.Context(), // #nosec G701 -- ph is a fixed string of "?," placeholders (strings.Repeat above); every value is bound via ids..., never concatenated into the SQL text
+	// In the admin "All bookings" view, label each row with its host's name.
+	if withHostName {
+		if err := h.scanPairs(ctx,
 			`SELECT b.id, COALESCE(u.name, '') FROM bookings b
 			 LEFT JOIN users u ON u.id = b.host_id
-			 WHERE b.id IN (`+ph+`)`, ids...) // #nosec G202 -- ph is a fixed string of "?," placeholders (strings.Repeat above); every value is bound via ids..., never concatenated into the SQL text
-		if err != nil {
-			h.logger.ErrorContext(r.Context(), "list bookings: host names", "error", err)
-			h.writeError(w, http.StatusInternalServerError, "internal error")
-			return
-		}
-		defer hRows.Close()
-		for hRows.Next() {
-			var bid, name string
-			if err := hRows.Scan(&bid, &name); err != nil {
-				continue
-			}
-			if i, ok := idxByID[bid]; ok {
-				items[i].HostName = name
-			}
+			 WHERE b.id IN (`+ph+`)`, ids, // #nosec G202 -- ph is a fixed string of "?," placeholders; every value is bound via ids...
+			func(bid, val string) {
+				if i, ok := idxByID[bid]; ok {
+					items[i].HostName = val
+				}
+			}); err != nil {
+			return nil, err
 		}
 	}
 
-	// Fetch organizer attendee for each booking.
-	aRows, err := h.db.QueryContext(r.Context(), // #nosec G701 -- ph is a fixed string of "?," placeholders (strings.Repeat above); every value is bound via ids..., never concatenated into the SQL text
+	// Organizer attendee.
+	rows, err := h.db.QueryContext(ctx,
 		`SELECT booking_id, name, email FROM booking_attendees
-		 WHERE booking_id IN (`+ph+`) AND is_organizer = 1`, ids...) // #nosec G202 -- ph is a fixed string of "?," placeholders (strings.Repeat above); every value is bound via ids..., never concatenated into the SQL text
+		 WHERE booking_id IN (`+ph+`) AND is_organizer = 1`, ids...) // #nosec G202 -- ph is a fixed string of "?," placeholders; every value is bound via ids...
 	if err != nil {
-		h.logger.ErrorContext(r.Context(), "list bookings: attendees", "error", err)
-		h.writeError(w, http.StatusInternalServerError, "internal error")
-		return
+		return nil, err
 	}
-	defer aRows.Close()
-	for aRows.Next() {
+	defer rows.Close()
+	for rows.Next() {
 		var bid, name, email string
-		if err := aRows.Scan(&bid, &name, &email); err != nil {
+		if err := rows.Scan(&bid, &name, &email); err != nil {
 			continue
 		}
 		if i, ok := idxByID[bid]; ok {
 			items[i].Attendees = append(items[i].Attendees, attendeeJSON{Name: name, Email: email})
 		}
 	}
-	if err := aRows.Err(); err != nil {
-		h.logger.ErrorContext(r.Context(), "list bookings: attendees scan", "error", err)
-		h.writeError(w, http.StatusInternalServerError, "internal error")
-		return
-	}
+	return items, rows.Err()
+}
 
-	h.writeJSON(w, http.StatusOK, map[string]any{"items": items})
+// scanPairs runs a two-column (id, value) query and hands each row to apply. The rows
+// are drained before returning, so callers never hold a cursor open across another
+// query - the single-connection pool deadlocks if they do.
+func (h *Handler) scanPairs(ctx context.Context, query string, args []any, apply func(id, value string)) error {
+	rows, err := h.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id, val string
+		if err := rows.Scan(&id, &val); err != nil {
+			continue
+		}
+		apply(id, val)
+	}
+	return rows.Err()
 }
 
 // CancelBooking handles POST /v1/bookings/{id}/cancel (admin).

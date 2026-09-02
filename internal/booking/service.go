@@ -300,54 +300,19 @@ func (s *Service) Get(ctx context.Context, id string) (*Booking, error) {
 // start time. A user "hosts" a booking if they are the primary host (host_id) OR
 // any assigned host in booking_hosts — so Group attendees (required or optional,
 // not just the primary) see meetings they're on, not only the ones they lead.
+//
+// Unbounded: prefer List with a Limit for anything user-facing.
 func (s *Service) ListByHost(ctx context.Context, hostID string) ([]Booking, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT `+bookingColumns+`
-		FROM bookings
-		WHERE status != 'cancelled'
-		  AND (host_id = ? OR EXISTS (
-		        SELECT 1 FROM booking_hosts bh
-		        WHERE bh.booking_id = bookings.id AND bh.user_id = ?))
-		ORDER BY start_at`, hostID, hostID)
-	if err != nil {
-		return nil, fmt.Errorf("booking: list: %w", err)
-	}
-	defer rows.Close()
-
-	var out []Booking
-	for rows.Next() {
-		b, err := scanBooking(rows)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, *b)
-	}
-	return out, rows.Err()
+	return s.List(ctx, ListFilter{ViewerID: hostID})
 }
 
 // ListAll returns every non-cancelled booking in the workspace, ordered by start
 // time (matching ListByHost). For the admin/owner "All bookings" view — callers
 // must gate this on the admin role.
+//
+// Unbounded: prefer List with a Limit for anything user-facing.
 func (s *Service) ListAll(ctx context.Context) ([]Booking, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT `+bookingColumns+`
-		FROM bookings
-		WHERE status != 'cancelled'
-		ORDER BY start_at`)
-	if err != nil {
-		return nil, fmt.Errorf("booking: list all: %w", err)
-	}
-	defer rows.Close()
-
-	var out []Booking
-	for rows.Next() {
-		b, err := scanBooking(rows)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, *b)
-	}
-	return out, rows.Err()
+	return s.List(ctx, ListFilter{})
 }
 
 // IssueManageToken generates a cryptographically random manage token for a

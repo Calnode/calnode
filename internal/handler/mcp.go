@@ -248,79 +248,84 @@ func (h *Handler) mcpGetBooking(ctx context.Context, _ *mcp.CallToolRequest, in 
 // ── list_bookings ────────────────────────────────────────────────────────────
 
 type listBookingsIn struct {
-	Status      string `json:"status,omitempty" jsonschema:"filter by status: confirmed, cancelled, or rescheduled"`
+	Status      string `json:"status,omitempty" jsonschema:"filter by status: confirmed, cancelled, or rescheduled. Omit to see every status except cancelled"`
 	DateFrom    string `json:"date_from,omitempty" jsonschema:"only bookings starting on/after this date (YYYY-MM-DD, UTC)"`
 	DateTo      string `json:"date_to,omitempty" jsonschema:"only bookings starting on/before this date (YYYY-MM-DD, UTC)"`
 	EventTypeID string `json:"event_type_id,omitempty" jsonschema:"filter to this event type slug"`
 	HostID      string `json:"host_id,omitempty" jsonschema:"filter to this host's user id"`
+	TeamID      string `json:"team_id,omitempty" jsonschema:"filter to bookings hosted by any member of this team id"`
+	Limit       int    `json:"limit,omitempty" jsonschema:"maximum bookings to return (default 50, maximum 200)"`
+	Offset      int    `json:"offset,omitempty" jsonschema:"how many bookings to skip, for paging through results"`
 }
 
 type listBookingsOut struct {
 	Bookings []bookingJSON `json:"bookings"`
+	Total    int           `json:"total" jsonschema:"how many bookings match the filter in total, which may exceed the number returned"`
 }
 
+// mcpListBookings filters and pages in SQL through booking.List, the same path the
+// REST endpoint uses. It previously loaded every booking the caller could see and
+// filtered the slice in Go, which meant host_id= still pulled the whole workspace
+// into memory, and status="cancelled" could never match anything because the
+// underlying query hardcoded a cancelled exclusion.
 func (h *Handler) mcpListBookings(ctx context.Context, _ *mcp.CallToolRequest, in listBookingsIn) (*mcp.CallToolResult, listBookingsOut, error) {
 	// Members see only bookings they host; admins/owner (and the local stdio operator)
 	// see the whole workspace.
 	userID, fullAccess := mcpCallerScope(ctx)
-	var all []booking.Booking
-	var err error
-	if fullAccess {
-		all, err = h.bookingSvc.ListAll(ctx)
-	} else {
-		all, err = h.bookingSvc.ListByHost(ctx, userID)
+
+	f := booking.ListFilter{
+		Now:    time.Now().UTC(),
+		HostID: in.HostID,
+		TeamID: in.TeamID,
+		Status: in.Status,
+		Limit:  bookingsPageDefault,
+		Offset: max(in.Offset, 0),
 	}
-	if err != nil {
-		return nil, listBookingsOut{}, fmt.Errorf("list bookings: %w", err)
+	if !fullAccess {
+		f.ViewerID = userID
+	}
+	if in.Status != "" && !bookingStatuses[in.Status] {
+		return nil, listBookingsOut{}, fmt.Errorf("status must be one of confirmed, cancelled, rescheduled")
+	}
+	if in.Limit > 0 {
+		f.Limit = min(in.Limit, bookingsPageMax)
 	}
 
-	// Map event-type ids ⇄ slugs once, so we can both honour an event_type_id (slug)
-	// filter and stamp each result with its slug.
+	// The tool exposes event types by slug; bookings store the id.
 	slugByID, idBySlug := h.eventTypeSlugMaps(ctx)
-	var filterETID string
 	if in.EventTypeID != "" {
-		filterETID = idBySlug[in.EventTypeID]
-		if filterETID == "" {
+		if id := idBySlug[in.EventTypeID]; id != "" {
+			f.EventTypeID = id
+		} else {
 			return nil, listBookingsOut{Bookings: []bookingJSON{}}, nil // unknown slug → no matches
 		}
 	}
 
-	var from, to time.Time
-	if in.DateFrom != "" {
-		if t, err := time.Parse("2006-01-02", in.DateFrom); err == nil {
-			from = t
-		} else {
-			return nil, listBookingsOut{}, fmt.Errorf("date_from must be YYYY-MM-DD")
-		}
+	var err error
+	if f.From, err = parseDayStart(in.DateFrom); err != nil {
+		return nil, listBookingsOut{}, fmt.Errorf("date_from must be YYYY-MM-DD")
 	}
-	if in.DateTo != "" {
-		if t, err := time.Parse("2006-01-02", in.DateTo); err == nil {
-			to = t.AddDate(0, 0, 1) // inclusive of the whole day
-		} else {
-			return nil, listBookingsOut{}, fmt.Errorf("date_to must be YYYY-MM-DD")
-		}
+	if f.To, err = parseDayStart(in.DateTo); err != nil {
+		return nil, listBookingsOut{}, fmt.Errorf("date_to must be YYYY-MM-DD")
+	}
+	if !f.To.IsZero() {
+		f.To = f.To.AddDate(0, 0, 1) // inclusive of the whole day
 	}
 
-	out := listBookingsOut{Bookings: []bookingJSON{}}
+	all, err := h.bookingSvc.List(ctx, f)
+	if err != nil {
+		return nil, listBookingsOut{}, fmt.Errorf("list bookings: %w", err)
+	}
+	// Drained above, so this second query is safe on the single-connection pool.
+	counts, err := h.bookingSvc.Counts(ctx, f)
+	if err != nil {
+		return nil, listBookingsOut{}, fmt.Errorf("count bookings: %w", err)
+	}
+
+	out := listBookingsOut{Bookings: make([]bookingJSON, 0, len(all)), Total: counts.Total()}
 	for i := range all {
-		b := &all[i]
-		if in.Status != "" && b.Status != in.Status {
-			continue
-		}
-		if filterETID != "" && b.EventTypeID != filterETID {
-			continue
-		}
-		if in.HostID != "" && b.HostID != in.HostID {
-			continue
-		}
-		if !from.IsZero() && b.StartAt.Before(from) {
-			continue
-		}
-		if !to.IsZero() && !b.StartAt.Before(to) {
-			continue
-		}
-		bj := toBookingJSON(b)
-		bj.EventTypeSlug = slugByID[b.EventTypeID]
+		bj := toBookingJSON(&all[i])
+		bj.EventTypeSlug = slugByID[all[i].EventTypeID]
 		out.Bookings = append(out.Bookings, bj)
 	}
 	return nil, out, nil

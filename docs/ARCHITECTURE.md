@@ -312,6 +312,27 @@ members.
   a key reused with a *different* body → 422, and the key is released on any failure
   so a genuine retry can proceed. Worker purges keys after 24h (§13). The public
   booking page sends no key, so this path is inert for normal bookings.
+- **List / filter / paginate:** `booking.ListFilter` + `booking.List`/`Counts`
+  (`internal/booking/list.go`) is the one place bookings are selected. It applies
+  visibility (`ViewerID` pins a member to bookings they host, primary *or* assigned;
+  empty means the whole workspace and callers gate that on admin), then narrows by
+  event type, host, team, status, date range and upcoming/past, then orders and pages
+  - **all in SQL**. `GET /v1/bookings` and MCP `list_bookings` both go through it, and
+  the admin page passes its filters straight down.
+  - **Why it isn't done in the client:** the list used to return *every* booking the
+    caller could see, then run enrichment queries whose `IN` clause held every id
+    returned, on the single-connection pool (§17). Rendering 25 rows cost a full
+    workspace scan. Pages are capped (`bookingsPageMax`).
+  - `Counts` is a separate query and deliberately ignores `When`/`Limit`/`Offset`, so
+    the Upcoming/Past tab labels describe the whole match set rather than the page.
+    Deriving them from `len(items)` is the obvious mistake once paging exists.
+  - **An explicit `status` replaces the default cancelled-exclusion rather than
+    filtering after it.** Both list paths previously hardcoded `status != 'cancelled'`
+    and filtered on top, so `status=cancelled` - a value MCP's own schema advertises -
+    could never match anything.
+  - **Teams resolve through membership**, not `event_types.team_id`: that column exists
+    but nothing writes it, because a team is a shortcut for populating
+    `event_type_hosts`. A member of two teams therefore appears under both.
 - **Public-surface abuse controls:** the `/slots` endpoint is rate-limited (60/min/IP,
   `slotsRL`) and `POST /v1/bookings` (20/min/IP, `bookingRL`); a per-email hourly cap
   (`maxBookingsPerEmailPerHour`) backstops rotating-IP spam; and the booking form has a
@@ -694,7 +715,11 @@ A Model Context Protocol server is compiled into the binary on the official Go S
 (`internal/handler/mcp.go`) builds one server instance exposing eight typed tools
 (schema generated from Go structs): `list_event_types`, `get_event_type`,
 `get_available_slots`, `create_booking`, `get_booking`, `reschedule_booking`,
-`cancel_booking`, `list_bookings`. `get_event_type` returns an event type's intake
+`cancel_booking`, `list_bookings`. `list_bookings` filters (`status`, `date_from`,
+`date_to`, `event_type_id` as a slug, `host_id`, `team_id`) and pages (`limit`,
+`offset`, with `total` in the result) through the same SQL path as the REST list
+(§9) - it used to load everything and filter the slice in Go.
+`get_event_type` returns an event type's intake
 **questions** (required flags + options) + hosts so an agent can supply valid answers
 to `create_booking` — without it the booking tools are subtly unreliable for event
 types that have required questions.
