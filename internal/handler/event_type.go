@@ -34,12 +34,16 @@ type eventTypeJSON struct {
 	MaxFutureDays       int     `json:"max_future_days"`
 	MaxActiveBookings   int     `json:"max_active_bookings"`
 	IsActive            bool    `json:"is_active"`
-	IsPublic            bool    `json:"is_public"`
-	CreatedAt           string  `json:"created_at"`
-	MsgConfirmation     *string `json:"msg_confirmation"`
-	MsgCancellation     *string `json:"msg_cancellation"`
-	MsgReschedule       *string `json:"msg_reschedule"`
-	MsgReminder         *string `json:"msg_reminder"`
+	// ShowTakenSlots renders already-booked times greyed out on the booking page
+	// instead of omitting them. Off by default: the slots endpoint is public, so this
+	// makes the host's booked hours legible to anyone with the link (#19).
+	ShowTakenSlots  bool    `json:"show_taken_slots"`
+	IsPublic        bool    `json:"is_public"`
+	CreatedAt       string  `json:"created_at"`
+	MsgConfirmation *string `json:"msg_confirmation"`
+	MsgCancellation *string `json:"msg_cancellation"`
+	MsgReschedule   *string `json:"msg_reschedule"`
+	MsgReminder     *string `json:"msg_reminder"`
 	// MsgGreeting overrides the conversational assistant's opening line for this event
 	// type. Unlike the Msg* fields above, nil/empty means "no override" — the assistant
 	// falls back to the locale-keyed default greeting, not a fixed English seed.
@@ -77,7 +81,7 @@ func scanEventTypeRow(s rowScanner, trailing ...any) (*eventTypeJSON, error) {
 	var et eventTypeJSON
 	var desc, locVal, msgConf, msgCancel, msgResched, msgRemind, msgGreeting sql.NullString
 	var subjConf, subjCancel, subjResched, subjRemind sql.NullString
-	var isActive, isPublic int
+	var isActive, isPublic, showTaken int
 
 	dests := []any{
 		&et.ID, &et.Slug, &et.Name, &desc,
@@ -86,7 +90,7 @@ func scanEventTypeRow(s rowScanner, trailing ...any) (*eventTypeJSON, error) {
 		&et.RoutingMode, &et.RRStrategy,
 		&et.BufferBeforeMinutes, &et.BufferAfterMinutes,
 		&et.MinNoticeMinutes, &et.MaxFutureDays, &et.MaxActiveBookings,
-		&isActive, &isPublic, &et.CreatedAt,
+		&isActive, &isPublic, &showTaken, &et.CreatedAt,
 		&msgConf, &msgCancel, &msgResched, &msgRemind, &msgGreeting,
 		&subjConf, &subjCancel, &subjResched, &subjRemind,
 		&et.PriceCents, &et.Currency,
@@ -107,6 +111,7 @@ func scanEventTypeRow(s rowScanner, trailing ...any) (*eventTypeJSON, error) {
 	}
 	et.IsActive = isActive != 0
 	et.IsPublic = isPublic != 0
+	et.ShowTakenSlots = showTaken != 0
 	if msgConf.Valid {
 		et.MsgConfirmation = &msgConf.String
 	}
@@ -144,7 +149,7 @@ const etColumns = `id, slug, name, description,
 	routing_mode, rr_strategy,
 	buffer_before_minutes, buffer_after_minutes,
 	min_notice_minutes, max_future_days, max_active_bookings,
-	is_active, is_public, created_at,
+	is_active, is_public, show_taken_slots, created_at,
 	msg_confirmation, msg_cancellation, msg_reschedule, msg_reminder, msg_greeting,
 	subj_confirmation, subj_cancellation, subj_reschedule, subj_reminder,
 	price_cents, currency`
@@ -212,6 +217,7 @@ func (h *Handler) CreateEventType(w http.ResponseWriter, r *http.Request) {
 		MinNoticeMinutes    *int    `json:"min_notice_minutes"`
 		MaxFutureDays       *int    `json:"max_future_days"`
 		MaxActiveBookings   *int    `json:"max_active_bookings"`
+		ShowTakenSlots      *bool   `json:"show_taken_slots"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.writeError(w, http.StatusBadRequest, "invalid JSON")
@@ -280,6 +286,12 @@ func (h *Handler) CreateEventType(w http.ResponseWriter, r *http.Request) {
 	if req.MaxActiveBookings != nil {
 		maxActive = *req.MaxActiveBookings
 	}
+	// Off unless explicitly asked for: showing booked times makes a host's calendar
+	// legible through a public endpoint, so it is never inherited by default (#19).
+	showTaken := 0
+	if req.ShowTakenSlots != nil && *req.ShowTakenSlots {
+		showTaken = 1
+	}
 
 	id := uid.New()
 	tx, err := h.db.BeginTx(r.Context(), nil)
@@ -295,12 +307,12 @@ func (h *Handler) CreateEventType(w http.ResponseWriter, r *http.Request) {
 		  (id, user_id, slug, name, description, duration_minutes,
 		   slot_interval_minutes, location_type, location_value,
 		   routing_mode, buffer_before_minutes, buffer_after_minutes,
-		   min_notice_minutes, max_future_days, max_active_bookings,
+		   min_notice_minutes, max_future_days, max_active_bookings, show_taken_slots,
 		   msg_confirmation, msg_cancellation, msg_reschedule, msg_reminder)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		id, user.ID, req.Slug, req.Name, req.Description,
 		req.DurationMinutes, slotInterval, locType, req.LocationValue,
-		routingMode, bufBefore, bufAfter, minNotice, maxFuture, maxActive,
+		routingMode, bufBefore, bufAfter, minNotice, maxFuture, maxActive, showTaken,
 		defaultMsgConfirmation, defaultMsgCancellation, defaultMsgReschedule, defaultMsgReminder)
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE constraint failed") {
@@ -430,6 +442,7 @@ func (h *Handler) PatchEventType(w http.ResponseWriter, r *http.Request) {
 		MaxActiveBookings   *int    `json:"max_active_bookings"`
 		IsActive            *bool   `json:"is_active"`
 		IsPublic            *bool   `json:"is_public"`
+		ShowTakenSlots      *bool   `json:"show_taken_slots"`
 		Archived            *bool   `json:"archived"`
 		MsgConfirmation     *string `json:"msg_confirmation"`
 		MsgCancellation     *string `json:"msg_cancellation"`
@@ -573,6 +586,13 @@ func (h *Handler) PatchEventType(w http.ResponseWriter, r *http.Request) {
 			v = 1
 		}
 		set("is_public", v)
+	}
+	if req.ShowTakenSlots != nil {
+		v := 0
+		if *req.ShowTakenSlots {
+			v = 1
+		}
+		set("show_taken_slots", v)
 	}
 	if req.Archived != nil {
 		if *req.Archived {

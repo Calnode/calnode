@@ -18,6 +18,21 @@ type slotJSON struct {
 	HostIDs []string `json:"host_ids"`
 }
 
+// slotsResult is what computeSlots produces: the bookable slots, the host display map,
+// and - only for surfaces that asked and event types that opted in - the starts a
+// booking took away.
+type slotsResult struct {
+	Slots []slotJSON
+	Taken []slotJSON
+	Hosts map[string]map[string]string
+	// ShowsTaken records whether Taken was computed at all, which is not the same
+	// question as whether it is empty: an opted-in event type with a clear day has no
+	// taken slots and must still render as one that greys them. Relying on the slice
+	// being nil does not work, because converting an empty result yields an empty
+	// non-nil slice.
+	ShowsTaken bool
+}
+
 // Sentinel errors from computeSlots, so non-HTTP callers (the MCP tools) can map
 // failures to their own protocol rather than to HTTP status codes.
 var (
@@ -35,7 +50,10 @@ var (
 func (h *Handler) GetSlots(w http.ResponseWriter, r *http.Request) {
 	slug := r.PathValue("slug")
 	tzName := r.URL.Query().Get("tz")
-	out, hosts, err := h.computeSlots(r.Context(), slug, tzName, r.URL.Query().Get("from"), r.URL.Query().Get("to"))
+	// The public booking page is the one surface that may see taken slots, and only
+	// when the event type opted in; computeSlots enforces the second half.
+	res, err := h.computeSlots(r.Context(), slug, tzName,
+		r.URL.Query().Get("from"), r.URL.Query().Get("to"), true)
 	switch {
 	case errors.Is(err, errEventTypeNotFound):
 		h.writeError(w, http.StatusNotFound, "event type not found")
@@ -51,7 +69,13 @@ func (h *Handler) GetSlots(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	h.writeJSON(w, http.StatusOK, map[string]any{"slots": out, "hosts": hosts})
+	body := map[string]any{"slots": res.Slots, "hosts": res.Hosts}
+	// Absent rather than empty when the event type has not opted in, so a client can
+	// tell "this event type does not show taken times" from "none are taken today".
+	if res.ShowsTaken {
+		body["taken"] = res.Taken
+	}
+	h.writeJSON(w, http.StatusOK, body)
 }
 
 // computeSlots returns the bookable slots (and the candidate hosts' display map) for
@@ -59,10 +83,10 @@ func (h *Handler) GetSlots(w http.ResponseWriter, r *http.Request) {
 // the shared core behind the REST GetSlots handler and the MCP get_available_slots
 // tool. tzName "" → UTC; fromStr/toStr "" → today / the max-future cap. Returns one
 // of the sentinel errors above on bad input, or a wrapped error on internal failure.
-func (h *Handler) computeSlots(ctx context.Context, slug, tzName, fromStr, toStr string) ([]slotJSON, map[string]map[string]string, error) {
+func (h *Handler) computeSlots(ctx context.Context, slug, tzName, fromStr, toStr string, includeTaken bool) (slotsResult, error) {
 	et, err := h.loadBookableEventType(ctx, slug)
 	if err != nil {
-		return nil, nil, err
+		return slotsResult{}, err
 	}
 
 	if tzName == "" {
@@ -70,13 +94,13 @@ func (h *Handler) computeSlots(ctx context.Context, slug, tzName, fromStr, toStr
 	}
 	bookerTZ, err := time.LoadLocation(tzName)
 	if err != nil {
-		return nil, nil, errInvalidTimezone
+		return slotsResult{}, errInvalidTimezone
 	}
 
 	now := time.Now().UTC()
 	dateFrom, dateTo, ok := parseDateRangeStr(fromStr, toStr, now, et.MaxFutureDays)
 	if !ok {
-		return nil, nil, errBadDateRange
+		return slotsResult{}, errBadDateRange
 	}
 
 	// Resolve the host pool for this event type by routing mode. Round-robin
@@ -84,7 +108,7 @@ func (h *Handler) computeSlots(ctx context.Context, slug, tzName, fromStr, toStr
 	// required hosts. Archived hosts are already excluded by resolveEventTypeHosts.
 	hosts, err := h.resolveEventTypeHosts(ctx, et.ID)
 	if err != nil {
-		return nil, nil, fmt.Errorf("resolve event-type hosts: %w", err)
+		return slotsResult{}, fmt.Errorf("resolve event-type hosts: %w", err)
 	}
 	// Pool the hosts that gate this event's slots, tagged with the role the engine
 	// needs. Round-robin: required (fixed, always attend) + rotation (pick one).
@@ -103,7 +127,7 @@ func (h *Handler) computeSlots(ctx context.Context, slug, tzName, fromStr, toStr
 	if len(pool) == 0 {
 		// No bookable hosts (e.g. all archived, or a round-robin with no rotation
 		// members) — offer nothing rather than erroring.
-		return []slotJSON{}, map[string]map[string]string{}, nil
+		return slotsResult{Slots: []slotJSON{}, Hosts: map[string]map[string]string{}}, nil
 	}
 
 	// Load each host's availability concurrently. The slow part is the Google
@@ -129,11 +153,11 @@ func (h *Handler) computeSlots(ctx context.Context, slug, tzName, fromStr, toStr
 	wg.Wait()
 	for i, err := range errsByHost {
 		if err != nil {
-			return nil, nil, fmt.Errorf("load host availability (host %s): %w", pool[i].id, err)
+			return slotsResult{}, fmt.Errorf("load host availability (host %s): %w", pool[i].id, err)
 		}
 	}
 
-	result, err := slots.Generate(slots.Request{
+	req := slots.Request{
 		Event: slots.EventConfig{
 			DurationMinutes:     et.DurationMinutes,
 			SlotIntervalMinutes: et.SlotIntervalMinutes,
@@ -148,19 +172,22 @@ func (h *Handler) computeSlots(ctx context.Context, slug, tzName, fromStr, toStr
 		DateTo:   dateTo,
 		BookerTZ: bookerTZ,
 		Now:      now,
-	})
-	if err != nil {
-		return nil, nil, fmt.Errorf("slots generate: %w", err)
 	}
 
-	out := make([]slotJSON, len(result))
-	for i, s := range result {
-		out[i] = slotJSON{
-			Start:   s.Start.Format(time.RFC3339),
-			End:     s.End.Format(time.RFC3339),
-			HostIDs: s.HostIDs,
-		}
+	// Taken slots are produced only when the caller asked for them AND this event type
+	// opted in. GenerateWithTaken walks the range a second time with busy ignored, so
+	// it is not free, and it returns exactly the information the default must withhold.
+	showsTaken := includeTaken && et.ShowTakenSlots
+	var result, takenSlots []slots.Slot
+	if showsTaken {
+		result, takenSlots, err = slots.GenerateWithTaken(req)
+	} else {
+		result, err = slots.Generate(req)
 	}
+	if err != nil {
+		return slotsResult{}, fmt.Errorf("slots generate: %w", err)
+	}
+
 	// Host metadata (name + avatar) for the candidate pool, so the booking page can
 	// show whose face goes with each slot's host_ids (round-robin: the priority pick;
 	// group: every required host).
@@ -168,7 +195,26 @@ func (h *Handler) computeSlots(ctx context.Context, slug, tzName, fromStr, toStr
 	for i, ph := range pool {
 		poolIDs[i] = ph.id
 	}
-	return out, h.hostDisplayMap(ctx, poolIDs), nil
+	return slotsResult{
+		Slots:      toSlotJSON(result),
+		Taken:      toSlotJSON(takenSlots),
+		Hosts:      h.hostDisplayMap(ctx, poolIDs),
+		ShowsTaken: showsTaken,
+	}, nil
+}
+
+// toSlotJSON renders engine slots for the wire. Taken slots carry no host ids, so
+// host_ids is simply absent for them rather than invented.
+func toSlotJSON(in []slots.Slot) []slotJSON {
+	out := make([]slotJSON, len(in))
+	for i, s := range in {
+		out[i] = slotJSON{
+			Start:   s.Start.Format(time.RFC3339),
+			End:     s.End.Format(time.RFC3339),
+			HostIDs: s.HostIDs,
+		}
+	}
+	return out
 }
 
 // hostDisplayMap returns id → {name, avatar_url} for the given users, for rendering

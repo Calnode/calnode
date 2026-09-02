@@ -370,10 +370,13 @@ func (h *Handler) runAssistantTool(ctx context.Context, slug, tz, lang, name, ar
 			DateTo   string `json:"date_to"`
 		}
 		_ = json.Unmarshal([]byte(argsJSON), &args)
-		slots, _, err := h.computeSlots(ctx, slug, tz, args.DateFrom, args.DateTo)
+		// includeTaken is false: the assistant's invariant is that it only ever sees
+		// computed availability, and a taken slot in that list is one it could offer.
+		res, err := h.computeSlots(ctx, slug, tz, args.DateFrom, args.DateTo, false)
 		if err != nil {
 			return "error: could not load availability", nil
 		}
+		slots := res.Slots
 		if len(slots) == 0 {
 			return `{"slots":[],"note":"no availability in that range"}`, nil
 		}

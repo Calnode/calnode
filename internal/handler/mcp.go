@@ -213,13 +213,16 @@ type getSlotsOut struct {
 }
 
 func (h *Handler) mcpGetAvailableSlots(ctx context.Context, _ *mcp.CallToolRequest, in getSlotsIn) (*mcp.CallToolResult, getSlotsOut, error) {
-	out, _, err := h.computeSlots(ctx, in.EventTypeID, in.Timezone, in.DateFrom, in.DateTo)
+	// includeTaken is false and must stay false. An agent that receives unbookable
+	// times alongside bookable ones will eventually offer one, and the caller has no
+	// way to tell them apart.
+	res, err := h.computeSlots(ctx, in.EventTypeID, in.Timezone, in.DateFrom, in.DateTo, false)
 	if err != nil {
 		// The sentinel errors (not found / invalid timezone / bad range) are already
 		// human-readable; surface them as the tool error.
 		return nil, getSlotsOut{}, err
 	}
-	return nil, getSlotsOut{Slots: out}, nil
+	return nil, getSlotsOut{Slots: res.Slots}, nil
 }
 
 // ── get_booking ──────────────────────────────────────────────────────────────

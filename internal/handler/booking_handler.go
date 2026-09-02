@@ -425,6 +425,10 @@ type bookableEventType struct {
 	MaxActiveBookings   int
 	PriceCents          int
 	Currency            string
+	// ShowTakenSlots opts this event type into returning the starts a booking removed,
+	// so the page can grey them out. Read by the public slots endpoint only: the MCP
+	// tool and the booking assistant must keep seeing bookable times and nothing else.
+	ShowTakenSlots bool
 }
 
 // loadBookableEventType loads an event type by slug for the booking-creation/slot paths.
@@ -434,20 +438,21 @@ type bookableEventType struct {
 // everywhere, not just hidden from its own page.
 func (h *Handler) loadBookableEventType(ctx context.Context, slug string) (*bookableEventType, error) {
 	var et bookableEventType
-	var isActive, isPublic int
+	var isActive, isPublic, showTaken int
 	err := h.db.QueryRowContext(ctx, `
 		SELECT id, user_id, name, duration_minutes, slot_interval_minutes,
 		       location_type, location_value, routing_mode, rr_strategy,
 		       buffer_before_minutes, buffer_after_minutes, min_notice_minutes, max_future_days,
-		       is_active, is_public, max_active_bookings, price_cents, currency
+		       is_active, is_public, show_taken_slots, max_active_bookings, price_cents, currency
 		FROM event_types WHERE slug = ?`, slug).
 		Scan(&et.ID, &et.UserID, &et.Name, &et.DurationMinutes, &et.SlotIntervalMinutes,
 			&et.LocationType, &et.LocationValue, &et.RoutingMode, &et.RRStrategy,
 			&et.BufferBeforeMinutes, &et.BufferAfterMinutes, &et.MinNoticeMinutes, &et.MaxFutureDays,
-			&isActive, &isPublic, &et.MaxActiveBookings, &et.PriceCents, &et.Currency)
+			&isActive, &isPublic, &showTaken, &et.MaxActiveBookings, &et.PriceCents, &et.Currency)
 	if err != nil || isActive == 0 || isPublic == 0 {
 		return nil, errEventTypeNotFound
 	}
+	et.ShowTakenSlots = showTaken != 0
 	return &et, nil
 }
 
