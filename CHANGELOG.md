@@ -40,8 +40,14 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
   MCP `list_bookings` previously loaded every booking the caller could see and then
   filtered and sorted the result in Go or in Svelte, running follow-up queries whose
   `IN` clause held every booking id returned, against a single-connection pool. Both now
-  share one filtered, ordered, paginated query, so displaying a page of results no
-  longer costs a full workspace scan.
+  share one filtered, ordered, paginated query.
+- **Indexed the bookings list.** The only indexes on `bookings` both led on `host_id`
+  and were partial, so every listing planned as a full scan plus a temporary B-tree
+  sort of the whole matching set to return one page. Paginating the API alone would
+  have made the response smaller without making the work smaller. `(start_at, id)` and
+  `(event_type_id, start_at, id)` (migration 00056) turn the page query into an index
+  walk that stops at the limit. The Upcoming/Past counts are an aggregate and still
+  scan by design.
 
 ## [0.6.0] - 2026-08-30
 

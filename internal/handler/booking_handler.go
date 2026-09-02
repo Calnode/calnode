@@ -1210,10 +1210,12 @@ const (
 // anything else is rejected rather than silently returning nothing.
 var bookingStatuses = map[string]bool{"confirmed": true, "cancelled": true, "rescheduled": true}
 
-// noSuchEventType is the id used when an event_type filter names a slug that doesn't
-// exist. It matches nothing. A sentinel rather than an error, because a stale filter
-// in a bookmarked URL should render an empty list, not a failure nobody can act on.
-const noSuchEventType = "\x00-no-such-event-type"
+// errNoMatches means the request was valid but names something that cannot exist, so
+// the answer is an empty page rather than an error: a stale event-type slug in a
+// bookmarked URL should render an empty list, not a failure nobody can act on. The
+// caller short-circuits on it, which also skips two queries that could only return
+// nothing.
+var errNoMatches = errors.New("filter matches nothing")
 
 // parseBookingListFilter turns the query string into a booking.ListFilter, applying
 // the visibility rule: members are pinned to bookings they host, and only an admin
@@ -1243,15 +1245,6 @@ func (h *Handler) parseBookingListFilter(ctx context.Context, q url.Values, user
 		}
 		f.When = w
 	}
-	if slug := q.Get("event_type"); slug != "" {
-		var id string
-		if err := h.db.QueryRowContext(ctx, `SELECT id FROM event_types WHERE slug = ?`, slug).Scan(&id); err != nil {
-			f.EventTypeID = noSuchEventType
-		} else {
-			f.EventTypeID = id
-		}
-	}
-
 	var err error
 	if f.From, err = parseDayStart(q.Get("from")); err != nil {
 		return f, fmt.Errorf("from must be YYYY-MM-DD")
@@ -1277,6 +1270,18 @@ func (h *Handler) parseBookingListFilter(ctx context.Context, q url.Values, user
 		}
 		f.Offset = n
 	}
+
+	// Resolved last, and deliberately: it is the only branch that returns
+	// errNoMatches, and the caller echoes f.Limit/f.Offset back in that empty
+	// response. Resolving it earlier would echo the defaults instead of what was asked
+	// for, so a client paging through results would see its own page size change.
+	if slug := q.Get("event_type"); slug != "" {
+		var id string
+		if err := h.db.QueryRowContext(ctx, `SELECT id FROM event_types WHERE slug = ?`, slug).Scan(&id); err != nil {
+			return f, errNoMatches
+		}
+		f.EventTypeID = id
+	}
 	return f, nil
 }
 
@@ -1298,7 +1303,15 @@ func (h *Handler) ListBookings(w http.ResponseWriter, r *http.Request) {
 	user, _ := userFromContext(r.Context())
 
 	f, err := h.parseBookingListFilter(r.Context(), r.URL.Query(), user)
-	if err != nil {
+	switch {
+	case errors.Is(err, errNoMatches):
+		h.writeJSON(w, http.StatusOK, map[string]any{
+			"items": []bookingJSON{}, "total": 0,
+			"counts": map[string]int{"upcoming": 0, "past": 0},
+			"limit":  f.Limit, "offset": f.Offset,
+		})
+		return
+	case err != nil:
 		h.writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}

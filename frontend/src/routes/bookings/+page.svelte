@@ -92,21 +92,39 @@
 		return p.toString();
 	}
 
+	// Filter changes can outrun their responses: pick an event type, then a status a
+	// moment later, and the slower first reply would otherwise land last and overwrite
+	// the newer one. Only the most recent request is allowed to apply.
+	let loadSeq = 0;
+
 	async function load() {
+		const seq = ++loadSeq;
 		try {
 			const res = await api.get<{
 				items: Booking[];
 				total: number;
 				counts: { upcoming: number; past: number };
 			}>(`/v1/bookings?${query()}`);
+			if (seq !== loadSeq) return;
 			items = res.items ?? [];
 			total = res.total ?? 0;
 			counts = res.counts ?? { upcoming: 0, past: 0 };
 			error = '';
+
+			// The current page can fall off the end of the result set: cancel the only
+			// booking on the last page and offset now points past it, which renders an
+			// empty table under a "Showing 26-25 of 25" label with Next still enabled.
+			// Step back to the last real page instead. offset > 0 bounds the recursion.
+			if (items.length === 0 && offset > 0 && total > 0) {
+				offset = Math.max(0, (Math.ceil(total / PAGE_SIZE) - 1) * PAGE_SIZE);
+				await load();
+				return;
+			}
 		} catch (e: any) {
+			if (seq !== loadSeq) return;
 			error = e.message;
 		} finally {
-			loading = false;
+			if (seq === loadSeq) loading = false;
 		}
 	}
 
@@ -298,7 +316,9 @@
 
 {#if error}<p class="mb-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>{/if}
 
-{#if counts.upcoming === 0 && counts.past === 0 && !hasFilters && !loading}
+<!-- "No bookings yet" is a claim about the workspace, so it must not be shown when the
+     request failed and the counts are simply unknown - that reads as data loss. -->
+{#if counts.upcoming === 0 && counts.past === 0 && !hasFilters && !loading && !error}
 	<div class="rounded-lg border border-dashed bg-card p-12 text-center">
 		<p class="text-sm font-medium">No bookings yet</p>
 		<p class="mt-1 text-sm text-muted-foreground">Bookings will appear here once attendees schedule time with you.</p>

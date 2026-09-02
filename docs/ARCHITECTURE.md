@@ -321,8 +321,15 @@ members.
   the admin page passes its filters straight down.
   - **Why it isn't done in the client:** the list used to return *every* booking the
     caller could see, then run enrichment queries whose `IN` clause held every id
-    returned, on the single-connection pool (§17). Rendering 25 rows cost a full
-    workspace scan. Pages are capped (`bookingsPageMax`).
+    returned, on the single-connection pool (§17). Pages are capped
+    (`bookingsPageMax`).
+  - **Paging needs the index to mean anything.** Both pre-existing indexes on
+    `bookings` lead on `host_id` and are partial, so a listing planned as
+    `SCAN ... USE TEMP B-TREE FOR ORDER BY`: the whole matching set sorted to return
+    25 rows. Migration 00056 adds `(start_at, id)` and
+    `(event_type_id, start_at, id)`, which turn that into an index walk that stops at
+    the `LIMIT`. `Counts` is an aggregate over the match set and still scans; that is
+    inherent, and it replaced a scan that also materialised every row.
   - `Counts` is a separate query and deliberately ignores `When`/`Limit`/`Offset`, so
     the Upcoming/Past tab labels describe the whole match set rather than the page.
     Deriving them from `len(items)` is the obvious mistake once paging exists.
