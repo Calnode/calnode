@@ -3,13 +3,19 @@ name: Docker publish
 # Builds the multi-arch (amd64 + arm64) image from the repo Dockerfile.
 #   * PR                → build only (catches cross-arch build breaks early, e.g. an
 #                         amd64-only step slipping back in). Nothing is pushed.
+#   * push to dev       → push `:dev` + `:sha-<short>`. Pre-release, for deploying a
+#                         branch to a real instance to test it before it reaches main.
+#                         Deliberately does NOT move `:edge` or `:latest`.
 #   * push to main      → push `:edge` + `:sha-<short>` (bleeding edge).
 #   * push a `vX.Y.Z` tag → push `:X.Y.Z`, `:X.Y`, and `:latest`, then cut a GitHub
 #                         Release. So `:latest` always tracks the newest *release*,
 #                         never raw main.
+#
+# Pin a deployment to `:sha-<short>`, never to `:dev` or `:edge` — those move under
+# you, and then nothing records which commit an instance is actually running.
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
     tags: ['v*.*.*']
   pull_request:
 
@@ -45,8 +51,12 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       # Computes the tag set from the git ref:
-      #   main  → edge, sha-<short>
+      #   main       → edge, sha-<short>
+      #   dev        → dev, sha-<short>
       #   vX.Y.Z tag → X.Y.Z, X.Y, and latest (latest=auto only fires on a semver tag)
+      #
+      # sha- is emitted for every branch build, not just the default one, so a
+      # pre-release deploy can be pinned to an immutable tag that names its commit.
       - name: Docker metadata
         id: meta
         uses: docker/metadata-action@v5
@@ -54,11 +64,12 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=edge,branch=main
-            type=sha,enable={{is_default_branch}}
+            type=ref,event=branch,enable=${{ github.ref == 'refs/heads/dev' }}
+            type=sha
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
 
-      - name: Build (push on main and on tags)
+      - name: Build (push on branch pushes and on tags)
         uses: docker/build-push-action@v6
         with:
           context: .
