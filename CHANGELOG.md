@@ -11,6 +11,8 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-09-03
+
 ### Added
 - **Filter and page the bookings list.** The bookings page now filters by event type,
   host, team and status alongside the existing Upcoming/Past and Mine/All toggles, and
