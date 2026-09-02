@@ -11,6 +11,28 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
 
 ## [Unreleased]
 
+### Added
+- **Booked times can be shown struck through instead of hidden.** Off by default, and
+  enabled per event type under Visibility. Requested in
+  [#14](https://github.com/Calnode/calnode/discussions/14), tracked as
+  [#19](https://github.com/Calnode/calnode/issues/19).
+
+  For a public-hours use case - an intro call, a clinic, a tutor - a visibly busy
+  calendar communicates demand, and an empty-looking list reads as "nothing here". It
+  stays off by default because the slots endpoint is public and unauthenticated, so
+  turning it on makes a host's booked hours legible to anyone with the link. That is a
+  fair trade when the hours are already public and a privacy regression when they are
+  not, so it is never inherited by upgrading.
+
+  Only starts a booking or calendar conflict removed are shown. Times outside the host's
+  working hours are never rendered, and times withheld by the minimum-notice rule are
+  never shown as taken - nobody booked those, and saying so would corrupt the signal the
+  feature exists to send. Booked times cannot be selected on any surface, and agents
+  using the MCP tools or the booking assistant continue to see only bookable times.
+
+  `GET /v1/event-types/{slug}/slots` gains a `taken` array for opted-in event types,
+  absent otherwise. Event types gain `show_taken_slots` (migration 00057).
+
 ## [0.7.0] - 2026-09-03
 
 ### Added

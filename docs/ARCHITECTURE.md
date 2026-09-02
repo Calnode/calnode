@@ -290,6 +290,42 @@ members.
   from memory (instant, zero extra requests). Falls back to a single-day fetch if
   clicked before the month load lands. Timezone change rebuilds the cache.
 
+### Showing booked times ("taken" slots)
+
+`event_types.show_taken_slots` (migration 00057, **default off**) opts one event type
+into rendering already-booked starts struck through instead of hiding them. Requested
+in discussion #14, issue #19.
+
+- **Why it is opt-in.** `/slots` is public and unauthenticated, so this makes a host's
+  booked hours legible to anyone with the link. Fair for a public-hours use case (an
+  intro call, a clinic), a privacy regression for an instance fronting a team's internal
+  calendars. Never inherited by upgrading; a test asserts the field is absent until
+  chosen.
+- **"Taken" is defined by difference, not by reason.** `slots.GenerateWithTaken` walks
+  the range twice - once normally, once with every host's `Busy` ignored - and reports
+  what the second pass offered and the first did not. This is correct for every routing
+  mode with no special-casing, and it makes three mislabellings *structurally*
+  impossible: a start outside working hours, one withheld by minimum notice, and one
+  lost to a host pool that cannot satisfy the routing mode are absent from both passes
+  and cancel out. Greying a slot asserts "somebody booked this", so saying it about a
+  time the host does not work would mislead the booker and expose the working day.
+  Buffers *do* count as taken; the start really is unbookable.
+- **Taken slots carry no host ids.** The page needs the time; naming who is busy
+  discloses more about an individual than greying requires.
+- **Agents never see them.** `computeSlots` takes an explicit `includeTaken`, and MCP
+  `get_available_slots` and the booking assistant both pass false. A taken slot in an
+  agent's list is one it will eventually offer, with nothing in the payload to tell it
+  apart. Asserted at the MCP surface with the event type opted in.
+- **`taken` is absent, not empty, when off** - a client must distinguish "does not show
+  taken times" from "opted in, nothing booked today".
+- **Client side:** `mergeDaySlots` and `bookableDayKeys` in the shared
+  `assets/booking-logic.js`, so all three surfaces share one implementation. Free and
+  taken stay separate on the wire and are combined only for display. `bookableDayKeys`
+  exists for a specific trap: once taken slots are grouped by day too, a fully booked
+  day still produces a key, and using those keys for the calendar would advertise it as
+  having something available. Fully booked days *are* still openable, deliberately - a
+  list of struck-through times explains itself better than a dead date.
+
 ---
 
 ## 9. Booking lifecycle

@@ -50,6 +50,14 @@ behaviour or markup must usually be made in all three, or they drift:
   slot picking, and the **mobile step-flow** (calendar → slots → form, with Back) are
   implemented separately in each. If you change calendar *behaviour*, update all three.
 - Verify on **desktop and mobile** for each surface after touching the calendar.
+- **Shared slot logic lives in `internal/handler/assets/booking-logic.js`** (tested with
+  `node --test`), not per-surface: day grouping, time formatting, and the taken-slot
+  merge. Put anything all three need there rather than writing it three times.
+- **Taken/booked slots** (`show_taken_slots`, off by default) are computed by
+  `slots.GenerateWithTaken` as the *difference* between a normal pass and one ignoring
+  busy, which is what keeps out-of-hours and min-notice starts from being mislabelled as
+  booked. Never feed them to MCP or the assistant - `computeSlots(..., includeTaken)`
+  makes each caller say. See ARCHITECTURE §8.
 
 ## Conversational booking assistant (optional LLM layer)
 
