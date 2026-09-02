@@ -1368,41 +1368,33 @@ func (h *Handler) enrichBookings(ctx context.Context, bookings []booking.Booking
 	for i, b := range bookings {
 		ids[i] = b.ID
 	}
-	ph := strings.Repeat("?,", len(ids))
-	ph = ph[:len(ph)-1]
+	ph := placeholders(len(ids))
 
 	// Event type slugs.
-	if err := h.scanPairs(ctx,
-		`SELECT b.id, COALESCE(et.slug, '') FROM bookings b
-		 LEFT JOIN event_types et ON et.id = b.event_type_id
-		 WHERE b.id IN (`+ph+`)`, ids, // #nosec G202 -- ph is a fixed string of "?," placeholders; every value is bound via ids...
-		func(bid, val string) {
-			if i, ok := idxByID[bid]; ok {
-				items[i].EventTypeSlug = val
-			}
-		}); err != nil {
+	if err := h.scanPairs(ctx, bookingSlugsQuery, ids, func(bid, val string) {
+		if i, ok := idxByID[bid]; ok {
+			items[i].EventTypeSlug = val
+		}
+	}); err != nil {
 		return nil, err
 	}
 
 	// In the admin "All bookings" view, label each row with its host's name.
 	if withHostName {
-		if err := h.scanPairs(ctx,
-			`SELECT b.id, COALESCE(u.name, '') FROM bookings b
-			 LEFT JOIN users u ON u.id = b.host_id
-			 WHERE b.id IN (`+ph+`)`, ids, // #nosec G202 -- ph is a fixed string of "?," placeholders; every value is bound via ids...
-			func(bid, val string) {
-				if i, ok := idxByID[bid]; ok {
-					items[i].HostName = val
-				}
-			}); err != nil {
+		if err := h.scanPairs(ctx, bookingHostNamesQuery, ids, func(bid, val string) {
+			if i, ok := idxByID[bid]; ok {
+				items[i].HostName = val
+			}
+		}); err != nil {
 			return nil, err
 		}
 	}
 
-	// Organizer attendee.
-	rows, err := h.db.QueryContext(ctx,
+	// Organizer attendee. Three columns, so it doesn't fit scanPairs; ph is a generated
+	// run of "?" and every id is bound.
+	rows, err := h.db.QueryContext(ctx, // #nosec G701 -- ph is placeholders(), a generated run of "?"; every value is bound via ids..., never concatenated into the SQL text
 		`SELECT booking_id, name, email FROM booking_attendees
-		 WHERE booking_id IN (`+ph+`) AND is_organizer = 1`, ids...) // #nosec G202 -- ph is a fixed string of "?," placeholders; every value is bound via ids...
+		 WHERE booking_id IN (`+ph+`) AND is_organizer = 1`, ids...) // #nosec G202 -- ph is a generated run of "?" placeholders; every value is bound via ids...
 	if err != nil {
 		return nil, err
 	}
@@ -1419,11 +1411,37 @@ func (h *Handler) enrichBookings(ctx context.Context, bookings []booking.Booking
 	return items, rows.Err()
 }
 
-// scanPairs runs a two-column (id, value) query and hands each row to apply. The rows
-// are drained before returning, so callers never hold a cursor open across another
-// query - the single-connection pool deadlocks if they do.
-func (h *Handler) scanPairs(ctx context.Context, query string, args []any, apply func(id, value string)) error {
-	rows, err := h.db.QueryContext(ctx, query, args...)
+// pairQuery is a two-column (id, value) lookup whose single %s is filled with a
+// generated run of "?" placeholders and nothing else.
+//
+// It is a distinct type, and its only values are the constants below, so runtime-built
+// SQL cannot reach scanPairs without an explicit and obvious conversion. An earlier
+// version took a plain string, which gosec flagged as a taint sink (G701) and was
+// right to: nothing about the signature stopped a later caller concatenating user
+// input into it. Same reasoning as the closed emailSecret type in email_settings.go.
+type pairQuery string
+
+const (
+	bookingSlugsQuery pairQuery = `SELECT b.id, COALESCE(et.slug, '') FROM bookings b
+		 LEFT JOIN event_types et ON et.id = b.event_type_id
+		 WHERE b.id IN (%s)`
+
+	bookingHostNamesQuery pairQuery = `SELECT b.id, COALESCE(u.name, '') FROM bookings b
+		 LEFT JOIN users u ON u.id = b.host_id
+		 WHERE b.id IN (%s)`
+)
+
+// placeholders returns "?,?,?" for n, for an IN clause. n must be positive.
+func placeholders(n int) string {
+	return strings.TrimSuffix(strings.Repeat("?,", n), ",")
+}
+
+// scanPairs runs one of the pairQuery lookups over ids and hands each row to apply.
+// The rows are drained before returning, so callers never hold a cursor open across
+// another query - the single-connection pool deadlocks if they do.
+func (h *Handler) scanPairs(ctx context.Context, q pairQuery, ids []any, apply func(id, value string)) error {
+	stmt := fmt.Sprintf(string(q), placeholders(len(ids)))
+	rows, err := h.db.QueryContext(ctx, stmt, ids...) // #nosec G701 G201 -- q is one of the pairQuery constants above; the only interpolated value is placeholders(), a generated run of "?"; every id is bound via ids... and never concatenated into the SQL text
 	if err != nil {
 		return err
 	}
