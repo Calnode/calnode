@@ -17,6 +17,12 @@ import (
 	"github.com/calnode/calnode/internal/webhook"
 )
 
+// webhookDeliveryRetention is how long a finished webhook delivery is kept before the
+// purge sweeps it. Long enough to still be useful when someone investigates a failure
+// days later, short enough that the table cannot grow without bound. The deliveries UI
+// only ever shows the 50 most recent, so this is not what limits what anyone can see.
+const webhookDeliveryRetention = 30 * 24 * time.Hour
+
 // Worker polls the jobs table and processes pending jobs (webhooks, reminders).
 type Worker struct {
 	db         *sql.DB
@@ -120,6 +126,22 @@ func (w *Worker) Poll(ctx context.Context) {
 	if _, err := w.db.ExecContext(ctx,
 		`DELETE FROM oauth_auth_codes WHERE expires_at < ?`, now); err != nil {
 		w.logger.Error("worker: purge oauth auth codes", "error", err)
+	}
+	// Webhook deliveries are a log: the UI shows the 50 most recent and nothing reads
+	// them back for state. Nothing purged them, so on a busy instance they accumulated
+	// for its entire life, inside the SQLite file Litestream replicates offsite.
+	//
+	// Only terminal rows are swept, and only ones with a recorded attempt time. A
+	// pending delivery still has a jobs row pointing at it by id, and deleting one out
+	// from under its job would turn a deliverable webhook into a permanent failure.
+	// Reaching 'success' or 'failed' means the job already ran to completion.
+	deliveryCutoff := time.Now().UTC().Add(-webhookDeliveryRetention).Format(time.RFC3339)
+	if _, err := w.db.ExecContext(ctx,
+		`DELETE FROM webhook_deliveries
+		 WHERE status IN ('success', 'failed')
+		   AND last_attempted_at IS NOT NULL
+		   AND last_attempted_at < ?`, deliveryCutoff); err != nil {
+		w.logger.Error("worker: purge webhook deliveries", "error", err)
 	}
 	// Backstop for the Stripe checkout.session.expired webhook: release any payment hold
 	// still pending well past the 31-min checkout window, freeing the slot. The webhook

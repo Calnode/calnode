@@ -37,8 +37,14 @@ ARG TARGETARCH
 # release, "edge"/branch on a plain main push); defaults to "dev" for local builds
 # so `go build` without --build-arg still works as documented in CLAUDE.md.
 ARG VERSION=dev
+# COMMIT is stamped explicitly because this image is built from a copied source tree
+# with no .git, so the Go toolchain has no VCS metadata to embed and /version would
+# otherwise report commit "unknown" on every container. That matters now that branch
+# images are deployable: they report version "dev", leaving nothing else to identify
+# the build by.
+ARG COMMIT=""
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build \
-    -ldflags="-s -w -X github.com/calnode/calnode/internal/buildinfo.Version=${VERSION}" \
+    -ldflags="-s -w -X github.com/calnode/calnode/internal/buildinfo.Version=${VERSION} -X github.com/calnode/calnode/internal/buildinfo.Commit=${COMMIT}" \
     -o calnode ./cmd/calnode
 
 # Download Litestream for the deployment target, matching TARGETARCH

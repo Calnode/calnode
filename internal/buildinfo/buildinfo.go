@@ -14,6 +14,19 @@ import "runtime/debug"
 // VCS metadata, so they need no ldflags when built from a git checkout.
 var Version = "dev"
 
+// Commit is the git SHA, stamped the same way when the build has no VCS metadata
+// to read. The Docker build is exactly that case: the image is built from a copied
+// source tree with no .git, so the toolchain's automatic stamp is empty and every
+// container reported commit "unknown".
+//
+// That was tolerable while only tagged releases were deployed, since the version
+// identified the build. It stopped being tolerable once branch images could be
+// deployed too: those report version "dev", so without this there was nothing in a
+// running instance that said which commit it was.
+//
+//	-ldflags "-X github.com/calnode/calnode/internal/buildinfo.Commit=$(git rev-parse HEAD)"
+var Commit = ""
+
 // Info is the structured build identity returned by Get.
 type Info struct {
 	Version   string `json:"version"`
@@ -28,6 +41,11 @@ type Info struct {
 // binary was built without VCS info (e.g. `go test`, or from an archive).
 func Get() Info {
 	info := Info{Version: Version, Commit: "unknown", BuildTime: "unknown"}
+	// An explicit stamp wins: where both exist they agree, and where only one does
+	// it is this one (the container build has no VCS metadata to read).
+	if Commit != "" {
+		info.Commit = Commit
+	}
 	bi, ok := debug.ReadBuildInfo()
 	if !ok {
 		return info
@@ -36,7 +54,9 @@ func Get() Info {
 	for _, s := range bi.Settings {
 		switch s.Key {
 		case "vcs.revision":
-			info.Commit = s.Value
+			if Commit == "" { // an explicit ldflags stamp wins; see Commit above
+				info.Commit = s.Value
+			}
 		case "vcs.time":
 			info.BuildTime = s.Value
 		case "vcs.modified":

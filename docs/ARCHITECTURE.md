@@ -593,8 +593,9 @@ as the desired state:
 
 - `internal/worker`: polls the `jobs` table **every 5s** (batch ≤10). Job types:
   `webhook.deliver` and `reminder.send`. Also purges expired manage tokens +
-  sessions + idempotency keys (>24h old) each cycle, and reaps jobs whose 30s lock
-  expired (crash recovery —
+  sessions + magic-link tokens + idempotency keys (>24h old) + OAuth auth codes +
+  **finished webhook deliveries (>30d, `webhookDeliveryRetention`)** each cycle, and
+  reaps jobs whose 30s lock expired (crash recovery —
   reset to pending +1 min). Retry **backoff is a fixed two-step: 60s then 5 min**
   (not exponential), `max_attempts` 3. Atomic claim via
   `UPDATE … WHERE status='pending'` + RowsAffected.

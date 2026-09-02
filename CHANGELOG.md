@@ -24,6 +24,20 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
   gained `team_id`, `limit` and `offset`, and returns `total`.
 
 ### Fixed
+- **A running instance now reports which commit it is.** `/version` reported
+  `commit: unknown` on every container, because the image is built from a copied
+  source tree with no `.git` for the Go toolchain to read VCS metadata from. That was
+  survivable while only tagged releases were deployed; it is not now that branch
+  images can be, since those report `version: dev` and nothing else identified the
+  build. The commit is stamped explicitly at build time instead.
+- **Webhook deliveries are no longer kept forever.** Nothing ever purged
+  `webhook_deliveries`, so on a busy instance the table grew for the life of the
+  deployment, inside the SQLite file Litestream replicates offsite. The worker now
+  sweeps finished deliveries after 30 days, alongside the five other tables it already
+  purged. Only rows that reached `success` or `failed` are removed: a pending delivery
+  still has a job pointing at it, and deleting one would turn a deliverable webhook
+  into a permanent failure. The deliveries view only ever showed the 50 most recent, so
+  nothing visible changes.
 - **`status=cancelled` returned nothing, on every surface.** Both booking list queries
   hardcoded an exclusion of cancelled bookings and then filtered on top of that result,
   so asking for cancelled bookings could never match anything - including through the

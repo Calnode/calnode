@@ -79,6 +79,7 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             VERSION=${{ steps.meta.outputs.version }}
+            COMMIT=${{ github.sha }}
 
   release:
     # Only on a version tag, and only once the image built + pushed.
