@@ -336,7 +336,15 @@ body {
       const data = await r.json();
       // Cache the month's slots grouped by the SELECTED-timezone day (BookingLogic — tested,
       // tz-correct), excluding the current booking's slot; availableDates = the keys.
-      slotsByDay = BookingLogic.groupSlotsByDay(data.slots, TZ, CURRENT_ISO);
+      const freeByDay  = BookingLogic.groupSlotsByDay(data.slots, TZ, CURRENT_ISO);
+      const takenByDay = BookingLogic.groupSlotsByDay(data.taken || [], TZ, CURRENT_ISO);
+      slotsByDay = {};
+      Object.keys(freeByDay).concat(Object.keys(takenByDay)).forEach(k => {
+        slotsByDay[k] = BookingLogic.mergeDaySlots(freeByDay[k], takenByDay[k]);
+      });
+      // A day worth opening is not the same as a day with something bookable: when the
+      // event type shows taken times, a fully booked day is still worth opening so the
+      // struck-through list explains itself. Identical sets when it does not.
       availableDates = new Set(Object.keys(slotsByDay));
     } catch {
       slotsByDay = {};
@@ -405,7 +413,15 @@ body {
       list.innerHTML = `<p class="hint">${t('no_available_times')}</p>`;
       return;
     }
-    list.innerHTML = slotsCache.map((s, i) => `<button class="slot-btn" data-i="${i}">${fmtTime(s.start)}</button>`).join('');
+    // Taken entries are disabled buttons: same box as a bookable slot, announced as
+    // unavailable. `disabled` is what prevents picking one; the click guard is backup.
+    list.innerHTML = slotsCache.map((s, i) => s.taken
+      ? `<button class="slot-btn taken" disabled aria-label="${fmtTime(s.start)} - ${t('slot_taken')}">${fmtTime(s.start)}</button>`
+      : `<button class="slot-btn" data-i="${i}">${fmtTime(s.start)}</button>`
+    ).join('');
+    if (slotsCache.length && !slotsCache.some(s => !s.taken)) {
+      list.insertAdjacentHTML('beforeend', `<p class="hint">${t('all_times_taken')}</p>`);
+    }
   }
 
   async function pickDate(ds, y, m, d) {
@@ -428,7 +444,9 @@ body {
       const r = await fetch(`/v1/event-types/${SLUG}/slots?from=${ds}&to=${ds}&tz=${encodeURIComponent(TZ)}`);
       if (!r.ok) throw new Error(r.status);
       const data = await r.json();
-      slotsCache = (data.slots || []).filter(s => s.start !== CURRENT_ISO);
+      slotsCache = BookingLogic.mergeDaySlots(
+        (data.slots || []).filter(s => s.start !== CURRENT_ISO),
+        (data.taken || []).filter(s => s.start !== CURRENT_ISO));
       fillSlots(list);
     } catch {
       list.innerHTML = `<p class="form-error">${t('could_not_load_times')}</p>`;
@@ -437,9 +455,10 @@ body {
 
   $('slots-list').addEventListener('click', e => {
     const btn = e.target.closest('.slot-btn');
-    if (!btn) return;
+    if (!btn || btn.disabled) return;
     const i = +btn.dataset.i;
     if (i < 0 || i >= slotsCache.length) return;
+    if (slotsCache[i].taken) return; // never bookable, whatever route got us here
     pickedSlot = slotsCache[i];
     $('prev-time').textContent = fmtDatetime(CURRENT_ISO);
     $('new-time').textContent = fmtDate(pickedDate) + ' · ' + fmtTime(pickedSlot.start);

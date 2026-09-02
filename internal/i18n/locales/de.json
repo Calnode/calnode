@@ -26,6 +26,8 @@
   "network_error": "Verbindungsfehler. Bitte prüfen Sie Ihre Internetverbindung.",
   "loading": "Wird geladen…",
   "no_available_times": "Keine Termine verfügbar.",
+  "slot_taken": "bereits gebucht",
+  "all_times_taken": "Alle Zeiten an diesem Tag sind gebucht.",
   "could_not_load_times": "Termine konnten nicht geladen werden. Bitte versuchen Sie es erneut.",
   "times_shown_in": "Zeiten angezeigt in ",
   "payment_received": "Zahlung erhalten",

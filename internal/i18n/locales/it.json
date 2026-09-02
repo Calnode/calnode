@@ -26,6 +26,8 @@
   "network_error": "Errore di connessione. Controlli la connessione a internet.",
   "loading": "Caricamento…",
   "no_available_times": "Nessun orario disponibile.",
+  "slot_taken": "già prenotato",
+  "all_times_taken": "Tutti gli orari di questo giorno sono prenotati.",
   "could_not_load_times": "Impossibile caricare gli orari. Riprovi.",
   "times_shown_in": "Orari mostrati in ",
   "payment_received": "Pagamento ricevuto",

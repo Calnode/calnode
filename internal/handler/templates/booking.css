@@ -191,6 +191,23 @@
 }
 .slot-btn:hover { border-color: #111827; background: #f9fafb; }
 .slot-btn.sel   { background: #111827; color: #fff; border-color: #111827; }
+
+/* Already booked, shown only when the event type opts in (show_taken_slots).
+   Rendered as a disabled button rather than a div so it keeps the same box and
+   rhythm as a bookable slot, and so assistive tech announces it as unavailable
+   instead of reading it as a plain time. The strikethrough carries the meaning
+   without relying on colour alone. */
+.slot-btn.taken {
+  background: #f9fafb;
+  border-color: #f3f4f6;
+  border-style: dashed;
+  color: #9ca3af;
+  cursor: not-allowed;
+  text-decoration: line-through;
+  text-decoration-color: #d1d5db;
+}
+.slot-btn.taken:hover { border-color: #f3f4f6; background: #f9fafb; }
+
 .hint { font-size: .8125rem; color: #9ca3af; }
 
 /* Form */

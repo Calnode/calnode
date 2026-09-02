@@ -26,6 +26,8 @@
   "network_error": "Verbindingsfout. Controleer je internetverbinding.",
   "loading": "Laden…",
   "no_available_times": "Geen tijden beschikbaar.",
+  "slot_taken": "al geboekt",
+  "all_times_taken": "Alle tijden op deze dag zijn geboekt.",
   "could_not_load_times": "Kon de tijden niet laden. Probeer het opnieuw.",
   "times_shown_in": "Tijden weergegeven in ",
   "payment_received": "Betaling ontvangen",

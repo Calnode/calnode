@@ -229,8 +229,18 @@
       var from = first < today ? today : first;
       try {
         var r = await api('/v1/event-types/' + encodeURIComponent(this.slug) + '/slots?from=' + ymd(from) + '&to=' + ymd(last) + '&tz=' + encodeURIComponent(TZ));
+        // `taken` is present only when the event type opts into showing booked times.
+        // Tag on the way in so the renderer needs no second lookup, and so a taken entry
+        // can never be mistaken for a bookable one further down.
         var by = {};
-        (r.slots || []).forEach(function (s) { (by[dayKey(s.start)] = by[dayKey(s.start)] || []).push(s); });
+        (r.slots || []).forEach(function (s) {
+          s.taken = false;
+          (by[dayKey(s.start)] = by[dayKey(s.start)] || []).push(s);
+        });
+        (r.taken || []).forEach(function (s) {
+          s.taken = true;
+          (by[dayKey(s.start)] = by[dayKey(s.start)] || []).push(s);
+        });
         this.state.slotsByDay = by;
         // Capture the id→host map so the header can narrow to a slot's actual host once
         // one is picked. Avatar URLs come back relative; make them absolute (the widget
@@ -443,10 +453,25 @@
         var list = (st.slotsByDay[st.day] || []).slice().sort(function (a, b) { return a.start < b.start ? -1 : 1; });
         var listEl = el('div', { class: 'slots-list' });
         list.forEach(function (s) {
+          if (s.taken) {
+            // Disabled rather than click-guarded: it keeps the same box as a bookable
+            // slot and is announced as unavailable instead of read out as a plain time.
+            var d = el('button', {
+              class: 'slot-btn taken',
+              text: timeLabel(s.start, self.locale),
+              'aria-label': timeLabel(s.start, self.locale) + ' - ' + t(self.i18n, 'slot_taken'),
+            });
+            d.disabled = true;
+            listEl.appendChild(d);
+            return;
+          }
           var b = el('button', { class: 'slot-btn', text: timeLabel(s.start, self.locale) });
           b.addEventListener('click', function () { self.state.slot = s; self.state.view = 'form'; self.render(); });
           listEl.appendChild(b);
         });
+        if (list.length && !list.some(function (s) { return !s.taken; })) {
+          listEl.appendChild(el('p', { class: 'hint', text: t(self.i18n, 'all_times_taken') }));
+        }
         inner = el('div', {}, [el('p', { class: 'slots-header', text: list[0] ? shortDay(list[0].start, self.locale) : '' }), listEl]);
       } else {
         inner = el('p', { class: 'hint', text: t(this.i18n, 'select_day_hint') });

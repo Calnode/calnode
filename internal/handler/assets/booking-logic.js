@@ -35,6 +35,43 @@
     return by;
   }
 
+  // mergeDaySlots — one day's entries in time order, each tagged `.taken`, for event
+  // types that show already-booked times greyed out instead of hiding them.
+  //
+  // Free and taken arrive as separate arrays from the API and are only ever combined
+  // here, for display. Keeping them apart on the wire is deliberate: a merged list is
+  // one field away from a client submitting a taken start as a booking.
+  function mergeDaySlots(free, taken) {
+    var out = [];
+    (free || []).forEach(function (s) { out.push(withTaken(s, false)); });
+    (taken || []).forEach(function (s) { out.push(withTaken(s, true)); });
+    // Parsed rather than string-compared: slot times carry a UTC offset, and two
+    // entries on the same calendar day can straddle a DST change and sort wrongly.
+    out.sort(function (a, b) { return Date.parse(a.start) - Date.parse(b.start); });
+    return out;
+  }
+
+  function withTaken(slot, taken) {
+    var copy = {};
+    for (var k in slot) { if (Object.prototype.hasOwnProperty.call(slot, k)) copy[k] = slot[k]; }
+    copy.taken = taken;
+    return copy;
+  }
+
+  // bookableDayKeys — the day keys that have at least one BOOKABLE slot.
+  //
+  // Separate from Object.keys(groupSlotsByDay(...)) on purpose. Once taken slots are
+  // grouped too, a day whose every slot is booked still produces a key, and using that
+  // to decide which calendar dates are clickable would advertise a full day as though
+  // something were available on it.
+  function bookableDayKeys(freeByDay) {
+    var out = [];
+    for (var k in freeByDay) {
+      if (Object.prototype.hasOwnProperty.call(freeByDay, k) && (freeByDay[k] || []).length) out.push(k);
+    }
+    return out;
+  }
+
   // formatTime — "1:30 PM" in the selected tz.
   function formatTime(iso, tz, locale) {
     return new Intl.DateTimeFormat(locale || [], {
@@ -89,6 +126,8 @@
     dateKeyFromISO: dateKeyFromISO,
     ymd: ymd,
     groupSlotsByDay: groupSlotsByDay,
+    mergeDaySlots: mergeDaySlots,
+    bookableDayKeys: bookableDayKeys,
     formatTime: formatTime,
     formatDay: formatDay,
     dowIndex: dowIndex,

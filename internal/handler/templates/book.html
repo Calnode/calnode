@@ -272,9 +272,10 @@ body {
 
   let navYear = today.getFullYear(), navMonth = today.getMonth();
   let pickedDate = null, slotsCache = [], pickedSlot = null;
-  let availableDates = new Set(); // "YYYY-MM-DD" strings with ≥1 slot this nav month
+  let availableDates = new Set(); // "YYYY-MM-DD" strings the booker may open this nav month
   let availabilityLoaded = false; // false = render optimistically (assume all days open)
   let slotsByDay = {};            // "YYYY-MM-DD" -> [slot]; cached from the month fetch
+  let bookableDates = new Set();  // days with >=1 FREE slot; drives the empty-day hint
 
   const $ = id => document.getElementById(id);
   const pad = n => String(n).padStart(2, '0');
@@ -430,11 +431,24 @@ body {
       // Cache the whole month's slots grouped by the SELECTED-timezone day (BookingLogic — tested,
       // and tz-correct: the old new Date().toLocaleDateString keyed off the browser tz) so clicking
       // a day is instant; availableDates falls out of the keys.
-      slotsByDay = BookingLogic.groupSlotsByDay(data.slots, TZ);
+      // `taken` is present only when this event type opts into showing booked times.
+      const freeByDay  = BookingLogic.groupSlotsByDay(data.slots, TZ);
+      const takenByDay = BookingLogic.groupSlotsByDay(data.taken || [], TZ);
+      slotsByDay = {};
+      Object.keys(freeByDay).concat(Object.keys(takenByDay)).forEach(k => {
+        slotsByDay[k] = BookingLogic.mergeDaySlots(freeByDay[k], takenByDay[k]);
+      });
+      // Openable days, which is NOT the same as days with something bookable. A day
+      // whose every slot is taken is worth opening when the event type shows them -
+      // a list of struck-through times says "fully booked" far better than a dead
+      // date does, and that is the whole point of the feature. Without taken slots
+      // the two sets are identical, so nothing changes for everyone else.
       availableDates = new Set(Object.keys(slotsByDay));
+      bookableDates  = new Set(BookingLogic.bookableDayKeys(freeByDay));
     } catch {
       slotsByDay = {};
       availableDates = new Set();
+      bookableDates = new Set();
     }
     availabilityLoaded = true;
     renderCal();
@@ -505,9 +519,19 @@ body {
       list.innerHTML = `<p class="hint">${t('no_available_times')}</p>`;
       return;
     }
-    list.innerHTML = slotsCache.map((s, i) =>
-      `<button class="slot-btn" data-i="${i}">${fmtTime(s.start)}</button>`
+    // Taken entries render as disabled buttons so they keep the same box and rhythm as
+    // bookable ones, and are announced as unavailable rather than read out as a plain
+    // time. `disabled` is what actually prevents picking one; the click guard below is
+    // the second line, not the first.
+    list.innerHTML = slotsCache.map((s, i) => s.taken
+      ? `<button class="slot-btn taken" disabled aria-label="${fmtTime(s.start)} - ${t('slot_taken')}">${fmtTime(s.start)}</button>`
+      : `<button class="slot-btn" data-i="${i}">${fmtTime(s.start)}</button>`
     ).join('');
+    // Only meaningful for opted-in event types: when every time on the day is gone,
+    // say so, rather than leaving a list of struck-through times to be inferred from.
+    if (slotsCache.length && !slotsCache.some(s => !s.taken)) {
+      list.insertAdjacentHTML('beforeend', `<p class="hint">${t('all_times_taken')}</p>`);
+    }
   }
 
   async function pickDate(ds, y, m, d) {
@@ -534,7 +558,7 @@ body {
       if (!r.ok) throw new Error(r.status);
       const data = await r.json();
       Object.assign(hostMeta, data.hosts || {});
-      slotsCache = data.slots || [];
+      slotsCache = BookingLogic.mergeDaySlots(data.slots, data.taken);
       fillSlots(list);
     } catch {
       list.innerHTML = `<p class="hint" style="color:#dc2626">${t('could_not_load_times')}</p>`;
@@ -543,13 +567,14 @@ body {
 
   $('slots-list').addEventListener('click', e => {
     const btn = e.target.closest('.slot-btn');
-    if (!btn) return;
+    if (!btn || btn.disabled) return;
     pickSlot(+btn.dataset.i);
   });
 
   // ── Slot pick ─────────────────────────────────────────────────────────────
   function pickSlot(i) {
     if (i < 0 || i >= slotsCache.length) return;
+    if (slotsCache[i].taken) return; // never bookable, whatever route got us here
     pickedSlot = slotsCache[i];
     renderHosts(pickedSlot.host_ids);
     document.querySelectorAll('.slot-btn').forEach((b, j) =>

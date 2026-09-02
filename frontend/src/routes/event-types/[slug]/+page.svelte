@@ -63,7 +63,7 @@
 
 	let form = $state({
 		name: '', description: '', duration_minutes: 30, slot_interval_minutes: 30,
-		is_active: true, is_public: true,
+		is_active: true, is_public: true, show_taken_slots: false,
 		location_type: 'link', location_value: '',
 		buffer_before_minutes: 0, buffer_after_minutes: 0,
 		min_notice_minutes: 0, max_future_days: 60,
@@ -262,6 +262,7 @@
 				slot_interval_minutes: et.slot_interval_minutes,
 				is_active: et.is_active,
 				is_public: et.is_public,
+				show_taken_slots: et.show_taken_slots ?? false,
 				location_type: et.location_type,
 				location_value: et.location_value ?? '',
 				buffer_before_minutes: et.buffer_before_minutes,
@@ -318,6 +319,7 @@
 				slot_interval_minutes: Number(form.slot_interval_minutes),
 				is_active: form.is_active,
 				is_public: form.is_public,
+				show_taken_slots: form.show_taken_slots,
 				location_type: form.location_type,
 				location_value: form.location_value.trim() || null,
 				buffer_before_minutes: Number(form.buffer_before_minutes),
@@ -573,6 +575,23 @@
 					<Label for="is-public" class="cursor-pointer font-normal">Public (visible in booking page)</Label>
 				</div>
 			</div>
+		</div>
+
+		<div class="mt-4 space-y-1.5">
+			<div class="flex items-center gap-2">
+				<Checkbox id="show-taken" bind:checked={form.show_taken_slots} />
+				<Label for="show-taken" class="cursor-pointer font-normal">Show booked times as unavailable</Label>
+			</div>
+			<p class="text-xs text-muted-foreground">
+				Booked times appear struck through on the booking page instead of being hidden, so
+				visitors can see the calendar filling up. Only times inside your working hours are
+				shown, never the rest of your day.
+				{#if form.show_taken_slots}
+					<span class="text-amber-700 dark:text-amber-500">
+						Anyone with the booking link can see which hours are taken.
+					</span>
+				{/if}
+			</p>
 		</div>
 
 		<!-- Location -->

@@ -26,6 +26,8 @@
   "network_error": "Anslutningsfel. Kontrollera din internetanslutning.",
   "loading": "Läser in…",
   "no_available_times": "Inga lediga tider.",
+  "slot_taken": "redan bokad",
+  "all_times_taken": "Alla tider den här dagen är bokade.",
   "could_not_load_times": "Det gick inte att läsa in tiderna. Försök igen.",
   "times_shown_in": "Tider visas i ",
   "payment_received": "Betalning mottagen",

@@ -56,3 +56,34 @@ test('formatTime / formatDay respect tz', () => {
   assert.match(B.formatDay(iso, 'America/New_York', 'short', 'en-US'), /Jun 14/);
   assert.match(B.formatDay(iso, 'America/New_York', 'long', 'en-US'), /June 14/);
 });
+
+test('mergeDaySlots interleaves taken slots in time order and tags them', () => {
+  const free = [{ start: '2026-06-15T09:00:00Z' }, { start: '2026-06-15T11:00:00Z' }];
+  const taken = [{ start: '2026-06-15T10:00:00Z' }];
+
+  const merged = B.mergeDaySlots(free, taken);
+  assert.deepEqual(merged.map((s) => s.start.slice(11, 16)), ['09:00', '10:00', '11:00']);
+  assert.deepEqual(merged.map((s) => s.taken), [false, true, false]);
+});
+
+test('mergeDaySlots does not mutate the arrays it was given', () => {
+  const free = [{ start: '2026-06-15T09:00:00Z' }];
+  const taken = [{ start: '2026-06-15T10:00:00Z' }];
+  B.mergeDaySlots(free, taken);
+  assert.equal('taken' in free[0], false, 'the caller still holds the API response');
+  assert.equal('taken' in taken[0], false);
+});
+
+test('mergeDaySlots handles a missing taken array (the opt-in is off)', () => {
+  const free = [{ start: '2026-06-15T09:00:00Z' }];
+  assert.deepEqual(B.mergeDaySlots(free, undefined).map((s) => s.taken), [false]);
+  assert.deepEqual(B.mergeDaySlots(undefined, undefined), []);
+});
+
+test('bookableDayKeys omits a day whose slots are all taken', () => {
+  // The trap this exists for: grouping taken slots too means a fully booked day still
+  // produces a key, and using those keys for the calendar would show it as clickable
+  // with something available on it.
+  const freeByDay = { '2026-06-15': [{ start: 'x' }], '2026-06-16': [] };
+  assert.deepEqual(B.bookableDayKeys(freeByDay).sort(), ['2026-06-15']);
+});

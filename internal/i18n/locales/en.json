@@ -26,6 +26,8 @@
   "network_error": "Network error. Please check your connection.",
   "loading": "Loading…",
   "no_available_times": "No available times.",
+  "slot_taken": "already booked",
+  "all_times_taken": "Every time on this day is booked.",
   "could_not_load_times": "Could not load times. Please try again.",
   "times_shown_in": "Times shown in ",
   "payment_received": "Payment received",

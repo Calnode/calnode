@@ -30,6 +30,10 @@ export type EventType = {
 	slot_interval_minutes: number;
 	is_active: boolean;
 	is_public: boolean;
+	/** Show already-booked times struck through on the booking page instead of hiding
+	 *  them. Off by default: the slots endpoint is public, so this makes the host's
+	 *  booked hours visible to anyone with the link. */
+	show_taken_slots: boolean;
 	location_type: string;
 	location_value?: string;
 	buffer_before_minutes: number;
