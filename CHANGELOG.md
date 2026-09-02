@@ -11,6 +11,8 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-09-03
+
 ### Added
 - **Booked times can be shown struck through instead of hidden.** Off by default, and
   enabled per event type under Visibility. Requested in
