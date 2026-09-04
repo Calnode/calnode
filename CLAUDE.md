@@ -51,8 +51,17 @@ behaviour or markup must usually be made in all three, or they drift:
   implemented separately in each. If you change calendar *behaviour*, update all three.
 - Verify on **desktop and mobile** for each surface after touching the calendar.
 - **Shared slot logic lives in `internal/handler/assets/booking-logic.js`** (tested with
-  `node --test`), not per-surface: day grouping, time formatting, and the taken-slot
-  merge. Put anything all three need there rather than writing it three times.
+  `node --test`): day grouping, time formatting, and the taken-slot merge. It is inlined
+  into **book.html and manage.html only**, which are the two surfaces that load it.
+- ⛔ **The embed widget does NOT load `booking-logic.js`, so `BookingLogic` is undefined
+  inside it.** `EmbedJS` serves `embed.js` as its own standalone file, unmodified — it is a
+  Shadow-DOM web component on a third-party page, with no build step and nothing to
+  prepend the module for it. It therefore carries its own copies of the few helpers it
+  needs (`dowLabels`, `dayKey`, `timeLabel`, `shortDay`, `ymd`), each commented as
+  mirroring the shared one. Calling `BookingLogic.anything` from `embed.js` throws a
+  `ReferenceError` on the customer's site, where no test here would see it. So: put logic
+  the pages share in `booking-logic.js`, and when the widget needs it too, mirror it there
+  deliberately and keep the two in step.
 - **Taken/booked slots** (`show_taken_slots`, off by default) are computed by
   `slots.GenerateWithTaken` as the *difference* between a normal pass and one ignoring
   busy, which is what keeps out-of-hours and min-notice starts from being mislabelled as
