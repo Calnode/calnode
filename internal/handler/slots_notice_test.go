@@ -103,14 +103,23 @@ func TestGetSlots_omitsMinNoticeWhenThereIsNoPolicy(t *testing.T) {
 }
 
 func TestGetSlots_minNoticeDatesEmptyWhenThePolicyCostThisRangeNothing(t *testing.T) {
-	// A one-minute notice, asked about days that start tomorrow: the policy exists and is
-	// reported, but it took nothing away in this window, so nothing should be explained.
+	// A one-minute notice, asked about days that start the day after tomorrow: the policy
+	// exists and is reported, but it took nothing away in this window, so nothing should
+	// be explained.
+	//
+	// ⚠️ The window deliberately starts at +2 days, not +1. seedNoticeEventType opens
+	// availability at 00:00, so tomorrow's first slot is midnight — and in the last minute
+	// of a UTC day a one-minute notice pushes the cutoff past it (now 23:59:01 → cutoff
+	// 00:00:01), withholding that slot and making dates non-empty. That is a real ~59
+	// seconds a day where this test would fail for a reason unrelated to what it asserts.
+	// Starting a full day later puts every candidate slot at least 24 hours beyond any
+	// cutoff a one-minute policy can produce, whatever the clock says.
 	h, database, _, ownerID := setupWorkspaceWithDB(t)
 	seedNoticeEventType(t, database, ownerID, "tiny-notice", 1)
 
 	now := time.Now().UTC()
-	from := now.AddDate(0, 0, 1).Format("2006-01-02")
-	to := now.AddDate(0, 0, 3).Format("2006-01-02")
+	from := now.AddDate(0, 0, 2).Format("2006-01-02")
+	to := now.AddDate(0, 0, 4).Format("2006-01-02")
 	got := getSlots(t, h, "tiny-notice", "?from="+from+"&to="+to+"&tz=UTC")
 
 	if got.MinNotice == nil {
