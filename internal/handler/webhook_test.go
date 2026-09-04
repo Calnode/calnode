@@ -32,7 +32,7 @@ func TestCreateWebhook_success(t *testing.T) {
 	if resp["id"] == "" {
 		t.Error("expected non-empty id")
 	}
-	secret, _ := resp["secret"].(string)
+	secret := mustString(t, resp, "secret", "create webhook")
 	if len(secret) != 64 {
 		t.Errorf("secret length = %d; want 64 hex chars", len(secret))
 	}
@@ -208,12 +208,8 @@ func TestDeleteWebhook_success(t *testing.T) {
 		`{"url":"https://example.com/hook","events":["booking.created"]}`, apiKey)
 	createRec := httptest.NewRecorder()
 	h.RequireAuth(h.CreateWebhook)(createRec, createReq)
-	if createRec.Code != http.StatusCreated {
-		t.Fatalf("create: %d", createRec.Code)
-	}
-	var created map[string]any
-	json.Unmarshal(createRec.Body.Bytes(), &created)
-	id := created["id"].(string)
+	created := mustCreated(t, createRec, "create webhook")
+	id := mustString(t, created, "id", "create webhook")
 
 	// Delete.
 	delReq := authReq(http.MethodDelete, "/v1/webhooks/"+id, "", apiKey)
@@ -263,9 +259,8 @@ func TestListWebhookDeliveries_emptyInitially(t *testing.T) {
 		`{"url":"https://example.com/hook","events":["booking.created"]}`, apiKey)
 	createRec := httptest.NewRecorder()
 	h.RequireAuth(h.CreateWebhook)(createRec, createReq)
-	var created map[string]any
-	json.Unmarshal(createRec.Body.Bytes(), &created)
-	id := created["id"].(string)
+	created := mustCreated(t, createRec, "create webhook")
+	id := mustString(t, created, "id", "create webhook")
 
 	req := authReq(http.MethodGet, "/v1/webhooks/"+id+"/deliveries", "", apiKey)
 	req.SetPathValue("id", id)
