@@ -39,10 +39,7 @@ func recordingStorage() (livekit.S3Config, bool) {
 	if replica == "" || key == "" || secret == "" {
 		return livekit.S3Config{}, false
 	}
-	bucket := strings.TrimPrefix(replica, "s3://") // s3://bucket/path → bucket
-	if i := strings.IndexByte(bucket, '/'); i >= 0 {
-		bucket = bucket[:i]
-	}
+	bucket := replicaBucket(replica) // s3://bucket/path → bucket, and the same for gcs/abs
 	if bucket == "" {
 		return livekit.S3Config{}, false
 	}
