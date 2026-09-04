@@ -87,3 +87,30 @@ test('bookableDayKeys omits a day whose slots are all taken', () => {
   const freeByDay = { '2026-06-15': [{ start: 'x' }], '2026-06-16': [] };
   assert.deepEqual(B.bookableDayKeys(freeByDay).sort(), ['2026-06-15']);
 });
+
+test('fmt substitutes %s in order', () => {
+  assert.equal(B.fmt('No available times on %s.', ['Monday, 15 June']), 'No available times on Monday, 15 June.');
+  assert.equal(B.fmt('%s has no available times on %s.', ['Alex', 'Monday']), 'Alex has no available times on Monday.');
+  assert.equal(B.fmt('Bookings must be made at least %s in advance.', ['4 hours']),
+    'Bookings must be made at least 4 hours in advance.');
+});
+
+test('fmt honours indexed %[n]s, so a translation can reorder its arguments', () => {
+  // German and Swedish put the date before the verb; the locale files are allowed to
+  // reorder as long as the verbs match English (internal/i18n's parity test).
+  assert.equal(B.fmt('%[2]s: %[1]s hat keine Termine.', ['Alex', 'Montag']), 'Montag: Alex hat keine Termine.');
+  // An index may repeat an argument, and mixing forms keeps the sequential counter
+  // independent of the indexed reads.
+  assert.equal(B.fmt('%[1]s / %[1]s / %s', ['a', 'b']), 'a / a / a');
+});
+
+test('fmt leaves no format verb on screen when an argument is missing', () => {
+  assert.equal(B.fmt('No available times on %s.', []), 'No available times on .');
+  assert.equal(B.fmt('No available times on %s.'), 'No available times on .');
+  assert.equal(B.fmt('%[3]s missing', ['a']), ' missing');
+});
+
+test('fmt leaves a string with no verbs untouched', () => {
+  assert.equal(B.fmt('No available times.', ['unused']), 'No available times.');
+  assert.equal(B.fmt('Inga lediga tider.'), 'Inga lediga tider.');
+});

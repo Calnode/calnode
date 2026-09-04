@@ -166,6 +166,11 @@ body {
 
     <!-- Empty state (before a day is chosen) -->
     <p id="empty-hint" class="hint">{{call .T "select_day_hint"}}</p>
+    <!-- Why the nearest times are missing, shown only when the minimum-notice policy is
+         what removed them (the server says which days it hit). It sits here, outside the
+         slot list, because a day the policy emptied completely is greyed out in the
+         calendar - so the explanation has to be reachable without clicking one. -->
+    <p id="notice-hint" class="hint hidden"></p>
 
     <!-- Slots -->
     <div id="slots-view" class="hidden">
