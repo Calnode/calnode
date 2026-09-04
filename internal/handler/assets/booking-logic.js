@@ -1,8 +1,14 @@
-// booking-logic.js — the PURE date/slot/format logic shared by the THREE booking surfaces
-// (book.html, manage.html, embed.js), so a change is made once instead of three times. No DOM.
-// Served inlined into the book/manage Go templates and prepended to embed.js (so `BookingLogic`
-// is a page global), and require()-able by the node tests (booking-logic.test.js). Same UMD
-// pattern as room-logic.js — no build step, stays framework-free.
+// booking-logic.js — the PURE date/slot/format logic shared by book.html and manage.html, so a
+// change is made once instead of twice. No DOM.
+// Served inlined into the book/manage Go templates, and require()-able by the node tests
+// (booking-logic.test.js). Same UMD pattern as room-logic.js — no build step, stays
+// framework-free.
+//
+// NOT loaded by embed.js. The widget is served as its own standalone file
+// (internal/handler/embed_handler.go serves the embedded bytes unmodified), so `BookingLogic`
+// is undefined inside it and it carries its own copies of the few helpers it needs — see the
+// comments on its dowLabels and fmt. Anything added here that all three surfaces need has to be
+// mirrored there deliberately.
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory();
   else root.BookingLogic = factory();
@@ -113,6 +119,29 @@
   function addMonths(d, n) { return new Date(d.getFullYear(), d.getMonth() + n, 1); }
   function daysInMonth(year, month) { return new Date(year, month + 1, 0).getDate(); }
 
+  // fmt — argument substitution for the translated strings the booking surfaces render
+  // themselves, so the three of them don't each grow their own. Supports exactly the two
+  // forms the locale files use for these keys: plain %s, taken in order, and the indexed
+  // %[n]s that lets a translation reorder its arguments ("%[1]s has no available times on
+  // %[2]s" is date-first in several languages). Server-side, Go's fmt does this job; this
+  // is the client half of the same contract.
+  //
+  // Deliberately not a printf. Accepting %d without implementing number formatting would
+  // be worse than not claiming to: the keys these surfaces substitute carry %s only, and
+  // internal/i18n's verb-parity test holds every locale to English's verbs.
+  //
+  // A missing argument renders as an empty string rather than leaving "%s" on screen —
+  // visibly wrong copy beats a literal format verb in front of a customer.
+  function fmt(template, args) {
+    var list = args || [];
+    var next = 0;
+    return String(template).replace(/%(?:\[(\d+)\])?s/g, function (_match, index) {
+      var pick = index ? Number(index) - 1 : next++;
+      var value = list[pick];
+      return value === undefined || value === null ? '' : String(value);
+    });
+  }
+
   // NOTE: there is deliberately no host-label helper here. Each surface builds its own
   // (hostsLabel in book.go for the server-rendered page, in book.html's script for the
   // post-slot-pick rewrite, and in embed.js), because the label needs the resolved locale's
@@ -128,6 +157,7 @@
     groupSlotsByDay: groupSlotsByDay,
     mergeDaySlots: mergeDaySlots,
     bookableDayKeys: bookableDayKeys,
+    fmt: fmt,
     formatTime: formatTime,
     formatDay: formatDay,
     dowIndex: dowIndex,

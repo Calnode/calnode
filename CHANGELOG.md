@@ -11,6 +11,23 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
 
 ## [Unreleased]
 
+### Added
+- **Empty days and minimum-notice gaps now explain themselves** on all three booking
+  surfaces (booking page, manage/reschedule page, embed widget). Closes
+  [#20](https://github.com/Calnode/calnode/issues/20).
+
+  A day with nothing on it names the day, and the host when the event type has exactly
+  one, instead of the bare "No available times." that never said whether another day would
+  help. And when `min_notice_minutes` is what removed the nearest starts, the surfaces say
+  so rather than leaving the visitor to guess - the most common "why can't I see those
+  times".
+
+  The engine decides that, not the front ends: `GET /slots` gains
+  `min_notice: {minutes, dates}` listing the booker-local days the policy actually cost
+  something. A start that is simply in the past, one a booking took away, and one no host
+  pool could satisfy are all excluded, so the explanation never appears attached to the
+  wrong cause. Three new/changed keys in all eight locales.
+
 ## [0.8.0] - 2026-09-03
 
 ### Added

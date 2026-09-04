@@ -26,13 +26,21 @@ var manageTmpl = template.Must(template.Must(template.New("manage").Funcs(templa
 }).Parse(sharedPartialsSrc)).Parse(manageTmplSrc))
 
 type managePageData struct {
-	Token           string
-	BookingID       string
-	EventTypeName   string
-	EventTypeSlug   string
-	HostName        string
-	HostInitial     string
-	AvatarURL       string
+	Token         string
+	BookingID     string
+	EventTypeName string
+	EventTypeSlug string
+	HostName      string
+	HostInitial   string
+	AvatarURL     string
+	// SoleHostName is the host's name when this booking has exactly one, else "" — see
+	// bookPageData.SoleHostName. HostName can be a group label ("Alex, Sam & 2 others"),
+	// which no "%s has no available times" sentence can use grammatically.
+	SoleHostName string
+	// MinNoticeLabel is the translated minimum-notice duration ("4 hours") of the event
+	// type being rescheduled, or "" when it sets none. Reschedule goes through the same
+	// /slots endpoint as booking, so the same policy hides the same nearest times (#20).
+	MinNoticeLabel  string
 	DurationLabel   string
 	LocationLabel   string
 	PriceLabel      string // empty on manage → the eventMeta partial omits the price row
@@ -86,14 +94,14 @@ func (h *Handler) ManagePage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var etName, etSlug, locType, locValue string
-	var durMins, maxDays int
+	var durMins, maxDays, minNotice int
 	var hostName string
 	if err := h.db.QueryRowContext(r.Context(), `
-		SELECT et.name, et.slug, et.duration_minutes, et.max_future_days,
+		SELECT et.name, et.slug, et.duration_minutes, et.max_future_days, et.min_notice_minutes,
 		       et.location_type, COALESCE(et.location_value,''), u.name
 		FROM event_types et JOIN users u ON u.id = et.user_id
 		WHERE et.id = ?`, b.EventTypeID).
-		Scan(&etName, &etSlug, &durMins, &maxDays, &locType, &locValue, &hostName); err != nil {
+		Scan(&etName, &etSlug, &durMins, &maxDays, &minNotice, &locType, &locValue, &hostName); err != nil {
 		h.logger.ErrorContext(r.Context(), "manage page: load event type", "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
@@ -103,13 +111,17 @@ func (h *Handler) ManagePage(w http.ResponseWriter, r *http.Request) {
 	// (round-robin/Group route elsewhere). Falls back to the owner name above if
 	// no booking_hosts rows exist. The avatar uses the primary host.
 	loc := h.resolveLocale(r)
-	var hostInitial, avatarURL string
+	var hostInitial, avatarURL, soleHost string
 	if hosts := h.displayHostsForBooking(r.Context(), b.ID); len(hosts) > 0 {
 		hostName = hostsLabel(hosts, loc)
 		hostInitial = hosts[0].Initial
 		avatarURL = hosts[0].AvatarURL
+		if len(hosts) == 1 {
+			soleHost = hosts[0].Name
+		}
 	} else {
 		hostInitial = firstRune(hostName)
+		soleHost = hostName // the event-type owner: one person, so nameable
 	}
 
 	var orgTZ string
@@ -128,6 +140,8 @@ func (h *Handler) ManagePage(w http.ResponseWriter, r *http.Request) {
 		HostName:        hostName,
 		HostInitial:     hostInitial,
 		AvatarURL:       avatarURL,
+		SoleHostName:    soleHost,
+		MinNoticeLabel:  noticeLabel(minNotice, loc),
 		DurationLabel:   durationLabel(durMins, loc),
 		LocationLabel:   locationLabel(locType, locValue, loc),
 		MaxFutureDays:   maxDays,

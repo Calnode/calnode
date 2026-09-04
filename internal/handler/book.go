@@ -53,12 +53,22 @@ type bookPageData struct {
 	AvatarURL     string
 	Hosts         []hostDisplay // faces for the info panel (1 = single, >1 = group stack)
 	HostsLabel    string        // "Alex, Sam & 2 others" for the group case
-	LocationLabel string
-	PriceLabel    string // formatted price (e.g. "$50.00"); empty for free events
-	PriceCents    int    // raw price for the dataLayer conversion value (0 = free)
-	Currency      string // ISO 4217, lowercase
-	MaxFutureDays int
-	Questions     []bookQuestion
+	// SoleHostName is the host's name when this event type has exactly one, and "" when
+	// it has several. It is what lets an empty day read "Alex has no available times on
+	// …": a group label ("Alex, Sam & 2 others") in that sentence would need a plural
+	// verb no translation key can supply, so the message drops the name instead (#20).
+	SoleHostName string
+	// MinNoticeLabel is the translated minimum-notice duration ("4 hours"), or "" when the
+	// event type sets none. Rendered here rather than derived by the page's JS because the
+	// server already knows the resolved locale — the /slots call the page makes carries no
+	// ?lang=, so a label built from its response would silently ignore a language override.
+	MinNoticeLabel string
+	LocationLabel  string
+	PriceLabel     string // formatted price (e.g. "$50.00"); empty for free events
+	PriceCents     int    // raw price for the dataLayer conversion value (0 = free)
+	Currency       string // ISO 4217, lowercase
+	MaxFutureDays  int
+	Questions      []bookQuestion
 	// AssistantEnabled shows the conversational-booking chat panel when the LLM layer is on.
 	AssistantEnabled bool
 	// AssistantDisclosure is the persistent AI-disclosure notice on the chat panel (Art. 50(1)).
@@ -197,6 +207,28 @@ func durationLabel(minutes int, loc *i18n.Locale) string {
 	return fmt.Sprintf(loc.T("duration_hr_min"), h, m)
 }
 
+// noticeLabel renders an event type's minimum notice as a translated duration ("4
+// hours"), or "" when there is no such policy and so nothing to explain.
+//
+// It reuses durationLabel rather than introducing notice-specific plural keys: the
+// booking surfaces already label durations that way, and a second set of plural forms in
+// every locale would be more strings to keep in step for no gain.
+func noticeLabel(minNoticeMinutes int, loc *i18n.Locale) string {
+	if minNoticeMinutes <= 0 {
+		return ""
+	}
+	return durationLabel(minNoticeMinutes, loc)
+}
+
+// soleHostName returns the host's name when the event type has exactly one, else "".
+// See bookPageData.SoleHostName for why a group deliberately yields nothing.
+func soleHostName(hosts []hostDisplay) string {
+	if len(hosts) != 1 {
+		return ""
+	}
+	return hosts[0].Name
+}
+
 var mdRenderer = goldmark.New(
 	goldmark.WithExtensions(extension.Strikethrough),
 	goldmark.WithRendererOptions(html.WithHardWraps()),
@@ -285,18 +317,18 @@ func (h *Handler) PublicEventType(w http.ResponseWriter, r *http.Request) {
 	var (
 		etID, name, description, locType, locValue string
 		hostName, avatarURL, routingMode, currency string
-		durMins, maxDays, priceCents               int
+		durMins, maxDays, minNotice, priceCents    int
 		msgGreeting                                sql.NullString
 	)
 	err := h.db.QueryRowContext(r.Context(), `
 		SELECT et.id, et.name, COALESCE(et.description, ''),
 		       et.duration_minutes, et.location_type, COALESCE(et.location_value, ''),
-		       et.max_future_days, et.routing_mode, u.name, COALESCE(u.avatar_url, ''),
+		       et.max_future_days, et.min_notice_minutes, et.routing_mode, u.name, COALESCE(u.avatar_url, ''),
 		       et.price_cents, et.currency, et.msg_greeting
 		FROM event_types et
 		JOIN users u ON u.id = et.user_id
 		WHERE et.slug = ? AND et.is_active = 1 AND et.is_public = 1`,
-		slug).Scan(&etID, &name, &description, &durMins, &locType, &locValue, &maxDays, &routingMode, &hostName, &avatarURL, &priceCents, &currency, &msgGreeting)
+		slug).Scan(&etID, &name, &description, &durMins, &locType, &locValue, &maxDays, &minNotice, &routingMode, &hostName, &avatarURL, &priceCents, &currency, &msgGreeting)
 	if errors.Is(err, sql.ErrNoRows) {
 		h.writeError(w, http.StatusNotFound, "event type not found")
 		return
@@ -355,10 +387,16 @@ func (h *Handler) PublicEventType(w http.ResponseWriter, r *http.Request) {
 		// doesn't have to rebuild it from duration_minutes (it used to hardcode " min",
 		// which both skipped translation and disagreed with the pages for >= 60 min).
 		// duration_minutes stays for clients that want the raw number.
-		"duration_label":     durationLabel(durMins, loc),
-		"location_type":      locType,
-		"location_label":     locationLabel(locType, locValue, loc),
-		"max_future_days":    maxDays,
+		"duration_label":  durationLabel(durMins, loc),
+		"location_type":   locType,
+		"location_label":  locationLabel(locType, locValue, loc),
+		"max_future_days": maxDays,
+		// min_notice_label is the translated minimum-notice duration ("4 hours"), empty
+		// when the event type sets none. The widget needs it here because the /slots call
+		// it makes later carries no language of its own, and min_notice_minutes alone
+		// would leave it rebuilding a plural-aware label the server already has (#20).
+		"min_notice_minutes": minNotice,
+		"min_notice_label":   noticeLabel(minNotice, loc),
 		"assistant_enabled":  h.getLLM() != nil,
 		"assistant_greeting": assistantGreeting(msgGreeting, loc),
 		"price_cents":        priceCents,
@@ -384,6 +422,7 @@ func (h *Handler) BookPage(w http.ResponseWriter, r *http.Request) {
 		locType     string
 		locValue    string
 		maxDays     int
+		minNotice   int
 		hostName    string
 		avatarURL   string
 		routingMode string
@@ -394,12 +433,12 @@ func (h *Handler) BookPage(w http.ResponseWriter, r *http.Request) {
 	err := h.db.QueryRowContext(r.Context(), `
 		SELECT et.id, et.name, COALESCE(et.description, ''),
 		       et.duration_minutes, et.location_type, COALESCE(et.location_value, ''),
-		       et.max_future_days, et.routing_mode, u.name, COALESCE(u.avatar_url, ''),
+		       et.max_future_days, et.min_notice_minutes, et.routing_mode, u.name, COALESCE(u.avatar_url, ''),
 		       et.price_cents, et.currency, et.msg_greeting
 		FROM event_types et
 		JOIN users u ON u.id = et.user_id
 		WHERE et.slug = ? AND et.is_active = 1 AND et.is_public = 1`,
-		slug).Scan(&etID, &name, &description, &durMins, &locType, &locValue, &maxDays, &routingMode, &hostName, &avatarURL, &priceCents, &currency, &msgGreeting)
+		slug).Scan(&etID, &name, &description, &durMins, &locType, &locValue, &maxDays, &minNotice, &routingMode, &hostName, &avatarURL, &priceCents, &currency, &msgGreeting)
 
 	if errors.Is(err, sql.ErrNoRows) {
 		http.Error(w, "Page not found", http.StatusNotFound)
@@ -470,6 +509,8 @@ func (h *Handler) BookPage(w http.ResponseWriter, r *http.Request) {
 		AvatarURL:           hosts[0].AvatarURL,
 		Hosts:               hosts,
 		HostsLabel:          hostsLabel(hosts, loc),
+		SoleHostName:        soleHostName(hosts),
+		MinNoticeLabel:      noticeLabel(minNotice, loc),
 		LocationLabel:       locationLabel(locType, locValue, loc),
 		PriceLabel:          formatPrice(priceCents, currency),
 		Locale:              loc.Code,
