@@ -23,6 +23,13 @@ type slotsBody struct {
 		Start   string   `json:"start"`
 		HostIDs []string `json:"host_ids"`
 	} `json:"taken"`
+	// MinNotice is a pointer for the same reason: absent means the event type sets no
+	// minimum notice, present-but-empty means it does and this range lost nothing to it
+	// (see slots_notice_test.go).
+	MinNotice *struct {
+		Minutes int      `json:"minutes"`
+		Dates   []string `json:"dates"`
+	} `json:"min_notice"`
 }
 
 func getSlots(t *testing.T, h interface {

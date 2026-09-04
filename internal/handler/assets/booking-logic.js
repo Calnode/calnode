@@ -1,8 +1,14 @@
-// booking-logic.js — the PURE date/slot/format logic shared by the THREE booking surfaces
-// (book.html, manage.html, embed.js), so a change is made once instead of three times. No DOM.
-// Served inlined into the book/manage Go templates and prepended to embed.js (so `BookingLogic`
-// is a page global), and require()-able by the node tests (booking-logic.test.js). Same UMD
-// pattern as room-logic.js — no build step, stays framework-free.
+// booking-logic.js — the PURE date/slot/format logic shared by book.html and manage.html, so a
+// change is made once instead of twice. No DOM.
+// Served inlined into the book/manage Go templates, and require()-able by the node tests
+// (booking-logic.test.js). Same UMD pattern as room-logic.js — no build step, stays
+// framework-free.
+//
+// NOT loaded by embed.js. The widget is served as its own standalone file
+// (internal/handler/embed_handler.go serves the embedded bytes unmodified), so `BookingLogic`
+// is undefined inside it and it carries its own copies of the few helpers it needs — see the
+// comments on its dowLabels and fmt. Anything added here that all three surfaces need has to be
+// mirrored there deliberately.
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory();
   else root.BookingLogic = factory();
