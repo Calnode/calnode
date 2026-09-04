@@ -18,6 +18,9 @@
 	let creating = $state(false);
 	let deleteOpen = $state(false);
 	let deleteSlug = $state('');
+	// Slug currently being duplicated, so the row's button can't be double-fired into two
+	// copies while the request is in flight.
+	let duplicating = $state('');
 
 	let filter = $state<'active' | 'archived'>('active');
 	const visible = $derived(items.filter((et) => (filter === 'archived' ? !!et.archived : !et.archived)));
@@ -76,6 +79,22 @@
 			await load();
 		} catch (e: any) {
 			toast.error(e.message || 'Could not update event type');
+		}
+	}
+
+	// The copy is created inactive, so the toast names the new slug: nothing appears on a
+	// booking page until the operator edits it and switches it on.
+	async function duplicateEventType(et: EventType) {
+		if (duplicating) return;
+		duplicating = et.slug;
+		try {
+			const copy = await api.post<EventType>(`/v1/event-types/${et.slug}/duplicate`);
+			toast.success(`Duplicated as "${copy.slug}" — inactive until you turn it on`);
+			await load();
+		} catch (e: any) {
+			toast.error(e.message || 'Could not duplicate event type');
+		} finally {
+			duplicating = '';
 		}
 	}
 
@@ -219,6 +238,17 @@
 									</Tooltip.Root>
 
 									{#if et.owned !== false}
+										<Tooltip.Root>
+											<Tooltip.Trigger
+												class={buttonVariants({ variant: 'ghost', size: 'icon' })}
+												onclick={() => duplicateEventType(et)}
+												disabled={duplicating === et.slug}
+											>
+												<!-- Copy icon -->
+												<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="14" height="14" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+											</Tooltip.Trigger>
+											<Tooltip.Content>Duplicate</Tooltip.Content>
+										</Tooltip.Root>
 										<Tooltip.Root>
 											<Tooltip.Trigger
 												class={buttonVariants({ variant: 'ghost', size: 'icon' })}
