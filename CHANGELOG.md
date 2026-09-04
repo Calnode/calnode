@@ -11,6 +11,19 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
 
 ## [Unreleased]
 
+### Added
+- **Duplicate an event type.** `POST /v1/event-types/{slug}/duplicate`, and a Duplicate
+  action on each row of the event-types list. Closes
+  [#17](https://github.com/Calnode/calnode/issues/17).
+
+  The copy carries everything that hangs off the original - intake questions, host
+  assignments, event-type-specific availability rules, the reminder schedule, and the
+  custom email subjects and notes - as a single transaction, so a half-built copy can
+  never be left behind. It is created inactive, under a generated `<slug>-copy` (then
+  `-copy-2`, `-copy-3`, …) slug, and keeps `price_cents`/`currency` verbatim: zeroing a
+  copied price is how a paid meeting quietly starts selling for nothing. Bookings are not
+  copied.
+
 ## [0.8.0] - 2026-09-03
 
 ### Added
