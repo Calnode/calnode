@@ -213,7 +213,21 @@ replica leaves recording storage unavailable.** `recordingStorage()`
 S3 API and requires `LITESTREAM_ACCESS_KEY_ID` and `LITESTREAM_SECRET_ACCESS_KEY`; without
 both it reports not-configured. It degrades cleanly rather than failing at record time —
 **Settings → Storage** shows `recordings_storage_ready: false` and the room's Record button
-stays hidden — but if you want built-in recording, choose the S3-compatible route above.
+stays hidden.
+
+The provider table above has no GCS row, so "use the S3-compatible route" is not by itself
+an answer on GCP. The two real options:
+
+- **Put the replica on an S3-API bucket** (R2, B2, AWS, MinIO — the providers above) and
+  set all five variables. This is the route this page documents end to end.
+- **Or reach the same GCS bucket through Google's S3 interoperability API**: an HMAC key
+  pair as `LITESTREAM_ACCESS_KEY_ID` / `LITESTREAM_SECRET_ACCESS_KEY`,
+  `LITESTREAM_ENDPOINT=https://storage.googleapis.com`, and an `s3://` replica URL. That is
+  the ordinary S3-compatible route with GCS as the provider, not the native `gcs://` one.
+  ⚠️ We have not exercised recording this way — we run native `gcs://` with recordings off —
+  so it is stated as the shape of the answer, not as a configuration we have verified.
+
+`docs/VIDEO.md` §2 lists exactly what recording needs from either route.
 
 ### Enabling it
 1. Create a **private** bucket and a **bucket-scoped** access key (read + write — read is needed for restore).
