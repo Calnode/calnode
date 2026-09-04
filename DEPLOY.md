@@ -161,7 +161,7 @@ variables cover every provider — only the endpoint/region change:
 
 | Variable | Purpose |
 |---|---|
-| `LITESTREAM_REPLICA_URL` | `s3://<bucket>/calnode` — the bucket + path. Setting this turns backups ON. |
+| `LITESTREAM_REPLICA_URL` | `s3://<bucket>/calnode` — the bucket + path. Setting this turns backups ON. (For native Google Cloud Storage use `gcs://` — see below.) |
 | `LITESTREAM_ENDPOINT` | Provider S3 endpoint. **Leave unset for AWS.** |
 | `LITESTREAM_REGION` | Bucket region (`auto` for R2). |
 | `LITESTREAM_ACCESS_KEY_ID` | Access key (use a bucket-scoped key, not a root credential). |
@@ -186,9 +186,40 @@ Per-provider values (everything else is identical):
 If the endpoint/region are empty or wrong, Litestream silently falls back to **AWS**
 and you'll see `InvalidAccessKeyId` (403) in the logs (your R2 key sent to Amazon).
 
+### Google Cloud Storage (native, not via the S3 API)
+
+The bundled Litestream also speaks **GCS natively**, which is the simpler option on GCP:
+credentials come from the instance metadata server, so there is no access key to create,
+store or rotate. One variable is enough:
+
+| Variable | Value |
+|---|---|
+| `LITESTREAM_REPLICA_URL` | `gcs://<bucket>/calnode` |
+
+- ⛔ **The scheme is `gcs://`, not `gs://`.** `gs://` is the scheme every other Google tool
+  uses, and Litestream rejects it with `unknown replica type in config: ""` and exit 1 —
+  before any network call, so it looks nothing like a credentials or bucket problem.
+- **Leave `LITESTREAM_ENDPOINT`, `LITESTREAM_REGION`, `LITESTREAM_ACCESS_KEY_ID` and
+  `LITESTREAM_SECRET_ACCESS_KEY` unset.** The bundled `/etc/litestream.yml` needs no edit:
+  its `endpoint:` and `region:` lines expand to empty strings, and a `gcs` replica ignores
+  both.
+- The service account attached to the instance needs read **and** write on the bucket
+  (read is what restore uses). Everything else on this page — the restore drill, the
+  private-bucket warning, the PII note — applies unchanged.
+
+⚠️ **The trade: meeting recordings need the two S3 credential variables, so a native GCS
+replica leaves recording storage unavailable.** `recordingStorage()`
+(`internal/handler/livekit_recording.go`) reuses the backup bucket for recordings over the
+S3 API and requires `LITESTREAM_ACCESS_KEY_ID` and `LITESTREAM_SECRET_ACCESS_KEY`; without
+both it reports not-configured. It degrades cleanly rather than failing at record time —
+**Settings → Storage** shows `recordings_storage_ready: false` and the room's Record button
+stays hidden — but if you want built-in recording, choose the S3-compatible route above.
+
 ### Enabling it
 1. Create a **private** bucket and a **bucket-scoped** access key (read + write — read is needed for restore).
-2. Set the five variables on the service (Railway → Variables, or your platform's equivalent).
+   *(Native GCS: create the bucket and grant the instance's service account read + write; there is no key.)*
+2. Set the five variables on the service (Railway → Variables, or your platform's
+   equivalent) — or, for native GCS, just `LITESTREAM_REPLICA_URL`.
 3. Redeploy. On boot Litestream initialises and the first snapshot uploads within ~10s.
 4. **Verify the round-trip** before relying on it (below).
 
