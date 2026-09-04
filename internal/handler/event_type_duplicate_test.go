@@ -477,6 +477,107 @@ func TestDuplicateEventType_rollsBackWhenAChildCopyFails(t *testing.T) {
 	}
 }
 
+// TestDuplicateEventType_copiesEveryEmailTemplateColumn covers the child dataset the issue
+// names as "email/reminder templates". They are columns on event_types rather than a table
+// of their own, so this checks all nine on the copied row rather than sampling the ones
+// that happen to be in the API shape.
+func TestDuplicateEventType_copiesEveryEmailTemplateColumn(t *testing.T) {
+	h, database, ownerKey, ownerID := setupWorkspaceWithDB(t)
+	memberID := seedMember(t, database, "u2", "member@example.com")
+	seedRichEventType(t, database, ownerID, memberID)
+
+	rec := duplicate(t, h, ownerKey, "intro-call")
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("duplicate: got %d; want 201 — %s", rec.Code, rec.Body.String())
+	}
+	var got duplicateResponse
+	json.Unmarshal(rec.Body.Bytes(), &got) //nolint:errcheck
+
+	columns := []string{
+		"msg_confirmation", "msg_cancellation", "msg_reschedule", "msg_reminder", "msg_greeting",
+		"subj_confirmation", "subj_cancellation", "subj_reschedule", "subj_reminder",
+	}
+	for _, col := range columns {
+		var src, copied sql.NullString
+		// #nosec G202 -- col comes from the literal list above, never from input.
+		if err := database.QueryRow(`SELECT ` + col + ` FROM event_types WHERE id = 'src'`).Scan(&src); err != nil {
+			t.Fatalf("read source %s: %v", col, err)
+		}
+		// #nosec G202 -- same literal list.
+		if err := database.QueryRow(`SELECT `+col+` FROM event_types WHERE id = ?`, got.ID).Scan(&copied); err != nil {
+			t.Fatalf("read copied %s: %v", col, err)
+		}
+		if !src.Valid {
+			t.Fatalf("fixture bug: source %s is NULL, so this proves nothing", col)
+		}
+		if copied.String != src.String {
+			t.Errorf("%s: copy has %q; source has %q", col, copied.String, src.String)
+		}
+	}
+
+	// The reminder schedule is the other half of that requirement, and it IS a table.
+	var hours []int
+	rows, err := database.Query(
+		`SELECT hours_before FROM event_type_reminders WHERE event_type_id = ? ORDER BY hours_before`, got.ID)
+	if err != nil {
+		t.Fatalf("read copied reminders: %v", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var hb int
+		if err := rows.Scan(&hb); err != nil {
+			t.Fatalf("scan reminder: %v", err)
+		}
+		hours = append(hours, hb)
+	}
+	if len(hours) != 2 || hours[0] != 2 || hours[1] != 24 {
+		t.Errorf("copied reminder schedule: got %v; want [2 24]", hours)
+	}
+}
+
+// TestDuplicateEventType_isCreatedInactiveWithThePriceIntact pins the two rules from the
+// issue that pull in opposite directions: the copy must NOT be live, and its price must
+// NOT be reset. Zeroing the price is the dangerous default — the operator recognises the
+// event type, publishes it, and starts giving away a paid meeting.
+func TestDuplicateEventType_isCreatedInactiveWithThePriceIntact(t *testing.T) {
+	h, database, ownerKey, ownerID := setupWorkspaceWithDB(t)
+	mustExec(t, database, `
+		INSERT INTO event_types (id, user_id, slug, name, duration_minutes, is_active, price_cents, currency)
+		VALUES ('src', ?, 'paid-call', 'Paid Call', 30, 1, 12500, 'gbp')`, ownerID)
+
+	rec := duplicate(t, h, ownerKey, "paid-call")
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("duplicate: got %d; want 201 — %s", rec.Code, rec.Body.String())
+	}
+	var got duplicateResponse
+	json.Unmarshal(rec.Body.Bytes(), &got) //nolint:errcheck
+	if got.IsActive {
+		t.Error("response says the copy is active; a copy must never be publishable on creation")
+	}
+
+	var isActive, priceCents int
+	var currency string
+	if err := database.QueryRow(
+		`SELECT is_active, price_cents, currency FROM event_types WHERE id = ?`, got.ID).
+		Scan(&isActive, &priceCents, &currency); err != nil {
+		t.Fatalf("read copy: %v", err)
+	}
+	if isActive != 0 {
+		t.Error("is_active on the copied row is 1; want 0")
+	}
+	if priceCents != 12500 || currency != "gbp" {
+		t.Errorf("price on the copied row: got %d %q; want 12500 \"gbp\"", priceCents, currency)
+	}
+	// And the source is untouched — the copy is a new row, not a move.
+	if err := database.QueryRow(
+		`SELECT is_active, price_cents FROM event_types WHERE id = 'src'`).Scan(&isActive, &priceCents); err != nil {
+		t.Fatalf("read source: %v", err)
+	}
+	if isActive != 1 || priceCents != 12500 {
+		t.Errorf("the source changed: is_active=%d price_cents=%d; want 1/12500", isActive, priceCents)
+	}
+}
+
 // TestDuplicateEventType_handlesEveryEventTypeColumn is a drift gate, not a behaviour
 // test. DuplicateEventType names its columns explicitly (SQLite has no "copy every
 // column" form), so a migration that adds one would silently leave it out of every
