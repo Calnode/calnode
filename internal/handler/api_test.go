@@ -53,6 +53,59 @@ func authReq(method, path, body, apiKey string) *http.Request {
 	return r
 }
 
+// ---------------------------------------------------------------------------
+// Response helpers
+//
+// Reading a body before checking the status hides the one thing that explains a
+// failure, and `id := body["id"].(string)` on a body that has no id PANICS — which
+// aborts the whole package, so a single bad request reports a nil-interface stack
+// trace and no other handler test result at all.
+//
+// That is not hypothetical: a webhook create returning
+// `400 webhook URL must not resolve to a private or loopback address` presented as an
+// unrelated-looking panic, with the status and message nowhere on screen.
+//
+// These four keep a failure local and self-explaining. Each takes a `what` naming the
+// call, so a test that makes several requests still says which one failed.
+// ---------------------------------------------------------------------------
+
+// mustStatus fails the test unless rec carries the wanted status, quoting the body.
+func mustStatus(t *testing.T, rec *httptest.ResponseRecorder, want int, what string) {
+	t.Helper()
+	if rec.Code != want {
+		t.Fatalf("%s: status = %d; want %d — %s", what, rec.Code, want, rec.Body.String())
+	}
+}
+
+// mustJSON asserts the status first, then decodes the JSON body into a map.
+func mustJSON(t *testing.T, rec *httptest.ResponseRecorder, want int, what string) map[string]any {
+	t.Helper()
+	mustStatus(t, rec, want, what)
+	var body map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("%s: decode body: %v — %s", what, err, rec.Body.String())
+	}
+	return body
+}
+
+// mustCreated is mustJSON for 201, which is what most of these calls return.
+func mustCreated(t *testing.T, rec *httptest.ResponseRecorder, what string) map[string]any {
+	t.Helper()
+	return mustJSON(t, rec, http.StatusCreated, what)
+}
+
+// mustString reads a string field, failing with the whole body when it is missing or of
+// another type. The two-value assertion alone yields "" and defers the failure to
+// something downstream — a 404 on an empty id — that cannot explain itself.
+func mustString(t *testing.T, body map[string]any, key, what string) string {
+	t.Helper()
+	v, ok := body[key].(string)
+	if !ok {
+		t.Fatalf("%s: response has no string %q — %v", what, key, body)
+	}
+	return v
+}
+
 // seedEventType creates an event type via the HTTP handler.
 func seedEventTypeHTTP(t *testing.T, h *handler.Handler, apiKey string) (slug, id string) {
 	t.Helper()
@@ -426,13 +479,9 @@ func TestCreateAndListAvailabilityRule(t *testing.T) {
 	req := authReq(http.MethodPost, "/v1/availability-rules", body, key)
 	rec := httptest.NewRecorder()
 	h.RequireAuth(h.CreateAvailabilityRule)(rec, req)
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("create rule: %d — %s", rec.Code, rec.Body.String())
-	}
 
-	var created map[string]any
-	json.Unmarshal(rec.Body.Bytes(), &created)
-	ruleID, _ := created["id"].(string)
+	created := mustCreated(t, rec, "create rule")
+	ruleID := mustString(t, created, "id", "create rule")
 	if ruleID == "" {
 		t.Fatal("rule id is empty")
 	}
@@ -652,12 +701,8 @@ func TestGetBooking_public(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	h.CreateBooking(rec, req)
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("create: %d", rec.Code)
-	}
-	var created map[string]any
-	json.Unmarshal(rec.Body.Bytes(), &created)
-	bookingID := created["id"].(string)
+	created := mustCreated(t, rec, "create booking")
+	bookingID := mustString(t, created, "id", "create booking")
 
 	// Get without auth key.
 	req2 := httptest.NewRequest(http.MethodGet, "/v1/bookings/"+bookingID, nil)
@@ -685,12 +730,8 @@ func TestCancelBooking(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	h.CreateBooking(rec, req)
-	if rec.Code != http.StatusCreated {
-		t.Fatalf("create: %d", rec.Code)
-	}
-	var created map[string]any
-	json.Unmarshal(rec.Body.Bytes(), &created)
-	bookingID := created["id"].(string)
+	created := mustCreated(t, rec, "create booking")
+	bookingID := mustString(t, created, "id", "create booking")
 
 	// Cancel.
 	cancelReq := authReq(http.MethodPost, "/v1/bookings/"+bookingID+"/cancel",

@@ -96,9 +96,8 @@ func TestGetInvite_valid(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	h.RequireAuth(h.CreateInvite)(rec, createInviteReq("bob@example.com", key))
-	var created map[string]any
-	json.Unmarshal(rec.Body.Bytes(), &created)
-	inviteURL := created["invite_url"].(string)
+	created := mustCreated(t, rec, "create invite")
+	inviteURL := mustString(t, created, "invite_url", "create invite")
 	// Extract token from URL (last path segment).
 	parts := strings.Split(inviteURL, "/")
 	token := parts[len(parts)-1]
@@ -137,9 +136,8 @@ func TestClaimInvite_success(t *testing.T) {
 	// Create invite.
 	rec := httptest.NewRecorder()
 	h.RequireAuth(h.CreateInvite)(rec, createInviteReq("bob@example.com", key))
-	var created map[string]any
-	json.Unmarshal(rec.Body.Bytes(), &created)
-	parts := strings.Split(created["invite_url"].(string), "/")
+	created := mustCreated(t, rec, "create invite")
+	parts := strings.Split(mustString(t, created, "invite_url", "create invite"), "/")
 	token := parts[len(parts)-1]
 
 	// Claim it.
@@ -170,9 +168,8 @@ func TestClaimInvite_cannotReuseToken(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	h.RequireAuth(h.CreateInvite)(rec, createInviteReq("bob@example.com", key))
-	var created map[string]any
-	json.Unmarshal(rec.Body.Bytes(), &created)
-	parts := strings.Split(created["invite_url"].(string), "/")
+	created := mustCreated(t, rec, "create invite")
+	parts := strings.Split(mustString(t, created, "invite_url", "create invite"), "/")
 	token := parts[len(parts)-1]
 
 	claimBody := `{"name":"Bob","password":"bobspassword1","timezone":"UTC"}`
@@ -219,9 +216,8 @@ func TestRevokeInvite_success(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	h.RequireAuth(h.CreateInvite)(rec, createInviteReq("bob@example.com", key))
-	var created map[string]any
-	json.Unmarshal(rec.Body.Bytes(), &created)
-	inviteID := created["id"].(string)
+	created := mustCreated(t, rec, "create invite")
+	inviteID := mustString(t, created, "id", "create invite")
 
 	req := authReq(http.MethodDelete, "/v1/invites/"+inviteID, "", key)
 	req.SetPathValue("id", inviteID)
@@ -253,10 +249,9 @@ func TestResendInvite_reissuesFreshLink(t *testing.T) {
 
 	rec := httptest.NewRecorder()
 	h.RequireAuth(h.CreateInvite)(rec, createInviteReq("bob@example.com", key))
-	var created map[string]any
-	json.Unmarshal(rec.Body.Bytes(), &created)
-	origID := created["id"].(string)
-	origURL := created["invite_url"].(string)
+	created := mustCreated(t, rec, "create invite")
+	origID := mustString(t, created, "id", "create invite")
+	origURL := mustString(t, created, "invite_url", "create invite")
 
 	req := authReq(http.MethodPost, "/v1/invites/"+origID+"/resend", "", key)
 	req.SetPathValue("id", origID)
