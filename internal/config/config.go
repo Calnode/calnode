@@ -59,6 +59,14 @@ type Config struct {
 	// the public endpoints are rate-limited regardless. Comma-separated.
 	EmbedAllowedOrigins []string
 
+	// TrustedProxyCIDRs lists the networks whose forwarded headers are believed when
+	// resolving the client IP for per-IP rate limiting. Empty (the default) ⇒ the limit
+	// keys on the TCP peer and X-Forwarded-For is ignored entirely, because a header
+	// from an unvetted peer is a client-chosen value. Comma-separated CIDRs; a bare
+	// address is taken as a single host. A fronting CDN's own ranges belong here: the
+	// walk steps over its edge address and lands on the visitor.
+	TrustedProxyCIDRs []string
+
 	// DemoMode turns this instance into a public, self-resetting demo: seeds sample
 	// data on every boot (there's no persistent volume, so every boot is a fresh DB),
 	// disables calendar/Zoom connect, serves a disallow-all robots.txt, and exposes
@@ -97,6 +105,7 @@ func Load() *Config {
 
 		EmbedAllowedOrigins: splitCSV(getEnv("EMBED_ALLOWED_ORIGINS", "")),
 		DataDir:             getEnv("DATA_DIR", "data"),
+		TrustedProxyCIDRs:   splitCSV(getEnv("TRUSTED_PROXY_CIDRS", "")),
 	}
 
 	cfg.EncryptionKey = os.Getenv("CALNODE_ENCRYPTION_KEY")

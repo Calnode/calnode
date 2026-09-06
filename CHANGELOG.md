@@ -24,6 +24,23 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
   copied price is how a paid meeting quietly starts selling for nothing. Bookings are not
   copied.
 
+- **`TRUSTED_PROXY_CIDRS`: per-IP rate limits that work behind a CDN.** Rate limits key
+  on the TCP peer, which is right for a directly-reachable instance and useless behind a
+  fronting CDN, where every visitor arrives from the same handful of addresses and shares
+  one bucket. List the networks you control, a fronting CDN's own ranges included, and
+  the client IP is taken from `X-Forwarded-For` walked right to left past those hops.
+
+  Nothing changes if you do not set it: a header from a peer you have not listed is still
+  not read at all, because it is a value the client chose. Within the header the *leftmost*
+  entry is likewise client-chosen, so the walk stops at the rightmost address one of your
+  proxies actually observed, and a malformed hop ends the walk on the peer rather than
+  being stepped over. Repeated `X-Forwarded-For` field lines are joined in order rather
+  than only the first being read, so a client's own line in front of a proxy that adds a
+  second one cannot hide the hop that matters. Single-value vendor headers (`CF-Connecting-IP`, `X-Real-IP`,
+  `True-Client-IP`) are never read, from any peer: the setting names networks rather than
+  CDNs, and a plain reverse proxy in the list forwards whatever the client sent.
+
+
 ## [0.8.0] - 2026-09-03
 
 ### Added

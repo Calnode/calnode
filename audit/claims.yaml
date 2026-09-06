@@ -276,25 +276,38 @@ claims:
 
   - id: rate-limit-keys-on-tcp-source-address
     claim: >
-      Per-IP rate limiting (internal/server/middleware.go's RateLimit) keys
-      strictly on the TCP-level remote address of the connection, never on client-
-      supplied X-Forwarded-For/X-Real-IP headers — a client cannot spoof those
-      headers to evade or split its rate-limit bucket.
+      Per-IP rate limiting (internal/server/middleware.go's RateLimit) keys on the
+      TCP-level remote address of the connection, and never on a client-supplied
+      X-Forwarded-For unless the peer that sent it is inside an operator-configured
+      TRUSTED_PROXY_CIDRS range — so a client cannot spoof headers to evade or split
+      its rate-limit bucket. Single-value vendor headers (X-Real-IP,
+      CF-Connecting-IP, True-Client-IP) are never read, from any peer.
     verify:
       - "internal/server/middleware.go's remoteIP — net.SplitHostPort(r.RemoteAddr)
-         only; the proxy headers are never read."
+         via peerIP, unless TrustClientIP has resolved a client IP into the request
+         context, which it only does for a peer matching a trusted CIDR."
+      - "internal/server/middleware.go's resolveClientIP — returns the peer outright
+         for an untrusted peer, before any header is read."
       - "internal/server/ratelimit_test.go's TestRemoteIP_* — assert X-Forwarded-For
          and X-Real-IP are ignored even when RemoteAddr is loopback."
+      - "internal/server/trustedproxy_test.go — asserts an untrusted peer's spoofed
+         headers are ignored, that the X-Forwarded-For walk goes right-to-left past
+         trusted hops (never the client-seeded leftmost entry), that a malformed
+         header falls back to the peer, and that a vendor header is ignored even from
+         a TRUSTED peer."
     status: verified
     caveat: >
       Recorded here because a prior Layer 2 audit pass flagged this as trusting
       spoofable proxy headers — it doesn't; the flagged behavior traced back to a
       stale doc comment describing the opposite of what the code does (fixed
-      alongside this entry). Correct behavior does require the deployment's
-      reverse proxy to connect to Calnode directly (or over a trusted private
-      network) — see the deployment docs for reverse-proxy requirements (forward
-      the original Host header, connect over a trusted path, strip client-supplied
-      proxy headers at the edge).
+      alongside this entry). TRUSTED_PROXY_CIDRS is empty by default, so an
+      unconfigured instance behaves exactly as this claim originally described.
+      Anything an operator does list can name any client IP it likes — that is what
+      trusting a proxy means — so the list must hold only networks they control.
+      Correct behavior otherwise requires the deployment's reverse proxy to connect
+      to Calnode directly (or over a trusted private network) — see the deployment
+      docs for reverse-proxy requirements (forward the original Host header, connect
+      over a trusted path, strip client-supplied proxy headers at the edge).
 
   - id: caldav-connect-self-service-no-admin-gate
     claim: >
