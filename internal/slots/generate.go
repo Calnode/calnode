@@ -56,8 +56,8 @@ type Request struct {
 // Generate runs the slot-generation algorithm (§9) and returns bookable slots
 // rendered in the booker's timezone, ordered by start time.
 func Generate(req Request) ([]Slot, error) {
-	free, _, err := generate(req, false)
-	return free, err
+	res, err := generate(req, Extras{})
+	return res.Free, err
 }
 
 // GenerateWithTaken runs the same algorithm and additionally reports the starts a
@@ -84,7 +84,53 @@ func Generate(req Request) ([]Slot, error) {
 // would say which specific person is busy, which is more than the feature needs to
 // disclose.
 func GenerateWithTaken(req Request) (free, taken []Slot, err error) {
-	return generate(req, true)
+	res, err := generate(req, Extras{Taken: true})
+	return res.Free, res.Taken, err
+}
+
+// Extras selects the optional secondary outputs of a pass. Each one costs work, so
+// every caller says what it needs (see GenerateDetailed).
+type Extras struct {
+	// Taken asks for the starts a booking or calendar conflict removed. Costs a second
+	// walk of the range.
+	Taken bool
+	// NoticeGap asks for the starts the minimum-notice rule removed. Free when the event
+	// type sets no minimum notice, and otherwise one extra map plus a routing pass over
+	// the handful of starts involved — it is collected during the main walk.
+	NoticeGap bool
+}
+
+// Result is one pass's output: the bookable slots, plus whichever secondary outputs the
+// caller asked for.
+type Result struct {
+	// Free is the bookable slots, ordered by start time.
+	Free []Slot
+	// Taken is the starts a booking or calendar conflict removed (see GenerateWithTaken).
+	Taken []Slot
+	// NoticeGap is the starts the minimum-notice rule removed: they are inside the host's
+	// working hours, nothing is booked over them, and the routing mode could have been
+	// satisfied — they are simply too soon. It exists so a booking surface can say WHY
+	// the nearest times are missing instead of leaving the visitor to guess, which is the
+	// single most common "why can't I see those times" question (#20).
+	//
+	// Two exclusions make the answer honest rather than merely plausible:
+	//
+	//   - A start already in the past is never reported. It would have been dropped with
+	//     no notice policy at all, so attributing it to the policy would be a lie that
+	//     puts the message on every event type by dinnertime.
+	//   - A start a booking took away is never reported, because busy intervals are
+	//     applied on the way in. It follows that NoticeGap and Taken are disjoint, so a
+	//     surface can render both without ever explaining one start two ways.
+	//
+	// Like Taken, these carry no HostIDs: the caller needs the time, not who was free.
+	NoticeGap []Slot
+}
+
+// GenerateDetailed is Generate with the secondary outputs in Extras. One call so a
+// surface that wants both (an event type showing taken times AND setting a minimum
+// notice) doesn't walk the range twice for them.
+func GenerateDetailed(req Request, want Extras) (Result, error) {
+	return generate(req, want)
 }
 
 // params holds the derived scalars every pass needs, computed once.
@@ -118,54 +164,72 @@ func newParams(req Request) params {
 	return p
 }
 
-func generate(req Request, wantTaken bool) (free, taken []Slot, err error) {
+func generate(req Request, want Extras) (Result, error) {
 	if req.Event.DurationMinutes <= 0 {
-		return nil, nil, fmt.Errorf("slots: DurationMinutes must be positive")
+		return Result{}, fmt.Errorf("slots: DurationMinutes must be positive")
 	}
 	if req.Event.SlotIntervalMinutes <= 0 {
-		return nil, nil, fmt.Errorf("slots: SlotIntervalMinutes must be positive")
+		return Result{}, fmt.Errorf("slots: SlotIntervalMinutes must be positive")
 	}
 	if req.BookerTZ == nil {
-		return nil, nil, fmt.Errorf("slots: BookerTZ must not be nil")
+		return Result{}, fmt.Errorf("slots: BookerTZ must not be nil")
 	}
 	for i, h := range req.Hosts {
 		if h.Location == nil {
-			return nil, nil, fmt.Errorf("slots: Hosts[%d] (%s) Location must not be nil", i, h.HostID)
+			return Result{}, fmt.Errorf("slots: Hosts[%d] (%s) Location must not be nil", i, h.HostID)
 		}
 	}
 	p := newParams(req)
 
-	perStart, err := hostsByStart(req, p, true)
-	if err != nil {
-		return nil, nil, err
+	// Collected during the main walk rather than by a second pass: the notice cutoff is
+	// evaluated there anyway, so the starts it drops are already in hand. nil switches
+	// the collection off, which is also what happens when the event type sets no minimum
+	// notice — there is then no policy to attribute anything to.
+	var belowNotice map[time.Time]map[string]bool
+	if want.NoticeGap && req.Event.MinNoticeMinutes > 0 {
+		belowNotice = make(map[time.Time]map[string]bool)
 	}
-	free = offer(req, p, perStart)
-	if !wantTaken {
-		return free, nil, nil
+
+	perStart, err := hostsByStart(req, p, true, belowNotice)
+	if err != nil {
+		return Result{}, err
+	}
+	res := Result{Free: offer(req, p, perStart)}
+
+	// Run the same routing rules over the withheld starts, so only the ones that really
+	// would have been offered are reported: a start no host pool could satisfy is not the
+	// notice policy's fault.
+	for _, s := range offer(req, p, belowNotice) {
+		res.NoticeGap = append(res.NoticeGap, Slot{Start: s.Start, End: s.End})
+	}
+
+	if !want.Taken {
+		return res, nil
 	}
 
 	// The same walk with every host's busy list ignored: what the calendar would offer
 	// if nothing were booked.
-	perStartIgnoringBusy, err := hostsByStart(req, p, false)
+	perStartIgnoringBusy, err := hostsByStart(req, p, false, nil)
 	if err != nil {
-		return nil, nil, err
+		return Result{}, err
 	}
-	offered := make(map[time.Time]bool, len(free))
-	for _, s := range free {
+	offered := make(map[time.Time]bool, len(res.Free))
+	for _, s := range res.Free {
 		offered[s.Start] = true
 	}
 	for _, s := range offer(req, p, perStartIgnoringBusy) {
 		if !offered[s.Start] {
-			taken = append(taken, Slot{Start: s.Start, End: s.End})
+			res.Taken = append(res.Taken, Slot{Start: s.Start, End: s.End})
 		}
 	}
-	return free, taken, nil
+	return res, nil
 }
 
 // hostsByStart walks every candidate start in the range and records which hosts have it
 // free. applyBusy=false ignores the busy lists entirely, which is how the "nothing is
-// booked" comparison pass is built.
-func hostsByStart(req Request, p params, applyBusy bool) (map[time.Time]map[string]bool, error) {
+// booked" comparison pass is built. A non-nil belowNotice collects the starts the
+// minimum-notice rule removed, in the same shape.
+func hostsByStart(req Request, p params, applyBusy bool, belowNotice map[time.Time]map[string]bool) (map[time.Time]map[string]bool, error) {
 	perStart := make(map[time.Time]map[string]bool)
 
 	for d := p.dateFrom; !d.After(p.dateTo); d = d.AddDate(0, 0, 1) {
@@ -189,6 +253,16 @@ func hostsByStart(req Request, p params, applyBusy bool) (map[time.Time]map[stri
 				t := alignUp(f.Start, p.interval)
 				for ; !t.Add(p.dur).After(f.End); t = t.Add(p.interval) {
 					if t.Before(p.minNotice) {
+						// !t.Before(req.Now) is what keeps the attribution honest: a start
+						// in the past would have gone with no notice policy at all, so
+						// blaming the policy for it would put the explanation on every
+						// event type by the end of the working day.
+						if belowNotice != nil && !t.Before(req.Now) {
+							if belowNotice[t] == nil {
+								belowNotice[t] = make(map[string]bool)
+							}
+							belowNotice[t][host.HostID] = true
+						}
 						continue
 					}
 					if t.After(p.maxFuture) {

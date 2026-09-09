@@ -31,6 +31,14 @@ type slotsResult struct {
 	// being nil does not work, because converting an empty result yields an empty
 	// non-nil slice.
 	ShowsTaken bool
+	// MinNoticeMinutes is the event type's minimum-notice policy; 0 = none.
+	MinNoticeMinutes int
+	// MinNoticeDates are the days (YYYY-MM-DD, in the requested timezone, so they match
+	// the keys the booking surfaces group slots by) on which that policy removed at
+	// least one start that was otherwise bookable. It is the only thing a surface needs
+	// to decide whether to explain a thin or empty day, and it says nothing about which
+	// times or which host - see slots.Result.NoticeGap.
+	MinNoticeDates []string
 }
 
 // Sentinel errors from computeSlots, so non-HTTP callers (the MCP tools) can map
@@ -74,6 +82,21 @@ func (h *Handler) GetSlots(w http.ResponseWriter, r *http.Request) {
 	// tell "this event type does not show taken times" from "none are taken today".
 	if res.ShowsTaken {
 		body["taken"] = res.Taken
+	}
+	// Present whenever the event type sets a minimum notice, with an empty `dates` when
+	// the policy happened to remove nothing in this range. Same reasoning as `taken`: a
+	// client can tell "there is no such policy" from "the policy cost you nothing here",
+	// and only the second is worth explaining. `minutes` lets a client that has no
+	// localized label of its own still say something.
+	if res.MinNoticeMinutes > 0 {
+		dates := res.MinNoticeDates
+		if dates == nil {
+			dates = []string{}
+		}
+		body["min_notice"] = map[string]any{
+			"minutes": res.MinNoticeMinutes,
+			"dates":   dates,
+		}
 	}
 	h.writeJSON(w, http.StatusOK, body)
 }
@@ -126,8 +149,13 @@ func (h *Handler) computeSlots(ctx context.Context, slug, tzName, fromStr, toStr
 	}
 	if len(pool) == 0 {
 		// No bookable hosts (e.g. all archived, or a round-robin with no rotation
-		// members) — offer nothing rather than erroring.
-		return slotsResult{Slots: []slotJSON{}, Hosts: map[string]map[string]string{}}, nil
+		// members) — offer nothing rather than erroring. The notice policy still travels,
+		// so the response shape doesn't depend on how the day turned out.
+		return slotsResult{
+			Slots:            []slotJSON{},
+			Hosts:            map[string]map[string]string{},
+			MinNoticeMinutes: et.MinNoticeMinutes,
+		}, nil
 	}
 
 	// Load each host's availability concurrently. The slow part is the Google
@@ -178,12 +206,7 @@ func (h *Handler) computeSlots(ctx context.Context, slug, tzName, fromStr, toStr
 	// opted in. GenerateWithTaken walks the range a second time with busy ignored, so
 	// it is not free, and it returns exactly the information the default must withhold.
 	showsTaken := includeTaken && et.ShowTakenSlots
-	var result, takenSlots []slots.Slot
-	if showsTaken {
-		result, takenSlots, err = slots.GenerateWithTaken(req)
-	} else {
-		result, err = slots.Generate(req)
-	}
+	result, err := slots.GenerateDetailed(req, slots.Extras{Taken: showsTaken, NoticeGap: true})
 	if err != nil {
 		return slotsResult{}, fmt.Errorf("slots generate: %w", err)
 	}
@@ -196,11 +219,38 @@ func (h *Handler) computeSlots(ctx context.Context, slug, tzName, fromStr, toStr
 		poolIDs[i] = ph.id
 	}
 	return slotsResult{
-		Slots:      toSlotJSON(result),
-		Taken:      toSlotJSON(takenSlots),
-		Hosts:      h.hostDisplayMap(ctx, poolIDs),
-		ShowsTaken: showsTaken,
+		Slots:            toSlotJSON(result.Free),
+		Taken:            toSlotJSON(result.Taken),
+		Hosts:            h.hostDisplayMap(ctx, poolIDs),
+		ShowsTaken:       showsTaken,
+		MinNoticeMinutes: et.MinNoticeMinutes,
+		MinNoticeDates:   noticeDates(result.NoticeGap),
 	}, nil
+}
+
+// noticeDates reduces the starts the minimum-notice rule withheld to the distinct days
+// they fall on, ascending. The engine renders those starts in the booker's timezone, so
+// formatting them here yields the same YYYY-MM-DD keys the booking surfaces group their
+// slots by.
+//
+// A day is all a surface needs to explain the gap, and it is all that is sent: the
+// individual withheld times would describe the host's working hours at a finer grain than
+// the feature requires.
+func noticeDates(gap []slots.Slot) []string {
+	if len(gap) == 0 {
+		return nil
+	}
+	out := make([]string, 0, 2) // the notice window spans a day or two at most
+	seen := make(map[string]bool, 2)
+	for _, s := range gap {
+		day := s.Start.Format("2006-01-02")
+		if seen[day] {
+			continue
+		}
+		seen[day] = true
+		out = append(out, day)
+	}
+	return out
 }
 
 // toSlotJSON renders engine slots for the wire. Taken slots carry no host ids, so

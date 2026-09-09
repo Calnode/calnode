@@ -266,6 +266,10 @@ body {
   const MAX_DAYS    = {{.MaxFutureDays}};
   const CURRENT_ISO = {{.CurrentStartISO}};
   const ORG_TZ      = {{.OrganizerTZ}};
+  // "" when this booking has several hosts (a group label can't be the subject of
+  // "%s has no available times"), and "" when the event type sets no minimum notice.
+  const SOLE_HOST        = {{.SoleHostName}};
+  const MIN_NOTICE_LABEL = {{.MinNoticeLabel}};
   const LOCALE      = "{{.Locale}}";
   const I18N        = window.__CALNODE_I18N || {};
   function t(key) { return I18N[key] || key; } // key itself as a last-resort fallback, matching Locale.T server-side
@@ -280,6 +284,7 @@ body {
   let availableDates = new Set();
   let availabilityLoaded = false; // false = render optimistically (assume all days open)
   let slotsByDay = {};            // "YYYY-MM-DD" -> [slot]; cached from the month fetch
+  let noticeDates = new Set();    // days the minimum-notice policy took starts away from
 
   const $ = id => document.getElementById(id);
   const pad = n => String(n).padStart(2, '0');
@@ -346,12 +351,18 @@ body {
       // event type shows taken times, a fully booked day is still worth opening so the
       // struck-through list explains itself. Identical sets when it does not.
       availableDates = new Set(Object.keys(slotsByDay));
+      // Days the minimum-notice policy took starts away from. Already in the selected
+      // timezone server-side, so these keys line up with slotsByDay's. A reschedule goes
+      // through the same /slots endpoint, so the same policy hides the same times.
+      noticeDates = new Set((data.min_notice && data.min_notice.dates) || []);
     } catch {
       slotsByDay = {};
       availableDates = new Set();
+      noticeDates = new Set();
     }
     availabilityLoaded = true;
     renderCal(); // grey out days that came back with no slots
+    renderPickDayHint();
   }
 
   function renderCal() {
@@ -408,9 +419,45 @@ body {
     pickDate(btn.dataset.ds, +btn.dataset.y, +btn.dataset.m, +btn.dataset.d);
   });
 
-  function fillSlots(list) {
+  // ── Why times are missing ─────────────────────────────────────────────────
+  // Built with textContent rather than innerHTML: the host's name and the date are the
+  // only interpolated values on this page's hints, and this page has no escaping helper.
+  function hintP(text) {
+    const p = document.createElement('p');
+    p.className = 'hint';
+    p.textContent = text;
+    return p;
+  }
+  function noticeHintText() {
+    return MIN_NOTICE_LABEL ? BookingLogic.fmt(t('min_notice_hint'), [MIN_NOTICE_LABEL]) : '';
+  }
+  // The "pick a day" state, re-rendered after the month lands so it can carry the
+  // minimum-notice explanation. Needed because a day the policy emptied completely is
+  // greyed out and cannot be clicked for the in-list version (#20).
+  function renderPickDayHint() {
+    if (pickedDate) return; // a day is chosen; fillSlots owns the list now
+    const list = $('slots-list');
+    if (!list) return;
+    const notice = noticeDates.size > 0 ? noticeHintText() : '';
+    list.innerHTML = '';
+    list.appendChild(hintP(t('pick_day_hint')));
+    if (notice) list.appendChild(hintP(notice));
+  }
+
+  function fillSlots(list, ds) {
+    // Only when this specific day lost starts to the policy - saying it on a day the
+    // policy did not touch would be noise attached to the wrong cause.
+    const notice = noticeDates.has(ds) ? noticeHintText() : '';
     if (!slotsCache.length) {
-      list.innerHTML = `<p class="hint">${t('no_available_times')}</p>`;
+      // Name the day, and the host when there is exactly one. A bare "No available times."
+      // never told the visitor whether another day would help (#20).
+      const dayLabel = fmtDate(pickedDate);
+      const msg = SOLE_HOST
+        ? BookingLogic.fmt(t('no_available_times_host'), [SOLE_HOST, dayLabel])
+        : BookingLogic.fmt(t('no_available_times'), [dayLabel]);
+      list.innerHTML = '';
+      list.appendChild(hintP(msg));
+      if (notice) list.appendChild(hintP(notice));
       return;
     }
     // Taken entries are disabled buttons: same box as a bookable slot, announced as
@@ -422,6 +469,9 @@ body {
     if (slotsCache.length && !slotsCache.some(s => !s.taken)) {
       list.insertAdjacentHTML('beforeend', `<p class="hint">${t('all_times_taken')}</p>`);
     }
+    // Appended after a non-empty list too: a day showing 2pm onwards but nothing this
+    // morning is exactly the "why can't I see those times" case.
+    if (notice) list.appendChild(hintP(notice));
   }
 
   async function pickDate(ds, y, m, d) {
@@ -435,7 +485,7 @@ body {
     // Instant: the month fetch already cached this day's slots.
     if (slotsByDay[ds]) {
       slotsCache = slotsByDay[ds];
-      fillSlots(list);
+      fillSlots(list, ds);
       return;
     }
     // Fallback (clicked before the month load finished): fetch just this day.
@@ -444,10 +494,11 @@ body {
       const r = await fetch(`/v1/event-types/${SLUG}/slots?from=${ds}&to=${ds}&tz=${encodeURIComponent(TZ)}`);
       if (!r.ok) throw new Error(r.status);
       const data = await r.json();
+      ((data.min_notice && data.min_notice.dates) || []).forEach(k => noticeDates.add(k));
       slotsCache = BookingLogic.mergeDaySlots(
         (data.slots || []).filter(s => s.start !== CURRENT_ISO),
         (data.taken || []).filter(s => s.start !== CURRENT_ISO));
-      fillSlots(list);
+      fillSlots(list, ds);
     } catch {
       list.innerHTML = `<p class="form-error">${t('could_not_load_times')}</p>`;
     }

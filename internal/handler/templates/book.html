@@ -166,6 +166,11 @@ body {
 
     <!-- Empty state (before a day is chosen) -->
     <p id="empty-hint" class="hint">{{call .T "select_day_hint"}}</p>
+    <!-- Why the nearest times are missing, shown only when the minimum-notice policy is
+         what removed them (the server says which days it hit). It sits here, outside the
+         slot list, because a day the policy emptied completely is greyed out in the
+         calendar - so the explanation has to be reachable without clicking one. -->
+    <p id="notice-hint" class="hint hidden"></p>
 
     <!-- Slots -->
     <div id="slots-view" class="hidden">
@@ -262,6 +267,10 @@ body {
   const PRICE_CENTS = {{.PriceCents}};
   const CURRENCY = "{{.Currency}}";
   const EVENT_NAME = {{.Name}};
+  // "" when the event type has several hosts (a group label can't be the subject of
+  // "%s has no available times"), and "" when it sets no minimum notice.
+  const SOLE_HOST        = {{.SoleHostName}};
+  const MIN_NOTICE_LABEL = {{.MinNoticeLabel}};
   const LOCALE   = "{{.Locale}}";
   const I18N     = window.__CALNODE_I18N || {};
   function t(key) { return I18N[key] || key; } // key itself as a last-resort fallback, matching Locale.T server-side
@@ -276,6 +285,7 @@ body {
   let availabilityLoaded = false; // false = render optimistically (assume all days open)
   let slotsByDay = {};            // "YYYY-MM-DD" -> [slot]; cached from the month fetch
   let bookableDates = new Set();  // days with >=1 FREE slot; drives the empty-day hint
+  let noticeDates = new Set();    // days the minimum-notice policy took starts away from
 
   const $ = id => document.getElementById(id);
   const pad = n => String(n).padStart(2, '0');
@@ -445,13 +455,18 @@ body {
       // the two sets are identical, so nothing changes for everyone else.
       availableDates = new Set(Object.keys(slotsByDay));
       bookableDates  = new Set(BookingLogic.bookableDayKeys(freeByDay));
+      // Days the minimum-notice policy took starts away from. Already in the selected
+      // timezone server-side, so these keys line up with slotsByDay's.
+      noticeDates = new Set((data.min_notice && data.min_notice.dates) || []);
     } catch {
       slotsByDay = {};
       availableDates = new Set();
       bookableDates = new Set();
+      noticeDates = new Set();
     }
     availabilityLoaded = true;
     renderCal();
+    renderNoticeHint();
   }
 
   function renderCal() {
@@ -514,9 +529,37 @@ body {
   });
 
   // ── Date pick ─────────────────────────────────────────────────────────────
-  function fillSlots(list) {
+  // The minimum-notice policy is invisible by construction: it removes the nearest starts
+  // and leaves nothing in their place. These two helpers put it back (#20).
+  function noticeHintText() {
+    return MIN_NOTICE_LABEL ? BookingLogic.fmt(t('min_notice_hint'), [MIN_NOTICE_LABEL]) : '';
+  }
+  // The standalone hint, shown before a day is chosen. Needed because a day the policy
+  // emptied completely is greyed out and cannot be clicked for the in-list explanation;
+  // once a day IS chosen, fillSlots says it in context instead.
+  function renderNoticeHint() {
+    const el = $('notice-hint');
+    if (!el) return;
+    const text = noticeHintText();
+    const show = !pickedDate && noticeDates.size > 0 && text !== '';
+    el.textContent = show ? text : '';
+    el.classList.toggle('hidden', !show);
+  }
+
+  function fillSlots(list, ds) {
+    // Only when this specific day lost starts to the policy - saying it on a day the
+    // policy did not touch would be noise attached to the wrong cause.
+    const noticeLine = noticeDates.has(ds) ? noticeHintText() : '';
+    const noticeHTML = noticeLine ? `<p class="hint">${esc(noticeLine)}</p>` : '';
     if (!slotsCache.length) {
-      list.innerHTML = `<p class="hint">${t('no_available_times')}</p>`;
+      // Name the day, and the host when there is exactly one. A bare "No available times."
+      // never told the visitor whether another day would help, which is the whole
+      // complaint in #20.
+      const dayLabel = fmtDate(pickedDate);
+      const msg = SOLE_HOST
+        ? BookingLogic.fmt(t('no_available_times_host'), [SOLE_HOST, dayLabel])
+        : BookingLogic.fmt(t('no_available_times'), [dayLabel]);
+      list.innerHTML = `<p class="hint">${esc(msg)}</p>` + noticeHTML;
       return;
     }
     // Taken entries render as disabled buttons so they keep the same box and rhythm as
@@ -532,6 +575,9 @@ body {
     if (slotsCache.length && !slotsCache.some(s => !s.taken)) {
       list.insertAdjacentHTML('beforeend', `<p class="hint">${t('all_times_taken')}</p>`);
     }
+    // Appended after a non-empty list too: a day showing 2pm onwards but nothing this
+    // morning is exactly the "why can't I see those times" case.
+    if (noticeHTML) list.insertAdjacentHTML('beforeend', noticeHTML);
   }
 
   async function pickDate(ds, y, m, d) {
@@ -540,6 +586,7 @@ body {
     restoreDefaultHosts();
     renderCal();
     $('empty-hint').classList.add('hidden');
+    renderNoticeHint(); // a day is chosen now, so the standalone hint stands down
     showView('slots-view');
     setStep('right');
     $('slots-date').textContent = fmtDate(pickedDate);
@@ -548,7 +595,7 @@ body {
     // Instant: the month fetch already cached this day's slots.
     if (slotsByDay[ds]) {
       slotsCache = slotsByDay[ds];
-      fillSlots(list);
+      fillSlots(list, ds);
       return;
     }
     // Fallback (clicked before the month load finished): fetch just this day.
@@ -558,8 +605,9 @@ body {
       if (!r.ok) throw new Error(r.status);
       const data = await r.json();
       Object.assign(hostMeta, data.hosts || {});
+      ((data.min_notice && data.min_notice.dates) || []).forEach(k => noticeDates.add(k));
       slotsCache = BookingLogic.mergeDaySlots(data.slots, data.taken);
-      fillSlots(list);
+      fillSlots(list, ds);
     } catch {
       list.innerHTML = `<p class="hint" style="color:#dc2626">${t('could_not_load_times')}</p>`;
     }

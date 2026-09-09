@@ -38,6 +38,20 @@
   // t: pure lookup, not a method — mirrors internal/i18n.Locale.T (falls back to the
   // key itself if the string table hasn't loaded yet or the key is missing).
   function t(i18n, key) { return (i18n && i18n[key]) || key; }
+  // fmt: argument substitution for the translated strings that carry one — %s in order,
+  // plus the indexed %[n]s a translation may use to reorder. Mirrors BookingLogic.fmt in
+  // internal/handler/assets/booking-logic.js; this widget does NOT load that module (see
+  // dowLabels below), so the two must be kept in step. Deliberately not a printf: the keys
+  // substituted here carry %s only.
+  function fmt(template, args) {
+    var list = args || [];
+    var next = 0;
+    return String(template).replace(/%(?:\[(\d+)\])?s/g, function (_match, index) {
+      var pick = index ? Number(index) - 1 : next++;
+      var value = list[pick];
+      return value === undefined || value === null ? '' : String(value);
+    });
+  }
   // dowLabels: Monday-first weekday header labels via Intl, matching
   // BookingLogic.dowLabels in booking-logic.js (not literally shared code — this widget
   // doesn't import that module — but the same approach, replacing what used to be a
@@ -176,7 +190,7 @@
       this.root.appendChild(el('style', { text: STYLE }));
       this.wrap = el('div', { class: 'wrap' });
       this.root.appendChild(this.wrap);
-      this.state = { month: startOfMonth(new Date()), slotsByDay: {}, day: null, view: 'pick', slot: null };
+      this.state = { month: startOfMonth(new Date()), slotsByDay: {}, noticeDates: [], day: null, view: 'pick', slot: null };
       this.narrow = false;
       this.cw = 9999;
       this.descExpanded = false;
@@ -242,6 +256,10 @@
           (by[dayKey(s.start)] = by[dayKey(s.start)] || []).push(s);
         });
         this.state.slotsByDay = by;
+        // Days the minimum-notice policy took starts away from, so an empty or thin day
+        // can say why instead of leaving the visitor to guess (#20). Server-side these are
+        // already in TZ, so they match dayKey's output.
+        this.state.noticeDates = (r.min_notice && r.min_notice.dates) || [];
         // Capture the id→host map so the header can narrow to a slot's actual host once
         // one is picked. Avatar URLs come back relative; make them absolute (the widget
         // runs cross-origin to the Calnode instance).
@@ -251,7 +269,7 @@
           var m = r.hosts[id] || {}, av = m.avatar_url || '';
           hm[id] = { name: m.name || '', avatar_url: av && av.charAt(0) === '/' ? BASE + av : av };
         });
-      } catch (e) { this.state.slotsByDay = {}; }
+      } catch (e) { this.state.slotsByDay = {}; this.state.noticeDates = []; }
     }
 
     infoPane() {
@@ -444,9 +462,35 @@
       return el('section', { class: 'cal-col' }, [nav, grid, el('p', { class: 'tz-label', text: t(this.i18n, 'times_shown_in') + TZ })]);
     }
 
+    // noticeHint — the minimum-notice explanation, or '' when the event type sets none.
+    // The label is translated server-side and arrives on /public: the /slots call carries
+    // no language of its own, and rebuilding a plural-aware duration here would duplicate
+    // what the server already knows (#20).
+    noticeHint() {
+      var label = this.info && this.info.min_notice_label;
+      return label ? fmt(t(this.i18n, 'min_notice_hint'), [label]) : '';
+    }
+
+    // emptyDayText — "Alex has no available times on Mon, 15 Jun", or the date-only form
+    // when the event type has several hosts (a group label cannot be the subject of that
+    // sentence in any of the shipped locales).
+    emptyDayText(dayKeyStr) {
+      var hosts = (this.info && this.info.hosts) || [];
+      // 'T00:00:00' (not the bare date) so the browser reads it as local midnight rather
+      // than UTC, which would name the previous day west of Greenwich.
+      var label = new Intl.DateTimeFormat(this.locale || [], {
+        weekday: 'long', month: 'long', day: 'numeric'
+      }).format(new Date(dayKeyStr + 'T00:00:00'));
+      if (hosts.length === 1 && hosts[0].name) {
+        return fmt(t(this.i18n, 'no_available_times_host'), [hosts[0].name, label]);
+      }
+      return fmt(t(this.i18n, 'no_available_times'), [label]);
+    }
+
     rightPane() {
       var self = this, st = this.state;
       var inner;
+      var notice = this.noticeHint();
       if (st.view === 'form') inner = this.formView(st.slot);
       else if (st.view === 'confirm') inner = this.confirmView(st.slot);
       else if (st.day) {
@@ -469,14 +513,41 @@
           b.addEventListener('click', function () { self.state.slot = s; self.state.view = 'form'; self.render(); });
           listEl.appendChild(b);
         });
+        if (!list.length) {
+          // Name the day, and the host when there is one: a bare "No available times."
+          // never said whether another day would help.
+          listEl.appendChild(el('p', { class: 'hint', text: this.emptyDayText(st.day) }));
+        }
         if (list.length && !list.some(function (s) { return !s.taken; })) {
           listEl.appendChild(el('p', { class: 'hint', text: t(self.i18n, 'all_times_taken') }));
         }
-        inner = el('div', {}, [el('p', { class: 'slots-header', text: list[0] ? shortDay(list[0].start, self.locale) : '' }), listEl]);
+        // Only on a day the policy actually thinned - including one it emptied, and one
+        // that still shows later times, which is the commonest "why can't I see those
+        // times" case.
+        if (notice && st.noticeDates && st.noticeDates.indexOf(st.day) !== -1) {
+          listEl.appendChild(el('p', { class: 'hint', text: notice }));
+        }
+        inner = el('div', {}, [el('p', { class: 'slots-header', text: list[0] ? shortDay(list[0].start, self.locale) : this.dayHeader(st.day) }), listEl]);
       } else {
-        inner = el('p', { class: 'hint', text: t(this.i18n, 'select_day_hint') });
+        // Before a day is chosen. The notice line belongs here as well as in the list: a
+        // day the policy emptied completely is greyed out in the calendar, so this is the
+        // only place the explanation can be reached.
+        var kids = [el('p', { class: 'hint', text: t(this.i18n, 'select_day_hint') })];
+        if (notice && st.noticeDates && st.noticeDates.length) {
+          kids.push(el('p', { class: 'hint', text: notice }));
+        }
+        inner = el('div', {}, kids);
       }
       return el('section', { class: 'right-col' }, [inner]);
+    }
+
+    // dayHeader — the selected day's short label when no slot is available to derive it
+    // from, so an empty day still gets the same header as a full one.
+    dayHeader(dayKeyStr) {
+      if (!dayKeyStr) return '';
+      return new Intl.DateTimeFormat(this.locale || [], {
+        weekday: 'short', month: 'short', day: 'numeric'
+      }).format(new Date(dayKeyStr + 'T00:00:00'));
     }
 
     formView(slot) {
