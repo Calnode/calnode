@@ -544,7 +544,19 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	// permanently if a marketing landing page is ever added here.
 	mux.Handle("GET /{$}", http.RedirectHandler("/admin/", http.StatusFound))
 
-	return RequestID(Logging(logger, SameOriginCheck(mux))), drain
+	// Trusted-proxy resolution wraps everything, so the per-IP limiters and anything else
+	// asking for the client IP see one answer computed once. A bad CIDR is logged and
+	// dropped rather than fatal: the consequence is that that hop's headers are not
+	// believed, which costs shared rate-limit buckets, never a trusted forgery.
+	trustedProxies, err := ParseTrustedProxies(cfg.TrustedProxyCIDRs)
+	if err != nil {
+		logger.Error("TRUSTED_PROXY_CIDRS: ignoring unparseable entries", "error", err)
+	}
+	if len(trustedProxies) > 0 {
+		logger.Info("trusting forwarded headers from proxies", "cidrs", cfg.TrustedProxyCIDRs)
+	}
+
+	return TrustClientIP(trustedProxies)(RequestID(Logging(logger, SameOriginCheck(mux)))), drain
 }
 
 // seedSMTPToDB writes env-var SMTP settings into the DB on first boot so they

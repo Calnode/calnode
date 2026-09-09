@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/calnode/calnode/internal/db"
 	"github.com/calnode/calnode/internal/uid"
 )
 
@@ -315,11 +316,11 @@ func (h *Handler) CreateEventType(w http.ResponseWriter, r *http.Request) {
 		routingMode, bufBefore, bufAfter, minNotice, maxFuture, maxActive, showTaken,
 		defaultMsgConfirmation, defaultMsgCancellation, defaultMsgReschedule, defaultMsgReminder)
 	if err != nil {
-		if strings.Contains(err.Error(), "UNIQUE constraint failed") {
+		if db.IsUniqueViolation(err) {
 			h.writeError(w, http.StatusConflict, "slug already in use")
 			return
 		}
-		if strings.Contains(err.Error(), "CHECK constraint failed") {
+		if db.IsCheckViolation(err) {
 			h.writeError(w, http.StatusBadRequest, "invalid location_type or routing_mode value")
 			return
 		}
@@ -739,11 +740,11 @@ func (h *Handler) PatchEventType(w http.ResponseWriter, r *http.Request) {
 			"UPDATE event_types SET "+strings.Join(setClauses, ", ")+" WHERE slug = ? AND user_id = ?", // #nosec G202 -- setClauses is built by set()/the literal col list above; every column name is a hardcoded string, every value is bound via args...
 			args...)
 		if err != nil {
-			if strings.Contains(err.Error(), "UNIQUE constraint failed") {
+			if db.IsUniqueViolation(err) {
 				h.writeError(w, http.StatusConflict, "slug already in use")
 				return
 			}
-			if strings.Contains(err.Error(), "CHECK constraint failed") {
+			if db.IsCheckViolation(err) {
 				h.writeError(w, http.StatusBadRequest, "invalid location_type or routing_mode value")
 				return
 			}
@@ -824,7 +825,7 @@ func (h *Handler) DeleteEventType(w http.ResponseWriter, r *http.Request) {
 	res, err := h.db.ExecContext(r.Context(),
 		`DELETE FROM event_types WHERE slug = ? AND user_id = ?`, slug, user.ID)
 	if err != nil {
-		if strings.Contains(err.Error(), "FOREIGN KEY constraint failed") {
+		if db.IsForeignKeyViolation(err) {
 			h.writeError(w, http.StatusConflict, "this event type has bookings in its history (including cancelled ones) and can't be deleted — deactivate it instead")
 			return
 		}

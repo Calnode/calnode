@@ -39,6 +39,41 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
   pool could satisfy are all excluded, so the explanation never appears attached to the
   wrong cause. Three new/changed keys in all eight locales.
 
+### Fixed
+- **Constraint violations are recognised by SQLite's error code rather than by its
+  English message.** Thirteen call sites asked `strings.Contains(err.Error(), "UNIQUE
+  constraint failed")`, and SQLite reports a PRIMARY KEY collision
+  (`SQLITE_CONSTRAINT_PRIMARYKEY`, 1555) with that exact message while giving it a
+  different code from an ordinary unique violation (`SQLITE_CONSTRAINT_UNIQUE`, 2067).
+  The text could not tell the two apart, so nothing that needed to distinguish them
+  could.
+
+  `db.IsUniqueViolation`, `db.IsCheckViolation` and `db.IsForeignKeyViolation` answer
+  from the driver's code, falling back to the message only for an error that arrives
+  without its driver type still attached. A driver error whose code does not match is a
+  definite no rather than a fall-through, so an error cannot be classified by whether
+  its text happened to contain an English phrase.
+
+  Each class is provoked against the real schema in a test rather than constructed by
+  hand, including the primary-key case, which is the one a code match written from the
+  message alone would get wrong.
+
+- **`TRUSTED_PROXY_CIDRS`: per-IP rate limits that work behind a CDN.** Rate limits key
+  on the TCP peer, which is right for a directly-reachable instance and useless behind a
+  fronting CDN, where every visitor arrives from the same handful of addresses and shares
+  one bucket. List the networks you control, a fronting CDN's own ranges included, and
+  the client IP is taken from `X-Forwarded-For` walked right to left past those hops.
+
+  Nothing changes if you do not set it: a header from a peer you have not listed is still
+  not read at all, because it is a value the client chose. Within the header the *leftmost*
+  entry is likewise client-chosen, so the walk stops at the rightmost address one of your
+  proxies actually observed, and a malformed hop ends the walk on the peer rather than
+  being stepped over. Repeated `X-Forwarded-For` field lines are joined in order rather
+  than only the first being read, so a client's own line in front of a proxy that adds a
+  second one cannot hide the hop that matters. Single-value vendor headers (`CF-Connecting-IP`, `X-Real-IP`,
+  `True-Client-IP`) are never read, from any peer: the setting names networks rather than
+  CDNs, and a plain reverse proxy in the list forwards whatever the client sent.
+
   Follow-ups on the above: the empty-day message keeps its call to action as well as
   naming the day ("No available times on Monday, 14 September. Try another date."), in
   all eight locales; the minimum-notice line gets its own `.notice-hint` style, a shade
