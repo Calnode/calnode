@@ -427,6 +427,7 @@ func (h *Handler) PatchEventType(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 32<<10)
 
 	var req struct {
+		Slug                *string `json:"slug"`
 		Name                *string `json:"name"`
 		Description         *string `json:"description"`
 		DurationMinutes     *int    `json:"duration_minutes"`
@@ -694,6 +695,43 @@ func (h *Handler) PatchEventType(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// The slug is the public booking URL, so renaming one that is already in circulation
+	// breaks every link to it: an invitation in somebody's inbox, a page embedding the
+	// widget, a QR code on a card. It is allowed only while the event type has no
+	// bookings, which is exactly the case that needs it - a fresh duplicate arrives as
+	// "<slug>-copy" and there is otherwise no way to give it a real name (#22).
+	//
+	// "No bookings" rather than "not yet active": a link can be shared before anyone
+	// books, but a booking is the first evidence the URL actually reached someone, and it
+	// is the check we can make honestly. Cancelled ones count - the manage link in that
+	// booker's confirmation email still resolves through the slug.
+	effectiveSlug := slug
+	if req.Slug != nil {
+		newSlug := slugify(*req.Slug)
+		if newSlug == "" {
+			h.writeError(w, http.StatusBadRequest,
+				"slug cannot be empty (letters and digits only, joined by hyphens)")
+			return
+		}
+		if newSlug != slug {
+			var bookings int
+			if err := h.db.QueryRowContext(r.Context(),
+				`SELECT COUNT(*) FROM bookings WHERE event_type_id = ?`, etID).Scan(&bookings); err != nil {
+				h.logger.ErrorContext(r.Context(), "patch event type: count bookings", "error", err)
+				h.writeError(w, http.StatusInternalServerError, "internal error")
+				return
+			}
+			if bookings > 0 {
+				h.writeError(w, http.StatusConflict,
+					"cannot change the slug of an event type that already has bookings - "+
+						"its booking links are already in circulation")
+				return
+			}
+			set("slug", newSlug)
+			effectiveSlug = newSlug
+		}
+	}
+
 	// Apply the event_types UPDATE if there are scalar fields to change.
 	if len(setClauses) > 0 {
 		args = append(args, slug, user.ID)
@@ -701,6 +739,10 @@ func (h *Handler) PatchEventType(w http.ResponseWriter, r *http.Request) {
 			"UPDATE event_types SET "+strings.Join(setClauses, ", ")+" WHERE slug = ? AND user_id = ?", // #nosec G202 -- setClauses is built by set()/the literal col list above; every column name is a hardcoded string, every value is bound via args...
 			args...)
 		if err != nil {
+			if strings.Contains(err.Error(), "UNIQUE constraint failed") {
+				h.writeError(w, http.StatusConflict, "slug already in use")
+				return
+			}
 			if strings.Contains(err.Error(), "CHECK constraint failed") {
 				h.writeError(w, http.StatusBadRequest, "invalid location_type or routing_mode value")
 				return
@@ -725,8 +767,10 @@ func (h *Handler) PatchEventType(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// effectiveSlug, not slug: a rename above moved the row out from under the name this
+	// request arrived on, and re-reading by that name would 404 a patch that succeeded.
 	row := h.db.QueryRowContext(r.Context(),
-		selectETCols+" WHERE slug = ? AND user_id = ?", slug, user.ID)
+		selectETCols+" WHERE slug = ? AND user_id = ?", effectiveSlug, user.ID)
 	et, err := scanEventType(row)
 	if err != nil {
 		h.logger.ErrorContext(r.Context(), "fetch patched event type", "error", err)

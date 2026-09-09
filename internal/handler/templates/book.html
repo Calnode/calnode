@@ -284,7 +284,6 @@ body {
   let availableDates = new Set(); // "YYYY-MM-DD" strings the booker may open this nav month
   let availabilityLoaded = false; // false = render optimistically (assume all days open)
   let slotsByDay = {};            // "YYYY-MM-DD" -> [slot]; cached from the month fetch
-  let bookableDates = new Set();  // days with >=1 FREE slot; drives the empty-day hint
   let noticeDates = new Set();    // days the minimum-notice policy took starts away from
 
   const $ = id => document.getElementById(id);
@@ -454,14 +453,12 @@ body {
       // date does, and that is the whole point of the feature. Without taken slots
       // the two sets are identical, so nothing changes for everyone else.
       availableDates = new Set(Object.keys(slotsByDay));
-      bookableDates  = new Set(BookingLogic.bookableDayKeys(freeByDay));
       // Days the minimum-notice policy took starts away from. Already in the selected
       // timezone server-side, so these keys line up with slotsByDay's.
       noticeDates = new Set((data.min_notice && data.min_notice.dates) || []);
     } catch {
       slotsByDay = {};
       availableDates = new Set();
-      bookableDates = new Set();
       noticeDates = new Set();
     }
     availabilityLoaded = true;

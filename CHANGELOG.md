@@ -46,6 +46,17 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
   gap is now computed only for callers that asked for it, so the MCP tool and the booking
   assistant stop paying for a presentation aid they never render.
 
+- **An event type's booking link can be renamed until its first booking.** `PATCH
+  /v1/event-types/{slug}` now accepts `slug`, and the editor exposes it as "Booking link".
+  Refused with 409 once bookings exist, because by then the link is in circulation and
+  somebody's manage link resolves through it. Mainly this is what makes a duplicate
+  usable: it arrives as `<slug>-copy` and there was previously no way to give it a real
+  name short of deleting and recreating it.
+
+### Removed
+- `BookingLogic.bookableDayKeys` and `book.html`'s `bookableDates`, which were written in
+  0.8.0 and never read by anything.
+
 ## [0.8.0] - 2026-09-03
 
 ### Added

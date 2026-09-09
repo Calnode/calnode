@@ -64,19 +64,6 @@
     return copy;
   }
 
-  // bookableDayKeys — the day keys that have at least one BOOKABLE slot.
-  //
-  // Separate from Object.keys(groupSlotsByDay(...)) on purpose. Once taken slots are
-  // grouped too, a day whose every slot is booked still produces a key, and using that
-  // to decide which calendar dates are clickable would advertise a full day as though
-  // something were available on it.
-  function bookableDayKeys(freeByDay) {
-    var out = [];
-    for (var k in freeByDay) {
-      if (Object.prototype.hasOwnProperty.call(freeByDay, k) && (freeByDay[k] || []).length) out.push(k);
-    }
-    return out;
-  }
 
   // formatTime — "1:30 PM" in the selected tz.
   function formatTime(iso, tz, locale) {
@@ -156,7 +143,6 @@
     ymd: ymd,
     groupSlotsByDay: groupSlotsByDay,
     mergeDaySlots: mergeDaySlots,
-    bookableDayKeys: bookableDayKeys,
     fmt: fmt,
     formatTime: formatTime,
     formatDay: formatDay,
