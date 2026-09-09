@@ -121,3 +121,16 @@ func TestLoad_demoResetIntervalInvalidFallsBackToDefault(t *testing.T) {
 		t.Errorf("DemoResetInterval = %v; want 30m default on invalid input", cfg.DemoResetInterval)
 	}
 }
+
+// DATA_DIR moves the upload directory; unset, it is the relative "data" every
+// existing deployment writes to, so nothing moves for anyone who never set it.
+func TestLoad_dataDir(t *testing.T) {
+	t.Setenv("DATA_DIR", "")
+	if cfg := config.Load(); cfg.DataDir != "data" {
+		t.Errorf("DataDir default = %q; want data", cfg.DataDir)
+	}
+	t.Setenv("DATA_DIR", "/var/lib/calnode")
+	if cfg := config.Load(); cfg.DataDir != "/var/lib/calnode" {
+		t.Errorf("DataDir = %q; want /var/lib/calnode", cfg.DataDir)
+	}
+}

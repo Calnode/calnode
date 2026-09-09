@@ -221,7 +221,7 @@ func TestDeleteAvailabilityOverride_success(t *testing.T) {
 	h, key, _ := setupWorkspace(t)
 
 	_, created := createOverride(t, h, key, `{"date":"2026-07-04","is_available":false}`)
-	id, _ := created["id"].(string)
+	id := mustString(t, created, "id", "create override")
 	if id == "" {
 		t.Fatal("created id is empty")
 	}
@@ -266,7 +266,7 @@ func TestDeleteAvailabilityOverride_cannotDeleteOtherUsersOverride(t *testing.T)
 	h, keyA, _ := setupWorkspace(t)
 
 	_, created := createOverride(t, h, keyA, `{"date":"2026-07-04","is_available":false}`)
-	id, _ := created["id"].(string)
+	id := mustString(t, created, "id", "create override")
 
 	// A second handler instance (same in-memory DB used via h) won't help here;
 	// in practice userB would be a different user. But since we only have one user
@@ -411,7 +411,7 @@ func TestUpdateAvailabilityOverride_updateTimes(t *testing.T) {
 
 	_, created := createOverride(t, h, key,
 		`{"date":"2026-08-01","is_available":true,"start_time":"10:00","end_time":"14:00"}`)
-	id, _ := created["id"].(string)
+	id := mustString(t, created, "id", "create override")
 	if id == "" {
 		t.Fatal("created id is empty")
 	}
@@ -443,7 +443,7 @@ func TestUpdateAvailabilityOverride_flipToBlocked(t *testing.T) {
 
 	_, created := createOverride(t, h, key,
 		`{"date":"2026-08-02","is_available":true,"start_time":"09:00","end_time":"17:00"}`)
-	id, _ := created["id"].(string)
+	id := mustString(t, created, "id", "create override")
 	if id == "" {
 		t.Fatal("created id is empty")
 	}
@@ -475,7 +475,7 @@ func TestUpdateAvailabilityOverride_flipToAvailable(t *testing.T) {
 
 	_, created := createOverride(t, h, key,
 		`{"date":"2026-08-03","is_available":false}`)
-	id, _ := created["id"].(string)
+	id := mustString(t, created, "id", "create override")
 	if id == "" {
 		t.Fatal("created id is empty")
 	}
@@ -521,7 +521,7 @@ func TestUpdateAvailabilityOverride_missingTimesWhenAvailable(t *testing.T) {
 
 	_, created := createOverride(t, h, key,
 		`{"date":"2026-08-04","is_available":false}`)
-	id, _ := created["id"].(string)
+	id := mustString(t, created, "id", "create override")
 	if id == "" {
 		t.Fatal("created id is empty")
 	}
@@ -542,7 +542,7 @@ func TestUpdateAvailabilityOverride_startNotBeforeEnd(t *testing.T) {
 
 	_, created := createOverride(t, h, key,
 		`{"date":"2026-08-05","is_available":true,"start_time":"09:00","end_time":"17:00"}`)
-	id, _ := created["id"].(string)
+	id := mustString(t, created, "id", "create override")
 	if id == "" {
 		t.Fatal("created id is empty")
 	}
@@ -563,7 +563,7 @@ func TestUpdateAvailabilityOverride_invalidHHMM(t *testing.T) {
 
 	_, created := createOverride(t, h, key,
 		`{"date":"2026-08-06","is_available":true,"start_time":"09:00","end_time":"17:00"}`)
-	id, _ := created["id"].(string)
+	id := mustString(t, created, "id", "create override")
 	if id == "" {
 		t.Fatal("created id is empty")
 	}

@@ -1,3 +1,28 @@
 {
-   "signedContributors": []
+  "signedContributors": [
+    {
+      "name": "distronode-com",
+      "id": 254259913,
+      "comment_id": 5537514577,
+      "created_at": "2026-09-04T07:59:12Z",
+      "repoId": 1277491008,
+      "pullRequestNo": 22
+    },
+    {
+      "name": "distronode-com",
+      "id": 254259913,
+      "comment_id": 5537529554,
+      "created_at": "2026-09-04T08:00:42Z",
+      "repoId": 1277491008,
+      "pullRequestNo": 22
+    },
+    {
+      "name": "distronode-com",
+      "id": 254259913,
+      "comment_id": 5537533757,
+      "created_at": "2026-09-04T08:01:07Z",
+      "repoId": 1277491008,
+      "pullRequestNo": 22
+    }
+  ]
 }
