@@ -40,6 +40,13 @@ type Config struct {
 	ZoomClientID     string
 	ZoomClientSecret string
 
+	// DataDir is where uploaded files (avatars, branding assets) are written.
+	// Defaults to the relative directory "data", which is what every existing
+	// deployment has always used; set DATA_DIR when the process runs somewhere
+	// its working directory is not writable, such as a read-only container image
+	// that mounts a volume elsewhere.
+	DataDir string
+
 	// CookieSecure sets the Secure flag on session cookies. Defaults to true
 	// when BASE_URL starts with https://, but can be overridden explicitly via
 	// COOKIE_SECURE=false for HTTPS-terminated-at-proxy setups where the binary
@@ -89,6 +96,7 @@ func Load() *Config {
 		ZoomClientSecret: getEnv("ZOOM_CLIENT_SECRET", ""),
 
 		EmbedAllowedOrigins: splitCSV(getEnv("EMBED_ALLOWED_ORIGINS", "")),
+		DataDir:             getEnv("DATA_DIR", "data"),
 	}
 
 	cfg.EncryptionKey = os.Getenv("CALNODE_ENCRYPTION_KEY")
