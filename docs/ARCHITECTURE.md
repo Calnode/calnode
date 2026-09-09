@@ -1048,7 +1048,18 @@ LLM summary) — the next build; consent-gated (§8.11/§15 of the PRD).
 
 ## 23. Languages (i18n)
 
-Calnode ships **8 locales**: `en` (source) · `es` · `fr` · `de` · `it` · `pt` · `nl` · `sv`.
+Calnode ships **9 locales**: `en` (source) · `es` · `fr` · `fr-CA` · `de` · `it` · `pt` · `nl` · `sv`.
+
+`fr-CA` is the first **regional** locale, and it is a separate file rather than a fallback
+because the differences are real: `courriel` not `e-mail`, `reporter`/`report` not
+`reprogrammer`/`reprogrammation`, `renseignements personnels` never `données personnelles`
+(the Quebec statutory term), no space before `!` `?` `;` where France puts one, and CLDR
+itself disagrees on one abbreviation — `month_short_jul` is `juill.` in fr-CA and `juil.` in
+fr, which is exactly what `TestDateTablesMatchCLDR` exists to catch. Both keep the 24-hour
+clock and the day-month `date_format`. Currency and percent take a non-breaking space before
+`$` and `%` in Canadian French; no key carries either today, so the rule is recorded here
+rather than applied. A visitor sending `fr-FR` or plain `fr` is unaffected — the matcher
+picks the exact tag first (pinned in `TestResolve`).
 
 ### What is translated, and what is not
 
