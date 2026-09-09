@@ -36,7 +36,7 @@ func TestUpdateAvailabilityRule_updateTimes(t *testing.T) {
 	if code != http.StatusCreated {
 		t.Fatalf("create rule: %d — %v", code, created)
 	}
-	id, _ := created["id"].(string)
+	id := mustString(t, created, "id", "create rule")
 
 	req := authReq(http.MethodPatch, "/v1/availability-rules/"+id,
 		`{"start_time":"10:00","end_time":"18:00"}`, key)
@@ -64,7 +64,7 @@ func TestUpdateAvailabilityRule_updateDayOfWeek(t *testing.T) {
 	if code != http.StatusCreated {
 		t.Fatalf("create rule: %d — %v", code, created)
 	}
-	id, _ := created["id"].(string)
+	id := mustString(t, created, "id", "create rule")
 
 	req := authReq(http.MethodPatch, "/v1/availability-rules/"+id,
 		`{"day_of_week":2}`, key)
@@ -103,7 +103,7 @@ func TestUpdateAvailabilityRule_invalidDayOfWeek(t *testing.T) {
 	if code != http.StatusCreated {
 		t.Fatalf("create rule: %d — %v", code, created)
 	}
-	id, _ := created["id"].(string)
+	id := mustString(t, created, "id", "create rule")
 
 	req := authReq(http.MethodPatch, "/v1/availability-rules/"+id,
 		`{"day_of_week":7}`, key)
@@ -123,7 +123,7 @@ func TestUpdateAvailabilityRule_invalidHHMM(t *testing.T) {
 	if code != http.StatusCreated {
 		t.Fatalf("create rule: %d — %v", code, created)
 	}
-	id, _ := created["id"].(string)
+	id := mustString(t, created, "id", "create rule")
 
 	req := authReq(http.MethodPatch, "/v1/availability-rules/"+id,
 		`{"start_time":"9:00"}`, key)
@@ -143,7 +143,7 @@ func TestUpdateAvailabilityRule_endNotAfterStart(t *testing.T) {
 	if code != http.StatusCreated {
 		t.Fatalf("create rule: %d — %v", code, created)
 	}
-	id, _ := created["id"].(string)
+	id := mustString(t, created, "id", "create rule")
 
 	req := authReq(http.MethodPatch, "/v1/availability-rules/"+id,
 		`{"start_time":"17:00","end_time":"09:00"}`, key)
@@ -176,7 +176,7 @@ func TestUpdateAvailabilityRule_conflictWith409(t *testing.T) {
 	if code2 != http.StatusCreated {
 		t.Fatalf("create rule 2: %d — %v", code2, created2)
 	}
-	id2, _ := created2["id"].(string)
+	id2 := mustString(t, created2, "id", "create second rule")
 
 	// Patch rule 2 to have the same day_of_week as rule 1 → conflict.
 	req := authReq(http.MethodPatch, "/v1/availability-rules/"+id2,

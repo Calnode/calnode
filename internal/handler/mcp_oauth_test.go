@@ -133,8 +133,8 @@ func TestMCP_OAuthFlow(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("token: %d — %s", rec.Code, rec.Body.String())
 	}
-	access, _ := body["access_token"].(string)
-	refresh, _ := body["refresh_token"].(string)
+	access := mustString(t, body, "access_token", "token exchange")
+	refresh := mustString(t, body, "refresh_token", "token exchange")
 	if access == "" || refresh == "" {
 		t.Fatalf("token: missing tokens: %v", body)
 	}
@@ -154,7 +154,7 @@ func TestMCP_OAuthFlow(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("refresh: %d — %s", rec.Code, rec.Body.String())
 	}
-	newAccess, _ := body["access_token"].(string)
+	newAccess := mustString(t, body, "access_token", "refresh grant")
 	if newAccess == "" || newAccess == access {
 		t.Fatalf("refresh: expected a new access token, got %q", newAccess)
 	}
