@@ -39,6 +39,25 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
   pool could satisfy are all excluded, so the explanation never appears attached to the
   wrong cause. Three new/changed keys in all eight locales.
 
+### Fixed
+- **Constraint violations are recognised by SQLite's error code rather than by its
+  English message.** Thirteen call sites asked `strings.Contains(err.Error(), "UNIQUE
+  constraint failed")`, and SQLite reports a PRIMARY KEY collision
+  (`SQLITE_CONSTRAINT_PRIMARYKEY`, 1555) with that exact message while giving it a
+  different code from an ordinary unique violation (`SQLITE_CONSTRAINT_UNIQUE`, 2067).
+  The text could not tell the two apart, so nothing that needed to distinguish them
+  could.
+
+  `db.IsUniqueViolation`, `db.IsCheckViolation` and `db.IsForeignKeyViolation` answer
+  from the driver's code, falling back to the message only for an error that arrives
+  without its driver type still attached. A driver error whose code does not match is a
+  definite no rather than a fall-through, so an error cannot be classified by whether
+  its text happened to contain an English phrase.
+
+  Each class is provoked against the real schema in a test rather than constructed by
+  hand, including the primary-key case, which is the one a code match written from the
+  message alone would get wrong.
+
 ## [0.8.0] - 2026-09-03
 
 ### Added

@@ -15,6 +15,7 @@ import (
 
 	"github.com/calnode/calnode/internal/booking"
 	"github.com/calnode/calnode/internal/calendar"
+	"github.com/calnode/calnode/internal/db"
 	"github.com/calnode/calnode/internal/i18n"
 	"github.com/calnode/calnode/internal/mailer"
 	"github.com/calnode/calnode/internal/slots"
@@ -807,7 +808,7 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 		}
 		// A question was deleted between validateAnswers and the INSERT — return a
 		// clean 422 rather than leaking a generic 500 for an FK constraint failure.
-		if isForeignKeyViolation(err) {
+		if db.IsForeignKeyViolation(err) {
 			h.writeError(w, http.StatusUnprocessableEntity, "one or more questions are no longer available")
 			return
 		}
@@ -1841,11 +1842,6 @@ func (h *Handler) loadHostPrefs(ctx context.Context, hostID string) (hostPrefs, 
 	p.NotifyReschedule, p.NotifyReminder = nr != 0, nrm != 0
 	p.NotifyHostBooking, p.NotifyHostCancel, p.NotifyHostReschedule = nhb != 0, nhc != 0, nhr != 0
 	return p, nil
-}
-
-// isForeignKeyViolation reports whether err is a SQLite FOREIGN KEY constraint failure.
-func isForeignKeyViolation(err error) bool {
-	return strings.Contains(err.Error(), "FOREIGN KEY constraint failed")
 }
 
 // enqueueReminder inserts a reminder.send job scheduled hoursBefore hours before startAt.

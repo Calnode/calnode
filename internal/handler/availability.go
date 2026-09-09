@@ -4,8 +4,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"net/http"
-	"strings"
 
+	"github.com/calnode/calnode/internal/db"
 	"github.com/calnode/calnode/internal/uid"
 )
 
@@ -47,7 +47,7 @@ func (h *Handler) CreateAvailabilityRule(w http.ResponseWriter, r *http.Request)
 		VALUES (?, ?, ?, ?, ?, ?)`,
 		id, user.ID, req.EventTypeID, req.DayOfWeek, req.StartTime, req.EndTime)
 	if err != nil {
-		if strings.Contains(err.Error(), "UNIQUE constraint failed") {
+		if db.IsUniqueViolation(err) {
 			h.writeError(w, http.StatusConflict, "a rule for this day and time already exists")
 			return
 		}
@@ -177,7 +177,7 @@ func (h *Handler) UpdateAvailabilityRule(w http.ResponseWriter, r *http.Request)
 		`UPDATE availability_rules SET day_of_week=?, start_time=?, end_time=? WHERE id=? AND user_id=?`,
 		current.DayOfWeek, current.StartTime, current.EndTime, id, user.ID)
 	if err != nil {
-		if strings.Contains(err.Error(), "UNIQUE constraint failed") {
+		if db.IsUniqueViolation(err) {
 			h.writeError(w, http.StatusConflict, "a rule for this day and time already exists")
 			return
 		}
