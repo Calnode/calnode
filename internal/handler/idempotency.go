@@ -5,8 +5,9 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
-	"strings"
 	"time"
+
+	"github.com/calnode/calnode/internal/db"
 )
 
 // idempotencyRecord is a previously-seen Idempotency-Key's stored outcome.
@@ -38,7 +39,7 @@ func (h *Handler) claimIdempotencyKey(ctx context.Context, key, reqHash string) 
 	if err == nil {
 		return nil, false, nil
 	}
-	if !strings.Contains(err.Error(), "UNIQUE constraint failed") {
+	if !db.IsUniqueViolation(err) {
 		return nil, false, err
 	}
 

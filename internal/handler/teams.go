@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/calnode/calnode/internal/db"
 	"github.com/calnode/calnode/internal/uid"
 )
 
@@ -86,7 +87,7 @@ func (h *Handler) CreateTeam(w http.ResponseWriter, r *http.Request) {
 	if _, err := h.db.ExecContext(r.Context(),
 		`INSERT INTO teams (id, name, slug, created_at) VALUES (?, ?, ?, ?)`,
 		id, req.Name, slug, now); err != nil {
-		if strings.Contains(err.Error(), "UNIQUE constraint failed") {
+		if db.IsUniqueViolation(err) {
 			h.writeError(w, http.StatusConflict, "a team with that slug already exists")
 			return
 		}
@@ -222,7 +223,7 @@ func (h *Handler) PatchTeam(w http.ResponseWriter, r *http.Request) {
 	res, err := h.db.ExecContext(r.Context(),
 		"UPDATE teams SET "+strings.Join(sets, ", ")+" WHERE id = ?", args...) // #nosec G202 -- sets is built above from hardcoded "col = ?" literals only; every value is bound via args...
 	if err != nil {
-		if strings.Contains(err.Error(), "UNIQUE constraint failed") {
+		if db.IsUniqueViolation(err) {
 			h.writeError(w, http.StatusConflict, "a team with that slug already exists")
 			return
 		}
@@ -306,7 +307,7 @@ func (h *Handler) AddTeamMember(w http.ResponseWriter, r *http.Request) {
 		INSERT INTO team_members (id, team_id, user_id, role, routing_priority)
 		VALUES (?, ?, ?, 'member', ?)`,
 		uid.New(), teamID, req.UserID, req.RoutingPriority); err != nil {
-		if strings.Contains(err.Error(), "UNIQUE constraint failed") {
+		if db.IsUniqueViolation(err) {
 			h.writeError(w, http.StatusConflict, "that user is already in this team")
 			return
 		}

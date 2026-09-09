@@ -4,9 +4,9 @@ import (
 	"database/sql"
 	"encoding/json"
 	"net/http"
-	"strings"
 	"time"
 
+	"github.com/calnode/calnode/internal/db"
 	"github.com/calnode/calnode/internal/uid"
 )
 
@@ -155,7 +155,7 @@ func (h *Handler) CreateAvailabilityOverride(w http.ResponseWriter, r *http.Requ
 		INSERT INTO availability_overrides (id, user_id, date, is_available, reason, start_time, end_time)
 		VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		id, user.ID, req.Date, isAvailInt, req.Reason, req.StartTime, req.EndTime); err != nil {
-		if strings.Contains(err.Error(), "UNIQUE constraint failed") {
+		if db.IsUniqueViolation(err) {
 			h.writeError(w, http.StatusConflict, "an override already exists for this date; delete it first")
 			return
 		}
