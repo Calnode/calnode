@@ -39,6 +39,19 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
   pool could satisfy are all excluded, so the explanation never appears attached to the
   wrong cause. Three new/changed keys in all eight locales.
 
+- **`FRAME_ANCESTORS`: embed the admin UI in your own console.** Space-separated origins
+  (`https://console.example.com 'self'`); when set, `/admin/` sends
+  `Content-Security-Policy: frame-ancestors <list>`. The public booking pages are
+  untouched and still deny framing outright — this is about the console, not the pages
+  that take card details.
+
+  Two deliberate refusals. An entry that is not `https://host[:port]` or `'self'` stops
+  the app booting rather than being ignored, because a browser drops a source list it
+  cannot parse, which would leave the admin UI *more* embeddable than the setting being
+  unset. And no `X-Frame-Options` is sent beside it: that header has no allow-list form,
+  so the only value it could carry is `SAMEORIGIN`, which browsers honour instead of the
+  CSP and would break the embedding this exists for.
+
 ### Fixed
 - **Constraint violations are recognised by SQLite's error code rather than by its
   English message.** Thirteen call sites asked `strings.Contains(err.Error(), "UNIQUE
