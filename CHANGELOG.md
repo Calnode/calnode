@@ -23,6 +23,17 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
   `-copy-2`, `-copy-3`, …) slug, and keeps `price_cents`/`currency` verbatim: zeroing a
   copied price is how a paid meeting quietly starts selling for nothing. Bookings are not
   copied.
+- **Sign out everywhere.** `POST /v1/auth/sessions/revoke-all` ends every session you
+  have except the one you asked from, so losing a laptop no longer means waiting out a
+  30-day cookie. Pass `{"user_id": "..."}` and an admin can do the same for someone
+  else: an admin may revoke a member, only the owner may revoke another admin, and the
+  owner's own sessions can only be ended by the owner.
+
+  It also revokes that person's MCP OAuth tokens, which is the part that makes it an
+  offboarding tool rather than a convenience. A connected agent authenticates with a
+  bearer token and not the session cookie, so ending the sessions alone would have left
+  it holding exactly the access that was just withdrawn.
+
 - **Empty days and minimum-notice gaps now explain themselves** on all three booking
   surfaces (booking page, manage/reschedule page, embed widget). Closes
   [#20](https://github.com/Calnode/calnode/issues/20).

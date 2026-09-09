@@ -186,6 +186,18 @@ the platform/recovery secret doesn't expose secrets.
   Owner-gated actions: grant/revoke admin, transfer ownership. Admins can cancel
   any booking, see all bookings, manage teams/members. Safe-removal + archive
   guards prevent orphaning.
+- **Sign out everywhere** (`POST /v1/auth/sessions/revoke-all`, `session.go`). With no
+  body it drops all of the caller's sessions **except the one that made the request** —
+  "sign out my other devices", as distinct from `POST /v1/auth/logout`, which ends the
+  current one. (An API-key caller has no current session, so for them every session
+  goes.) With `{"user_id": "..."}` it is an offboarding tool, gated on the same tiers as
+  `roles.go`: an admin may revoke a member, only the owner may revoke another admin, and
+  the owner's sessions are reachable only by the owner. The actor's tier is checked
+  *before* the target is loaded, so the 404 cannot be used to enumerate user ids.
+  ⛔ It also deletes the target's rows in **`oauth_access_tokens`**, cutting off any MCP
+  connector (§19) — those authenticate with a bearer token, not the session cookie, so
+  revoking sessions alone would leave an agent holding the authority just withdrawn.
+  Both deletes run in one transaction, so "revoked" is never half-true.
 - **Offboarding = archive** (`users.archived_at`), never hard-delete — preserves
   bookings, event-type ownership, team links. Archived ⇒ no login, hidden from
   lists, skipped in routing/slots, event types deactivated. Reversible (restore).
