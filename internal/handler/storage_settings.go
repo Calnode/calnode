@@ -11,20 +11,38 @@ import (
 // backups (configured via environment, so read-only here) and meeting recordings (which reuse
 // the same bucket under a recordings/ prefix). The only editable knob is the recording toggle.
 
+// replicaBucket extracts the bucket (or Azure container) name from a LITESTREAM_REPLICA_URL.
+//
+// Litestream replicates to more than S3 — `gcs://`, `abs://` and `file://` are all valid — so
+// the scheme is stripped generically rather than by trimming a literal "s3://". Trimming only
+// s3 left every other scheme's URL intact, and the first '/' then found was the one inside
+// "://": a `gcs://my-bucket/calnode` replica reported its bucket as "gcs:".
+//
+// Whatever is left after the scheme is the authority, up to the first path separator. For
+// `file:///var/lib/calnode` that is empty, which is the honest answer — a file replica has no
+// bucket — and for the empty string it stays empty, so callers can still tell "not configured"
+// from "configured with no bucket".
+func replicaBucket(replica string) string {
+	rest := replica
+	if i := strings.Index(rest, "://"); i >= 0 {
+		rest = rest[i+len("://"):]
+	}
+	if i := strings.IndexByte(rest, '/'); i >= 0 {
+		rest = rest[:i]
+	}
+	return rest
+}
+
 // GetStorageSettings handles GET /v1/settings/storage (admin).
 func (h *Handler) GetStorageSettings(w http.ResponseWriter, r *http.Request) {
 	if _, ok := h.requireAdmin(w, r); !ok {
 		return
 	}
 	replica := os.Getenv("LITESTREAM_REPLICA_URL")
-	bucket := strings.TrimPrefix(replica, "s3://")
-	if i := strings.IndexByte(bucket, '/'); i >= 0 {
-		bucket = bucket[:i]
-	}
 	_, recReady := recordingStorage()
 	h.writeJSON(w, http.StatusOK, map[string]any{
 		"backups_configured":       replica != "",
-		"backups_bucket":           bucket,
+		"backups_bucket":           replicaBucket(replica),
 		"backups_endpoint":         os.Getenv("LITESTREAM_ENDPOINT"),
 		"recordings_enabled":       h.recordingsEnabled(r.Context()),
 		"recordings_storage_ready": recReady,
