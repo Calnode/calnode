@@ -39,6 +39,13 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
   pool could satisfy are all excluded, so the explanation never appears attached to the
   wrong cause. Three new/changed keys in all eight locales.
 
+  Follow-ups on the above: the empty-day message keeps its call to action as well as
+  naming the day ("No available times on Monday, 14 September. Try another date."), in
+  all eight locales; the minimum-notice line gets its own `.notice-hint` style, a shade
+  darker than the placeholder text it used to be indistinguishable from; and the notice
+  gap is now computed only for callers that asked for it, so the MCP tool and the booking
+  assistant stop paying for a presentation aid they never render.
+
 ## [0.8.0] - 2026-09-03
 
 ### Added

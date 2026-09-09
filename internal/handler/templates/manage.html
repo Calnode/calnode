@@ -422,9 +422,11 @@ body {
   // ── Why times are missing ─────────────────────────────────────────────────
   // Built with textContent rather than innerHTML: the host's name and the date are the
   // only interpolated values on this page's hints, and this page has no escaping helper.
-  function hintP(text) {
+  // extra: an additional class, so the minimum-notice line can carry .notice-hint and
+  // read as an answer rather than as the placeholder text the rest of .hint is.
+  function hintP(text, extra) {
     const p = document.createElement('p');
-    p.className = 'hint';
+    p.className = extra ? 'hint ' + extra : 'hint';
     p.textContent = text;
     return p;
   }
@@ -441,7 +443,7 @@ body {
     const notice = noticeDates.size > 0 ? noticeHintText() : '';
     list.innerHTML = '';
     list.appendChild(hintP(t('pick_day_hint')));
-    if (notice) list.appendChild(hintP(notice));
+    if (notice) list.appendChild(hintP(notice, 'notice-hint'));
   }
 
   function fillSlots(list, ds) {
@@ -457,7 +459,7 @@ body {
         : BookingLogic.fmt(t('no_available_times'), [dayLabel]);
       list.innerHTML = '';
       list.appendChild(hintP(msg));
-      if (notice) list.appendChild(hintP(notice));
+      if (notice) list.appendChild(hintP(notice, 'notice-hint'));
       return;
     }
     // Taken entries are disabled buttons: same box as a bookable slot, announced as

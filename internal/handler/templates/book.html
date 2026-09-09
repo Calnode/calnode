@@ -170,7 +170,7 @@ body {
          what removed them (the server says which days it hit). It sits here, outside the
          slot list, because a day the policy emptied completely is greyed out in the
          calendar - so the explanation has to be reachable without clicking one. -->
-    <p id="notice-hint" class="hint hidden"></p>
+    <p id="notice-hint" class="hint notice-hint hidden"></p>
 
     <!-- Slots -->
     <div id="slots-view" class="hidden">
@@ -550,7 +550,7 @@ body {
     // Only when this specific day lost starts to the policy - saying it on a day the
     // policy did not touch would be noise attached to the wrong cause.
     const noticeLine = noticeDates.has(ds) ? noticeHintText() : '';
-    const noticeHTML = noticeLine ? `<p class="hint">${esc(noticeLine)}</p>` : '';
+    const noticeHTML = noticeLine ? `<p class="hint notice-hint">${esc(noticeLine)}</p>` : '';
     if (!slotsCache.length) {
       // Name the day, and the host when there is exactly one. A bare "No available times."
       // never told the visitor whether another day would help, which is the whole

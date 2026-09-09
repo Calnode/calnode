@@ -372,7 +372,7 @@ func (h *Handler) runAssistantTool(ctx context.Context, slug, tz, lang, name, ar
 		_ = json.Unmarshal([]byte(argsJSON), &args)
 		// includeTaken is false: the assistant's invariant is that it only ever sees
 		// computed availability, and a taken slot in that list is one it could offer.
-		res, err := h.computeSlots(ctx, slug, tz, args.DateFrom, args.DateTo, false)
+		res, err := h.computeSlots(ctx, slug, tz, args.DateFrom, args.DateTo, slotsWanted{})
 		if err != nil {
 			return "error: could not load availability", nil
 		}

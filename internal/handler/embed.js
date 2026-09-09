@@ -525,7 +525,7 @@
         // that still shows later times, which is the commonest "why can't I see those
         // times" case.
         if (notice && st.noticeDates && st.noticeDates.indexOf(st.day) !== -1) {
-          listEl.appendChild(el('p', { class: 'hint', text: notice }));
+          listEl.appendChild(el('p', { class: 'hint notice-hint', text: notice }));
         }
         inner = el('div', {}, [el('p', { class: 'slots-header', text: list[0] ? shortDay(list[0].start, self.locale) : this.dayHeader(st.day) }), listEl]);
       } else {
@@ -534,7 +534,7 @@
         // only place the explanation can be reached.
         var kids = [el('p', { class: 'hint', text: t(this.i18n, 'select_day_hint') })];
         if (notice && st.noticeDates && st.noticeDates.length) {
-          kids.push(el('p', { class: 'hint', text: notice }));
+          kids.push(el('p', { class: 'hint notice-hint', text: notice }));
         }
         inner = el('div', {}, kids);
       }
