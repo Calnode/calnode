@@ -18,6 +18,10 @@ type contextKey string
 
 const requestIDKey contextKey = "request_id"
 
+// clientIPKey carries the client IP resolved by TrustClientIP. Absent unless
+// TRUSTED_PROXY_CIDRS is configured, in which case remoteIP falls back to the peer.
+const clientIPKey contextKey = "client_ip"
+
 func RequestID(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		id := r.Header.Get("X-Request-Id")
@@ -236,18 +240,162 @@ func (rl *rateLimiter) cleanup() {
 	}
 }
 
-// remoteIP returns the TCP-level remote address, stripped of its port.
-// X-Real-IP and X-Forwarded-For are intentionally ignored: without a
-// configured trusted-proxy allowlist, those headers can be forged by any
-// client and would bypass the rate limit entirely. Operators behind a reverse
-// proxy should strip proxy headers at the proxy level and rely on the TCP
-// address the proxy connects with. See audit/claims.yaml's
-// rate-limit-keys-on-tcp-source-address claim, recorded specifically because a
-// prior Layer 2 audit pass mistook this deliberate behavior for a spoofable gap.
+// remoteIP returns the IP a per-IP limit keys on.
+//
+// By default that is the TCP-level remote address, stripped of its port, and the
+// forwarded headers are ignored: without a configured trusted-proxy allowlist those
+// headers can be forged by any client and would bypass the rate limit entirely.
+// Operators behind a reverse proxy should strip proxy headers at the proxy and rely on
+// the TCP address the proxy connects with. See audit/claims.yaml's
+// rate-limit-keys-on-tcp-source-address claim, recorded specifically because a prior
+// Layer 2 audit pass mistook this deliberate behavior for a spoofable gap.
+//
+// When TRUSTED_PROXY_CIDRS is set, TrustClientIP has already resolved the client IP for
+// this request and left it in the context — see resolveClientIP for what that means and
+// what it deliberately does not do. This function reads that value when it is there, so
+// the untrusted-peer path stays byte-for-byte the old behaviour.
 func remoteIP(r *http.Request) string {
+	if ip, ok := r.Context().Value(clientIPKey).(string); ok && ip != "" {
+		return ip
+	}
+	return peerIP(r)
+}
+
+// peerIP returns the TCP-level remote address, stripped of its port. This is the only
+// value in a request that a client cannot choose.
+func peerIP(r *http.Request) string {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		return r.RemoteAddr
 	}
 	return host
+}
+
+// ParseTrustedProxies parses TRUSTED_PROXY_CIDRS entries. A bare address is accepted and
+// treated as a single-host range (/32 or /128), because "10.0.0.7" is what an operator
+// naming one proxy will write.
+//
+// Every parseable entry is returned even when others fail, and the error names the ones
+// that did not: one typo should cost that hop's trust, not the whole list's. The caller
+// is expected to log the error — an unparsed entry means that proxy's headers are NOT
+// believed, which degrades to per-proxy rate limiting rather than to trusting a forgery.
+func ParseTrustedProxies(entries []string) ([]*net.IPNet, error) {
+	var nets []*net.IPNet
+	var bad []string
+	for _, e := range entries {
+		e = strings.TrimSpace(e)
+		if e == "" {
+			continue
+		}
+		if _, n, err := net.ParseCIDR(e); err == nil {
+			nets = append(nets, n)
+			continue
+		}
+		if ip := net.ParseIP(e); ip != nil {
+			bits := 32
+			if ip.To4() == nil {
+				bits = 128
+			}
+			nets = append(nets, &net.IPNet{IP: ip, Mask: net.CIDRMask(bits, bits)})
+			continue
+		}
+		bad = append(bad, e)
+	}
+	if len(bad) > 0 {
+		return nets, fmt.Errorf("not a CIDR or IP address: %s", strings.Join(bad, ", "))
+	}
+	return nets, nil
+}
+
+// TrustClientIP returns middleware that resolves the client IP once per request and
+// stores it in the request context for remoteIP to read. With no trusted proxies it is a
+// pass-through, so an instance that has not configured any is unchanged.
+//
+// It is middleware rather than a package-level setting because the trust list belongs to
+// one server instance: a mutable global would leak between instances in a test binary
+// and would make "which requests are affected" unanswerable from the wiring.
+func TrustClientIP(trusted []*net.IPNet) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		if len(trusted) == 0 {
+			return next
+		}
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := context.WithValue(r.Context(), clientIPKey, resolveClientIP(r, trusted))
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+}
+
+// resolveClientIP applies the forwarded headers, but only for a peer inside a trusted
+// CIDR. A header from an untrusted peer is never read at all — that is the whole point,
+// and it is why the default (no trusted proxies) cannot be weakened by a header.
+//
+// For a trusted peer the answer comes from X-Forwarded-For, walked RIGHT TO LEFT past
+// trusted hops, returning the first untrusted address. ⛔ Not the leftmost entry: the
+// left of that header is whatever the original client sent, so a client that pre-seeds
+// "X-Forwarded-For: 1.2.3.4" gets it prepended and preserved by every well-behaved
+// proxy. The rightmost non-trusted hop is the last address a trusted proxy actually
+// observed, which is the only one in the header that anything vouched for. The peer is
+// the answer whenever the header is absent or unusable.
+//
+// ⛔ Single-value vendor headers (CF-Connecting-IP, X-Real-IP, True-Client-IP) are NOT
+// consulted, and that is deliberate rather than an omission. Trusting one means
+// trusting it from every peer in the list, and the list is a list of *networks* rather
+// than a list of CDNs: an ordinary reverse proxy inside it forwards whatever headers
+// the client sent, so a client could name its own rate-limit bucket by sending one. The
+// header carries nothing that says which hop set it, so there is no way to tell the
+// value a CDN wrote from the value a visitor typed.
+//
+// Nothing is lost by leaving them out. A CDN sets X-Forwarded-For as well, and its own
+// ranges belong in TRUSTED_PROXY_CIDRS anyway, so the walk steps over its edge address
+// and lands on the visitor. That is the same answer the vendor header would have given,
+// reached without having to believe a header for a reason the code cannot check.
+//
+// A hop that does not parse ends the walk and falls back to the peer rather than being
+// skipped. Skipping it would let a client inject one malformed entry to push the walk
+// past the real hop and onto a value it chose. Note this also means a proxy that appends
+// "ip:port" (rather than a bare address) reads as malformed and lands on the peer, which
+// is the safe direction to be wrong in.
+func resolveClientIP(r *http.Request, trusted []*net.IPNet) string {
+	peer := peerIP(r)
+	if !ipInAny(peer, trusted) {
+		return peer
+	}
+
+	// ⛔ Values, not Get. A header may arrive as several field lines, and Get returns
+	// only the FIRST. A client that sends its own "X-Forwarded-For: 1.2.3.4" followed by
+	// a proxy that ADDS a line rather than appending to the existing one leaves two
+	// lines, and Get would hand the walk the client's line alone — no trusted hop in it,
+	// so the walk returns the client's chosen address on its first step. RFC 9110 says
+	// repeated field lines are equivalent to one comma-joined value in the order
+	// received, so joining them is both correct and what the walk already assumes.
+	if xff := strings.Join(r.Header.Values("X-Forwarded-For"), ","); xff != "" {
+		hops := strings.Split(xff, ",")
+		for i := len(hops) - 1; i >= 0; i-- {
+			ip := net.ParseIP(strings.TrimSpace(hops[i]))
+			if ip == nil {
+				break
+			}
+			if ipInAny(ip.String(), trusted) {
+				continue // a trusted hop of our own; keep walking left
+			}
+			return ip.String()
+		}
+	}
+
+	return peer
+}
+
+// ipInAny reports whether ip (a textual address) falls inside any of nets.
+func ipInAny(ip string, nets []*net.IPNet) bool {
+	parsed := net.ParseIP(ip)
+	if parsed == nil {
+		return false
+	}
+	for _, n := range nets {
+		if n.Contains(parsed) {
+			return true
+		}
+	}
+	return false
 }
