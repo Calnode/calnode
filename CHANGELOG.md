@@ -11,6 +11,8 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-09-10
+
 ### Added
 - **Duplicate an event type.** `POST /v1/event-types/{slug}/duplicate`, and a Duplicate
   action on each row of the event-types list. Closes
