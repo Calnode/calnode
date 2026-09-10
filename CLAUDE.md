@@ -218,6 +218,20 @@ Keep the editor's floor aligned with the API's (`>= 1`). A stricter client-side 
 an event type configured below it via the API unsaveable from the editor, even when the person
 is editing an unrelated field.
 
+**The general rule, learned twice:** the admin editor submits the WHOLE form on every save,
+so validating a field merely because the request mentions it validates fields the operator
+never touched. Any event type holding a stored value the current rules reject then becomes
+unsaveable entirely, with an error pointing at something unrelated. Validate on **change**
+(effective value vs stored), not on **mention**. Rows reach those states legitimately: a
+provider disconnected after the fact, a duplicate that inherited one (#22), a seeder writing
+straight to the table, or a create path that defaulted the field before a rule tightened.
+
+The other half of the same rule: **anything written without validation must be valid by
+construction.** `CreateEventType` skips `validateLocation` when it defaults the location,
+because there is no request field to blame an error on - so every branch of
+`smartDefaultLocation` has to return a type the owner can actually host at. It used to end
+at an unconditional `"zoom"`.
+
 ## Conventions
 
 - `pnpm` (not npm). Use `pnpm exec <tool>` for local binaries.

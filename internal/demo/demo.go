@@ -103,12 +103,16 @@ func Seed(ctx context.Context, db *sql.DB) error {
 			routingMode = "round_robin"
 			teamVal = teamID
 		}
+		// location_value is set, not left NULL. 'link' with no URL is a state
+		// validateLocation rejects, so every seeded event type used to fail on its first
+		// save from the editor - with an error about a meeting URL the visitor had not
+		// touched, on their first interaction with the demo.
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO event_types
 			  (id, user_id, team_id, slug, name, description, duration_minutes,
-			   location_type, routing_mode, min_notice_minutes, max_future_days,
-			   is_active, is_public)
-			VALUES (?, ?, ?, ?, ?, ?, ?, 'link', ?, ?, ?, 1, 1)`,
+			   location_type, location_value, routing_mode, min_notice_minutes,
+			   max_future_days, is_active, is_public)
+			VALUES (?, ?, ?, ?, ?, ?, ?, 'link', 'https://example.com/demo-meeting', ?, ?, ?, 1, 1)`,
 			et.id, OwnerUserID, teamVal, et.slug, et.name, et.description, et.durationMinutes,
 			routingMode, et.minNoticeMinutes, et.maxFutureDays); err != nil {
 			return fmt.Errorf("demo seed: event type %s: %w", et.slug, err)

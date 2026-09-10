@@ -677,19 +677,31 @@ func (h *Handler) PatchEventType(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate the location only when this patch actually touches it (so editing an
-	// unrelated field on a legacy event type can't trip a newer rule). When it does,
-	// validate the value that WILL be in effect (existing value for the field that
-	// isn't changing).
-	if req.LocationType != nil || req.LocationValue != nil {
-		effLocType := curLocType
-		if req.LocationType != nil {
-			effLocType = *req.LocationType
-		}
-		effLocVal := curLocVal
-		if req.LocationValue != nil {
-			effLocVal = *req.LocationValue
-		}
+	// Validate the location only when this patch actually CHANGES it, comparing what
+	// will be in effect against what is stored - not merely when the request mentions
+	// the fields.
+	//
+	// "Mentions" was the old test, and the editor mentions them on every save: it submits
+	// the whole form, so validation ran against fields the operator had not touched. Any
+	// event type already holding a location the current rules reject was therefore
+	// unsaveable from the UI, whatever you were actually trying to edit, with an error
+	// about a meeting URL you never went near. Rows reach that state legitimately - a
+	// create that defaulted the location before smartDefaultLocation was fixed, a
+	// provider disconnected since, a duplicate that inherited it (#22), or the demo seed.
+	//
+	// This is the general form of the rule CLAUDE.md records for the slot-interval floor:
+	// a stored value the editor cannot re-submit locks the operator out of every other
+	// field. Editing the location still validates, so the state is fixable, and there is
+	// no path that writes a NEW invalid value.
+	effLocType := curLocType
+	if req.LocationType != nil {
+		effLocType = *req.LocationType
+	}
+	effLocVal := curLocVal
+	if req.LocationValue != nil {
+		effLocVal = *req.LocationValue
+	}
+	if effLocType != curLocType || effLocVal != curLocVal {
 		if err := h.validateLocation(r.Context(), user.ID, effLocType, &effLocVal); err != nil {
 			h.writeError(w, http.StatusBadRequest, err.Error())
 			return

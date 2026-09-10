@@ -88,6 +88,15 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
   usable: it arrives as `<slug>-copy` and there was previously no way to give it a real
   name short of deleting and recreating it.
 
+- **An event type can no longer be created in a state the editor refuses to save.** Three
+  related fixes: creating one without a location defaulted to Zoom without checking whether
+  the owner had connected Zoom (it now falls back to in-person, which needs nothing);
+  `PATCH` validated the location whenever the request mentioned it, which the editor does on
+  every save, so a stored value the current rules reject locked the operator out of every
+  other field (it now validates only when the location actually changes); and the demo
+  seeder wrote `link` with no URL, so a demo visitor's first edit failed on a field they had
+  never touched.
+
 ### Removed
 - `BookingLogic.bookableDayKeys` and `book.html`'s `bookableDates`, which were written in
   0.8.0 and never read by anything.
