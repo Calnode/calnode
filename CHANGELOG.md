@@ -25,6 +25,19 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
   `-copy-2`, `-copy-3`, …) slug, and keeps `price_cents`/`currency` verbatim: zeroing a
   copied price is how a paid meeting quietly starts selling for nothing. Bookings are not
   copied.
+- **Canadian French (`fr-CA`) on the booker-facing surfaces.** A visitor whose browser asks
+  for `fr-CA` now gets Canadian French rather than the France copy; `fr` and `fr-FR` are
+  unaffected. It is the first regional locale, and a separate file rather than a fallback
+  because the differences are real: `courriel` rather than `e-mail`, `reporter`/`report`
+  rather than `reprogrammer`, `renseignements personnels` (the Quebec statutory term) rather
+  than `données personnelles`, no space before `!` `?` `;` where France puts one, and CLDR
+  itself spells July `juill.` here against `juil.` in France.
+
+  ⚠️ **The wording is an unreviewed draft**, like every non-English locale in this
+  repository: the structure is verified by the same three guards (same keys, printf-verb
+  parity, date tables cross-checked against CLDR), but no native Canadian French speaker has
+  read the copy. Corrections are welcome and easy to merge — see CONTRIBUTING.
+
 - **Empty days and minimum-notice gaps now explain themselves** on all three booking
   surfaces (booking page, manage/reschedule page, embed widget). Closes
   [#20](https://github.com/Calnode/calnode/issues/20).

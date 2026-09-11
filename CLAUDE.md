@@ -140,7 +140,7 @@ no string plumbing with the Go templates), and admin-authored content (event nam
 descriptions, questions, custom email copy). Locale is resolved per request from
 `Accept-Language` + a `?lang=` override + the operator's fallback setting
 (`internal/handler/i18n.go`), and the booker's locale is stored on the booking so later
-reminders match. Ships `en es fr de it pt nl sv`. Full detail: ARCHITECTURE §23.
+reminders match. Ships `en es fr fr-CA de it pt nl sv`. Full detail: ARCHITECTURE §23.
 
 **Adding a locale = adding `internal/i18n/locales/<code>.json`.** Nothing else. `init()`
 globs the directory; the switcher, the fallback dropdown and the public API payload all read
