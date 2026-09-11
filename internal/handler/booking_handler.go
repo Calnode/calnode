@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/mail"
 	"net/url"
 	"strconv"
 	"strings"
@@ -23,6 +24,31 @@ import (
 	"github.com/calnode/calnode/internal/webhook"
 	"github.com/calnode/calnode/internal/zoom"
 )
+
+// errInvalidBookerEmail is returned by normalizeBookerEmail for an address net/mail
+// cannot parse. Callers map it to their own protocol (400 on the REST path, a short
+// retry hint for the assistant).
+var errInvalidBookerEmail = errors.New("email must be a valid email address")
+
+// normalizeBookerEmail validates a booker-supplied address and returns the bare address
+// to store. Every booking path ends with that value in an outbound message's To: header,
+// so it must be something a header can hold: an unparsed address is the one raw input the
+// mailer used to pass through verbatim, and a CR/LF inside it would end the To: line.
+//
+// Returning a.Address rather than the input also normalises `"Bob" <bob@example.com>` to
+// `bob@example.com`, which is what the rest of the system already assumes it holds — the
+// per-invitee cap, the hourly throttle and the manage-link lookups all compare the stored
+// value as a plain address.
+//
+// mail.ParseAddress is the whole rule. No length or domain heuristics: they reject valid
+// addresses, and the property that matters here is parseability, not plausibility.
+func normalizeBookerEmail(raw string) (string, error) {
+	a, err := mail.ParseAddress(strings.TrimSpace(raw))
+	if err != nil {
+		return "", errInvalidBookerEmail
+	}
+	return a.Address, nil
+}
 
 // maxBookingsPerEmailPerHour caps how many bookings one email address can create
 // across the workspace in a rolling hour — a per-identity backstop to the per-IP
@@ -479,6 +505,16 @@ func (h *Handler) loadBookableEventType(ctx context.Context, slug string) (*book
 // booking.ErrDoubleBooked, booking.ErrBookingLimitReached, errNoHostAvailable) for callers to
 // map to their own protocol.
 func (h *Handler) createBookingForSlug(ctx context.Context, slug string, startAt time.Time, organizer booking.Attendee, rawAnswers []booking.Answer) (*booking.Booking, error) {
+	// Both callers take the address from something they do not control — an LLM's
+	// extraction from booker chat, or an MCP client's tool arguments — so it is checked
+	// here, once, rather than in each of them. (The REST handler does not come through
+	// this core; it normalises at its own intake, before its throttle reads the value.)
+	email, err := normalizeBookerEmail(organizer.Email)
+	if err != nil {
+		return nil, err
+	}
+	organizer.Email = email
+
 	et, err := h.loadBookableEventType(ctx, slug)
 	if err != nil {
 		return nil, err
@@ -722,6 +758,15 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusBadRequest, "event_type_slug, start_at, name, and email are required")
 		return
 	}
+	// Normalise before anything reads req.Email — the hourly throttle, the Stripe
+	// Checkout session, the attendee row and the confirmation email all take it from
+	// here, and they must all see the same bare address.
+	email, err := normalizeBookerEmail(req.Email)
+	if err != nil {
+		h.writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	req.Email = email
 	if req.Timezone == "" {
 		req.Timezone = "UTC"
 	}

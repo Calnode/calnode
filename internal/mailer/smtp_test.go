@@ -2,7 +2,9 @@ package mailer
 
 import (
 	"context"
+	"errors"
 	"net"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -93,5 +95,51 @@ func TestSMTP_Send_appliesDefaultTimeoutWithNoCtxDeadline(t *testing.T) {
 	}
 	if elapsed > 5*time.Second {
 		t.Errorf("Send took %v to fail; want it bounded by defaultSMTPTimeout (300ms), not hanging", elapsed)
+	}
+}
+
+// TestSMTP_Send_invalidRecipientNeverDials is the half a buildRaw unit test cannot show:
+// the refusal has to happen before a connection is opened, not after.
+//
+// The address below is stopped today by net/smtp too — Client.Rcpt runs validateLine and
+// rejects any CR or LF, so the exchange would abort at RCPT TO before DATA. That is
+// incidental protection living one call away in the standard library, it covers only this
+// transport, and it costs a dial, an EHLO and an AUTH first. The listener here accepts and
+// counts connections, so a regression that moves the check back after the dial fails loudly.
+func TestSMTP_Send_invalidRecipientNeverDials(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	t.Cleanup(func() { ln.Close() }) //nolint:errcheck
+
+	var accepted atomic.Int32
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			accepted.Add(1)
+			conn.Close() //nolint:errcheck
+		}
+	}()
+
+	host, port, err := net.SplitHostPort(ln.Addr().String())
+	if err != nil {
+		t.Fatalf("split addr: %v", err)
+	}
+	s := NewSMTP(host, port, "", "", false, false, "from@test.local", "Test")
+
+	err = s.Send(context.Background(), Message{
+		To:      []string{"a@b.example\r\nBcc: attacker@example.com"},
+		Subject: "test",
+		Text:    "body",
+	})
+	if !errors.Is(err, ErrInvalidRecipient) {
+		t.Fatalf("Send error = %v; want ErrInvalidRecipient", err)
+	}
+	if n := accepted.Load(); n != 0 {
+		t.Errorf("Send opened %d connection(s) before refusing the recipient; want 0", n)
 	}
 }
