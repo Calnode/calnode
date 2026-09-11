@@ -1,0 +1,26 @@
+version: 2
+
+updates:
+  # Go modules (go.mod / go.sum at the repository root).
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+
+  # The SvelteKit admin app. pnpm is handled by the npm ecosystem.
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+
+  # Actions pinned in .github/workflows/.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+
+  # Base images in the root Dockerfile.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
