@@ -11,6 +11,31 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
 
 ## [Unreleased]
 
+### Security
+- **A booker's email address is validated where it enters, and is never written into an
+  email header unparsed.** The `To:` header was the one header field assembled from
+  caller-supplied input with no encoder in front of it: `buildRaw` parsed each recipient
+  with `net/mail` and, when that failed, appended the raw string anyway, so a CR/LF inside
+  an address would have ended the `To:` line and started a header of the sender's
+  choosing. Subject and the `From` display name already go through `mime.QEncoding`
+  (which renders CR/LF as `=0D`/`=0A`) and attachment filenames through `%q`.
+
+  Not exploitable as shipped: `Send` issues `c.Rcpt(to)` before `DATA`, and `net/smtp`
+  runs `validateLine` inside `Rcpt`, refusing any CR or LF - so a CRLF-bearing address
+  aborted the exchange at `RCPT TO` and never reached the body. That protection is
+  incidental, lives one call away in the standard library, and covers only this
+  transport. `buildRaw` now refuses an unparsed address (and an empty recipient list)
+  outright, returning `mailer.ErrInvalidRecipient` before anything is dialed; the
+  rejected value is kept out of the error, which is logged.
+
+  The public booking paths validate at intake rather than relying on the mailer: the REST
+  handler (`POST /v1/bookings`) answers 400 "email must be a valid email address", and
+  the shared core behind the conversational assistant's `book` tool and the MCP
+  `create_booking` tool checks the address before it persists anything. Both store the
+  parsed bare address, so a pasted `Bob <bob@example.com>` is recorded as
+  `bob@example.com` - a small deliberate behaviour change, matching what the hourly
+  throttle, the per-invitee cap and the `To:` header already assume they hold.
+
 ## [0.9.0] - 2026-09-10
 
 ### Added

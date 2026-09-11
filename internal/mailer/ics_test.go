@@ -113,7 +113,7 @@ func TestBuildRaw_multipartWithICS(t *testing.T) {
 	s := smtpForTest()
 	d := testBookingData()
 	d.AttachICS = true
-	raw := string(s.buildRaw(Message{
+	raw := string(mustBuildRaw(t, s, Message{
 		To:          []string{"bob@example.com"},
 		Subject:     "Booking confirmed",
 		Text:        "body text",
