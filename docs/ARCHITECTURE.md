@@ -54,6 +54,8 @@ app you must `pnpm build` in `frontend/` **and** rebuild/restart the Go binary
   - `MICROSOFT_CLIENT_ID/SECRET` and `MICROSOFT_TENANT` (default `common`; use the
     multi-tenant `common` so any work/personal Microsoft account can connect/sign in)
   - `COOKIE_SECURE` (defaults true when BASE_URL is https)
+  - `CALDAV_STRICT_SSRF` (default `false`) — widens the CalDAV dial guard from
+    cloud-metadata-only to private/loopback/CGNAT/ULA as well (see §16)
 - Startup (`internal/server/server.go: New`): open DB → run goose migrations →
   open keyvault (unwrap DEK) → configure mailer (DB settings override env) → start
   webhook/reminder **worker** → load Google creds (DB > env) → build one
@@ -762,6 +764,24 @@ as the desired state:
   otherwise be the only thing the walk saw. Headers from an **untrusted** peer are never read, which is what keeps the
   default un-weakenable by a header. Resolution happens once, in the outermost
   middleware, and is carried in the request context.
+- **The CalDAV dial guard has two tiers, and the default is the narrow one.** `server_url`
+  is a bring-your-own-server field, so the CalDAV client blocks only the cloud-metadata
+  range (§13's guard is the strict tier, used for webhook delivery where the target is a
+  third party's endpoint). A self-hoster pointing Calnode at a Nextcloud, Radicale or
+  Baïkal on their own LAN — or on localhost — is the intended configuration of a
+  self-hostable product, and blocking private ranges there would break the feature for the
+  people it was written for. **`CALDAV_STRICT_SSRF=true`** switches that field to the
+  strict tier: private, loopback, link-local, CGNAT and ULA addresses are all refused, on
+  the first dial and on every redirect hop, which are followed by hand and re-enter the
+  same guarded client. Turn it on when the CalDAV servers your hosts connect are on the
+  public internet, or when the people using the instance are not the operator — there the
+  URL is supplied by somebody else and the private network it can reach is *yours*, so
+  connect-success versus connect-failure, times a hostname the caller chooses, is a port
+  scan. Under the strict tier a refused dial reports the same "could not reach the CalDAV
+  server" sentence an unreachable host produces, with the resolved address in the server
+  log only, because `POST /v1/calendar/caldav/connect` returns that text to the caller and
+  a specific one would be the oracle the guard exists to close. Default `false`, so an
+  instance that never sets it behaves exactly as it always has.
 
 ---
 

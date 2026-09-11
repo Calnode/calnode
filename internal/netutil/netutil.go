@@ -2,6 +2,7 @@ package netutil
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -105,7 +106,7 @@ func CheckHostnameNotMetadata(ctx context.Context, host string) error {
 // Use this for targets that should never legitimately be private (webhook delivery —
 // a third party's receiving endpoint, not infrastructure the operator runs).
 func SafeTransport(logger *slog.Logger, logMsg string) http.RoundTripper {
-	return dialGuardTransport(ResolveSafe, logger, logMsg)
+	return GuardedTransport(ResolveSafe, logger, logMsg)
 }
 
 // MetadataSafeTransport is SafeTransport's narrower sibling: it blocks only cloud
@@ -114,10 +115,39 @@ func SafeTransport(logger *slog.Logger, logMsg string) http.RoundTripper {
 // private-network and localhost destinations are an intended, self-hosting use case,
 // not a red flag — only the metadata range is universally illegitimate for these.
 func MetadataSafeTransport(logger *slog.Logger, logMsg string) http.RoundTripper {
-	return dialGuardTransport(ResolveNotMetadata, logger, logMsg)
+	return GuardedTransport(ResolveNotMetadata, logger, logMsg)
 }
 
-func dialGuardTransport(resolve func(context.Context, string) ([]net.IPAddr, error), logger *slog.Logger, logMsg string) http.RoundTripper {
+// Resolver is the hostname lookup a dial guard consults. ResolveSafe (strict) and
+// ResolveNotMetadata (narrow) are the two production ones; a test supplies its own to
+// exercise a NAME that resolves private without depending on somebody else's zone. An IP
+// literal needs no stub — LookupIPAddr returns it unchanged — but a rebinding name does,
+// and that is the case the strict guard exists for.
+type Resolver func(context.Context, string) ([]net.IPAddr, error)
+
+// ErrBlockedAddress is what a guarded transport fails a dial with.
+//
+// A sentinel rather than a bare string so a caller can map it to its OWN user-facing
+// sentence: the error a guarded dial produces travels up through http.Client as a
+// *url.Error, and a client that surfaced it verbatim would put "resolved to a blocked
+// address" in front of someone typing their own server's hostname — which is an oracle
+// for what is and is not reachable on the operator's network. errors.Is sees through
+// url.Error's Unwrap, so the mapping is one check at the call site.
+var ErrBlockedAddress = errors.New("target resolved to a blocked address")
+
+// GuardedTransport returns an http.RoundTripper that resolves every dial target through
+// resolve and connects to the resolved IP directly, never re-resolving the hostname — so
+// there is no DNS-rebinding gap between the check and the connection. A caller that
+// follows redirects through the same client re-checks every hop for the same reason.
+// logMsg is the slog message used when a dial is blocked; the resolved address goes in
+// that LOG line and never into the returned error.
+//
+// Exported so a caller can pick its tier per INSTANCE rather than per build: SafeTransport
+// and MetadataSafeTransport are the two named tiers, and internal/caldav chooses between
+// them from configuration, because a self-hoster's CalDAV server legitimately lives on
+// their own private network while an instance serving people who are not the operator has
+// the same field supplied by someone else.
+func GuardedTransport(resolve Resolver, logger *slog.Logger, logMsg string) http.RoundTripper {
 	baseDialer := &net.Dialer{}
 	return &http.Transport{
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
@@ -128,7 +158,9 @@ func dialGuardTransport(resolve func(context.Context, string) ([]net.IPAddr, err
 			addrs, err := resolve(ctx, host)
 			if err != nil {
 				logger.Warn(logMsg, "host", host, "error", err)
-				return nil, fmt.Errorf("netutil: target resolved to a blocked address")
+				// The resolved address is in the LOG and never in the error: the
+				// person who configured the target is the person this error reaches.
+				return nil, fmt.Errorf("netutil: %w", ErrBlockedAddress)
 			}
 			return baseDialer.DialContext(ctx, network, net.JoinHostPort(addrs[0].IP.String(), port))
 		},

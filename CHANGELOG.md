@@ -11,6 +11,24 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
 
 ## [Unreleased]
 
+### Security
+- **`CALDAV_STRICT_SSRF` — an opt-in strict dial guard for CalDAV.** The CalDAV client
+  blocks only cloud-metadata addresses, because `server_url` is a bring-your-own-server
+  field and a Nextcloud, Radicale or Baïkal on the operator's own LAN is the intended
+  configuration of a self-hostable product. That reasoning inverts on an instance whose
+  users are not the operator: the URL is supplied by somebody else, the private network it
+  reaches is the operator's, and connect-success versus connect-failure — times a hostname
+  the caller chooses — is a port scan of it.
+
+  Set `CALDAV_STRICT_SSRF=true` and every CalDAV dial, including each manually followed
+  redirect hop, refuses private, loopback, link-local, CGNAT and ULA addresses as well.
+  A refused dial then reports the same "could not reach the CalDAV server" sentence an
+  unreachable host produces, with the resolved address written to the server log and never
+  into the error, because the connect endpoint returns that text to the caller.
+
+  **Default `false`: an instance that does not set it behaves exactly as before** — same
+  transport, same errors. See ARCHITECTURE §16.
+
 ## [0.9.0] - 2026-09-10
 
 ### Added

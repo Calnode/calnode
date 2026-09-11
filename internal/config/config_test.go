@@ -134,3 +134,30 @@ func TestLoad_dataDir(t *testing.T) {
 		t.Errorf("DataDir = %q; want /var/lib/calnode", cfg.DataDir)
 	}
 }
+
+// CALDAV_STRICT_SSRF switches the CalDAV client from the narrow metadata-only dial guard
+// to the strict one (private / loopback / link-local / CGNAT / ULA all refused).
+//
+// ⛔ Unset must be false. `server_url` is a bring-your-own-server field, and a self-hoster
+// pointing it at a Nextcloud on their own LAN is the intended configuration — turning this
+// on by default would break the feature for the people it was written for.
+func TestLoad_caldavStrictSSRF(t *testing.T) {
+	os.Unsetenv("CALDAV_STRICT_SSRF")
+	if cfg := config.Load(); cfg.CalDAVStrictSSRF {
+		t.Error("CalDAVStrictSSRF defaults to true; a self-hoster's LAN CalDAV server would stop connecting")
+	}
+	t.Setenv("CALDAV_STRICT_SSRF", "true")
+	if cfg := config.Load(); !cfg.CalDAVStrictSSRF {
+		t.Error("CalDAVStrictSSRF = false; want true")
+	}
+	t.Setenv("CALDAV_STRICT_SSRF", "false")
+	if cfg := config.Load(); cfg.CalDAVStrictSSRF {
+		t.Error("CalDAVStrictSSRF = true; want false")
+	}
+	// An unparseable value keeps the default rather than failing closed: same rule as
+	// every other getBool setting, and the default is the permissive one on purpose.
+	t.Setenv("CALDAV_STRICT_SSRF", "yes-please")
+	if cfg := config.Load(); cfg.CalDAVStrictSSRF {
+		t.Error("CalDAVStrictSSRF = true on unparseable input; want the default")
+	}
+}

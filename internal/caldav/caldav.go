@@ -41,36 +41,89 @@ type Client struct {
 	key    [32]byte
 	logger *slog.Logger
 	hc     *http.Client
+
+	// strictSSRF picks which of netutil's two tiers every dial goes through. See
+	// WithStrictSSRFGuard: it is a property of the INSTANCE (CALDAV_STRICT_SSRF), not
+	// of the build.
+	strictSSRF bool
+	// resolve overrides the strict tier's lookup. Test-only (withResolver): an IP
+	// literal needs no stub, but a NAME that resolves private cannot be exercised
+	// against real DNS without depending on somebody else's zone.
+	resolve netutil.Resolver
+}
+
+// Option configures a Client at construction.
+type Option func(*Client)
+
+// WithStrictSSRFGuard makes every CalDAV dial — the initial one and each redirect hop —
+// refuse a private, loopback, link-local, CGNAT or ULA address, not merely the cloud
+// metadata range.
+//
+// ⛔ It is OFF by default, and the default is the right one for a self-hoster.
+// `server_url` is a "bring your own server" field, and a self-hoster pointing it at a
+// Nextcloud, Radicale or Baïkal on their own LAN — or on localhost — is the intended
+// configuration of a self-hostable product. Blocking private ranges there would break the
+// feature for the people it was written for, which is why netutil's narrow tier exists at
+// all.
+//
+// An instance whose users are NOT the operator inverts every term of that. The string is
+// supplied by someone else; the private network it can reach is the OPERATOR's — the pod
+// network, the node's exporters, the database; and the oracle is cheap, because
+// connect-success versus "could not reach", plus timing, is a port scan any account
+// holder can run. Such an operator sets CALDAV_STRICT_SSRF=true and the same field
+// becomes strict.
+func WithStrictSSRFGuard(strict bool) Option {
+	return func(c *Client) { c.strictSSRF = strict }
+}
+
+// withResolver replaces the strict tier's address lookup. Unexported: it is a test seam,
+// and an exported one would be a way to configure the guard away.
+func withResolver(f netutil.Resolver) Option {
+	return func(c *Client) { c.resolve = f }
 }
 
 // New creates a Client. encKeyHex is the 64-char hex AES-256 encryption key (the same
 // instance key used to encrypt the other providers' tokens).
-func New(db *sql.DB, encKeyHex string) (*Client, error) {
+func New(db *sql.DB, encKeyHex string, opts ...Option) (*Client, error) {
 	b, err := hex.DecodeString(encKeyHex)
 	if err != nil || len(b) != 32 {
 		return nil, fmt.Errorf("caldav: invalid encryption key")
 	}
 	var key [32]byte
 	copy(key[:], b)
-	return &Client{
-		db:     db,
-		key:    key,
-		logger: slog.Default(),
-		hc: &http.Client{
-			Timeout: 20 * time.Second,
-			// CalDAV discovery follows redirects manually (preserving the PROPFIND method),
-			// so disable Go's auto-follow which would downgrade 301/302 to GET.
-			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
-			// server_url is host-supplied — a self-hosted Nextcloud/Radicale/Baïkal
-			// instance on the operator's own private network or even localhost is a
-			// legitimate, intended configuration (this is a self-hostable product),
-			// so use the narrower metadata-only guard rather than blocking private
-			// ranges outright. Cloud-metadata addresses are never a real CalDAV
-			// server for anyone. Manual redirect-following (webdav.go) always
-			// re-enters c.hc.Do, so every hop gets re-checked too.
-			Transport: netutil.MetadataSafeTransport(slog.Default(), "caldav: SSRF block"),
-		},
-	}, nil
+	c := &Client{db: db, key: key, logger: slog.Default()}
+	for _, o := range opts {
+		o(c)
+	}
+	c.hc = &http.Client{
+		Timeout: 20 * time.Second,
+		// CalDAV discovery follows redirects manually (preserving the PROPFIND method),
+		// so disable Go's auto-follow which would downgrade 301/302 to GET.
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+		// Manual redirect-following (webdav.go: propfind re-enters c.do, and so
+		// c.hc.Do, for every hop) means the guard below runs on each hop, not only
+		// on the first.
+		Transport: c.transport(),
+	}
+	return c, nil
+}
+
+// transport picks this instance's dial guard. See WithStrictSSRFGuard for why there are
+// two tiers and why the narrow one is the default.
+//
+// The narrow one blocks only cloud-metadata addresses: server_url is host-supplied, and a
+// self-hosted Nextcloud/Radicale/Baïkal on the operator's own private network or even
+// localhost is a legitimate, intended configuration for a self-hostable product. Cloud
+// metadata is never a real CalDAV server for anyone, in either tier.
+func (c *Client) transport() http.RoundTripper {
+	if !c.strictSSRF {
+		return netutil.MetadataSafeTransport(c.logger, "caldav: SSRF block")
+	}
+	resolve := c.resolve
+	if resolve == nil {
+		resolve = netutil.ResolveSafe
+	}
+	return netutil.GuardedTransport(resolve, c.logger, "caldav: SSRF block (strict)")
 }
 
 // Name identifies this provider in the calendar_connections table.
