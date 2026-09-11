@@ -783,6 +783,33 @@ as the desired state:
    strict default and relaxes only when head code-injection is configured (broad
    `https:` or the operator's `tracking_csp_allow`). Don't re-hardcode the CSP on the
    `book`/`manage` handlers — route it through `publicCSP`.
+9. **`FRAME_ANCESTORS` is the admin SPA's only, and it must stay that way.** Set it
+   (space-separated `https://host[:port]` / `'self'`) and the handler under `/admin/`
+   sends `Content-Security-Policy: frame-ancestors <list>` so an operator can embed the
+   console in their own tooling. `internal/server`'s `FrameAncestors` middleware wraps
+   `frontend.Handler()` and nothing else: the public booking pages keep
+   `frame-ancestors 'none'` + `X-Frame-Options: DENY` unconditionally, because they are
+   unauthenticated pages collecting names, emails and card details and clickjacking one
+   is worth more than framing a console nobody reaches without a session.
+   ⚠️ **Unset sends no frame header at all, which is what `/admin/` has always sent** —
+   the SPA is framable by default. This setting deliberately does *not* add a default
+   deny, since an opt-in flag must not smuggle in a behaviour change;
+   `TestAdminSPA_sendsNoFrameHeadersWhenUnset` pins the current answer so changing it is
+   a decision. No `X-Frame-Options` is sent beside the CSP either: that header has no
+   allow-list form (`ALLOW-FROM` is dead), so the only value it could carry is
+   `SAMEORIGIN`, which browsers apply *instead of* the CSP and would break the embedding.
+   An entry that isn't `https://host[:port]` or `'self'` fails `config.Validate()` and the
+   process **refuses to start** — a browser drops a source list it cannot parse, so a
+   typo would otherwise leave `/admin/` more embeddable than with the setting unset.
+   ⛔ **The CSP is only half of what an embed needs, and the other half is not
+   configurable.** `calnode_session` is `SameSite=Lax` (`session.go`), so a browser does
+   not send it on a subresource request from a **cross-site** parent. A console on an
+   unrelated eTLD+1 may therefore frame `/admin/` after this setting and still get the
+   login screen inside the frame, forever — the header permits the embed and the cookie
+   declines to authenticate it. Working embeds are same-site: `'self'`, or a parent
+   sharing `BASE_URL`'s registrable domain. Relaxing that means `SameSite=None; Secure`
+   on the session cookie, which removes the CSRF protection the `Lax` default provides
+   for every other route, so it is deliberately not offered as a setting.
 
 ---
 

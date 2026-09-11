@@ -240,6 +240,41 @@ func (rl *rateLimiter) cleanup() {
 	}
 }
 
+// FrameAncestors returns middleware that sets `Content-Security-Policy:
+// frame-ancestors <origins>` on the responses it wraps, so an operator can embed the
+// admin SPA in their own console. An empty list is a pass-through.
+//
+// ⛔ Scoped to the admin SPA on purpose, and it must stay that way. The public booking
+// pages set `frame-ancestors 'none'` plus `X-Frame-Options: DENY` in their own handlers
+// (book.go, manage_handler.go, tracking_settings.go's publicCSP) and this must never
+// reach them: they are unauthenticated pages that collect names, emails and card
+// details, and clickjacking one is worth more to an attacker than framing an admin UI
+// nobody can reach without a session.
+//
+// No `X-Frame-Options` is set beside the CSP. That header has no allow-list form — its
+// `ALLOW-FROM` was only ever implemented by one browser and is dead — so the only value
+// it could carry here is `SAMEORIGIN`, which every browser that reads it would apply
+// INSTEAD of honouring the CSP, breaking the embedding this exists to enable. Every
+// browser that can frame anything today supports frame-ancestors.
+//
+// ⚠️ With the list empty the wrapped handler sends no frame header at all, which is what
+// /admin/ has always sent: this middleware does not add a default deny, because that
+// would be a behaviour change smuggled in on an opt-in setting. See
+// TestAdminSPA_sendsNoFrameHeadersWhenUnset, which pins it.
+func FrameAncestors(origins []string) func(http.Handler) http.Handler {
+	if len(origins) == 0 {
+		return func(next http.Handler) http.Handler { return next }
+	}
+	policy := "frame-ancestors " + strings.Join(origins, " ")
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Set before next writes: a header added after the first Write is dropped.
+			w.Header().Set("Content-Security-Policy", policy)
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
 // remoteIP returns the IP a per-IP limit keys on.
 //
 // By default that is the TCP-level remote address, stripped of its port, and the
