@@ -127,7 +127,7 @@ func (c *Client) findPrincipal(ctx context.Context, serverURL, username, passwor
 		lastErr = fmt.Errorf("caldav: server did not return a user principal")
 	}
 	if lastErr == nil {
-		lastErr = fmt.Errorf("caldav: could not reach the CalDAV server")
+		lastErr = errCouldNotReach
 	}
 	return "", "", lastErr
 }

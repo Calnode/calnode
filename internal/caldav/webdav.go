@@ -3,12 +3,22 @@ package caldav
 import (
 	"context"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"strings"
+
+	"github.com/calnode/calnode/internal/netutil"
 )
+
+// errCouldNotReach is the one sentence a caller gets for a server this instance did not
+// talk to, whichever of the two reasons applies: nothing there, or an address the SSRF
+// guard refused. findPrincipal has always produced exactly this wording when discovery ran
+// out of candidates, so under the strict guard a refused dial is indistinguishable from an
+// unreachable host — which is the whole point.
+var errCouldNotReach = errors.New("caldav: could not reach the CalDAV server")
 
 // do issues one WebDAV request with HTTP Basic auth and returns the status, body, and any
 // Location header (for manual redirect following). The shared http.Client is configured (in
@@ -32,6 +42,25 @@ func (c *Client) do(ctx context.Context, method, rawURL, username, password, dep
 	}
 	resp, err := c.hc.Do(req)
 	if err != nil {
+		// ⛔ Under the strict guard, a refused dial becomes the SAME sentence a
+		// genuinely unreachable server produces, and carries nothing else.
+		//
+		// This error is surfaced verbatim on the connect form (handler.ConnectCalDAV
+		// writes err.Error() into a 400), so the raw one would tell the person which
+		// addresses are blocked and — with a hostname that resolves several ways —
+		// which one was picked. That is the oracle the strict guard exists to close:
+		// connect-success versus connect-failure, times a hostname the caller
+		// controls, is a port scan of the operator's network. The resolved address is
+		// in the log line netutil already writes.
+		//
+		// The collapse is scoped to the strict tier on purpose, so the default is
+		// unchanged for everyone who does not set CALDAV_STRICT_SSRF. The narrow tier
+		// refuses exactly one thing — the cloud-metadata range, a fixed well-known
+		// address that is nobody's CalDAV server — so its message is an answer about
+		// the URL that was typed, not a probe result about the operator's network.
+		if c.strictSSRF && errors.Is(err, netutil.ErrBlockedAddress) {
+			return 0, nil, "", errCouldNotReach
+		}
 		return 0, nil, "", err
 	}
 	defer resp.Body.Close()

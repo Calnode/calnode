@@ -67,6 +67,19 @@ type Config struct {
 	// walk steps over its edge address and lands on the visitor.
 	TrustedProxyCIDRs []string
 
+	// CalDAVStrictSSRF makes every CalDAV dial — the connect probe, discovery, each
+	// redirect hop and every later sync — refuse a private, loopback, link-local, CGNAT
+	// or ULA address, instead of only the cloud-metadata range.
+	//
+	// Default false, because `server_url` is a bring-your-own-server field and a
+	// self-hoster pointing it at a Nextcloud, Radicale or Baïkal on their own LAN (or
+	// localhost) is the intended configuration of a self-hostable product. Set it true
+	// on an instance whose CalDAV server lives on the public internet, or whose users
+	// are not the operator: there the URL is supplied by somebody else and the private
+	// network it can reach is the operator's, so connect-success versus connect-failure
+	// is a port scan.
+	CalDAVStrictSSRF bool
+
 	// DemoMode turns this instance into a public, self-resetting demo: seeds sample
 	// data on every boot (there's no persistent volume, so every boot is a fresh DB),
 	// disables calendar/Zoom connect, serves a disallow-all robots.txt, and exposes
@@ -115,6 +128,7 @@ func Load() *Config {
 	cfg.PublicBaseURL = getEnv("PUBLIC_BASE_URL", cfg.BaseURL)
 	cfg.LogLevel = parseLogLevel(getEnv("LOG_LEVEL", "info"))
 	cfg.CookieSecure = getBool("COOKIE_SECURE", strings.HasPrefix(cfg.BaseURL, "https://"))
+	cfg.CalDAVStrictSSRF = getBool("CALDAV_STRICT_SSRF", false)
 	cfg.DemoMode = getBool("DEMO_MODE", false)
 	cfg.DemoResetInterval = getDuration("DEMO_RESET_INTERVAL", 30*time.Minute)
 

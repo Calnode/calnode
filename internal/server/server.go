@@ -181,7 +181,14 @@ func BuildHandler(ctx context.Context, cfg *config.Config, db *sql.DB, logger *s
 	// needs no instance-level OAuth app — each host connects their own server with an
 	// app-specific password — so it's always available. Registered last so it never displaces
 	// Google/Microsoft as the OAuth-callback primary.
-	if cdav, err := caldav.New(db, cfg.EncryptionKey); err != nil {
+	//
+	// The SSRF tier is chosen HERE, from configuration, rather than in the package.
+	// `server_url` is a bring-your-own-server field: a self-hoster pointing it at a
+	// Nextcloud on their own LAN is the intended configuration, so the default keeps the
+	// narrow metadata-only guard. An operator whose users are not the operator sets
+	// CALDAV_STRICT_SSRF=true, and then every dial and every redirect hop goes through
+	// the strict guard webhook delivery already uses.
+	if cdav, err := caldav.New(db, cfg.EncryptionKey, caldav.WithStrictSSRFGuard(cfg.CalDAVStrictSSRF)); err != nil {
 		logger.Error("caldav: init failed", "error", err)
 	} else {
 		calSvc.Register(cdav)
