@@ -246,8 +246,13 @@ func (h *Handler) tokenRefresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var id, userID, storedClient, scope, resource string
+	// Archived users refresh nothing: their access tokens no longer validate
+	// (VerifyMCPBearer filters on archived_at), so minting fresh ones here
+	// would hand live credential material to a dead account.
 	err := h.db.QueryRowContext(r.Context(), `
-		SELECT id, user_id, client_id, scope, resource FROM oauth_access_tokens WHERE refresh_hash = ?`,
+		SELECT t.id, t.user_id, t.client_id, t.scope, t.resource FROM oauth_access_tokens t
+		JOIN users u ON u.id = t.user_id
+		WHERE t.refresh_hash = ? AND u.archived_at IS NULL`,
 		hashAPIKey(refresh)).Scan(&id, &userID, &storedClient, &scope, &resource)
 	if err != nil {
 		writeOAuthError(w, http.StatusBadRequest, "invalid_grant", "unknown refresh token")

@@ -189,6 +189,10 @@ the platform/recovery secret doesn't expose secrets.
 - **Offboarding = archive** (`users.archived_at`), never hard-delete — preserves
   bookings, event-type ownership, team links. Archived ⇒ no login, hidden from
   lists, skipped in routing/slots, event types deactivated. Reversible (restore).
+  "No login" holds on every auth path: sessions, API keys, and MCP OAuth bearers
+  all filter on `archived_at`, and refresh grants are refused for archived users
+  too — so archiving ends a member's agent access and leaves no usable
+  credential material behind.
   Archiving is blocked while the member has upcoming (primary-host) bookings; a
   resolve-meetings flow makes the admin reassign/cancel each first.
 
