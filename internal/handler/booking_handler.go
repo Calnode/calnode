@@ -1802,14 +1802,17 @@ func (h *Handler) loadCancellationData(ctx context.Context, b *booking.Booking) 
 	d.LocationValue = b.LocationValue
 	d.CancellationReason = b.CancellationReason
 
-	// Event type name + slug and host name + email in one join.
+	// Event type name + slug and the assigned host's name + email. The host
+	// comes from the booking (b.HostID), not the event-type owner: with
+	// multi-host event types the owner rarely hosts the booking (#48).
 	err := h.db.QueryRowContext(ctx, `
-		SELECT et.name, et.slug, u.name, u.email
-		FROM event_types et JOIN users u ON u.id = et.user_id
-		WHERE et.id = ?`, b.EventTypeID).
-		Scan(&d.EventTypeName, &d.EventTypeSlug, &d.HostName, &d.HostEmail)
+		SELECT et.name, et.slug FROM event_types et WHERE et.id = ?`, b.EventTypeID).
+		Scan(&d.EventTypeName, &d.EventTypeSlug)
 	if err != nil {
-		return d, fmt.Errorf("load event/host: %w", err)
+		return d, fmt.Errorf("load event: %w", err)
+	}
+	if err := h.loadHostIntoData(ctx, b.HostID, &d); err != nil {
+		return d, fmt.Errorf("load host: %w", err)
 	}
 
 	// Organizer attendee.
