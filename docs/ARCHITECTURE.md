@@ -198,6 +198,12 @@ the platform/recovery secret doesn't expose secrets.
   connector (§19) — those authenticate with a bearer token, not the session cookie, so
   revoking sessions alone would leave an agent holding the authority just withdrawn.
   Both deletes run in one transaction, so "revoked" is never half-true.
+  This endpoint signs someone out; it does not offboard them. Offboarding is archive
+  (next bullet), and archive ends MCP access on its own: the OAuth bearer check refuses
+  an archived member, and archive deletes their sessions and MCP tokens. API keys
+  (`cno_`) are deliberately left alone here, which is safe only because an archived
+  member's keys are already refused (the key path in `auth.go`), so an offboarded
+  member's keys stop working through archive, not through this endpoint.
 - **Offboarding = archive** (`users.archived_at`), never hard-delete — preserves
   bookings, event-type ownership, team links. Archived ⇒ no login, hidden from
   lists, skipped in routing/slots, event types deactivated. Reversible (restore).
