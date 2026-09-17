@@ -424,6 +424,14 @@ them - the most common "why can't I see those times".
   (`maxBookingsPerEmailPerHour`) backstops rotating-IP spam; and the booking form has a
   hidden **honeypot** (`company`) that rejects bots. Booker email *verification* is
   intentionally absent — it would need a pending-booking state (a deliberate non-goal).
+  - **The honeypot input must give browser autofill nothing to classify.** Autofill
+    fills fields it recognises by label text and `name`/`id`, and a "Company" label with
+    `name="company"` made Chrome fill it from real bookers' address profiles despite
+    `autocomplete="off"`, so the server rejected people as bots (#33). On
+    `book.html` it has no label and a neutral `name="hp"`/`id="f-hp"`; the embed
+    widget's has no label, name or id at all. Only the JSON field is called `company`.
+    `TestBookPage_honeypotGivesAutofillNothingToClassify` holds the rendered markup to
+    that.
 - **Cancel:** `CancelBooking` (admin) and `CancelByToken` (manage link) share
   `Handler.cancelSideEffects` — loops `booking_hosts`, cancels each host's calendar
   event by its stored id, notifies each host + the attendee (attendee "With:" = the

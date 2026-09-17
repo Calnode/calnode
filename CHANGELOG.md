@@ -11,6 +11,21 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
 
 ## [Unreleased]
 
+### Fixed
+- **Booking no longer fails with a 400 for people whose browser autofills the hidden
+  honeypot field.** The booking page's anti-bot field was labelled "Company" and named
+  `company`, which is exactly what Chrome looks for when filling an organisation from an
+  address profile, so autofill filled it despite `autocomplete="off"` and the server
+  rejected a real person as a bot. Fixes
+  [#33](https://github.com/Calnode/calnode/issues/33), diagnosed by
+  [@MinosChatzidakis](https://github.com/MinosChatzidakis).
+
+  The input now has no label and a neutral `name="hp"`/`id="f-hp"`, checked against
+  Chromium's own field-classification patterns. The API is unchanged: the page still
+  posts the value as `company`, so the embed widget and any third-party client keep
+  working, and a filled value is still rejected. The embed widget needed no change; its
+  honeypot never had a label, name or id.
+
 ## [0.9.0] - 2026-09-10
 
 ### Added

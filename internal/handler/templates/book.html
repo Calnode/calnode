@@ -191,9 +191,15 @@ body {
       <p class="slot-label" id="form-slot-label"></p>
       <form id="booking-form" novalidate>
         <!-- Honeypot: hidden from humans (off-screen, not tabbable); a bot that fills
-             "company" is rejected server-side. Real submissions leave it empty. -->
+             it is rejected server-side. It is still posted as "company" (the API field),
+             but the input itself must give browser autofill nothing to classify: no
+             label, and a name/id that matches none of Chromium's field patterns
+             (components/autofill/core/browser/form_parsing/resources/
+             legacy_regex_patterns.json). A "Company" label and name="company" made Chrome
+             fill it from the booker's address profile, rejecting real people (#33),
+             although autocomplete="off" was already set. -->
         <div aria-hidden="true" style="position:absolute;left:-5000px;height:0;width:0;overflow:hidden;">
-          <label>Company<input id="f-company" name="company" type="text" tabindex="-1" autocomplete="off"></label>
+          <input id="f-hp" name="hp" type="text" tabindex="-1" autocomplete="off">
         </div>
         <div class="field">
           <label for="f-name">{{call .T "name_label"}}</label>
@@ -682,7 +688,7 @@ body {
           email: form.email.value.trim(),
           timezone: TZ,
           language: LOCALE,
-          company: form.company.value,
+          company: $('f-hp').value,
           answers,
         }),
       });
