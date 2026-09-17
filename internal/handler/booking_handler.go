@@ -1786,14 +1786,11 @@ func primaryHost(hosts []assignedHost) assignedHost {
 	return hosts[0]
 }
 
-// loadHostIntoData fills HostName and HostEmail in d from the users table.
-func (h *Handler) loadHostIntoData(ctx context.Context, hostID string, d *mailer.BookingData) error {
-	return h.db.QueryRowContext(ctx,
-		`SELECT name, email FROM users WHERE id = ?`, hostID).
-		Scan(&d.HostName, &d.HostEmail)
-}
-
-// loadCancellationData assembles all fields needed for cancellation emails.
+// loadCancellationData assembles the fields the cancellation, reschedule and
+// reassign emails share. HostName and HostEmail are those of b.HostID, the
+// booking's primary host, so the caller decides which host they describe by the
+// booking copy it passes. Paths that notify several hosts still override them
+// per host (hostBookingData).
 func (h *Handler) loadCancellationData(ctx context.Context, b *booking.Booking) (mailer.BookingData, error) {
 	var d mailer.BookingData
 	d.BookingID = b.ID
@@ -1802,11 +1799,13 @@ func (h *Handler) loadCancellationData(ctx context.Context, b *booking.Booking) 
 	d.LocationValue = b.LocationValue
 	d.CancellationReason = b.CancellationReason
 
-	// Event type name + slug and host name + email in one join.
+	// Event type name + slug, and the booking's host. Not event_types.user_id: the
+	// owner of a round-robin or multi-host event type is often not the person the
+	// booking was assigned to, and may not be attending at all.
 	err := h.db.QueryRowContext(ctx, `
 		SELECT et.name, et.slug, u.name, u.email
-		FROM event_types et JOIN users u ON u.id = et.user_id
-		WHERE et.id = ?`, b.EventTypeID).
+		FROM event_types et JOIN users u ON u.id = ?
+		WHERE et.id = ?`, b.HostID, b.EventTypeID).
 		Scan(&d.EventTypeName, &d.EventTypeSlug, &d.HostName, &d.HostEmail)
 	if err != nil {
 		return d, fmt.Errorf("load event/host: %w", err)

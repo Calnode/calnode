@@ -11,6 +11,25 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
 
 ## [Unreleased]
 
+### Fixed
+- **Booking emails name the host a booking was assigned to, not the owner of its event
+  type.** On a round-robin or multi-host event type those are different people, and the
+  owner may not attend at all, but the host was looked up through `event_types.user_id`.
+  Fixes [#48](https://github.com/Calnode/calnode/issues/48), reported with the fix by
+  [@MinosChatzidakis](https://github.com/MinosChatzidakis).
+
+  - The **reminder** told the attendee they were meeting the owner, and was sent or
+    skipped by the owner's `notify_reminder` preference rather than the host's.
+  - The host's **reschedule** notice went to the owner, so the host who was actually
+    attending was never told the meeting had moved. The attendee's reschedule email and
+    its `.ics` organizer named the owner too. This applies to every reschedule path:
+    admin, manage link and MCP.
+  - The **cancellation** and **reassign** emails loaded the owner first and replaced
+    them before sending, so neither was visibly wrong. Both now start from the booking's
+    host, and reassign no longer needs its own second lookup.
+
+  An event type whose owner is also its only host is unaffected.
+
 ## [0.9.0] - 2026-09-10
 
 ### Added

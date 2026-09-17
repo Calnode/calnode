@@ -193,7 +193,9 @@ func (h *Handler) ReassignBooking(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Notify the attendee (their host changed) and the new host, reusing the
-		// confirmation templates. Host details are overridden to the new host.
+		// confirmation templates. The emails name the NEW host: ReassignHost returns
+		// the booking with HostID already set to newHostID, and loadCancellationData
+		// reads the host from the booking copy it is given.
 		d, err := h.loadCancellationData(ctx, &bCopy)
 		if err != nil {
 			h.logger.Error("reassign: load email data", "error", err, "booking_id", bCopy.ID)
@@ -201,9 +203,6 @@ func (h *Handler) ReassignBooking(w http.ResponseWriter, r *http.Request) {
 		}
 		d.BaseURL = h.publicURL()
 		h.applyBranding(ctx, &d)
-		if err := h.loadHostIntoData(ctx, newHostID, &d); err != nil {
-			h.logger.Error("reassign: load new host", "error", err, "booking_id", bCopy.ID)
-		}
 
 		prefs := h.hostPrefsOrDefault(ctx, bCopy.ID, newHostID)
 		if prefs.NotifyConfirmation {

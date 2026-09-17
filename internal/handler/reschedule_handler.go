@@ -117,7 +117,8 @@ func (h *Handler) RescheduleBooking(w http.ResponseWriter, r *http.Request) {
 
 	// Side effects (calendar move, Zoom update, emails, webhook, reminders) are shared
 	// with the manage-token reschedule flow — see rescheduleSideEffects in
-	// manage_handler.go. etSlug is unused here now; it's re-derived inside the helper
-	// via loadCancellationData's own join, which is equivalent.
+	// manage_handler.go. etSlug is unused here now; the helper re-reads the slug from
+	// the booking's event type, and takes the host it names and notifies from the
+	// booking itself (updated.HostID), not from the event type's owner.
 	go h.rescheduleSideEffects(*updated, etID, previousStart, previousEnd) // #nosec G118 -- deliberately its own context.Background(); see rescheduleSideEffects' doc comment
 }

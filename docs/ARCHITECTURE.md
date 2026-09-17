@@ -637,6 +637,12 @@ as the desired state:
   itself is `multipart/alternative` (text+HTML) or single-part text.
 - Multi-host fan-out: each assigned host gets their host-notification; the attendee
   gets one. (See §9.)
+- **The host in a booking email is the booking's, never the event type's owner.**
+  Name, address and notification prefs come from `bookings.host_id` (the primary host)
+  or `booking_hosts`, not `event_types.user_id`: on round-robin and multi-host event
+  types the owner is often not attending. The reminder worker joins on
+  `bookings.host_id`; `loadCancellationData` (cancel, reschedule, reassign) takes the
+  host from the `HostID` of the booking it is given.
 - **Per-event-type customisation:** custom note bodies (`msg_*`) and custom subject
   lines (`subj_*`, migration 00026) for the four attendee emails; a blank subject
   falls back to the built-in default (`BookingData.SubjectOverride` / `subjectOr`).
