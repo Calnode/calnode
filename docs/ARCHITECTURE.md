@@ -560,6 +560,13 @@ most specific wins). No match, or a tie, sends nothing and returns an error. Thi
 credential boundary, not a routing nicety: accounts can live on different servers, and the
 destination's app password sent to an older event's URL goes to someone else's server.
 
+That refusal matches `calendar.ErrEventUnreachable`, and the reconciler treats it as final:
+it logs one warning, clears `needs_sync` (reschedule) or the event id (cancel, logged
+redacted since it is the only record), and does not retry. Retrying cannot help, because it
+re-reads the same connections and refuses the same way, and the cancellation sweep has no
+date bound, so it would repeat forever. Any other error, such as a server that is down or
+refuses the stored password, stays retryable.
+
 ---
 
 ## 11. Calendar reconciler (self-healing)

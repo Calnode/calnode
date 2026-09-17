@@ -26,7 +26,9 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
   Update and cancel now authenticate as the account that holds the event, found from what
   the booking stored: the calendar recorded at creation, or failing that the connected
   calendar whose URL contains the event's URL (same scheme, host and port). If no single
-  account can be established, nothing is sent and the error is logged. Hosts who moved a
+  account can be established, nothing is sent, and the reconciler logs one warning and stops
+  retrying that event rather than refusing it again every sweep; the event stays where it
+  is. Hosts who moved a
   CalDAV destination between accounts on different servers should consider rotating the
   app password of the account they moved to.
 

@@ -468,15 +468,57 @@ func TestUpdateCancel_ambiguousOrUnknownOwnerSendsNothing(t *testing.T) {
 			ctx := context.Background()
 			svc := newSvc(s.c)
 			calendarID, eventID := tc.ids(s)
-			if err := svc.UpdateEvent(ctx, "u1", calendarID, eventID, moveStart, moveEnd); err == nil {
-				t.Error("UpdateEvent: want an error when the owning account cannot be established, got nil")
+			// ErrEventUnreachable specifically, not just an error: it is what stops the
+			// reconciler retrying a refusal that no later sweep can change.
+			if err := svc.UpdateEvent(ctx, "u1", calendarID, eventID, moveStart, moveEnd); !errors.Is(err, calendar.ErrEventUnreachable) {
+				t.Errorf("UpdateEvent = %v, want calendar.ErrEventUnreachable when the owning account cannot be established", err)
 			}
-			if err := svc.CancelEvent(ctx, "u1", calendarID, eventID); err == nil {
-				t.Error("CancelEvent: want an error when the owning account cannot be established, got nil")
+			if err := svc.CancelEvent(ctx, "u1", calendarID, eventID); !errors.Is(err, calendar.ErrEventUnreachable) {
+				t.Errorf("CancelEvent = %v, want calendar.ErrEventUnreachable when the owning account cannot be established", err)
 			}
 			s.srvA.noRequests(t, "A")
 			s.srvB.noRequests(t, "B")
 			s.stranger.noRequests(t, "stranger")
+		})
+	}
+}
+
+// Once the owning account is established, a failure talking to its server is an ordinary error
+// and must not read as ErrEventUnreachable: the server can come back, and the app password can
+// be fixed by reconnecting, so the reconciler has to keep retrying these.
+func TestUpdateCancel_serverFailureStaysRetryable(t *testing.T) {
+	cases := []struct {
+		name string
+		fail func(t *testing.T, c *Client, s *davServer)
+	}{
+		{"server refuses the stored password", func(t *testing.T, c *Client, s *davServer) {
+			if err := c.saveConnection(context.Background(), "u1", "a@a.test", "revoked", s.URL+"/calendars/a/home/"); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"server is unreachable", func(_ *testing.T, _ *Client, s *davServer) { s.Close() }},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c := newTestClient(t)
+			ctx := context.Background()
+			seedUser(t, c.db, "u1")
+			srvA := newDAVServer(t, "a@a.test", "pw-a")
+			if err := c.saveConnection(ctx, "u1", "a@a.test", "pw-a", srvA.URL+"/calendars/a/home/"); err != nil {
+				t.Fatal(err)
+			}
+			svc := newSvc(c)
+			eventID, calendarID := createOn(t, svc, "a@a.test")
+			tc.fail(t, c, srvA)
+
+			err := svc.UpdateEvent(ctx, "u1", calendarID, eventID, moveStart, moveEnd)
+			if err == nil || errors.Is(err, calendar.ErrEventUnreachable) {
+				t.Errorf("UpdateEvent = %v, want a retryable error (not ErrEventUnreachable)", err)
+			}
+			err = svc.CancelEvent(ctx, "u1", calendarID, eventID)
+			if err == nil || errors.Is(err, calendar.ErrEventUnreachable) {
+				t.Errorf("CancelEvent = %v, want a retryable error (not ErrEventUnreachable)", err)
+			}
 		})
 	}
 }

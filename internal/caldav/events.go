@@ -2,7 +2,6 @@ package caldav
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -100,10 +99,19 @@ func (c *Client) RecognizesEvent(eventID string) bool {
 }
 
 var (
-	errEventNotURL    = errors.New("caldav: event id is not a CalDAV resource URL; nothing was sent")
-	errNoEventOwner   = errors.New("caldav: none of the user's CalDAV accounts holds this event (it is not inside any of their calendars); nothing was sent")
-	errManyEventOwner = errors.New("caldav: more than one of the user's CalDAV accounts could hold this event; nothing was sent")
+	errEventNotURL    error = unreachableEventError("caldav: event id is not a CalDAV resource URL; nothing was sent")
+	errNoEventOwner   error = unreachableEventError("caldav: none of the user's CalDAV accounts holds this event (it is not inside any of their calendars); nothing was sent")
+	errManyEventOwner error = unreachableEventError("caldav: more than one of the user's CalDAV accounts could hold this event; nothing was sent")
 )
+
+// unreachableEventError is an update or cancel refused before any request, because the stored
+// ids do not pick out one account to send it as. It matches calendar.ErrEventUnreachable, which
+// is what tells the reconciler that retrying cannot help.
+type unreachableEventError string
+
+func (e unreachableEventError) Error() string { return string(e) }
+
+func (e unreachableEventError) Is(target error) bool { return target == calendar.ErrEventUnreachable }
 
 // eventAccount is one connected CalDAV account and every collection URL it is known to use: the
 // calendar bound at connect, then any calendars saved for the account in connection_calendars.

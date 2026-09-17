@@ -7,6 +7,7 @@ package calendar
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"sort"
 	"time"
 
@@ -90,6 +91,12 @@ type Provider interface {
 type EventRecognizer interface {
 	RecognizesEvent(eventID string) bool
 }
+
+// ErrEventUnreachable matches an UpdateEvent or CancelEvent error that was refused before
+// anything was sent, because the stored ids do not identify one connected account to act as.
+// It is a verdict on stored state, not a failed request: a retry re-reads the same connections
+// and refuses the same way, so the reconciler stops retrying an event that returns it.
+var ErrEventUnreachable = errors.New("calendar: no single connected account holds this event")
 
 // Service holds the configured providers and dispatches per-user operations to
 // whichever provider that user has connected.
