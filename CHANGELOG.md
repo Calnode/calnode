@@ -20,6 +20,12 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
   the link-only fallback that needs no Zoom app. Answers
   [#35](https://github.com/Calnode/calnode/issues/35).
 
+- **Microsoft calendars can be chosen as the one bookings are written into.** Since 0.5.0
+  the calendar picker marked every Microsoft calendar "(read-only)" and disabled its Book
+  option. The calendar list read Graph's `canEdit` but left it out of `$select`, so Graph
+  never returned it and every calendar decoded as not writable. It is now requested, and a
+  test fails if that request omits any property the response decodes.
+
 ## [0.9.0] - 2026-09-10
 
 ### Added
