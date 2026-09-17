@@ -806,7 +806,7 @@ as the desired state:
   patching. The **public** booking surfaces are unaffected and are verified on mobile;
   this is admin-only. Deferred 2026-08-22, not a regression.
 - **LiveKit room is not translated** - the booking surfaces, emails and calendar invites
-  ship in 8 languages (§23), but the in-browser meeting UI is ~45 hardcoded English
+  ship in 9 languages (§23), but the in-browser meeting UI is ~45 hardcoded English
   strings. It has its own vanilla-JS asset pipeline and shares no string plumbing with
   the Go templates, so it needs a small runtime `t()` of its own. Separate work, not hard.
 - **Plural rules are 2-form only** (§23) - shipping Polish, Russian or Arabic correctly
