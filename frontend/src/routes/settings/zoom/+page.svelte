@@ -60,7 +60,10 @@
 					<span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">2</span>
 					<div>
 						Choose a <span class="font-medium">General App</span> (User-managed OAuth). You can keep it
-						unpublished — your own team's Zoom users can still connect.
+						unpublished — but only Zoom users on the <span class="font-medium">same Zoom account</span>
+						as the app owner can then connect. Members on other Zoom accounts are refused by Zoom
+						itself (see <a href="https://github.com/Calnode/calnode/blob/main/docs/ZOOM.md" target="_blank" rel="noopener noreferrer" class="font-medium text-primary underline">docs/ZOOM.md</a>
+						for the options).
 					</div>
 				</li>
 				<li class="flex gap-3">
@@ -129,6 +132,13 @@
 						This must be registered on your Zoom app (OAuth → Redirect URL + OAuth allow list).
 					</p>
 					<code class="mt-2 block rounded bg-muted px-2 py-1 text-xs font-mono break-all">{redirectURI}</code>
+				</div>
+				<div class="mt-4 rounded-md bg-amber-50 px-3 py-2.5 text-xs text-amber-800 ring-1 ring-inset ring-amber-200">
+					<span class="font-medium">Multi-member limit:</span> only Zoom users on the same Zoom
+					account as this app's owner can connect an unpublished app — members elsewhere are
+					refused by Zoom before Calnode is involved. Options:
+					<a href="https://github.com/Calnode/calnode/blob/main/docs/ZOOM.md" target="_blank" rel="noopener noreferrer" class="font-medium underline">docs/ZOOM.md</a>
+					(built-in video needs no Zoom app at all).
 				</div>
 			{/if}
 
