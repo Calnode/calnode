@@ -59,8 +59,10 @@
 				<li class="flex gap-3">
 					<span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">2</span>
 					<div>
-						Choose a <span class="font-medium">General App</span> (User-managed OAuth). You can keep it
-						unpublished — your own team's Zoom users can still connect.
+						Choose a <span class="font-medium">General App</span> (User-managed OAuth). While it is
+						unpublished, Zoom only lets users <span class="font-medium">inside the Zoom account that owns
+						the app</span> connect; hosts with their own separate Zoom accounts need a published app
+						(see DEPLOY.md, "Zoom meeting links").
 					</div>
 				</li>
 				<li class="flex gap-3">
