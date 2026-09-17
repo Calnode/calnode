@@ -318,8 +318,11 @@
 									<p class="text-xs text-muted-foreground">No calendars found for this account.</p>
 								{:else}
 									<p class="text-xs text-muted-foreground">
-										Tick the calendars to check for conflicts, and choose the one bookings are
-										written into.
+										<span class="font-medium">Check</span> counts busy time on a calendar, so those
+										times can't be booked. <span class="font-medium">Book</span> is the single calendar
+										new bookings are written into (one across all your accounts), so it can't be
+										unticked, only moved to another calendar. Read-only calendars can be checked but
+										not booked into.
 									</p>
 									<div class="space-y-1.5">
 										<div class="flex items-center gap-2 pb-1 text-xs font-medium text-muted-foreground">

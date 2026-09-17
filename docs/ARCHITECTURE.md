@@ -477,6 +477,24 @@ Calnode talks to calendars through a **provider abstraction**, not a single vend
   added via the `openid` scope. A blanket `404 MailboxNotEnabledForRESTAPI` on every
   `/me/*` call means the account has **no Exchange Online mailbox** (not an auth error).
   Graph errors log their response body to make this self-evident.
+- *CalDAV* (`internal/caldav`): username + app password over Basic auth, connected through
+  `POST /v1/calendar/caldav/connect`, which walks `current-user-principal` →
+  `calendar-home-set` → a Depth 1 listing and binds the account's default collection
+  (`calendar_connections.calendar_id`). **A calendar id is the collection URL**, so the picker,
+  free/busy and write-back all address collections directly. `ListCalendars` repeats that walk
+  from the bound collection with the stored credentials (the server URL typed at connect is not
+  stored; a server that reports no principal there gets the collection's parent) and lists
+  every VEVENT-capable collection under the home, with `Writable` read from
+  `DAV:current-user-privilege-set` (`all`, `write`, `write-content` or `bind`; not reported
+  counts as writable). **A collection on a different origin (scheme, host, port) from the home
+  is skipped**, at connect and when listing, because a stored id is sent the account's
+  credentials on every read and write. When that leaves connect with no event calendar at all
+  (typically a reverse proxy whose upstream reports its internal scheme or host in hrefs), it
+  fails naming both addresses rather than with "no writable calendar found". CalDAV implements
+  `calendar.SelectionValidator` (below). Free/busy REPORTs each calendar ticked for conflicts
+  (`ConflictCalendarIDs`) and makes no discovery requests; an account that never saved a
+  selection reads only its bound collection. A 401/403 wraps `calendar.ErrReauthRequired`, so
+  a revoked app password shows as "needs reconnecting" in the picker.
 
 **Online-meeting links are provider-matched (`booking_handler.go`).** A
 `google_meet`/`teams` event type auto-mints a link **only when the primary host's
@@ -537,6 +555,15 @@ across all calendars, so only creation is calendar-scoped there.
 Saving a sub-calendar destination also moves the account-level destination to that account,
 or the choice silently does nothing when the picked calendar lives in a different account
 from the current destination.
+
+**Where a calendar id says where credentials go, a saved selection is checked first.** A
+provider implementing `calendar.SelectionValidator` (CalDAV, whose id is a collection URL that
+free/busy and bookings authenticate to) is asked to accept every id before
+`SetAccountCalendars` opens its transaction. A refused id is `*UnknownCalendarError` (400 from
+`PUT .../calendars`) and nothing is saved; a failure to check is `ErrCalendarList` (502) or a
+reauth error (409), as on the GET. Google and Microsoft do not implement it: their ids are
+names inside an API the account's token already scopes, so saving there stays a local write
+with no provider call, and aliases such as Google's `"primary"` still save.
 
 **`booking_hosts.external_calendar_id` records where each event actually went** (migration
 00055). Reschedule and cancel use it rather than re-resolving the current destination -

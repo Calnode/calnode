@@ -3,6 +3,7 @@ package calendar
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 
 	"github.com/calnode/calnode/internal/uid"
@@ -77,8 +78,37 @@ func (s *Service) AccountCalendars(ctx context.Context, userID, provider, accoun
 	return out, nil
 }
 
+// SelectionValidator is implemented by a provider whose calendar ids must be checked before a
+// selection is saved, because the id itself says where the account's credentials are sent.
+// CalDAV is one: its calendar id is a collection URL that free/busy and booking writes then
+// authenticate to. A provider whose ids are opaque names inside an API it already authorises
+// (Google, Microsoft) does not implement it, so saving there stays a local write.
+//
+// ValidateSelection returns *UnknownCalendarError for an id the provider does not offer for
+// the account, and any other error when it could not check.
+type SelectionValidator interface {
+	ValidateSelection(ctx context.Context, userID, accountEmail string, calendarIDs []string) error
+}
+
+// ErrCalendarList wraps a provider's failure to check a selection against the account's
+// calendars, so a caller can report "the provider could not be reached" rather than an
+// internal error.
+var ErrCalendarList = errors.New("calendar: could not list the account's calendars")
+
+// UnknownCalendarError is a saved selection naming a calendar the provider does not list for
+// the account.
+type UnknownCalendarError struct{ CalendarID string }
+
+func (e *UnknownCalendarError) Error() string {
+	return fmt.Sprintf("calendar %q is not one of this account's calendars", e.CalendarID)
+}
+
 // SetAccountCalendars replaces the saved selection for the connection's account. At most one
 // calendar across the whole user may be the destination (enforced by clearing others first).
+//
+// When the provider is a SelectionValidator, nothing is saved unless it accepts every calendar
+// id: a refused id comes back as *UnknownCalendarError, and a failure to check is wrapped in
+// ErrCalendarList. Other providers save the ids as given, as they always have.
 func (s *Service) SetAccountCalendars(ctx context.Context, userID, provider, accountEmail string, sels []CalendarSelection) error {
 	ok, err := s.accountExists(ctx, userID, provider, accountEmail)
 	if err != nil {
@@ -86,6 +116,22 @@ func (s *Service) SetAccountCalendars(ctx context.Context, userID, provider, acc
 	}
 	if !ok {
 		return sql.ErrNoRows
+	}
+
+	// Checked before the transaction opens: the pool is a single connection, and a provider
+	// checking the ids reads the connection row itself.
+	if v, ok := s.providers[provider].(SelectionValidator); ok {
+		ids := make([]string, 0, len(sels))
+		for _, c := range sels {
+			ids = append(ids, c.ID)
+		}
+		if err := v.ValidateSelection(ctx, userID, accountEmail, ids); err != nil {
+			var unknown *UnknownCalendarError
+			if errors.As(err, &unknown) {
+				return err
+			}
+			return fmt.Errorf("%w: %w", ErrCalendarList, err)
+		}
 	}
 
 	tx, err := s.db.BeginTx(ctx, nil)

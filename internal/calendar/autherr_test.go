@@ -20,6 +20,7 @@ func TestIsReauthErr(t *testing.T) {
 			errors.New(`oauth2: "invalid_grant" "AADSTS70000: Account security interrupt..."`)), true},
 		{"typed retrieve error", &oauth2.RetrieveError{ErrorCode: "invalid_grant"}, true},
 		{"typed interaction required", &oauth2.RetrieveError{ErrorCode: "interaction_required"}, true},
+		{"wraps ErrReauthRequired", fmt.Errorf("caldav: list: %w", ErrReauthRequired), true},
 		{"transient network", errors.New("microsoft: list calendars call: dial tcp: i/o timeout"), false},
 		{"http 500", errors.New("gcal: list calendars status 500"), false},
 	}

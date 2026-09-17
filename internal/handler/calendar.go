@@ -367,6 +367,23 @@ func (h *Handler) PutConnectionCalendars(w http.ResponseWriter, r *http.Request)
 			h.writeError(w, http.StatusNotFound, "calendar connection not found")
 			return
 		}
+		// A provider that validates selections (CalDAV) checks every id against the account's
+		// current calendars (see SetAccountCalendars), so its listing failures reach this
+		// handler the same way they reach the GET.
+		var unknown *calendar.UnknownCalendarError
+		if errors.As(err, &unknown) {
+			h.writeError(w, http.StatusBadRequest, unknown.Error()+". Reload the list of calendars and save again.")
+			return
+		}
+		if calendar.IsReauthErr(err) {
+			h.writeError(w, http.StatusConflict, "This calendar needs reconnecting — disconnect it and connect again.")
+			return
+		}
+		if errors.Is(err, calendar.ErrCalendarList) {
+			h.logger.ErrorContext(r.Context(), "set connection calendars: list", "error", err)
+			h.writeError(w, http.StatusBadGateway, "could not reach the calendar provider")
+			return
+		}
 		h.logger.ErrorContext(r.Context(), "set connection calendars", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal error")
 		return

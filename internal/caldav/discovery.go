@@ -24,7 +24,7 @@ const (
 <D:propfind xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav"><D:prop><C:calendar-home-set/></D:prop></D:propfind>`
 
 	propCalendarCollections = `<?xml version="1.0" encoding="utf-8"?>
-<D:propfind xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav"><D:prop><D:resourcetype/><D:displayname/><C:supported-calendar-component-set/></D:prop></D:propfind>`
+<D:propfind xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav"><D:prop><D:resourcetype/><D:displayname/><C:supported-calendar-component-set/><D:current-user-privilege-set/></D:prop></D:propfind>`
 )
 
 // Connect validates the given CalDAV credentials by discovering the user's default calendar
@@ -49,59 +49,124 @@ func (c *Client) Connect(ctx context.Context, userID, serverURL, username, passw
 }
 
 // discoverCalendar walks principal → calendar-home → calendar collections and returns the URL
-// of the first VEVENT-capable calendar collection.
+// of the collection the connection binds to: the account's default, which free/busy reads and
+// bookings are written to until the user picks calendars of their own.
 func (c *Client) discoverCalendar(ctx context.Context, serverURL, username, password string) (string, error) {
 	// 1. current-user-principal — try the base URL, then the RFC 5785 well-known path.
-	principal, base, err := c.findPrincipal(ctx, serverURL, username, password)
+	principal, _, err := c.findPrincipal(ctx, serverURL, username, password)
 	if err != nil {
 		return "", err
 	}
 
 	// 2. calendar-home-set on the principal.
-	ms, homeReqURL, err := c.propfind(ctx, principal, username, password, "0", propCalendarHomeSet)
+	home, err := c.calendarHome(ctx, principal, username, password)
 	if err != nil {
 		return "", err
-	}
-	var home string
-	for _, r := range ms.Responses {
-		if h := r.okProp().CalendarHomeSet.Href; h != "" {
-			home = resolveRef(homeReqURL, h)
-			break
-		}
 	}
 	if home == "" {
 		// Some servers expose the calendar home at the principal itself.
 		home = principal
 	}
 
-	// 3. list calendar collections (Depth 1) and pick the first that supports VEVENT.
-	ms, homeReqURL, err = c.propfind(ctx, home, username, password, "1", propCalendarCollections)
+	// 3. list calendar collections (Depth 1) and pick the default among them.
+	l, err := c.listCollections(ctx, home, username, password)
 	if err != nil {
 		return "", err
 	}
-	var firstCal string
+	cols := l.collections
+	if len(cols) == 0 && len(l.foreign) > 0 {
+		// Every event calendar was on another origin. That is the signature of a self-hosted
+		// server behind a reverse proxy that reports its internal scheme or host in hrefs, and
+		// "no calendar found" would send the operator looking in the wrong place.
+		return "", fmt.Errorf("caldav: the server lists its calendars at a different address (%s) than the one Calnode reached it at (%s); check the server's reverse proxy or base URL settings",
+			displayOrigin(l.foreign[0]), displayOrigin(l.homeURL))
+	}
+	if len(cols) == 0 {
+		return "", fmt.Errorf("caldav: no writable calendar found on the server")
+	}
+	for _, col := range cols {
+		// Prefer a calendar literally named/pathed "calendar" as the default when present.
+		if strings.EqualFold(col.displayName, "Calendar") || strings.Contains(strings.ToLower(col.url), "/calendar") {
+			return col.url, nil
+		}
+	}
+	return cols[0].url, nil
+}
+
+// calendarHome returns the calendar-home-set a principal reports (RFC 4791 §6.2.1), or "" when
+// it reports none.
+func (c *Client) calendarHome(ctx context.Context, principal, username, password string) (string, error) {
+	ms, reqURL, err := c.propfind(ctx, principal, username, password, "0", propCalendarHomeSet)
+	if err != nil {
+		return "", err
+	}
+	for _, r := range ms.Responses {
+		if h := r.okProp().CalendarHomeSet.Href; h != "" {
+			return resolveRef(reqURL, h), nil
+		}
+	}
+	return "", nil
+}
+
+// collection is one calendar collection that can hold events, as listed under a calendar home.
+type collection struct {
+	url         string
+	displayName string // as reported; "" when the server gave none
+	writable    bool
+}
+
+// name is what the calendar picker shows: the display name, else the last path segment.
+func (col collection) name() string {
+	if n := strings.TrimSpace(col.displayName); n != "" {
+		return n
+	}
+	return lastSegment(col.url)
+}
+
+// listing is what one Depth 1 PROPFIND of a calendar home returned.
+type listing struct {
+	homeURL     string       // the URL that answered, after any redirects
+	collections []collection // same-origin, VEVENT-capable, in server order
+	foreign     []string     // VEVENT-capable collections skipped for being on another origin
+}
+
+// listCollections lists the VEVENT-capable calendar collections directly under a calendar home,
+// in the order the server returns them.
+//
+// A collection whose URL is on a different origin (scheme, host, port) from the home URL that
+// listed it is logged and skipped. Every URL returned here can be stored as a calendar id, and a
+// stored id is then sent the account's Basic credentials on every free/busy read and booking
+// write. The server already sees those credentials; an href must not be able to make them go to
+// some other host for as long as the selection is saved. Skipped URLs are reported in foreign so
+// connect can say why it found nothing.
+func (c *Client) listCollections(ctx context.Context, home, username, password string) (listing, error) {
+	ms, homeReqURL, err := c.propfind(ctx, home, username, password, "1", propCalendarCollections)
+	if err != nil {
+		return listing{}, err
+	}
+	l := listing{homeURL: homeReqURL}
+	seen := map[string]bool{}
 	for _, r := range ms.Responses {
 		p := r.okProp()
 		if p.ResourceType.Calendar == nil {
 			continue // not a calendar collection (e.g. the home container itself)
 		}
 		if !supportsVEvent(p.SupportedComps) {
-			continue // e.g. a tasks/reminders or birthdays calendar
+			continue // e.g. a tasks/reminders list
 		}
 		u := resolveRef(homeReqURL, r.Href)
-		if firstCal == "" {
-			firstCal = u
+		if !sameOrigin(u, homeReqURL) {
+			c.logger.Warn("caldav: skipping a calendar listed on another origin", "home", homeReqURL, "calendar", u)
+			l.foreign = append(l.foreign, u)
+			continue
 		}
-		// Prefer a calendar literally named/pathed "calendar" as the default when present.
-		if strings.EqualFold(p.DisplayName, "Calendar") || strings.Contains(strings.ToLower(u), "/calendar") {
-			return u, nil
+		if seen[u] {
+			continue // the picker keys rows by id, and the selection table is unique on it
 		}
+		seen[u] = true
+		l.collections = append(l.collections, collection{url: u, displayName: p.DisplayName, writable: p.PrivilegeSet.canWrite()})
 	}
-	if firstCal == "" {
-		_ = base
-		return "", fmt.Errorf("caldav: no writable calendar found on the server")
-	}
-	return firstCal, nil
+	return l, nil
 }
 
 // findPrincipal resolves current-user-principal, trying the base URL first and then the

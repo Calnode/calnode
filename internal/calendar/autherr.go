@@ -16,10 +16,14 @@ var ErrReauthRequired = errors.New("calendar: reconnect required")
 // IsReauthErr reports whether err indicates the account's OAuth grant is no longer usable, as
 // opposed to a transient failure. It matches both a typed oauth2.RetrieveError and the string
 // form providers wrap it in (Google returns "invalid_grant"; Microsoft returns "invalid_grant"
-// alongside an AADSTS code).
+// alongside an AADSTS code), and anything wrapping ErrReauthRequired, which is how CalDAV
+// reports a server that rejects the stored app password.
 func IsReauthErr(err error) bool {
 	if err == nil {
 		return false
+	}
+	if errors.Is(err, ErrReauthRequired) {
+		return true
 	}
 	var re *oauth2.RetrieveError
 	if errors.As(err, &re) {

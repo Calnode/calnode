@@ -11,6 +11,30 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
 
 ## [Unreleased]
 
+### Fixed
+- **A CalDAV account now offers every calendar in it, not only the one it connected with.**
+  Closes [#42](https://github.com/Calnode/calnode/issues/42).
+
+  Connecting binds one collection, and the calendar picker could only ever show that one, so
+  an account with several calendars (the report was Synology Calendar) could be checked and
+  booked into through its default calendar alone. The picker now lists every calendar under
+  the account's calendar home that can hold events, marks read-only shares (from
+  `DAV:current-user-privilege-set`) so they can be checked but not booked into, and free/busy
+  reads every calendar ticked for conflicts. Accounts that never saved a selection keep
+  reading only the calendar they were bound to, and nothing needs reconnecting: the list is
+  rediscovered from the stored calendar URL. The picker also says what Check and Book mean,
+  and why Book moves rather than unticks.
+
+  Two refusals come with it, both CalDAV-only. A calendar listed on a different origin from
+  its calendar home is skipped, because a CalDAV calendar id is the URL that later receives the
+  account's credentials. This changes connecting for one setup: a server behind a reverse proxy
+  that reports its internal scheme or host in every href used to connect and now does not, with
+  an error naming both addresses and pointing at the proxy or base URL settings. And saving a
+  selection that names a CalDAV calendar the server did not list is refused with a 400, where
+  the endpoint used to store whatever the client sent. Google and Microsoft selections save
+  exactly as before, with no call to the provider: their ids carry no credentials anywhere, so
+  there is nothing for the check to protect.
+
 ## [0.9.0] - 2026-09-10
 
 ### Added

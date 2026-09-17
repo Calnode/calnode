@@ -171,7 +171,7 @@ func (c *Client) loadConn(ctx context.Context, userID string, checkConflicts, is
 
 	// For CalDAV the "calendar id" IS the collection URL, so picking a different calendar
 	// inside the account is just a different URL to PUT into. Only applies to the write
-	// target; conflict checking already reads every selected collection.
+	// target; conflict checking reads every selected collection (conflictConns).
 	if isDestination == 1 {
 		if subCal, ok, sErr := connstore.DestinationCalendarID(ctx, c.db, userID, "caldav", cn.username); sErr != nil {
 			return conn{}, false, sErr
@@ -182,9 +182,10 @@ func (c *Client) loadConn(ctx context.Context, userID string, checkConflicts, is
 	return cn, true, nil
 }
 
-// conflictConns returns every CalDAV connection for the user with check_conflicts = 1, so a
-// user can connect several CalDAV accounts and have them all checked. Decrypt failures on one
-// row are logged and skipped (fail-open).
+// conflictConns returns one entry per calendar to read for conflicts, across every CalDAV
+// connection the user has with check_conflicts = 1, so a user can connect several CalDAV
+// accounts and tick several calendars in each. Entries of one account share its credentials and
+// differ only in calURL. Decrypt failures on one row are logged and skipped (fail-open).
 func (c *Client) conflictConns(ctx context.Context, userID string) ([]conn, error) {
 	rows, err := c.db.QueryContext(ctx, `
 		SELECT id, COALESCE(account_email,''), access_token_enc, calendar_id
@@ -208,9 +209,11 @@ func (c *Client) conflictConns(ctx context.Context, userID string) ([]conn, erro
 		return nil, err
 	}
 	// Resolve selection + decrypt after the cursor is closed (single-connection DB pool; the
-	// ConflictCalendarIDs query would deadlock against an open cursor). CalDAV binds one
-	// calendar per connection, so the sub-calendar picker is simply an on/off toggle: an empty
-	// result means the user deselected it.
+	// ConflictCalendarIDs query would deadlock against an open cursor). An account with a saved
+	// selection yields exactly the calendars ticked in it, and none when all were unticked. One
+	// that never saved a selection yields its bound collection, which is all any CalDAV
+	// connection read before its calendars could be listed. The ids are collection URLs, and
+	// SetAccountCalendars only saves ones this provider listed for the account.
 	var conns []conn
 	for _, d := range data {
 		calIDs, err := calendar.ConflictCalendarIDs(ctx, c.db, "caldav", userID, d.username, d.calURL)
@@ -225,7 +228,9 @@ func (c *Client) conflictConns(ctx context.Context, userID string) ([]conn, erro
 			c.logger.Warn("caldav: skipping connection with bad credentials", "user_id", userID, "error", err)
 			continue
 		}
-		conns = append(conns, conn{id: d.id, username: d.username, password: string(pw), calURL: d.calURL})
+		for _, calURL := range calIDs {
+			conns = append(conns, conn{id: d.id, username: d.username, password: string(pw), calURL: calURL})
+		}
 	}
 	return conns, nil
 }

@@ -5,9 +5,13 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
+	"path"
 	"strings"
+
+	"github.com/calnode/calnode/internal/calendar"
 )
 
 // do issues one WebDAV request with HTTP Basic auth and returns the status, body, and any
@@ -60,7 +64,7 @@ func (c *Client) propfind(ctx context.Context, rawURL, username, password, depth
 			continue
 		}
 		if status == http.StatusUnauthorized || status == http.StatusForbidden {
-			return nil, cur, fmt.Errorf("caldav: authentication failed (status %d) — check the username and app password", status)
+			return nil, cur, &authError{status: status}
 		}
 		if status != http.StatusMultiStatus && status != http.StatusOK {
 			return nil, cur, fmt.Errorf("caldav: PROPFIND %s returned status %d", cur, status)
@@ -74,6 +78,18 @@ func (c *Client) propfind(ctx context.Context, rawURL, username, password, depth
 	return nil, cur, fmt.Errorf("caldav: too many redirects resolving %s", rawURL)
 }
 
+// authError is a 401/403 from the server. Its message is what the connect form shows. It also
+// unwraps to calendar.ErrReauthRequired, because listing an existing account's calendars now
+// talks to the server: an app password that has since been revoked must read as "reconnect
+// this account", not as the server being unreachable.
+type authError struct{ status int }
+
+func (e *authError) Error() string {
+	return fmt.Sprintf("caldav: authentication failed (status %d) — check the username and app password", e.status)
+}
+
+func (e *authError) Unwrap() error { return calendar.ErrReauthRequired }
+
 // resolveRef resolves a (possibly relative) href against a base request URL, returning an
 // absolute URL string. On parse failure it returns the ref unchanged.
 func resolveRef(base, ref string) string {
@@ -86,6 +102,65 @@ func resolveRef(base, ref string) string {
 		return ref
 	}
 	return b.ResolveReference(r).String()
+}
+
+// sameOrigin reports whether two absolute URLs share a scheme, host and port. An omitted port
+// equals the scheme's default, so https://h and https://h:443 are the same origin. A URL that
+// does not parse, or has no scheme or host, matches nothing.
+func sameOrigin(a, b string) bool {
+	oa, ob := origin(a), origin(b)
+	return oa != "" && oa == ob
+}
+
+func origin(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return ""
+	}
+	scheme, host := strings.ToLower(u.Scheme), strings.ToLower(u.Hostname())
+	if scheme == "" || host == "" {
+		return ""
+	}
+	port := u.Port()
+	if port == "" {
+		switch scheme {
+		case "http":
+			port = "80"
+		case "https":
+			port = "443"
+		}
+	}
+	return scheme + "://" + net.JoinHostPort(host, port)
+}
+
+// displayOrigin renders a URL's origin as an operator would type it (https://host, or
+// http://host:5000), for error messages.
+func displayOrigin(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" {
+		return raw
+	}
+	return u.Scheme + "://" + u.Host
+}
+
+// lastSegment returns the final path segment of a collection URL ("work" for .../user/work/),
+// used as a calendar's name when the server reports no display name.
+func lastSegment(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return raw
+	}
+	seg := path.Base(strings.TrimRight(u.Path, "/"))
+	if seg == "" || seg == "." || seg == "/" {
+		return raw
+	}
+	return seg
+}
+
+// parentCollection returns the URL of the collection that contains raw (.../user/ for
+// .../user/work/).
+func parentCollection(raw string) string {
+	return resolveRef(strings.TrimRight(raw, "/"), "./")
 }
 
 // ----- WebDAV / CalDAV multistatus XML -----
@@ -112,6 +187,38 @@ type msProp struct {
 	ResourceType         resourceType     `xml:"DAV: resourcetype"`
 	SupportedComps       supportedCompSet `xml:"urn:ietf:params:xml:ns:caldav supported-calendar-component-set"`
 	CalendarData         string           `xml:"urn:ietf:params:xml:ns:caldav calendar-data"`
+	// nil when the server did not report the property (or reported it under a non-2xx status).
+	PrivilegeSet *privilegeSet `xml:"DAV: current-user-privilege-set"`
+}
+
+// privilegeSet is DAV:current-user-privilege-set (RFC 3744 §5.4), the privileges the signed-in
+// user holds on a resource. Only the ones that allow adding an event are decoded.
+type privilegeSet struct {
+	Privileges []privilege `xml:"DAV: privilege"`
+}
+
+type privilege struct {
+	All          *struct{} `xml:"DAV: all"`
+	Write        *struct{} `xml:"DAV: write"`
+	WriteContent *struct{} `xml:"DAV: write-content"`
+	Bind         *struct{} `xml:"DAV: bind"`
+}
+
+// canWrite reports whether events can be created in the collection. A set the server did not
+// report counts as writable: that is what every CalDAV calendar was assumed to be before
+// privileges were read, and a server that omits the property has given no reason to refuse.
+// write-properties alone does not count, since servers grant it on read-only shares so the
+// sharee can rename or recolour them.
+func (s *privilegeSet) canWrite() bool {
+	if s == nil {
+		return true
+	}
+	for _, p := range s.Privileges {
+		if p.All != nil || p.Write != nil || p.WriteContent != nil || p.Bind != nil {
+			return true
+		}
+	}
+	return false
 }
 
 type hrefHolder struct {
