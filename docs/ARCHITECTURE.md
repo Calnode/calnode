@@ -495,6 +495,13 @@ Calnode talks to calendars through a **provider abstraction**, not a single vend
   (`ConflictCalendarIDs`) and makes no discovery requests; an account that never saved a
   selection reads only its bound collection. A 401/403 wraps `calendar.ErrReauthRequired`, so
   a revoked app password shows as "needs reconnecting" in the picker.
+  **Listing never leaves the bound collection's origin.** It runs on every picker load and
+  every saved selection, with the account's credentials, against hrefs the server chooses, so
+  `homeForCalendar` does not follow a principal or calendar home on another origin (it lists the
+  bound collection's parent instead), `propfind` is pinned to that origin and refuses a redirect
+  off it, and `ListCalendars` drops any collection off it. Connect-time discovery is not pinned:
+  it starts from a URL the user typed, and can legitimately cross hosts (iCloud's calendar home
+  is on a per-account partition host).
 
 **Online-meeting links are provider-matched (`booking_handler.go`).** A
 `google_meet`/`teams` event type auto-mints a link **only when the primary host's

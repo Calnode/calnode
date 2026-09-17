@@ -59,7 +59,7 @@ func (c *Client) discoverCalendar(ctx context.Context, serverURL, username, pass
 	}
 
 	// 2. calendar-home-set on the principal.
-	home, err := c.calendarHome(ctx, principal, username, password)
+	home, err := c.calendarHome(ctx, "", principal, username, password)
 	if err != nil {
 		return "", err
 	}
@@ -69,7 +69,7 @@ func (c *Client) discoverCalendar(ctx context.Context, serverURL, username, pass
 	}
 
 	// 3. list calendar collections (Depth 1) and pick the default among them.
-	l, err := c.listCollections(ctx, home, username, password)
+	l, err := c.listCollections(ctx, "", home, username, password)
 	if err != nil {
 		return "", err
 	}
@@ -94,9 +94,9 @@ func (c *Client) discoverCalendar(ctx context.Context, serverURL, username, pass
 }
 
 // calendarHome returns the calendar-home-set a principal reports (RFC 4791 §6.2.1), or "" when
-// it reports none.
-func (c *Client) calendarHome(ctx context.Context, principal, username, password string) (string, error) {
-	ms, reqURL, err := c.propfind(ctx, principal, username, password, "0", propCalendarHomeSet)
+// it reports none. pinOrigin is passed to propfind.
+func (c *Client) calendarHome(ctx context.Context, pinOrigin, principal, username, password string) (string, error) {
+	ms, reqURL, err := c.propfind(ctx, pinOrigin, principal, username, password, "0", propCalendarHomeSet)
 	if err != nil {
 		return "", err
 	}
@@ -138,9 +138,9 @@ type listing struct {
 // stored id is then sent the account's Basic credentials on every free/busy read and booking
 // write. The server already sees those credentials; an href must not be able to make them go to
 // some other host for as long as the selection is saved. Skipped URLs are reported in foreign so
-// connect can say why it found nothing.
-func (c *Client) listCollections(ctx context.Context, home, username, password string) (listing, error) {
-	ms, homeReqURL, err := c.propfind(ctx, home, username, password, "1", propCalendarCollections)
+// connect can say why it found nothing. pinOrigin is passed to propfind.
+func (c *Client) listCollections(ctx context.Context, pinOrigin, home, username, password string) (listing, error) {
+	ms, homeReqURL, err := c.propfind(ctx, pinOrigin, home, username, password, "1", propCalendarCollections)
 	if err != nil {
 		return listing{}, err
 	}
@@ -178,7 +178,7 @@ func (c *Client) findPrincipal(ctx context.Context, serverURL, username, passwor
 	}
 	var lastErr error
 	for _, cand := range candidates {
-		ms, reqURL, err := c.propfind(ctx, cand, username, password, "0", propCurrentUserPrincipal)
+		ms, reqURL, err := c.propfind(ctx, "", cand, username, password, "0", propCurrentUserPrincipal)
 		if err != nil {
 			lastErr = err
 			continue

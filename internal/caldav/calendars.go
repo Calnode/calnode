@@ -17,6 +17,12 @@ import (
 // The server URL typed at connect time is not stored, so discovery restarts from the bound
 // collection (see homeForCalendar) using the stored credentials. Nothing new is persisted, which
 // is why this needs no migration and works for connections made before calendars were listed.
+//
+// Every request made here stays on the bound collection's origin, and so does every calendar
+// offered: this runs on each picker load and each saved selection, with the account's
+// credentials, against URLs the server chose. homeForCalendar will not follow a principal or
+// home on another origin, propfind refuses a redirect off it, and a collection off it is dropped
+// below even if a listing somehow reached one.
 func (c *Client) ListCalendars(ctx context.Context, userID, accountEmail string) ([]calendar.CalendarInfo, error) {
 	cn, ok, err := c.accountConn(ctx, userID, accountEmail)
 	if err != nil || !ok {
@@ -26,7 +32,7 @@ func (c *Client) ListCalendars(ctx context.Context, userID, accountEmail string)
 	if err != nil {
 		return nil, err
 	}
-	l, err := c.listCollections(ctx, home, cn.username, cn.password)
+	l, err := c.listCollections(ctx, cn.calURL, home, cn.username, cn.password)
 	if err != nil {
 		return nil, err
 	}
@@ -34,6 +40,10 @@ func (c *Client) ListCalendars(ctx context.Context, userID, accountEmail string)
 	out := make([]calendar.CalendarInfo, 0, len(l.collections)+1)
 	boundListed := false
 	for _, col := range l.collections {
+		if !sameOrigin(col.url, cn.calURL) {
+			c.logger.Warn("caldav: skipping a calendar on another origin from the connected calendar", "connected", cn.calURL, "calendar", col.url)
+			continue
+		}
 		primary := col.url == cn.calURL
 		boundListed = boundListed || primary
 		out = append(out, calendar.CalendarInfo{ID: col.url, Name: col.name(), Primary: primary, Writable: col.writable})
@@ -82,11 +92,18 @@ func (c *Client) ValidateSelection(ctx context.Context, userID, accountEmail str
 // A failed principal or home lookup falls through to the parent rather than failing, so a bound
 // collection that has since been deleted does not stop the user choosing another one. An
 // authentication failure still surfaces: the parent listing is made with the same credentials.
+//
+// A principal or home href on another origin from the bound collection is not followed, and
+// neither is a redirect off it (propfind is pinned to the bound collection). Following either
+// would send the account's credentials there on every picker load, and a home there would make
+// that origin's collections look local to it. Both fall through to the parent, which is on the
+// bound collection's origin by construction.
 func (c *Client) homeForCalendar(ctx context.Context, cn conn) (string, error) {
-	ms, reqURL, err := c.propfind(ctx, cn.calURL, cn.username, cn.password, "0", propCurrentUserPrincipal)
+	parent := parentCollection(cn.calURL)
+	ms, reqURL, err := c.propfind(ctx, cn.calURL, cn.calURL, cn.username, cn.password, "0", propCurrentUserPrincipal)
 	if err != nil {
 		c.logger.Warn("caldav: principal lookup failed, listing the bound calendar's parent", "calendar", cn.calURL, "error", err)
-		return parentCollection(cn.calURL), nil
+		return parent, nil
 	}
 	var principal string
 	for _, r := range ms.Responses {
@@ -95,15 +112,24 @@ func (c *Client) homeForCalendar(ctx context.Context, cn conn) (string, error) {
 			break
 		}
 	}
-	if principal != "" {
-		home, err := c.calendarHome(ctx, principal, cn.username, cn.password)
-		if err != nil {
-			c.logger.Warn("caldav: calendar home lookup failed, listing the bound calendar's parent", "principal", principal, "error", err)
-		} else if home != "" {
-			return home, nil
-		}
+	if principal == "" {
+		return parent, nil
 	}
-	return parentCollection(cn.calURL), nil
+	if !sameOrigin(principal, cn.calURL) {
+		c.logger.Warn("caldav: not following a principal on another origin, listing the bound calendar's parent", "calendar", cn.calURL, "principal", principal)
+		return parent, nil
+	}
+	home, err := c.calendarHome(ctx, cn.calURL, principal, cn.username, cn.password)
+	switch {
+	case err != nil:
+		c.logger.Warn("caldav: calendar home lookup failed, listing the bound calendar's parent", "principal", principal, "error", err)
+	case home == "":
+	case !sameOrigin(home, cn.calURL):
+		c.logger.Warn("caldav: not following a calendar home on another origin, listing the bound calendar's parent", "calendar", cn.calURL, "home", home)
+	default:
+		return home, nil
+	}
+	return parent, nil
 }
 
 // accountConn loads one account's connection (by account email) regardless of its

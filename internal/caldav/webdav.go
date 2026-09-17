@@ -48,7 +48,14 @@ func (c *Client) do(ctx context.Context, method, rawURL, username, password, dep
 
 // propfind issues a PROPFIND, following up to 5 redirects with the method preserved, and
 // returns the parsed multistatus. A non-2xx terminal status is an error.
-func (c *Client) propfind(ctx context.Context, rawURL, username, password, depth, body string) (*msMultistatus, string, error) {
+//
+// pinOrigin, when set, is a URL whose origin every redirect must stay on: a redirect elsewhere
+// is refused before anything is sent to it, so the account's credentials cannot follow it.
+// Listing an existing account's calendars pins to the connected calendar. Connect-time
+// discovery passes "" and is unchanged: it starts from the URL the user typed, and discovery
+// from there can legitimately cross hosts (iCloud's calendar home is on a per-account partition
+// host, and a /.well-known/caldav redirect may point anywhere).
+func (c *Client) propfind(ctx context.Context, pinOrigin, rawURL, username, password, depth, body string) (*msMultistatus, string, error) {
 	cur := rawURL
 	for hop := 0; hop < 6; hop++ {
 		status, b, loc, err := c.do(ctx, "PROPFIND", cur, username, password, depth, body)
@@ -60,7 +67,11 @@ func (c *Client) propfind(ctx context.Context, rawURL, username, password, depth
 			if loc == "" {
 				return nil, cur, fmt.Errorf("caldav: redirect without Location from %s", cur)
 			}
-			cur = resolveRef(cur, loc)
+			next := resolveRef(cur, loc)
+			if pinOrigin != "" && !sameOrigin(next, pinOrigin) {
+				return nil, cur, fmt.Errorf("caldav: refusing to follow a redirect from %s to another origin (%s)", cur, displayOrigin(next))
+			}
+			cur = next
 			continue
 		}
 		if status == http.StatusUnauthorized || status == http.StatusForbidden {

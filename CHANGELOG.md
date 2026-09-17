@@ -27,7 +27,9 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
 
   Two refusals come with it, both CalDAV-only. A calendar listed on a different origin from
   its calendar home is skipped, because a CalDAV calendar id is the URL that later receives the
-  account's credentials. This changes connecting for one setup: a server behind a reverse proxy
+  account's credentials; listing an existing account's calendars goes further and never sends a
+  request, or follows a principal, calendar home or redirect, off the origin of the calendar it
+  connected with. This changes connecting for one setup: a server behind a reverse proxy
   that reports its internal scheme or host in every href used to connect and now does not, with
   an error naming both addresses and pointing at the proxy or base URL settings. And saving a
   selection that names a CalDAV calendar the server did not list is refused with a 400, where

@@ -27,16 +27,25 @@ import (
 //	/calendars/user/tasks/      "Tasks", VTODO only
 //	/calendars/user/holidays/   "Holidays", VEVENT, read + write-properties only
 //
-// Every request is recorded, and any request reaching the other origin is counted.
+// Every request is recorded, and any request reaching the other origin is counted. The other
+// origin is a complete CalDAV account of its own (principal, home, and one writable "Stolen"
+// calendar), so a listing that wandered there would find something to offer.
 type multiCalServer struct {
 	srv   *httptest.Server
 	other *httptest.Server
 
-	// noPrincipalOnCollections makes a PROPFIND for the principal on anything but "/" fail,
-	// as on a server that does not implement RFC 5397 on calendar collections.
-	noPrincipalOnCollections bool
+	mu sync.Mutex // guards everything below, including the switches set by tests
 
-	mu        sync.Mutex
+	// Switches for requests made after connect (a request to "/" is connect's own discovery).
+	// noPrincipalOnCollections makes a PROPFIND for the principal fail, as on a server that
+	// does not implement RFC 5397 on calendar collections. principalElsewhere and homeElsewhere
+	// answer with an href on the other origin, and homeRedirectsElsewhere makes the Depth 1
+	// listing of the home a 301 to the other origin.
+	noPrincipalOnCollections bool
+	principalElsewhere       bool
+	homeElsewhere            bool
+	homeRedirectsElsewhere   bool
+
 	reqs      []string          // "METHOD /path"
 	events    map[string]string // path -> stored iCalendar body
 	otherHits int
@@ -46,11 +55,19 @@ func newMultiCalServer(t *testing.T) *multiCalServer {
 	t.Helper()
 	fs := &multiCalServer{events: map[string]string{}}
 	fs.other = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
 		fs.mu.Lock()
 		fs.otherHits++
 		fs.mu.Unlock()
 		w.WriteHeader(http.StatusMultiStatus)
-		io.WriteString(w, `<d:multistatus xmlns:d="DAV:"/>`)
+		switch {
+		case strings.Contains(string(body), "current-user-principal"):
+			io.WriteString(w, msOpen+okResponse(r.URL.Path, `<d:current-user-principal><d:href>/principals/user/</d:href></d:current-user-principal>`)+`</d:multistatus>`)
+		case strings.Contains(string(body), "calendar-home-set"):
+			io.WriteString(w, msOpen+okResponse(r.URL.Path, `<c:calendar-home-set><d:href>/calendars/user/</d:href></c:calendar-home-set>`)+`</d:multistatus>`)
+		default:
+			io.WriteString(w, msOpen+okResponse("/calendars/user/stolen/", calendarProps("Stolen", vevent, fmt.Sprintf(priv, "all")))+`</d:multistatus>`)
+		}
 	}))
 	t.Cleanup(fs.other.Close)
 	fs.srv = httptest.NewServer(http.HandlerFunc(fs.serve))
@@ -59,6 +76,13 @@ func newMultiCalServer(t *testing.T) *multiCalServer {
 }
 
 func (fs *multiCalServer) url(p string) string { return fs.srv.URL + p }
+
+// set flips switches under the lock the handler reads them with.
+func (fs *multiCalServer) set(f func(fs *multiCalServer)) {
+	fs.mu.Lock()
+	defer fs.mu.Unlock()
+	f(fs)
+}
 
 func (fs *multiCalServer) reset() {
 	fs.mu.Lock()
@@ -123,7 +147,10 @@ func (fs *multiCalServer) serve(w http.ResponseWriter, r *http.Request) {
 	body, _ := io.ReadAll(r.Body)
 	fs.mu.Lock()
 	fs.reqs = append(fs.reqs, r.Method+" "+r.URL.Path)
+	noPrincipal, principalElsewhere := fs.noPrincipalOnCollections, fs.principalElsewhere
+	homeElsewhere, homeRedirects := fs.homeElsewhere, fs.homeRedirectsElsewhere
 	fs.mu.Unlock()
+	afterConnect := r.URL.Path != "/"
 
 	multistatus := func(inner string) {
 		w.WriteHeader(http.StatusMultiStatus)
@@ -131,13 +158,24 @@ func (fs *multiCalServer) serve(w http.ResponseWriter, r *http.Request) {
 	}
 	switch {
 	case r.Method == "PROPFIND" && strings.Contains(string(body), "current-user-principal"):
-		if fs.noPrincipalOnCollections && r.URL.Path != "/" {
+		if noPrincipal && afterConnect {
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
-		multistatus(okResponse(r.URL.Path, `<d:current-user-principal><d:href>/principals/user/</d:href></d:current-user-principal>`))
+		principal := "/principals/user/"
+		if principalElsewhere && afterConnect {
+			principal = fs.other.URL + principal
+		}
+		multistatus(okResponse(r.URL.Path, `<d:current-user-principal><d:href>`+principal+`</d:href></d:current-user-principal>`))
 	case r.Method == "PROPFIND" && strings.Contains(string(body), "calendar-home-set") && r.URL.Path == "/principals/user/":
-		multistatus(okResponse(r.URL.Path, `<c:calendar-home-set><d:href>/calendars/user/</d:href></c:calendar-home-set>`))
+		home := "/calendars/user/"
+		if homeElsewhere {
+			home = fs.other.URL + home
+		}
+		multistatus(okResponse(r.URL.Path, `<c:calendar-home-set><d:href>`+home+`</d:href></c:calendar-home-set>`))
+	case r.Method == "PROPFIND" && r.URL.Path == "/calendars/user/" && r.Header.Get("Depth") == "1" && homeRedirects:
+		w.Header().Set("Location", fs.other.URL+"/calendars/user/")
+		w.WriteHeader(http.StatusMovedPermanently)
 	case r.Method == "PROPFIND" && r.URL.Path == "/calendars/user/" && r.Header.Get("Depth") == "1":
 		multistatus(
 			okResponse("/calendars/user/", `<d:resourcetype><d:collection/></d:resourcetype>`) +
@@ -268,7 +306,7 @@ func TestListCalendars_listsEveryEventCalendarOnTheAccount(t *testing.T) {
 // calendars listed, from the bound collection's parent.
 func TestListCalendars_fallsBackToTheBoundCalendarsParent(t *testing.T) {
 	c, fs := connectMultiCal(t)
-	fs.noPrincipalOnCollections = true
+	fs.set(func(fs *multiCalServer) { fs.noPrincipalOnCollections = true })
 
 	got, err := c.ListCalendars(context.Background(), "u1", multiCalAccount)
 	if err != nil {
@@ -430,6 +468,69 @@ func TestSetAccountCalendars_refusesACalendarTheServerDidNotList(t *testing.T) {
 			}
 			if n := fs.hitsElsewhere(); n != 0 {
 				t.Errorf("%d request(s) reached the other origin while validating", n)
+			}
+		})
+	}
+}
+
+// Listing runs on every picker load and every saved CalDAV selection, with the account's
+// credentials, against hrefs and redirects the server chooses. A principal, a calendar home or a
+// redirect on another origin must not receive a single request, and nothing there may be offered
+// by ListCalendars or accepted by ValidateSelection.
+func TestListCalendars_staysOnTheConnectedCalendarsOrigin(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		set     func(fs *multiCalServer)
+		wantErr string // "" when the listing should still succeed from the bound calendar's parent
+	}{
+		{"principal on another origin", func(fs *multiCalServer) { fs.principalElsewhere = true }, ""},
+		{"calendar home on another origin", func(fs *multiCalServer) { fs.homeElsewhere = true }, ""},
+		{"home listing redirects to another origin", func(fs *multiCalServer) { fs.homeRedirectsElsewhere = true },
+			"refusing to follow a redirect"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c, fs := connectMultiCal(t)
+			fs.set(tc.set)
+			ctx := context.Background()
+			stolen := fs.other.URL + "/calendars/user/stolen/"
+
+			cals, err := c.ListCalendars(ctx, "u1", multiCalAccount)
+			if tc.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+					t.Errorf("ListCalendars err = %v, want one containing %q", err, tc.wantErr)
+				}
+			} else {
+				if err != nil {
+					t.Fatalf("ListCalendars: %v", err)
+				}
+				var ids []string
+				for _, cal := range cals {
+					ids = append(ids, cal.ID)
+				}
+				want := []string{fs.url("/calendars/user/personal/"), fs.url("/calendars/user/team/"), fs.url("/calendars/user/holidays/")}
+				if !slices.Equal(ids, want) {
+					t.Errorf("ListCalendars ids = %v, want the account's own calendars %v", ids, want)
+				}
+			}
+
+			if err := c.ValidateSelection(ctx, "u1", multiCalAccount, []string{stolen}); err == nil {
+				t.Errorf("ValidateSelection accepted %s", stolen)
+			}
+			svc := calendar.NewService(c.db)
+			svc.Register(c)
+			if err := svc.SetAccountCalendars(ctx, "u1", "caldav", multiCalAccount,
+				[]calendar.CalendarSelection{sel(stolen, true, true)}); err == nil {
+				t.Errorf("SetAccountCalendars saved %s", stolen)
+			}
+			var n int
+			if err := c.db.QueryRow(`SELECT COUNT(*) FROM connection_calendars WHERE user_id = 'u1'`).Scan(&n); err != nil {
+				t.Fatal(err)
+			}
+			if n != 0 {
+				t.Errorf("%d selection row(s) saved", n)
+			}
+			if n := fs.hitsElsewhere(); n != 0 {
+				t.Errorf("%d request(s) reached the other origin with the account's credentials", n)
 			}
 		})
 	}
