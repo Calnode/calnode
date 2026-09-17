@@ -11,6 +11,15 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
 
 ## [Unreleased]
 
+### Fixed
+- **The Zoom setup text no longer promises that an unpublished app works for "your own
+  team".** Zoom only lets users inside the Zoom account that owns an unpublished app
+  authorize it, so a member with their own Zoom account was refused on a Zoom error page
+  that Calnode never sees. Settings → Zoom now says so, and `DEPLOY.md` gains a Zoom
+  section with Zoom's three ways around it (same account, beta sharing, publishing) and
+  the link-only fallback that needs no Zoom app. Answers
+  [#35](https://github.com/Calnode/calnode/issues/35).
+
 ## [0.9.0] - 2026-09-10
 
 ### Added
