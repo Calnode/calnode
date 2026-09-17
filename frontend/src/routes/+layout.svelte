@@ -27,6 +27,8 @@
 	const isPublicRoute = $derived(
 		$page.route.id === '/login' ||
 		$page.route.id === '/claim' ||
+		$page.route.id === '/forgot-password' ||
+		$page.route.id === '/reset-password' ||
 		$page.route.id === '/invite/[token]'
 	);
 
