@@ -210,6 +210,12 @@
 
 .hint { font-size: .8125rem; color: #9ca3af; }
 
+/* The minimum-notice explanation (#20). Darker than a plain .hint on purpose: the rest
+   of the .hint family is placeholder text the eye is meant to skip, whereas this is the
+   answer to the question the visitor is actually asking. Shares .hint's size so it does
+   not read as a warning either. Set on all three booking surfaces. */
+.notice-hint { margin-top: .625rem; color: #6b7280; }
+
 /* Form */
 .back-btn {
   display: inline-flex; align-items: center; gap: .25rem;

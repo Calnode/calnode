@@ -11,6 +11,17 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
 
 ## [Unreleased]
 
+### Fixed
+- **The Zoom setup text no longer promises that an unpublished app works for "your own
+  team".** Zoom only lets users inside the Zoom account that owns an unpublished app
+  authorize it, so a member with their own Zoom account was refused on a Zoom error page
+  that Calnode never sees. Settings → Zoom now says so, and `DEPLOY.md` gains a Zoom
+  section with Zoom's three ways around it (same account, beta sharing, publishing) and
+  the link-only fallback that needs no Zoom app. Answers
+  [#35](https://github.com/Calnode/calnode/issues/35).
+
+## [0.9.0] - 2026-09-10
+
 ### Added
 - **Duplicate an event type.** `POST /v1/event-types/{slug}/duplicate`, and a Duplicate
   action on each row of the event-types list. Closes
@@ -52,6 +63,19 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
   pool could satisfy are all excluded, so the explanation never appears attached to the
   wrong cause. Three new/changed keys in all eight locales.
 
+- **`FRAME_ANCESTORS`: embed the admin UI in your own console.** Space-separated origins
+  (`https://console.example.com 'self'`); when set, `/admin/` sends
+  `Content-Security-Policy: frame-ancestors <list>`. The public booking pages are
+  untouched and still deny framing outright — this is about the console, not the pages
+  that take card details.
+
+  Two deliberate refusals. An entry that is not `https://host[:port]` or `'self'` stops
+  the app booting rather than being ignored, because a browser drops a source list it
+  cannot parse, which would leave the admin UI *more* embeddable than the setting being
+  unset. And no `X-Frame-Options` is sent beside it: that header has no allow-list form,
+  so the only value it could carry is `SAMEORIGIN`, which browsers honour instead of the
+  CSP and would break the embedding this exists for.
+
 ### Fixed
 - **Constraint violations are recognised by SQLite's error code rather than by its
   English message.** Thirteen call sites asked `strings.Contains(err.Error(), "UNIQUE
@@ -87,6 +111,32 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
   `True-Client-IP`) are never read, from any peer: the setting names networks rather than
   CDNs, and a plain reverse proxy in the list forwards whatever the client sent.
 
+  Follow-ups on the above: the empty-day message keeps its call to action as well as
+  naming the day ("No available times on Monday, 14 September. Try another date."), in
+  all eight locales; the minimum-notice line gets its own `.notice-hint` style, a shade
+  darker than the placeholder text it used to be indistinguishable from; and the notice
+  gap is now computed only for callers that asked for it, so the MCP tool and the booking
+  assistant stop paying for a presentation aid they never render.
+
+- **An event type's booking link can be renamed until its first booking.** `PATCH
+  /v1/event-types/{slug}` now accepts `slug`, and the editor exposes it as "Booking link".
+  Refused with 409 once bookings exist, because by then the link is in circulation and
+  somebody's manage link resolves through it. Mainly this is what makes a duplicate
+  usable: it arrives as `<slug>-copy` and there was previously no way to give it a real
+  name short of deleting and recreating it.
+
+- **An event type can no longer be created in a state the editor refuses to save.** Three
+  related fixes: creating one without a location defaulted to Zoom without checking whether
+  the owner had connected Zoom (it now falls back to in-person, which needs nothing);
+  `PATCH` validated the location whenever the request mentioned it, which the editor does on
+  every save, so a stored value the current rules reject locked the operator out of every
+  other field (it now validates only when the location actually changes); and the demo
+  seeder wrote `link` with no URL, so a demo visitor's first edit failed on a field they had
+  never touched.
+
+### Removed
+- `BookingLogic.bookableDayKeys` and `book.html`'s `bookableDates`, which were written in
+  0.8.0 and never read by anything.
 
 ## [0.8.0] - 2026-09-03
 

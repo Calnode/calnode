@@ -36,6 +36,7 @@ This guide covers a generic Docker deploy and a step-by-step **Railway** deploy
 | `LITESTREAM_REPLICA_URL` | recommended | — | Enables continuous SQLite backup (see §6). |
 | `COOKIE_SECURE` | no | https→true | Override cookie Secure flag; defaults from `BASE_URL` scheme. |
 | `TRUSTED_PROXY_CIDRS` | no | — | Comma-separated CIDRs (a bare address = one host) whose `X-Forwarded-For` is believed when keying per-IP rate limits, e.g. `10.0.0.0/8`. Include a fronting CDN's own ranges so the walk steps over its edge and lands on the visitor. Unset ⇒ the header is ignored and the limit keys on the TCP peer, so behind a CDN every visitor shares one bucket. **Only list networks you control**: anything in the list can name any client IP it likes. Single-value vendor headers (`CF-Connecting-IP`, `X-Real-IP`) are never read, from any peer. |
+| `FRAME_ANCESTORS` | no | — | **Space**-separated origins allowed to embed the **admin UI** in a frame, e.g. `https://console.example.com 'self'`. Each entry must be `https://host[:port]` or `'self'` — anything else and **the app refuses to start**, because browsers drop a policy they cannot parse. Does not affect the public booking pages, which always deny framing. ⛔ **Same-site only in practice**: `calnode_session` is `SameSite=Lax`, so a cross-site parent can frame `/admin/` and still never be sent the cookie — it gets the login screen inside the frame. Use `'self'` or a host sharing `BASE_URL`'s registrable domain. |
 | `LOG_LEVEL` | no | `info` | `debug`/`info`/`warn`/`error`. |
 
 ¹ Email is optional to boot, but bookings won't send confirmations until SMTP is configured (env **or** the admin UI). Precedence is **env var > DB setting > default**.
@@ -297,7 +298,41 @@ Full setup guide, including recording consent, the AI notetaker, and host contro
 
 ---
 
-## 8. First run
+## 8. Zoom meeting links
+
+Optional. With a Zoom app configured in **Settings → Zoom**, each host connects their own
+Zoom account (Calendar page) and a Zoom-located booking gets a meeting minted under the
+assigned host's account. The settings page shows the exact **Redirect URL** to register
+(`https://<your-domain>/v1/zoom/callback`).
+
+**Who can connect depends on how the Zoom app is distributed, and that is Zoom's rule,
+not Calnode's.** A Zoom **General app** that is not published to the Zoom App Marketplace
+can only be authorized by users inside the Zoom account that created it. A member who signs
+in with their own, separate Zoom account is refused by Zoom before the request ever reaches
+Calnode (they land on a Marketplace "Something went wrong" page). Zoom offers three ways
+around that, none of them a Calnode setting:
+
+- **Bring the hosts into your Zoom account.** Members of the app's own Zoom account can
+  connect an unpublished app. Joining puts their Zoom user under your account's
+  administration and licensing, so this suits a team that already shares one Zoom
+  account, not independent people.
+- **Beta sharing.** On request, Zoom's review team can approve an authorization URL for
+  users outside your account: up to 100 of them for a user-level app, valid for 4 weeks
+  with two further 4-week extensions. It is a test channel, not a permanent one.
+- **Publish the app** to the Zoom App Marketplace, which requires passing Zoom's app
+  review.
+
+Details: Zoom's [App distribution](https://developers.zoom.us/docs/distribute/) and
+[Sharing private and beta apps](https://developers.zoom.us/docs/distribute/sharing-private-and-beta-apps/).
+
+If none of those fits, a Zoom-located event type still works without any Zoom app: set a
+**Zoom link** on the event type and every booking carries that link (one link per event
+type, so it suits a personal meeting room rather than a rotation of hosts). The built-in
+video rooms (§7) need no per-host account at all.
+
+---
+
+## 9. First run
 
 Open `https://<your-domain>/` → it redirects to `/admin/`. On a fresh database
 you'll be guided through **first-run setup** (create the owner account). Then:
@@ -306,7 +341,7 @@ first event type + availability.
 
 ---
 
-## 9. Troubleshooting
+## 10. Troubleshooting
 
 | Symptom | Likely cause |
 |---|---|
@@ -315,6 +350,7 @@ first event type + availability.
 | `ERR_CERT_COMMON_NAME_INVALID` on a new domain | Cert not issued yet — wait; ensure the DNS record is **DNS-only**, not proxied. |
 | 403 on admin actions behind a proxy | Proxy not forwarding the original `Host` header (CSRF same-origin check). |
 | OAuth `redirect_uri_mismatch` | Registered URI doesn't match `BASE_URL` + `/v1/...callback` exactly. |
+| Connecting Zoom works for you but a member lands on Zoom's "Something went wrong" page | The Zoom app is unpublished and the member's Zoom account is not in the account that owns it (§8). |
 | Email `550 domain not verified` | From address domain isn't verified with your email provider. |
 | Logo broken in email when testing locally | Gmail's image proxy can't reach `localhost` — only loads from a public URL. |
 | Litestream `InvalidAccessKeyId` / 403, log shows `endpoint=""` | `LITESTREAM_ENDPOINT` unset (or the running build predates the endpoint/region config) → Litestream defaults to AWS. Set the **account** endpoint (no bucket) + `region=auto` for R2, and redeploy so the config is live. |

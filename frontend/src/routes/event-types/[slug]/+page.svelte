@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { page } from '$app/stores';
+	import { goto } from '$app/navigation';
 	import { base } from '$app/paths';
 	import { api, type EventType, type EventTypeHost, type TeamMember, type Team, type CalendarStatus, type ZoomStatus } from '$lib/api';
 	import { currentUser } from '$lib/stores';
@@ -62,7 +63,7 @@
 	const isOnlineMeeting = (t: string) => t === 'google_meet' || t === 'teams';
 
 	let form = $state({
-		name: '', description: '', duration_minutes: 30, slot_interval_minutes: 30,
+		name: '', slug: '', description: '', duration_minutes: 30, slot_interval_minutes: 30,
 		is_active: true, is_public: true, show_taken_slots: false,
 		location_type: 'link', location_value: '',
 		buffer_before_minutes: 0, buffer_after_minutes: 0,
@@ -257,6 +258,7 @@
 			et = await api.get<EventType>(`/v1/event-types/${slug}`);
 			form = {
 				name: et.name,
+				slug: et.slug,
 				description: et.description ?? '',
 				duration_minutes: et.duration_minutes,
 				slot_interval_minutes: et.slot_interval_minutes,
@@ -312,7 +314,8 @@
 		}
 		etSaving = true;
 		try {
-			await api.patch(`/v1/event-types/${slug}`, {
+			const updated = await api.patch<EventType>(`/v1/event-types/${slug}`, {
+				slug: form.slug.trim(),
 				name: form.name.trim(),
 				description: form.description.trim() || null,
 				duration_minutes: Number(form.duration_minutes),
@@ -346,22 +349,33 @@
 				subj_reschedule: subj_reschedule.trim(),
 				subj_reminder: subj_reminder.trim(),
 			});
+			// A rename moves the row out from under the name this page was loaded with, so
+			// every request after the PATCH has to use the one the server just confirmed.
+			const effSlug = updated?.slug || slug;
+
 			if (routingMode === 'round_robin') {
-				await api.put(`/v1/event-types/${slug}/hosts`, {
+				await api.put(`/v1/event-types/${effSlug}/hosts`, {
 					hosts: rotationHosts.map((hh, i) => ({ user_id: hh.user_id, role: 'rotation', priority: i })),
 				});
 			} else if (routingMode === 'collective') {
-				await api.put(`/v1/event-types/${slug}/hosts`, {
+				await api.put(`/v1/event-types/${effSlug}/hosts`, {
 					hosts: togetherHosts.map((hh, i) => ({
 						user_id: hh.user_id, role: hh.optional ? 'optional' : 'required', priority: i,
 					})),
 				});
 			} else {
-				await api.put(`/v1/event-types/${slug}/hosts`, {
+				await api.put(`/v1/event-types/${effSlug}/hosts`, {
 					hosts: [{ user_id: $currentUser?.id, role: 'required', priority: 0 }],
 				});
 			}
 			toast.success('Changes saved');
+			// The URL carries the slug, so a rename has to move the page too or a reload
+			// lands on a 404. replaceState: the old address no longer resolves, and
+			// leaving it in history is a back button that breaks.
+			if (effSlug !== slug) {
+				await goto(`${base}/event-types/${effSlug}`, { replaceState: true });
+				return;
+			}
 			await loadET();
 		} catch (e: any) {
 			toast.error(e.message || 'Could not save changes');
@@ -543,6 +557,18 @@
 			<div class="space-y-1.5">
 				<Label for="et-name">Name</Label>
 				<Input id="et-name" bind:value={form.name} />
+			</div>
+			<div class="space-y-1.5 col-span-2">
+				<Label for="et-slug">Booking link</Label>
+				<div class="flex items-center gap-1.5">
+					<span class="text-sm text-muted-foreground whitespace-nowrap">/book/</span>
+					<Input id="et-slug" bind:value={form.slug} />
+				</div>
+				<p class="text-xs text-muted-foreground">
+					Editable until the first booking, after which the links are already in
+					circulation. Mainly useful right after duplicating, where the copy arrives
+					with <code>-copy</code> on the end.
+				</p>
 			</div>
 			<div class="space-y-1.5">
 				<Label for="et-dur">Duration (minutes)</Label>

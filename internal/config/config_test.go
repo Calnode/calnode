@@ -134,3 +134,77 @@ func TestLoad_dataDir(t *testing.T) {
 		t.Errorf("DataDir = %q; want /var/lib/calnode", cfg.DataDir)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// FRAME_ANCESTORS
+// ---------------------------------------------------------------------------
+
+func TestLoad_frameAncestorsIsSpaceSeparated(t *testing.T) {
+	t.Setenv("FRAME_ANCESTORS", "  https://console.example.test 'self'  ")
+
+	cfg := config.Load()
+
+	if len(cfg.FrameAncestors) != 2 {
+		t.Fatalf("FrameAncestors = %#v; want 2 entries", cfg.FrameAncestors)
+	}
+	if cfg.FrameAncestors[0] != "https://console.example.test" || cfg.FrameAncestors[1] != "'self'" {
+		t.Errorf("FrameAncestors = %#v; want the two sources unchanged", cfg.FrameAncestors)
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("Validate() = %v; want nil", err)
+	}
+}
+
+func TestLoad_frameAncestorsDefaultsToEmpty(t *testing.T) {
+	os.Unsetenv("FRAME_ANCESTORS")
+
+	cfg := config.Load()
+
+	if len(cfg.FrameAncestors) != 0 {
+		t.Errorf("FrameAncestors = %#v; want empty", cfg.FrameAncestors)
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("Validate() = %v; want nil", err)
+	}
+}
+
+// A directive the browser cannot parse is dropped whole, which would leave the admin SPA
+// more embeddable than with the setting unset. Refusing to start is the only outcome that
+// cannot be missed.
+func TestValidate_rejectsBadFrameAncestors(t *testing.T) {
+	cases := map[string]string{
+		"plain http":     "http://console.example.test",
+		"no scheme":      "console.example.test",
+		"wildcard host":  "https://*.example.test",
+		"with a path":    "https://console.example.test/admin",
+		"with a query":   "https://console.example.test?x=1",
+		"credentials":    "https://user:pw@console.example.test",
+		"none keyword":   "'none'",
+		"unsafe keyword": "'unsafe-inline'",
+		"scheme only":    "https://",
+	}
+	for name, value := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Setenv("FRAME_ANCESTORS", value)
+			if err := config.Load().Validate(); err == nil {
+				t.Errorf("Validate() = nil for %q; want an error", value)
+			}
+		})
+	}
+}
+
+// One bad entry beside a good one still fails: a half-applied source list is a policy
+// nobody wrote.
+func TestValidate_rejectsAListWithOneBadEntry(t *testing.T) {
+	t.Setenv("FRAME_ANCESTORS", "https://good.example.test http://bad.example.test")
+	if err := config.Load().Validate(); err == nil {
+		t.Error("Validate() = nil; want an error naming the http entry")
+	}
+}
+
+func TestValidate_acceptsAPortAndATrailingSlash(t *testing.T) {
+	t.Setenv("FRAME_ANCESTORS", "https://console.example.test:8443 https://other.example.test/")
+	if err := config.Load().Validate(); err != nil {
+		t.Errorf("Validate() = %v; want nil", err)
+	}
+}

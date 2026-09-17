@@ -170,7 +170,7 @@ body {
          what removed them (the server says which days it hit). It sits here, outside the
          slot list, because a day the policy emptied completely is greyed out in the
          calendar - so the explanation has to be reachable without clicking one. -->
-    <p id="notice-hint" class="hint hidden"></p>
+    <p id="notice-hint" class="hint notice-hint hidden"></p>
 
     <!-- Slots -->
     <div id="slots-view" class="hidden">
@@ -284,7 +284,6 @@ body {
   let availableDates = new Set(); // "YYYY-MM-DD" strings the booker may open this nav month
   let availabilityLoaded = false; // false = render optimistically (assume all days open)
   let slotsByDay = {};            // "YYYY-MM-DD" -> [slot]; cached from the month fetch
-  let bookableDates = new Set();  // days with >=1 FREE slot; drives the empty-day hint
   let noticeDates = new Set();    // days the minimum-notice policy took starts away from
 
   const $ = id => document.getElementById(id);
@@ -454,14 +453,12 @@ body {
       // date does, and that is the whole point of the feature. Without taken slots
       // the two sets are identical, so nothing changes for everyone else.
       availableDates = new Set(Object.keys(slotsByDay));
-      bookableDates  = new Set(BookingLogic.bookableDayKeys(freeByDay));
       // Days the minimum-notice policy took starts away from. Already in the selected
       // timezone server-side, so these keys line up with slotsByDay's.
       noticeDates = new Set((data.min_notice && data.min_notice.dates) || []);
     } catch {
       slotsByDay = {};
       availableDates = new Set();
-      bookableDates = new Set();
       noticeDates = new Set();
     }
     availabilityLoaded = true;
@@ -550,7 +547,7 @@ body {
     // Only when this specific day lost starts to the policy - saying it on a day the
     // policy did not touch would be noise attached to the wrong cause.
     const noticeLine = noticeDates.has(ds) ? noticeHintText() : '';
-    const noticeHTML = noticeLine ? `<p class="hint">${esc(noticeLine)}</p>` : '';
+    const noticeHTML = noticeLine ? `<p class="hint notice-hint">${esc(noticeLine)}</p>` : '';
     if (!slotsCache.length) {
       // Name the day, and the host when there is exactly one. A bare "No available times."
       // never told the visitor whether another day would help, which is the whole
