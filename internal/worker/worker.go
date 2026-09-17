@@ -263,7 +263,7 @@ func (w *Worker) sendReminder(ctx context.Context, payload string) error {
 		return fmt.Errorf("worker: reminder: parse payload: %w", err)
 	}
 
-	// One query: join bookings → event_types → users (host).
+	// One query: join bookings → event_types → users (assigned host).
 	// Also load notify_reminder pref and msg_reminder custom note.
 	// Skip if booking is deleted or no longer confirmed.
 	var d mailer.BookingData
@@ -277,7 +277,7 @@ func (w *Worker) sendReminder(ctx context.Context, payload string) error {
 		       u.name, u.email, COALESCE(u.notify_reminder, 1)
 		FROM bookings b
 		JOIN event_types et ON et.id = b.event_type_id
-		JOIN users u ON u.id = et.user_id
+		JOIN users u ON u.id = b.host_id
 		WHERE b.id = ?`, p.BookingID).
 		Scan(&status, &startAt, &endAt, &locVal,
 			&d.EventTypeName, &d.EventTypeSlug, &msgReminder, &subjReminder,

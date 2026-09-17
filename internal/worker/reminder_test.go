@@ -226,3 +226,47 @@ func TestWorker_reminderNotFiredBeforeRunAt(t *testing.T) {
 		t.Errorf("job status = %q; want pending", jobStatus)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// reminder.send: names the assigned host, not the event-type owner (#48)
+// ---------------------------------------------------------------------------
+
+func TestWorker_reminderNamesAssignedHost(t *testing.T) {
+	database, svc := setup(t)
+	ctx := context.Background()
+
+	pastRunAt := time.Now().UTC().Add(-time.Second).Format(time.RFC3339)
+	bookingStart := time.Now().UTC().Add(25 * time.Hour).Format(time.RFC3339)
+
+	// Event type owned by Host One, booking assigned to Host Two.
+	database.ExecContext(ctx,
+		`INSERT INTO event_types (id, user_id, slug, name, duration_minutes)
+		 VALUES ('et-h1','host-01','host-test','Hosted Meeting',30)`)
+	database.ExecContext(ctx,
+		`INSERT INTO bookings (id, event_type_id, host_id, start_at, end_at, status)
+		 VALUES ('bk-h1','et-h1','host-02',?,?,'confirmed')`, bookingStart, bookingStart)
+	database.ExecContext(ctx,
+		`INSERT INTO booking_attendees (id, booking_id, name, email, iana_timezone, is_organizer)
+		 VALUES ('att-h1','bk-h1','Alice','alice@example.com','UTC',1)`)
+	database.ExecContext(ctx, `
+		INSERT INTO jobs (id, type, payload, run_at, status, attempts, max_attempts)
+		VALUES ('job-h1','reminder.send','{"booking_id":"bk-h1"}',?,'pending',0,3)`,
+		pastRunAt)
+
+	m := &captureMailer{}
+	w := worker.New(database, svc, slog.Default(),
+		worker.WithMailer(m),
+		worker.WithHTTPClient(&http.Client{}))
+	w.Poll(ctx)
+
+	if len(m.sent) != 1 {
+		t.Fatalf("sent %d emails; want 1", len(m.sent))
+	}
+	msg := m.sent[0]
+	if !strings.Contains(msg.Text, "Host Two") {
+		t.Errorf("reminder body missing assigned host %q:\n%s", "Host Two", msg.Text)
+	}
+	if strings.Contains(msg.Text, "Host One") {
+		t.Errorf("reminder body names the event-type owner; want the assigned host:\n%s", msg.Text)
+	}
+}
