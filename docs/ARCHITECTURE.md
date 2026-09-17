@@ -547,8 +547,25 @@ from the current destination.
 otherwise changing the destination orphans every existing booking: the provider 404s, the
 booking cancels in Calnode, and the meeting stays on the host's calendar with nothing
 surfaced. Empty means "resolve the old way", correct for bookings that predate the column.
-Known limit: this rescues a change of calendar *within* an account, not a move to a
-different account, which would need the account recorded too.
+Known limit (Google, Microsoft): this rescues a change of calendar *within* an account, not
+a move to a different account, which would need the account recorded too.
+
+CalDAV does not have that limit, because its event id is the event's absolute URL and so
+already names the server. `Service.UpdateEvent`/`CancelEvent` route an id the CalDAV
+provider recognizes (`calendar.EventRecognizer`) to it whatever the destination is now, and
+it authenticates as the connected account that holds the event (`caldav.eventConn`), never
+as the destination: the account whose bound or saved calendar is the recorded calendar id,
+else whose calendar URL contains the event URL (same scheme, host and port, path under it;
+most specific wins). No match, or a tie, sends nothing and returns an error. This is a
+credential boundary, not a routing nicety: accounts can live on different servers, and the
+destination's app password sent to an older event's URL goes to someone else's server.
+
+That refusal matches `calendar.ErrEventUnreachable`, and the reconciler treats it as final:
+it logs one warning, clears `needs_sync` (reschedule) or the event id (cancel, logged
+redacted since it is the only record), and does not retry. Retrying cannot help, because it
+re-reads the same connections and refuses the same way, and the cancellation sweep has no
+date bound, so it would repeat forever. Any other error, such as a server that is down or
+refuses the stored password, stays retryable.
 
 ---
 
