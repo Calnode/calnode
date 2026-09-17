@@ -191,9 +191,11 @@ body {
       <p class="slot-label" id="form-slot-label"></p>
       <form id="booking-form" novalidate>
         <!-- Honeypot: hidden from humans (off-screen, not tabbable); a bot that fills
-             "company" is rejected server-side. Real submissions leave it empty. -->
+             it is rejected server-side. Real submissions leave it empty. The field is
+             deliberately NOT named "company": browsers map that to the organization
+             autofill entry and fill it for real humans, who are then rejected (#33). -->
         <div aria-hidden="true" style="position:absolute;left:-5000px;height:0;width:0;overflow:hidden;">
-          <label>Company<input id="f-company" name="company" type="text" tabindex="-1" autocomplete="off"></label>
+          <label>Extra<input id="f-hp-extra" name="hp_extra" type="text" tabindex="-1" autocomplete="off"></label>
         </div>
         <div class="field">
           <label for="f-name">{{call .T "name_label"}}</label>
@@ -682,7 +684,7 @@ body {
           email: form.email.value.trim(),
           timezone: TZ,
           language: LOCALE,
-          company: form.company.value,
+          hp_extra: form.hp_extra.value,
           answers,
         }),
       });

@@ -649,7 +649,10 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 		// calnode_lang cookie, and a site owner's forced lang= override wouldn't be visible
 		// from headers alone. See internal-docs/i18n-plan.md.
 		Language string `json:"language"`
-		Company  string `json:"company"` // honeypot: a hidden form field; must stay empty
+		// Deliberately NOT named "company": browsers map that to the organization
+		// autofill entry (ignoring autocomplete="off") and fill this invisible field
+		// for real humans, who are then rejected as bots (#33).
+		Honeypot string `json:"hp_extra"`
 		Answers  []struct {
 			QuestionID string `json:"question_id"`
 			Value      string `json:"value"`
@@ -662,7 +665,7 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 
 	// Honeypot: a field hidden from humans on the booking form. A non-empty value
 	// means an automated submission — reject with a generic error.
-	if strings.TrimSpace(req.Company) != "" {
+	if strings.TrimSpace(req.Honeypot) != "" {
 		h.logger.InfoContext(r.Context(), "booking rejected: honeypot filled")
 		h.writeError(w, http.StatusBadRequest, "invalid submission")
 		return
