@@ -59,11 +59,11 @@
 				<li class="flex gap-3">
 					<span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">2</span>
 					<div>
-						Choose a <span class="font-medium">General App</span> (User-managed OAuth). You can keep it
-						unpublished — but only Zoom users on the <span class="font-medium">same Zoom account</span>
-						as the app owner can then connect. Members on other Zoom accounts are refused by Zoom
-						itself (see <a href="https://github.com/Calnode/calnode/blob/main/docs/ZOOM.md" target="_blank" rel="noopener noreferrer" class="font-medium text-primary underline">docs/ZOOM.md</a>
-						for the options).
+						Choose a <span class="font-medium">General App</span> (User-managed OAuth). While it is
+						unpublished, Zoom only lets users <span class="font-medium">inside the Zoom account that owns
+						the app</span> connect; hosts with their own separate Zoom accounts need a published app
+						(see DEPLOY.md, "Zoom meeting links"). If that rules Zoom out, built-in video needs no
+						Zoom app at all — see <a href="https://github.com/Calnode/calnode/blob/main/docs/VIDEO.md" target="_blank" rel="noopener noreferrer" class="font-medium text-primary underline">docs/VIDEO.md</a>.
 					</div>
 				</li>
 				<li class="flex gap-3">

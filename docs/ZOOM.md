@@ -18,16 +18,10 @@ Your options, ranked honestly:
 1. **Use the video already in the box.** Built-in LiveKit needs no per-user OAuth, no
    Zoom app, and no publication — see [VIDEO.md](VIDEO.md). For most teams hitting this
    wall, this is the answer: it converts "Zoom won't let us" into "we don't need Zoom".
-2. **Same Zoom account.** If everyone already belongs to one Zoom organization, join the
-   accounts and the unpublished app works for all members instantly. The price is real:
-   joined accounts lose independence (the admin can see usage and enforce settings) and
-   paid features need a license per head from the account owner.
-3. **Publish the app.** Zoom Marketplace review (technical design docs, security
-   controls, vulnerability testing). Built for vendors shipping a product, not for a
-   team running its own scheduler. Only take this path if you are productizing Calnode.
-4. **Stopgap: Zoom's beta share link.** Lets up to 100 external users authorize for up
-   to 90 days (4 weeks + extensions). A bridge, not a home — afterwards, publish or
-   lose access.
+2. **Work within Zoom's distribution rules.** Same-account joining, beta sharing, or
+   publishing — with their real costs, spelled out in [DEPLOY.md](../DEPLOY.md) under
+   "Zoom meeting links". That section is the reference for the Zoom-side mechanics;
+   this file's recommendation is step 1 above.
 
 What does **not** work: re-entering credentials, reinstalling, different hosting
 (Docker vs Railway vs Render all behave identically), or having the member confirm
