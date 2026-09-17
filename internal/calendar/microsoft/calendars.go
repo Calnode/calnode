@@ -28,6 +28,10 @@ func (c *Client) clientForAccount(ctx context.Context, userID, accountEmail stri
 	return c.buildClient(ctx, userID, accessEnc, refreshEnc, calID, expiryStr, email)
 }
 
+// msCalListResp is the GET /me/calendars response. Every property decoded here must also
+// be named in ListCalendars' $select: Graph returns only the selected properties, and an
+// absent bool decodes as false without error.
+// TestListCalendars_selectNamesEveryDecodedProperty holds the two together.
 type msCalListResp struct {
 	Value []struct {
 		ID                string `json:"id"`
@@ -45,7 +49,7 @@ func (c *Client) ListCalendars(ctx context.Context, userID, accountEmail string)
 		return nil, err
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
-		c.apiBase+"/me/calendars?$select=id,name,isDefaultCalendar&$top=100", nil)
+		c.apiBase+"/me/calendars?$select=id,name,isDefaultCalendar,canEdit&$top=100", nil)
 	if err != nil {
 		return nil, err
 	}
