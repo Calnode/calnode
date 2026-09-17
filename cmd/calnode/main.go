@@ -53,6 +53,13 @@ func main() {
 	bi := buildinfo.Get()
 	logger.Info("starting calnode", "version", bi.Version, "commit", bi.Commit, "build_time", bi.BuildTime, "dirty", bi.Dirty)
 
+	// Config whose wrong value is worse than its absence is checked here rather than
+	// tolerated at request time — see (*config.Config).Validate.
+	if err := cfg.Validate(); err != nil {
+		logger.Error("invalid configuration", "error", err)
+		os.Exit(1)
+	}
+
 	if cfg.GoogleClientID != "" {
 		slog.Info("Google OAuth configured", "client_id_prefix", cfg.GoogleClientID[:20])
 	} else {
