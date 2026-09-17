@@ -10,17 +10,26 @@
 	let token = '';
 	let phase = $state<'checking' | 'invalid' | 'ready'>('checking');
 	let accountEmail = $state('');
+	// Set when the check could not give an answer (network error, 5xx, rate limit). That is
+	// not a verdict on the link, so the form stays usable and the fragment stays in the
+	// address bar for a refresh; confirm's own 404 is what decides the link is dead.
+	let checkError = $state('');
+	let checking = $state(false);
 	let password = $state('');
 	let confirmPassword = $state('');
 	let submitting = $state(false);
 	let error = $state('');
 
-	onMount(async () => {
-		token = new URLSearchParams(window.location.hash.slice(1)).get('token') ?? '';
-		if (!token) {
-			phase = 'invalid';
-			return;
-		}
+	// Drop the token from the address bar and the history entry once the server has given a
+	// definitive answer about it. Only ever called after an await: on the first page load
+	// SvelteKit's router is still starting when onMount runs, and replaceState throws until
+	// it has.
+	function dropTokenFromURL() {
+		if (window.location.hash) replaceState(window.location.pathname, {});
+	}
+
+	async function checkLink() {
+		checking = true;
 		try {
 			const res = await fetch('/v1/auth/password-reset/check', {
 				method: 'POST',
@@ -29,21 +38,35 @@
 			});
 			if (res.ok) {
 				accountEmail = (await res.json()).email;
+				checkError = '';
 				phase = 'ready';
-			} else if (res.status === 429) {
-				phase = 'ready';
-				error = 'Too many attempts. Wait a minute and try again.';
-			} else {
+				dropTokenFromURL();
+			} else if (res.status === 404) {
 				phase = 'invalid';
+				dropTokenFromURL();
+			} else {
+				checkError =
+					res.status === 429
+						? 'Too many attempts to check this link. Wait a minute, then try again.'
+						: "We couldn't check this link just now.";
+				phase = 'ready';
 			}
 		} catch {
-			phase = 'invalid';
+			checkError = "We couldn't reach the server to check this link.";
+			phase = 'ready';
 		} finally {
-			// Read once, then drop the token from the address bar and the history entry. Not
-			// before the first await: on the first page load SvelteKit's router is still
-			// starting when onMount runs, and replaceState throws until it has.
-			replaceState(window.location.pathname, {});
+			checking = false;
 		}
+	}
+
+	onMount(() => {
+		token = new URLSearchParams(window.location.hash.slice(1)).get('token') ?? '';
+		if (!token) {
+			// Nothing to check and nothing secret in the address bar to remove.
+			phase = 'invalid';
+			return;
+		}
+		checkLink();
 	});
 
 	async function reset(e: SubmitEvent) {
@@ -65,6 +88,7 @@
 				window.location.href = data.signed_in ? '/admin' : '/admin/login';
 			} else if (res.status === 404) {
 				phase = 'invalid';
+				dropTokenFromURL();
 			} else if (res.status === 429) {
 				error = 'Too many attempts. Wait a minute and try again.';
 			} else {
@@ -103,6 +127,14 @@
 				<a href="/admin/forgot-password" class="text-muted-foreground hover:underline">Request a new link</a>
 			</p>
 		{:else}
+			{#if checkError}
+				<div class="mb-4 space-y-2 rounded-md bg-muted px-3 py-2.5 text-sm text-muted-foreground" role="status">
+					<p>{checkError} You can still set your password below, or check the link again.</p>
+					<Button variant="outline" size="sm" onclick={checkLink} disabled={checking}>
+						{checking ? 'Checking…' : 'Try again'}
+					</Button>
+				</div>
+			{/if}
 			{#if error}
 				<div class="mb-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</div>
 			{/if}
