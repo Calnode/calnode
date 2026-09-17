@@ -95,7 +95,8 @@ partial unique index covers) — no TOCTOU between concurrent bookings.
   `archived_by`, plus prefs `time_format`/`week_start`/`date_format`, seven
   `notify_*` toggles, and auth columns `email_login`/`password_hash`/`provider`/
   `provider_id`), `sessions` (cookie auth), `api_keys` (SHA-256 hashed),
-  `invite_tokens` (hashed, single-use). **There is no `auth_providers` table** —
+  `invite_tokens` (hashed, single-use), `magic_link_tokens` and
+  `password_reset_tokens` (SHA-256 hashed, single-use, short-lived). **There is no `auth_providers` table** —
   OAuth identity is columns on `users` (migration 00012).
 - **Teams:** `teams`, `team_members` (with `routing_priority`).
 - **Event types:** `event_types` (+ `routing_mode` — CHECK has **four** values:
@@ -177,6 +178,42 @@ the platform/recovery secret doesn't expose secrets.
   `POST /v1/auth/magic-link/request` + `GET …/verify`, `magic_link.go`, migration
   00040 — alongside password auth.) The actual user-creation path for non-first
   users is **invites** (`invite_tokens`), not OAuth self-registration.
+- **Password reset by email** (`password_reset.go`, migration 00058, issue #34). Three
+  public routes on their own per-IP bucket (10/min, deliberately not `loginRL`, so someone
+  locked out of login by wrong passwords can still recover):
+  `POST /v1/auth/password-reset/request` `{email}` → email → SPA
+  `/admin/reset-password#token=…` → `POST …/check` `{token}` (non-consuming, returns the
+  account email for display and password managers) → `POST …/confirm` `{token, password}`.
+  The rules that matter:
+  - **Eligible = LoginEmail's own condition** (`email_login = 1` and a stored hash) **and not
+    archived**, one SQL predicate (`resetEligibleUser`) read by all three routes and
+    re-applied at the password write. An SSO-only account is never given a password by
+    email; an admin reset or `calnode reset-admin` does that. Like a session, a link is
+    judged against the account as it is when used.
+  - **The request is not an oracle.** It answers with one fixed status and body for every
+    well-formed request (unknown, archived, SSO-only, inside cooldown, email not
+    configured) and does no account-dependent work first: lookup, mint and send run in a
+    goroutine after the response, one step further than magic links, which look the user up
+    inline. Not a worker job: a job payload is stored, so the raw token could not ride in
+    it, and enqueueing for every typed address would persist attacker-chosen strings in a
+    `jobs` table that is never purged.
+  - **Token:** 32 random bytes, hex; only SHA-256 stored; **30 min** TTL (magic links are 15;
+    the extra time is for greylisting mail servers); single use via
+    `UPDATE … WHERE used_at IS NULL AND expires_at > ?` + RowsAffected, which is the
+    authority even though a cheap lookup runs first (so a bad token never costs a bcrypt).
+    A new request deletes the account's unused tokens. **Per-account cooldown of 1 min**
+    between emails, which the per-IP limit cannot give and which also stops a third party
+    from superseding the owner's newest link faster than it can be clicked.
+  - **The link is built from `BASE_URL`, never from the request** (host-header poisoning),
+    and the token rides in the **fragment**, unlike invites (path) and magic links (query), so
+    it never reaches a proxy access log or a Referer. The page strips it from the address bar.
+  - **Confirm** hashes before opening the transaction (never hold the single connection
+    across bcrypt), then in one transaction consumes the token, sets the hash, deletes
+    **every** session (as `AdminSetPassword` does) and the account's other reset tokens,
+    then signs the caller in (as invite claim and magic links do). API keys and MCP OAuth
+    grants survive, as they do for the other two password-change paths.
+  - Emails are English-only, like invites and magic links. The login page shows the link
+    only when email is configured **and** some account uses password login.
 - **CSRF:** cookie sessions are `SameSite=Lax` (blocks the classic cross-site write),
   plus a `SameOriginCheck` middleware (`internal/server`) that rejects a state-changing
   request whose Origin/Referer host ≠ the request Host — but only when the
@@ -672,7 +709,8 @@ as the desired state:
 
 - `internal/worker`: polls the `jobs` table **every 5s** (batch ≤10). Job types:
   `webhook.deliver` and `reminder.send`. Also purges expired manage tokens +
-  sessions + magic-link tokens + idempotency keys (>24h old) + OAuth auth codes +
+  sessions + magic-link and password-reset tokens (expired or used) + idempotency keys
+  (>24h old) + OAuth auth codes +
   **finished webhook deliveries (>30d, `webhookDeliveryRetention`)** each cycle, and
   reaps jobs whose 30s lock expired (crash recovery —
   reset to pending +1 min). Retry **backoff is a fixed two-step: 60s then 5 min**

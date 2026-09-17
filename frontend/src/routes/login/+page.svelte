@@ -103,7 +103,8 @@
 	const showGoogle = $derived(status?.providers?.includes('google') ?? false);
 	const showMicrosoft = $derived(status?.providers?.includes('microsoft') ?? false);
 	const showEmail = $derived(status?.email_login ?? false);
-	const showForgot = $derived(status?.smtp_configured ?? false);
+	// Reset needs a way to send the link and an account that signs in with a password.
+	const showForgot = $derived((status?.smtp_configured && status?.email_login) ?? false);
 	const showMagic = $derived(status?.smtp_configured ?? false);
 	const showDivider = $derived((showGoogle || showMicrosoft) && showEmail);
 </script>

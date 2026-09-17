@@ -114,6 +114,12 @@ func (w *Worker) Poll(ctx context.Context) {
 		`DELETE FROM magic_link_tokens WHERE expires_at < ? OR used_at IS NOT NULL`, now); err != nil {
 		w.logger.Error("worker: purge magic link tokens", "error", err)
 	}
+	// Password-reset tokens likewise. A used row is deleted rather than kept: the
+	// conditional UPDATE already refused a second use, and a missing row refuses it too.
+	if _, err := w.db.ExecContext(ctx,
+		`DELETE FROM password_reset_tokens WHERE expires_at < ? OR used_at IS NOT NULL`, now); err != nil {
+		w.logger.Error("worker: purge password reset tokens", "error", err)
+	}
 	// Idempotency keys are only useful for the retry window of the original
 	// request; purge them 24h after creation so the table stays small.
 	idemCutoff := time.Now().UTC().Add(-24 * time.Hour).Format(time.RFC3339)

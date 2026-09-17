@@ -50,6 +50,7 @@ type Handler struct {
 	demoResetInterval time.Duration
 	demoMu            sync.RWMutex
 	demoNextResetAt   time.Time
+	resetSends        sync.WaitGroup // password-reset emails running after their request was answered
 }
 
 // SetLiveKit swaps the active LiveKit client (nil disables built-in video rooms).

@@ -27,7 +27,9 @@
 	const isPublicRoute = $derived(
 		$page.route.id === '/login' ||
 		$page.route.id === '/claim' ||
-		$page.route.id === '/invite/[token]'
+		$page.route.id === '/invite/[token]' ||
+		$page.route.id === '/forgot-password' ||
+		$page.route.id === '/reset-password'
 	);
 
 	const navItems = [

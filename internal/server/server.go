@@ -280,6 +280,17 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	mux.HandleFunc("POST /v1/auth/magic-link/request", loginRL(h.RequestMagicLink))
 	mux.HandleFunc("GET /v1/auth/magic-link/verify", loginRL(h.VerifyMagicLink))
 
+	// Self-service password reset by email (public). A bucket of its own rather than
+	// loginRL: someone who has just locked themselves out of the login limit with wrong
+	// passwords is exactly the person who needs this next. The three routes share it, so
+	// a request, the reset page's check and the confirm are one person's budget. The
+	// per-IP limit is not the only one: sends are also capped per account
+	// (passwordResetCooldown), which no number of addresses gets around.
+	resetRL := RateLimit(10, time.Minute)
+	mux.HandleFunc("POST /v1/auth/password-reset/request", resetRL(h.RequestPasswordReset))
+	mux.HandleFunc("POST /v1/auth/password-reset/check", resetRL(h.CheckPasswordReset))
+	mux.HandleFunc("POST /v1/auth/password-reset/confirm", resetRL(h.ConfirmPasswordReset))
+
 	// OAuth login (browser sessions for admin UI).
 	authRL := RateLimit(10, time.Minute)
 	mux.HandleFunc("GET /v1/auth/login", authRL(h.LoginGoogle))

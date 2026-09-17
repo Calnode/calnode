@@ -340,3 +340,36 @@ claims:
       than add admin approval — the friction of gating a personal calendar connection
       behind admin sign-off was judged worse than the bounded, already-authenticated-
       user SSRF exposure it would close.
+
+  - id: password-reset-no-enumeration-no-host-poisoning
+    claim: >
+      Self-service password reset (POST /v1/auth/password-reset/request) cannot be used
+      to learn whether an address has an account, and the emailed link always points at
+      the configured BASE_URL, never at a host taken from the request. Only the SHA-256
+      of a reset token is stored; a token works once, for 30 minutes, and only while the
+      account is active and signs in with a password. Completing a reset revokes every
+      session the account held.
+    verify:
+      - "internal/handler/password_reset.go's RequestPasswordReset: writes one fixed
+         response and hands the email to a goroutine before any query runs; the user
+         lookup, token write and send are all in sendPasswordReset."
+      - "internal/handler/password_reset.go's sendPasswordReset: the link is
+         h.baseURL + \"/admin/reset-password#token=\"; grep the file for r.Host or
+         X-Forwarded and expect nothing."
+      - "internal/handler/password_reset_test.go: TestPasswordReset_requestIsIndistinguishable
+         (same status, Content-Type and body for existing, unknown, archived, SSO-only and
+         email-off), TestPasswordReset_linkUsesBaseURLNotHostHeader (hostile Host,
+         X-Forwarded-Host, Forwarded, Origin and Referer), TestPasswordReset_storesOnlyTheHash
+         (scans every column of every table for the raw token),
+         TestPasswordReset_concurrentConfirmsSpendTheTokenOnce and
+         TestPasswordReset_revokesSessions."
+    status: verified
+    caveat: >
+      Whoever controls an account's mailbox can take the account over. That was already
+      true before this endpoint existed, because magic-link sign-in grants a session to
+      the same proof. Response timing is flat on the request path, but a reset email's
+      arrival is of course visible to the mailbox owner, and an operator who reads logs
+      sees an info line when a request is suppressed by the per-account cooldown. API
+      keys and connected MCP apps survive a reset, as they survive the two other
+      password-change paths (POST /v1/users/me/password and POST /v1/users/{id}/password);
+      revoking them on any password change would be a separate decision for all three.

@@ -11,6 +11,25 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
 
 ## [Unreleased]
 
+### Added
+- **A forgotten password can be reset by email.** The login page's "Forgot password?" link
+  pointed at a page that was never built, so it quietly bounced back to sign-in. It now
+  leads to a form that emails a reset link, and the link opens a page to choose a new
+  password. Closes [#34](https://github.com/Calnode/calnode/issues/34).
+
+  The request answers the same way whether or not the address has an account, and does no
+  account-dependent work before answering: the lookup, the token and the email happen after
+  the response has gone. Only an active account that signs in with a password is mailed;
+  an SSO-only member still gets a password from an admin. The link is built from
+  `BASE_URL`, never from the request's `Host`, and carries its token in the URL fragment,
+  so it never reaches a server or proxy log. Only the token's SHA-256 is stored. A link
+  works once, for 30 minutes, and only the newest one requested; one account gets at most
+  one email a minute however many addresses ask. Setting the new password signs out every
+  existing session, as an admin reset does, and signs the user in.
+
+  The link is shown only when email is configured and password sign-in is in use. New
+  migration `00058_password_reset_tokens`.
+
 ## [0.9.0] - 2026-09-10
 
 ### Added
