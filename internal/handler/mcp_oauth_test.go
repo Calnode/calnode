@@ -297,3 +297,78 @@ func TestMCP_OAuthDeny(t *testing.T) {
 		t.Errorf("deny: code=%d location=%q; want 302 with error=access_denied", rec.Code, loc)
 	}
 }
+
+// TestMCP_OAuthBearerRejectedWhenArchived pins the offboarding half of
+// "Offboarding = archive" (§6) for the MCP OAuth path. The session path and
+// both API-key paths already filter on users.archived_at; the OAuth branch of
+// VerifyMCPBearer did not, so an archived member's connected agent bearer kept
+// validating after they were offboarded.
+func TestMCP_OAuthBearerRejectedWhenArchived(t *testing.T) {
+	h, database, _, userID := setupWorkspaceWithDB(t)
+
+	const rawToken = "archived-user-bearer"
+	const rawRefresh = "archived-user-refresh"
+	now := time.Now().UTC()
+	if _, err := database.Exec(`
+		INSERT INTO oauth_access_tokens (id, token_hash, refresh_hash, client_id, user_id, expires_at, created_at)
+		VALUES (?, ?, ?, 'client-1', ?, ?, ?)`,
+		"tok-archived", sha256HexForTest(rawToken), sha256HexForTest(rawRefresh), userID,
+		now.Add(time.Hour).Format(time.RFC3339), now.Format(time.RFC3339Nano)); err != nil {
+		t.Fatalf("seed token: %v", err)
+	}
+	refresh := func(t *testing.T, raw string) *httptest.ResponseRecorder {
+		t.Helper()
+		form := url.Values{"grant_type": {"refresh_token"}, "refresh_token": {raw}}
+		req := httptest.NewRequest(http.MethodPost, "/oauth/token", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rec := httptest.NewRecorder()
+		h.TokenMCP(rec, req)
+		return rec
+	}
+
+	// Before archiving, the bearer validates and the refresh token rotates.
+	// The rotated pair is kept: it is the agent's *current* credential, which
+	// is exactly what must die on archive (testing the pre-rotation values
+	// post-archive would pass vacuously — rotation already replaced them).
+	if info, err := h.VerifyMCPBearer(context.Background(), rawToken, nil); err != nil || info.UserID != userID {
+		t.Fatalf("VerifyMCPBearer before archive = %+v, %v; want UserID=%s", info, err, userID)
+	}
+	rec := refresh(t, rawRefresh)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("refresh before archive = %d; want 200 — %s", rec.Code, rec.Body.String())
+	}
+	var rotated map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &rotated); err != nil {
+		t.Fatalf("decode rotated pair: %v", err)
+	}
+	access, _ := rotated["access_token"].(string)
+	refreshTok, _ := rotated["refresh_token"].(string)
+	if access == "" || refreshTok == "" {
+		t.Fatalf("rotated pair missing tokens: %v", rotated)
+	}
+	// The rotated access token validates while the user is live — so its
+	// post-archive rejection below proves the archive check, not a broken
+	// rotation.
+	if info, err := h.VerifyMCPBearer(context.Background(), access, nil); err != nil || info.UserID != userID {
+		t.Fatalf("VerifyMCPBearer(rotated) before archive = %+v, %v; want UserID=%s", info, err, userID)
+	}
+
+	// Archive the user — the documented offboarding path — and the current
+	// bearer must stop validating, exactly like the user's sessions and API
+	// keys do.
+	if _, err := database.Exec(`UPDATE users SET archived_at = ? WHERE id = ?`,
+		now.Format(time.RFC3339Nano), userID); err != nil {
+		t.Fatalf("archive user: %v", err)
+	}
+	if info, err := h.VerifyMCPBearer(context.Background(), access, nil); err == nil {
+		t.Errorf("VerifyMCPBearer after archive = %+v; want rejection — an archived member's agent bearer must not survive offboarding", info)
+	}
+
+	// The refresh token must not mint fresh credentials for a dead account
+	// either: the rotated access token would not validate, but issuance itself
+	// tells the agent it is still authorized and leaves live credential
+	// material in the table.
+	if rec := refresh(t, refreshTok); rec.Code == http.StatusOK {
+		t.Errorf("refresh after archive issued tokens to an archived user: %s", rec.Body.String())
+	}
+}
