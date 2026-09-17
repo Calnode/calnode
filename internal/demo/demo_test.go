@@ -103,3 +103,60 @@ func TestReset_wipesVisitorDataAndReseeds(t *testing.T) {
 		t.Error("insert with dangling event_type_id succeeded; want foreign key violation")
 	}
 }
+
+// TestSeed_eventTypesCarryAJoinableLocation guards the demo's first impression.
+//
+// The seeder inserts straight into event_types, so validateLocation never sees the row.
+// It used to write location_type 'link' with a NULL location_value, which that validator
+// rejects - and because the admin editor submits the whole form on every save, the first
+// thing a demo visitor did after changing a duration was get "enter a valid meeting URL"
+// about a field they had never touched.
+//
+// Any location that needs no external account is fine here. What is not fine is one that
+// needs a value and does not have one.
+func TestSeed_eventTypesCarryAJoinableLocation(t *testing.T) {
+	database := newMigratedDB(t)
+	ctx := context.Background()
+	if err := demo.Seed(ctx, database); err != nil {
+		t.Fatalf("Seed: %v", err)
+	}
+
+	rows, err := database.QueryContext(ctx,
+		`SELECT slug, location_type, COALESCE(location_value, '') FROM event_types`)
+	if err != nil {
+		t.Fatalf("query event types: %v", err)
+	}
+	defer rows.Close()
+
+	// Materialised before asserting: the pool is MaxOpenConns(1), so anything that
+	// queried inside this cursor would deadlock.
+	type et struct{ slug, locType, locVal string }
+	var seeded []et
+	for rows.Next() {
+		var e et
+		if err := rows.Scan(&e.slug, &e.locType, &e.locVal); err != nil {
+			t.Fatalf("scan: %v", err)
+		}
+		seeded = append(seeded, e)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("rows: %v", err)
+	}
+	if len(seeded) == 0 {
+		t.Fatal("no event types seeded, so this proves nothing")
+	}
+
+	// The types that carry their join info in location_value. 'zoom', 'google_meet' and
+	// 'teams' are absent on purpose: those may legitimately be empty when the owner's
+	// account auto-generates a link, which the demo owner's does not, so they should not
+	// appear here either.
+	needsValue := map[string]bool{"link": true, "custom_video": true, "phone": true}
+	for _, e := range seeded {
+		if needsValue[e.locType] && e.locVal == "" {
+			t.Errorf("demo event type %q is location_type %q with no location_value: "+
+				"validateLocation rejects that, so the editor refuses to save it and a "+
+				"visitor's first edit fails on a field they never touched",
+				e.slug, e.locType)
+		}
+	}
+}

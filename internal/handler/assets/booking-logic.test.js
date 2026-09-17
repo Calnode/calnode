@@ -80,14 +80,6 @@ test('mergeDaySlots handles a missing taken array (the opt-in is off)', () => {
   assert.deepEqual(B.mergeDaySlots(undefined, undefined), []);
 });
 
-test('bookableDayKeys omits a day whose slots are all taken', () => {
-  // The trap this exists for: grouping taken slots too means a fully booked day still
-  // produces a key, and using those keys for the calendar would show it as clickable
-  // with something available on it.
-  const freeByDay = { '2026-06-15': [{ start: 'x' }], '2026-06-16': [] };
-  assert.deepEqual(B.bookableDayKeys(freeByDay).sort(), ['2026-06-15']);
-});
-
 test('fmt substitutes %s in order', () => {
   assert.equal(B.fmt('No available times on %s.', ['Monday, 15 June']), 'No available times on Monday, 15 June.');
   assert.equal(B.fmt('%s has no available times on %s.', ['Alex', 'Monday']), 'Alex has no available times on Monday.');

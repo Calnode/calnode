@@ -216,7 +216,7 @@ func (h *Handler) mcpGetAvailableSlots(ctx context.Context, _ *mcp.CallToolReque
 	// includeTaken is false and must stay false. An agent that receives unbookable
 	// times alongside bookable ones will eventually offer one, and the caller has no
 	// way to tell them apart.
-	res, err := h.computeSlots(ctx, in.EventTypeID, in.Timezone, in.DateFrom, in.DateTo, false)
+	res, err := h.computeSlots(ctx, in.EventTypeID, in.Timezone, in.DateFrom, in.DateTo, slotsWanted{})
 	if err != nil {
 		// The sentinel errors (not found / invalid timezone / bad range) are already
 		// human-readable; surface them as the tool error.

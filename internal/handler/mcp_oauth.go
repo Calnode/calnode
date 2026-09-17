@@ -99,10 +99,15 @@ func (h *Handler) MCPCallerMiddleware(next http.Handler) http.Handler {
 func (h *Handler) VerifyMCPBearer(ctx context.Context, token string, _ *http.Request) (*auth.TokenInfo, error) {
 	hash := hashAPIKey(token)
 
-	// OAuth access token?
+	// OAuth access token? Archived users authenticate with nothing: the session
+	// path (auth.go) and both API-key paths (below, and auth.go) already filter
+	// on users.archived_at, and without the same check here an archived member's
+	// connected agent bearer would keep validating after offboarding.
 	var userID, expiresAt string
-	err := h.db.QueryRowContext(ctx,
-		`SELECT user_id, expires_at FROM oauth_access_tokens WHERE token_hash = ?`, hash).
+	err := h.db.QueryRowContext(ctx, `
+		SELECT t.user_id, t.expires_at FROM oauth_access_tokens t
+		JOIN users u ON u.id = t.user_id
+		WHERE t.token_hash = ? AND u.archived_at IS NULL`, hash).
 		Scan(&userID, &expiresAt)
 	if err == nil {
 		exp, _ := time.Parse(time.RFC3339, expiresAt)

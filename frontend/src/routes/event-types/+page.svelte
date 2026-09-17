@@ -89,7 +89,7 @@
 		duplicating = et.slug;
 		try {
 			const copy = await api.post<EventType>(`/v1/event-types/${et.slug}/duplicate`);
-			toast.success(`Duplicated as "${copy.slug}" — inactive until you turn it on`);
+			toast.success(`Duplicated as "${copy.slug}". Inactive until you turn it on.`);
 			await load();
 		} catch (e: any) {
 			toast.error(e.message || 'Could not duplicate event type');
