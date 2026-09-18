@@ -11,6 +11,18 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
 
 ## [Unreleased]
 
+### Added
+- **Sign out everywhere.** `POST /v1/auth/sessions/revoke-all` ends every session you
+  have except the one you asked from, so losing a laptop no longer means waiting out a
+  30-day cookie. Pass `{"user_id": "..."}` and an admin can do the same for someone
+  else: an admin may revoke a member, only the owner may revoke another admin, and the
+  owner's own sessions can only be ended by the owner.
+
+  It also revokes that person's MCP OAuth tokens, which is the part that makes it an
+  offboarding tool rather than a convenience. A connected agent authenticates with a
+  bearer token and not the session cookie, so ending the sessions alone would have left
+  it holding exactly the access that was just withdrawn.
+
 ### Fixed
 - **The Zoom setup text no longer promises that an unpublished app works for "your own
   team".** Zoom only lets users inside the Zoom account that owns an unpublished app
