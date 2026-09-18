@@ -439,6 +439,10 @@ func assistantBookError(err error) string {
 		return "that time was just taken — please choose another slot"
 	case errors.Is(err, booking.ErrBookingLimitReached):
 		return "you already have the maximum number of upcoming bookings for this event"
+	case errors.Is(err, errInvalidBookerEmail):
+		// Worth its own case: the model can fix this by asking again, which the generic
+		// fallback below does not tell it.
+		return "that email address is not valid — please ask for it again"
 	default:
 		var ae *answerError
 		if errors.As(err, &ae) {
