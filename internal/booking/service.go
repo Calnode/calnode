@@ -285,9 +285,17 @@ func hostBusy(ctx context.Context, tx *sql.Tx, hostID, start, end, excludeBookin
 	err := tx.QueryRowContext(ctx, `
 		SELECT COUNT(*) FROM bookings b
 		JOIN booking_hosts bh ON bh.booking_id = b.id
-		WHERE bh.user_id = ? AND b.status != 'cancelled' AND b.id != ?
+		WHERE (bh.user_id = ? OR EXISTS (
+            SELECT 1 FROM connection_calendars checked
+            JOIN connection_calendars destination
+              ON destination.provider = checked.provider
+             AND destination.account_email = checked.account_email
+             AND destination.calendar_id = checked.calendar_id
+            WHERE checked.user_id = ? AND checked.check_conflicts = 1
+              AND destination.user_id = bh.user_id AND destination.is_destination = 1
+        )) AND b.status != 'cancelled' AND b.id != ?
 		  AND b.start_at < ? AND b.end_at > ?`,
-		hostID, excludeBookingID, end, start).Scan(&n)
+		hostID, hostID, excludeBookingID, end, start).Scan(&n)
 	return n > 0, err
 }
 

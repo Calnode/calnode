@@ -449,6 +449,8 @@ committed booking) — which is why the reconciler (§11) exists.
 
 ## 10. Calendar integration (provider abstraction)
 
+Bookings also check pending local bookings owned by other accounts that use the same selected conflict calendar. This check runs inside the booking transaction, before asynchronous calendar creation can finish. Calendar identity currently includes the provider, account email, and calendar ID.
+
 Calnode talks to calendars through a **provider abstraction**, not a single vendor:
 
 - **`internal/calendar`** defines the `Provider` interface (Name, InvitesGuests,
