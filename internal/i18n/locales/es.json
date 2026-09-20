@@ -163,5 +163,6 @@
   "assistant_iteration_cap": "Vamos a simplificarlo: elige un horario en el calendario de abajo.",
   "assistant_status_slots": "Comprobando disponibilidad…",
   "assistant_status_book": "Reservando…",
-  "assistant_status_working": "Trabajando…"
+  "assistant_status_working": "Trabajando…",
+  "phone_call_number": "Teléfono (opcional, para una llamada)"
 }

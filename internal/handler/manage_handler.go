@@ -107,6 +107,13 @@ func (h *Handler) ManagePage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if b.LocationType != "" {
+		locType = b.LocationType
+	}
+	if b.LocationValue != "" {
+		locValue = b.LocationValue
+	}
+
 	// Show the actual assigned host(s) for this booking, not the event-type owner
 	// (round-robin/Group route elsewhere). Falls back to the owner name above if
 	// no booking_hosts rows exist. The avatar uses the primary host.

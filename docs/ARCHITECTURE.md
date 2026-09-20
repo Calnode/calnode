@@ -377,6 +377,8 @@ them - the most common "why can't I see those times".
 
 ## 9. Booking lifecycle
 
+Google Meet and Teams event types can opt into `allow_phone_call`. Their booking page and widget then accept an optional `phone` value. A valid number selects a telephone appointment; leaving it empty preserves video. The booking stores its own location type so management pages, calendar retries, and paid confirmation do not generate a video link for a telephone appointment. Event duplication preserves the setting.
+
 `internal/booking/service.go` (transactions) + `internal/handler/booking_handler.go`
 (HTTP + async side effects).
 

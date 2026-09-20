@@ -156,5 +156,6 @@
   "assistant_iteration_cap": "Semplifichiamo: scelga un orario dal calendario qui sotto.",
   "assistant_status_slots": "Verifica della disponibilità…",
   "assistant_status_book": "Prenotazione in corso…",
-  "assistant_status_working": "Elaborazione…"
+  "assistant_status_working": "Elaborazione…",
+  "phone_call_number": "Telefono (facoltativo, per una chiamata)"
 }
