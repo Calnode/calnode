@@ -395,6 +395,7 @@
 				return;
 			}
 			await loadET();
+			await loadHosts();
 		} catch (e: any) {
 			toast.error(e.message || 'Could not save changes');
 		} finally {
@@ -451,8 +452,8 @@
 		// Connected calendar — best-effort; drives the meeting-link hint only.
 		api.get<CalendarStatus>('/v1/calendar/status').then((s) => (calStatus = s)).catch(() => {});
 	api.get<ZoomStatus>('/v1/zoom/status').then((s) => (zoomStatus = s)).catch(() => {});
+		await loadHosts();
 		if (hostScope === 'people') {
-			await loadHosts();
 			loadMembers();
 			loadTeams();
 		}
