@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/mail"
 	"net/smtp"
+	"os"
 	"strings"
 	"time"
 
@@ -35,6 +36,8 @@ var defaultSMTPTimeout = 30 * time.Second
 
 // SMTP sends email via an SMTP server.
 type SMTP struct {
+	connectHost string
+	connectPort string
 	host        string
 	port        string
 	username    string
@@ -49,7 +52,17 @@ type SMTP struct {
 // startTLS selects port-587 STARTTLS mode. Both false means plain SMTP
 // (suitable for a local relay on port 25).
 func NewSMTP(host, port, username, password string, implicitTLS, startTLS bool, from, fromName string) *SMTP {
+	connectHost := os.Getenv("EMAIL_SMTP_CONNECT_HOST")
+	if connectHost == "" {
+		connectHost = host
+	}
+	connectPort := os.Getenv("EMAIL_SMTP_CONNECT_PORT")
+	if connectPort == "" {
+		connectPort = port
+	}
 	return &SMTP{
+		connectHost: connectHost,
+		connectPort: connectPort,
 		host:        host,
 		port:        port,
 		username:    username,
@@ -81,7 +94,7 @@ func newDialers(deadline time.Time, host string) (net.Dialer, tls.Dialer) {
 }
 
 func (s *SMTP) Send(ctx context.Context, msg Message) error {
-	addr := net.JoinHostPort(s.host, s.port)
+	addr := net.JoinHostPort(s.connectHost, s.connectPort)
 	raw := s.buildRaw(msg)
 
 	// Bounds the whole conversation, not just the dial (see defaultSMTPTimeout).

@@ -354,3 +354,7 @@ first event type + availability.
 | Email `550 domain not verified` | From address domain isn't verified with your email provider. |
 | Logo broken in email when testing locally | Gmail's image proxy can't reach `localhost` — only loads from a public URL. |
 | Litestream `InvalidAccessKeyId` / 403, log shows `endpoint=""` | `LITESTREAM_ENDPOINT` unset (or the running build predates the endpoint/region config) → Litestream defaults to AWS. Set the **account** endpoint (no bucket) + `region=auto` for R2, and redeploy so the config is live. |
+
+### SMTP through a TCP relay
+
+Set `EMAIL_SMTP_CONNECT_HOST` and `EMAIL_SMTP_CONNECT_PORT` to dial a TCP relay instead of the configured SMTP address. Each unset value falls back to the SMTP host or port. The original SMTP host remains the TLS server name and authentication identity; certificate verification stays enabled. These overrides apply to both environment and database SMTP settings. The relay must forward the SMTP connection without terminating TLS.
