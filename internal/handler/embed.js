@@ -221,6 +221,8 @@
           api('/v1/event-types/' + encodeURIComponent(this.slug) + '/questions'),
         ]);
         this.info = r[0];
+        this.style.setProperty('--booking-accent', this.info.booking_accent || '#111827');
+        this.style.setProperty('--booking-accent-text', this.info.booking_accent_foreground || '#ffffff');
         this.locale = this.info.locale || '';
         this.i18n = this.info.i18n || {};
         this.dow = dowLabels(this.locale);
