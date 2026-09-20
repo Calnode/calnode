@@ -377,6 +377,8 @@ them - the most common "why can't I see those times".
 
 ## 9. Booking lifecycle
 
+New public and assistant bookings recheck selected external calendars before committing. This includes the event buffers and each required host; round-robin routing filters busy candidates and busy optional guests are omitted. A failed provider check rejects the request. The external check and database write cannot share a transaction. Rescheduling still uses the existing validation path.
+
 `internal/booking/service.go` (transactions) + `internal/handler/booking_handler.go`
 (HTTP + async side effects).
 

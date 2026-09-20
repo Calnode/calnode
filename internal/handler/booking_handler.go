@@ -510,6 +510,10 @@ func (h *Handler) createBookingForSlug(ctx context.Context, slug string, startAt
 	if err := h.validateBookingTime(ctx, et, et.RoutingMode, candidates, required, startAt.UTC(), endAt); err != nil {
 		return nil, err
 	}
+	candidates, optional, err = h.calendarFreeHosts(ctx, et, candidates, required, optional, startAt.UTC(), endAt)
+	if err != nil {
+		return nil, err
+	}
 	b, err := h.bookingSvc.Create(ctx, booking.CreateParams{
 		EventTypeID:         et.ID,
 		HostIDs:             candidates,
@@ -793,6 +797,12 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	candidates, optional, err = h.calendarFreeHosts(r.Context(), et, candidates, required, optional, startAt.UTC(), endAt)
+	if err != nil {
+		h.logger.WarnContext(r.Context(), "booking calendar check rejected", "error", err)
+		h.writeError(w, http.StatusConflict, "this slot is no longer available; please select another time")
+		return
+	}
 	b, err := h.bookingSvc.Create(r.Context(), booking.CreateParams{
 		EventTypeID:   et.ID,
 		HostIDs:       candidates,
