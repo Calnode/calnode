@@ -200,6 +200,8 @@ the platform/recovery secret doesn't expose secrets.
 
 ## 7. Routing — the host-roles model
 
+An administrator who owns an event can transfer it to an active required host with `POST /v1/event-types/{slug}/transfer`. The request supplies `expected_owner_id` and `new_owner_id`. Upcoming bookings prevent transfer. The event ID, slug, and historical booking hosts are preserved. Event-specific availability rules move to the new owner; global availability and calendar connections do not.
+
 An event type owns a **host list** (`event_type_hosts`): each row = (user, role,
 priority), role ∈ **required | rotation | optional**. The editor authors these
 roles through **two plain questions** rather than a mode picker — *who can host?*
