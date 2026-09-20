@@ -156,5 +156,9 @@
   "assistant_iteration_cap": "Simplifions les choses : choisissez un créneau dans le calendrier ci-dessous.",
   "assistant_status_slots": "Vérification des disponibilités…",
   "assistant_status_book": "Réservation…",
-  "assistant_status_working": "En cours…"
+  "assistant_status_working": "En cours…",
+  "time_period": "Moment de la journée",
+  "time_morning": "Matin",
+  "time_afternoon": "Après-midi",
+  "time_evening": "Soir"
 }

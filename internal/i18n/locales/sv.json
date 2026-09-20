@@ -156,5 +156,9 @@
   "assistant_iteration_cap": "Vi tar det enkelt: välj en tid i kalendern nedan.",
   "assistant_status_slots": "Kontrollerar tillgängliga tider…",
   "assistant_status_book": "Bokar…",
-  "assistant_status_working": "Arbetar…"
+  "assistant_status_working": "Arbetar…",
+  "time_period": "Tid på dagen",
+  "time_morning": "Förmiddag",
+  "time_afternoon": "Eftermiddag",
+  "time_evening": "Kväll"
 }

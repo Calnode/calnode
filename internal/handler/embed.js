@@ -496,7 +496,26 @@
       else if (st.day) {
         var list = (st.slotsByDay[st.day] || []).slice().sort(function (a, b) { return a.start < b.start ? -1 : 1; });
         var listEl = el('div', { class: 'slots-list' });
-        list.forEach(function (s) {
+        var periodFor = function (slot) {
+          var hour = Number(new Intl.DateTimeFormat('en-GB', {timeZone: TZ, hour: 'numeric', hourCycle: 'h23'}).format(new Date(slot.start)));
+          return hour < 12 ? 0 : hour < 17 ? 1 : 2;
+        };
+        var periods = Array.from(new Set(list.map(periodFor))).sort();
+        if (periods.indexOf(st.period) === -1) st.period = periods[0];
+        var choices = el('div', { class: 'time-periods', role: 'group', 'aria-label': t(this.i18n, 'time_period') });
+        periods.forEach(function (period) {
+          var button = el('button', { type: 'button', 'data-period': String(period), 'aria-pressed': String(period === st.period), text: t(self.i18n, ['time_morning', 'time_afternoon', 'time_evening'][period]) });
+          button.addEventListener('click', function () {
+            st.period = period;
+            self.render();
+            self.shadowRoot.querySelector('[data-period="' + period + '"]').focus();
+          });
+          choices.appendChild(button);
+        });
+        var grid = el('div', { class: 'time-grid' });
+        if (list.length) listEl.appendChild(choices);
+        listEl.appendChild(grid);
+        list.filter(function (s) { return periodFor(s) === st.period; }).forEach(function (s) {
           if (s.taken) {
             // Disabled rather than click-guarded: it keeps the same box as a bookable
             // slot and is announced as unavailable instead of read out as a plain time.
@@ -506,12 +525,12 @@
               'aria-label': timeLabel(s.start, self.locale) + ' - ' + t(self.i18n, 'slot_taken'),
             });
             d.disabled = true;
-            listEl.appendChild(d);
+            grid.appendChild(d);
             return;
           }
           var b = el('button', { class: 'slot-btn', text: timeLabel(s.start, self.locale) });
           b.addEventListener('click', function () { self.state.slot = s; self.state.view = 'form'; self.render(); });
-          listEl.appendChild(b);
+          grid.appendChild(b);
         });
         if (!list.length) {
           // Name the day, and the host when there is one: a bare "No available times."
