@@ -348,28 +348,14 @@ func (s *Service) InvitesGuests(ctx context.Context, userID string) bool {
 	return false
 }
 
-// FreeBusy returns the UNION of busy intervals for the user across EVERY connected provider
-// (each provider internally unions its own connected accounts with check_conflicts = 1). This
-// is what lets a user connect multiple calendars and have them all checked. Fail-open: a
-// provider that errors is skipped; an error is returned only if every provider failed (so a
-// flaky calendar never blocks availability or a booking).
 func (s *Service) FreeBusy(ctx context.Context, userID string, from, to time.Time) ([]slots.Interval, error) {
 	var out []slots.Interval
-	var firstErr error
-	anyOK := false
 	for _, p := range s.providers {
 		iv, err := p.FreeBusy(ctx, userID, from, to)
 		if err != nil {
-			if firstErr == nil {
-				firstErr = err
-			}
-			continue
+			return nil, err
 		}
-		anyOK = true
 		out = append(out, iv...)
-	}
-	if !anyOK && firstErr != nil {
-		return nil, firstErr
 	}
 	return out, nil
 }

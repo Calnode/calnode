@@ -449,6 +449,8 @@ committed booking) — which is why the reconciler (§11) exists.
 
 ## 10. Calendar integration (provider abstraction)
 
+Availability checks return an error if any selected conflict calendar cannot be checked. Partial provider responses and unreadable busy periods are not treated as free time. An unavailable calendar can therefore temporarily prevent booking; reconnect it or deselect it from conflict checks to restore availability.
+
 Calnode talks to calendars through a **provider abstraction**, not a single vendor:
 
 - **`internal/calendar`** defines the `Provider` interface (Name, InvitesGuests,

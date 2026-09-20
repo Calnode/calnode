@@ -32,10 +32,6 @@ type calendarViewResp struct {
 	NextLink string `json:"@odata.nextLink"`
 }
 
-// FreeBusy returns the UNION of busy intervals for userID in [from, to) across every
-// connected Microsoft account with check_conflicts = 1 (every event in the window counts as
-// busy). Returns (nil, nil) if the user has no such connection. Fail-open: an account that
-// errors is logged and skipped.
 func (c *Client) FreeBusy(ctx context.Context, userID string, from, to time.Time) ([]slots.Interval, error) {
 	conns, err := c.freeBusyConnections(ctx, userID)
 	if err != nil {
@@ -45,8 +41,7 @@ func (c *Client) FreeBusy(ctx context.Context, userID string, from, to time.Time
 	for _, fc := range conns {
 		intervals, err := c.freeBusyForConn(ctx, fc, from, to)
 		if err != nil {
-			c.logger.Warn("microsoft: freebusy for connection failed, skipping", "user_id", userID, "error", err)
-			continue
+			return nil, err
 		}
 		out = append(out, intervals...)
 	}
