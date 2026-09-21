@@ -289,6 +289,9 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	mux.HandleFunc("GET /v1/auth/microsoft/login", authRL(h.LoginMicrosoft))
 	mux.HandleFunc("GET /v1/auth/microsoft/callback", authRL(h.CallbackMicrosoft))
 	mux.HandleFunc("POST /v1/auth/logout", h.Logout)
+	// Sign out everywhere. Own sessions for anyone; someone else's for an admin, which
+	// is the offboarding half. Also cuts that user's MCP OAuth tokens.
+	mux.HandleFunc("POST /v1/auth/sessions/revoke-all", h.RequireAuth(h.RevokeAllSessions))
 
 	// MCP server (Model Context Protocol) — Streamable HTTP transport for remote
 	// agents. One server instance reused across requests. Guarded by a bearer token:
@@ -394,6 +397,7 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	mux.HandleFunc("PATCH /v1/event-types/{slug}", h.RequireAuth(h.PatchEventType))
 	mux.HandleFunc("DELETE /v1/event-types/{slug}", h.RequireAuth(h.DeleteEventType))
 	mux.HandleFunc("POST /v1/event-types/{slug}/duplicate", h.RequireAuth(h.DuplicateEventType))
+	mux.HandleFunc("POST /v1/event-types/{slug}/transfer", h.RequireAuth(h.TransferEventType))
 	mux.HandleFunc("GET /v1/event-types/{slug}/hosts", h.RequireAuth(h.ListEventTypeHosts))
 	mux.HandleFunc("PUT /v1/event-types/{slug}/hosts", h.RequireAuth(h.SetEventTypeHosts))
 	testEmailRL := RateLimit(10, time.Minute)

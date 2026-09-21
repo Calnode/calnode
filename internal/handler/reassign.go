@@ -162,6 +162,8 @@ func (h *Handler) ReassignBooking(w http.ResponseWriter, r *http.Request) {
 				// Reassignment cancels on the OLD host's calendar. Their stored calendar id is not
 				// loaded here, so this falls back to resolving their destination - the same
 				// behaviour as before, and correct unless they also moved their destination.
+				// A CalDAV event is the exception: its id is its URL, which is enough to find the
+				// account that holds it wherever the destination is now.
 				if err := gc.CancelEvent(ctx, oldHostID, "", extEventID); err != nil {
 					h.logger.Error("reassign: delete old calendar event", "error", err, "booking_id", bCopy.ID)
 				}

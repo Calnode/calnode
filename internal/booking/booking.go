@@ -23,6 +23,7 @@ type Booking struct {
 	Status             string
 	CancellationReason string
 	LocationValue      string
+	LocationType       string
 	CreatedAt          time.Time
 	UpdatedAt          time.Time
 	PaymentStatus      string // none | pending | paid | refunded
@@ -71,6 +72,7 @@ type CreateParams struct {
 	StartAt       time.Time
 	EndAt         time.Time
 	LocationValue string
+	LocationType  string
 	Organizer     Attendee
 	Answers       []Answer
 	// MaxActivePerInvitee caps how many active (upcoming, non-cancelled) bookings

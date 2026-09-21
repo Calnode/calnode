@@ -156,5 +156,10 @@
   "assistant_iteration_cap": "Semplifichiamo: scelga un orario dal calendario qui sotto.",
   "assistant_status_slots": "Verifica della disponibilità…",
   "assistant_status_book": "Prenotazione in corso…",
-  "assistant_status_working": "Elaborazione…"
+  "assistant_status_working": "Elaborazione…",
+  "time_period": "Momento della giornata",
+  "time_morning": "Mattina",
+  "time_afternoon": "Pomeriggio",
+  "time_evening": "Sera",
+  "phone_call_number": "Telefono (facoltativo, per una chiamata)"
 }
