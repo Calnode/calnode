@@ -7,6 +7,7 @@ package calendar
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"sort"
 	"time"
 
@@ -79,6 +80,24 @@ type Provider interface {
 	CancelEvent(ctx context.Context, userID, calendarID, eventID string) error
 }
 
+// EventRecognizer is implemented by a provider whose event ids identify the provider by
+// themselves. The Service sends an update or cancel of such an event to that provider whatever
+// the user's destination is now, so moving the destination to another provider neither strands
+// the events written before the move nor hands their ids to a provider that never issued them.
+//
+// CalDAV implements it: its event id is the absolute URL of the event resource. Google and
+// Microsoft ids are opaque and never URLs; they do not implement it and keep routing by
+// destination.
+type EventRecognizer interface {
+	RecognizesEvent(eventID string) bool
+}
+
+// ErrEventUnreachable matches an UpdateEvent or CancelEvent error that was refused before
+// anything was sent, because the stored ids do not identify one connected account to act as.
+// It is a verdict on stored state, not a failed request: a retry re-reads the same connections
+// and refuses the same way, so the reconciler stops retrying an event that returns it.
+var ErrEventUnreachable = errors.New("calendar: no single connected account holds this event")
+
 // Service holds the configured providers and dispatches per-user operations to
 // whichever provider that user has connected.
 type Service struct {
@@ -136,7 +155,7 @@ func (s *Service) providerForDestination(ctx context.Context, userID string) Pro
 func (s *Service) Connected(ctx context.Context, userID string) (bool, string, error) {
 	var name string
 	err := s.db.QueryRowContext(ctx,
-		`SELECT provider FROM calendar_connections WHERE user_id = ? LIMIT 1`, userID).Scan(&name)
+		`SELECT provider FROM calendar_connections WHERE user_id = ? ORDER BY is_destination DESC, created_at ASC LIMIT 1`, userID).Scan(&name)
 	if err == sql.ErrNoRows {
 		return false, "", nil
 	}
@@ -370,19 +389,31 @@ func (s *Service) CreateEvent(ctx context.Context, userID string, p CreateEventP
 	return "", "", "", nil
 }
 
+// providerForEvent resolves the provider an existing event belongs to: the one that recognizes
+// its id (EventRecognizer), else the user's destination provider. Returns nil if neither.
+func (s *Service) providerForEvent(ctx context.Context, userID, eventID string) Provider {
+	for _, name := range s.ProviderNames() {
+		if r, ok := s.providers[name].(EventRecognizer); ok && r.RecognizesEvent(eventID) {
+			return s.providers[name]
+		}
+	}
+	return s.providerForDestination(ctx, userID)
+}
+
 // UpdateEvent moves an event. calendarID is the one recorded at creation; empty falls back
-// to the user's current destination.
+// to the user's current destination. The provider is the one that recognizes eventID, if any
+// does, else the destination's (providerForEvent).
 func (s *Service) UpdateEvent(ctx context.Context, userID, calendarID, eventID string, start, end time.Time) error {
-	if pr := s.providerForDestination(ctx, userID); pr != nil {
+	if pr := s.providerForEvent(ctx, userID, eventID); pr != nil {
 		return pr.UpdateEvent(ctx, userID, calendarID, eventID, start, end)
 	}
 	return nil
 }
 
 // CancelEvent deletes an event. calendarID is the one recorded at creation; empty falls
-// back to the user's current destination.
+// back to the user's current destination. The provider is chosen as for UpdateEvent.
 func (s *Service) CancelEvent(ctx context.Context, userID, calendarID, eventID string) error {
-	if pr := s.providerForDestination(ctx, userID); pr != nil {
+	if pr := s.providerForEvent(ctx, userID, eventID); pr != nil {
 		return pr.CancelEvent(ctx, userID, calendarID, eventID)
 	}
 	return nil
