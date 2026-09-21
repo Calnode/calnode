@@ -467,6 +467,8 @@ committed booking) — which is why the reconciler (§11) exists.
 
 ## 10. Calendar integration (provider abstraction)
 
+The connected-provider lookup prefers the destination connection. A conflict-only connection must not select the provider used when deciding how to generate a meeting link.
+
 Calnode talks to calendars through a **provider abstraction**, not a single vendor:
 
 - **`internal/calendar`** defines the `Provider` interface (Name, InvitesGuests,

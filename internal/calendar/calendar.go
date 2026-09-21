@@ -155,7 +155,7 @@ func (s *Service) providerForDestination(ctx context.Context, userID string) Pro
 func (s *Service) Connected(ctx context.Context, userID string) (bool, string, error) {
 	var name string
 	err := s.db.QueryRowContext(ctx,
-		`SELECT provider FROM calendar_connections WHERE user_id = ? LIMIT 1`, userID).Scan(&name)
+		`SELECT provider FROM calendar_connections WHERE user_id = ? ORDER BY is_destination DESC, created_at ASC LIMIT 1`, userID).Scan(&name)
 	if err == sql.ErrNoRows {
 		return false, "", nil
 	}
