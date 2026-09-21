@@ -82,7 +82,11 @@ func newDialers(deadline time.Time, host string) (net.Dialer, tls.Dialer) {
 
 func (s *SMTP) Send(ctx context.Context, msg Message) error {
 	addr := net.JoinHostPort(s.host, s.port)
-	raw := s.buildRaw(msg)
+	// Built before anything is dialed, so an unusable recipient costs no connection.
+	raw, err := s.buildRaw(msg)
+	if err != nil {
+		return err
+	}
 
 	// Bounds the whole conversation, not just the dial (see defaultSMTPTimeout).
 	// Whichever is EARLIER of "ctx's own deadline" and "now + the default" wins, so a
@@ -174,7 +178,13 @@ func (s *SMTP) Send(ctx context.Context, msg Message) error {
 	return nil
 }
 
-func (s *SMTP) buildRaw(msg Message) []byte {
+// ErrInvalidRecipient marks a recipient address that net/mail cannot parse. buildRaw
+// refuses to write such an address into the To: header, so Send returns this instead of
+// sending anything. The offending value is deliberately left out of the message: it is
+// caller-supplied, may carry CR/LF, and this error is logged.
+var ErrInvalidRecipient = errors.New("mailer: invalid recipient address")
+
+func (s *SMTP) buildRaw(msg Message) ([]byte, error) {
 	from := mail.Address{Name: s.fromName, Address: s.from}
 
 	// mime.QEncoding.Encode returns the string unchanged when it is pure ASCII
@@ -184,16 +194,22 @@ func (s *SMTP) buildRaw(msg Message) []byte {
 	// and satisfying RFC 2047 at the same time.
 	subject := mime.QEncoding.Encode("utf-8", msg.Subject)
 
-	// Validate and normalise To addresses so the To: header line is properly
-	// quoted. Delivery uses c.Rcpt() (separate SMTP command) so a To: header
-	// formatting error cannot redirect mail.
+	// Validate and normalise To addresses so the To: header line is properly quoted.
+	// An address that does not parse is REFUSED rather than passed through: writing one
+	// verbatim is what would let a CR/LF inside it close the To: line and start a header
+	// of the attacker's choosing. net/smtp's Rcpt happens to reject CR/LF too, but that
+	// is one call away in the standard library and protects only this transport, so the
+	// guarantee is made here, where the header is actually assembled.
+	if len(msg.To) == 0 {
+		return nil, fmt.Errorf("%w: message has no recipient", ErrInvalidRecipient)
+	}
 	toFormatted := make([]string, 0, len(msg.To))
-	for _, addr := range msg.To {
-		if a, err := mail.ParseAddress(addr); err == nil {
-			toFormatted = append(toFormatted, a.String())
-		} else {
-			toFormatted = append(toFormatted, addr)
+	for i, addr := range msg.To {
+		a, err := mail.ParseAddress(addr)
+		if err != nil {
+			return nil, fmt.Errorf("%w: recipient %d", ErrInvalidRecipient, i)
 		}
+		toFormatted = append(toFormatted, a.String())
 	}
 
 	var buf bytes.Buffer
@@ -209,7 +225,7 @@ func (s *SMTP) buildRaw(msg Message) []byte {
 	if !hasHTML && !hasAtt {
 		buf.WriteString("Content-Type: text/plain; charset=utf-8\r\n\r\n")
 		buf.WriteString(msg.Text)
-		return buf.Bytes()
+		return buf.Bytes(), nil
 	}
 
 	// writeBody emits the message body at the current MIME level: either a single
@@ -242,7 +258,7 @@ func (s *SMTP) buildRaw(msg Message) []byte {
 	// No attachments: the body is the whole message.
 	if !hasAtt {
 		writeBody(&buf)
-		return buf.Bytes()
+		return buf.Bytes(), nil
 	}
 
 	// multipart/mixed: the body part (text or multipart/alternative) followed by
@@ -262,7 +278,7 @@ func (s *SMTP) buildRaw(msg Message) []byte {
 		buf.WriteString("\r\n")
 	}
 	fmt.Fprintf(&buf, "--%s--\r\n", mixed)
-	return buf.Bytes()
+	return buf.Bytes(), nil
 }
 
 // base64Wrap base64-encodes b and wraps it at 76 characters per line (RFC 2045).

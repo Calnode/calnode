@@ -138,9 +138,7 @@ func TestFreeBusy_notConnected_returnsNil(t *testing.T) {
 	}
 }
 
-func TestFreeBusy_nonOK_failsOpen(t *testing.T) {
-	// A connection returning non-200 is skipped (fail-open), not surfaced as an error —
-	// a flaky calendar must never block availability or a booking.
+func TestFreeBusy_nonOK_rejectsBookingCheck(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 	}))
@@ -151,8 +149,8 @@ func TestFreeBusy_nonOK_failsOpen(t *testing.T) {
 	saveAndConnectClient(t, c, "user-1", "primary", "bad-token")
 
 	got, err := c.FreeBusy(context.Background(), "user-1", time.Now(), time.Now().Add(time.Hour))
-	if err != nil {
-		t.Errorf("fail-open: expected nil error, got %v", err)
+	if err == nil {
+		t.Error("expected an error from failed calendar check")
 	}
 	if len(got) != 0 {
 		t.Errorf("expected no busy intervals from a failed connection, got %d", len(got))
@@ -177,5 +175,24 @@ func TestFreeBusy_onlyCheckConflictsConnections(t *testing.T) {
 	}
 	if intervals != nil {
 		t.Errorf("got intervals from check_conflicts=0 connection; want nil")
+	}
+}
+
+func TestFreeBusy_rejectsIncompleteCalendarResponse(t *testing.T) {
+	for _, body := range []string{
+		`{"calendars":{}}`,
+		`{"calendars":{"primary":{"errors":[{"reason":"notFound"}],"busy":[]}}}`,
+		`{"calendars":{"primary":{"busy":[{"start":"invalid","end":"2026-06-15T10:00:00Z"}]}}}`,
+	} {
+		t.Run(body, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(body)) }))
+			defer srv.Close()
+			c := newTestClient(t)
+			c.apiBase = srv.URL
+			saveAndConnectClient(t, c, "user-1", "primary", "token")
+			if _, err := c.FreeBusy(context.Background(), "user-1", time.Now(), time.Now().Add(time.Hour)); err == nil {
+				t.Fatal("expected calendar check failure")
+			}
+		})
 	}
 }

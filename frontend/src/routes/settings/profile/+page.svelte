@@ -23,6 +23,7 @@
 	let fileInput = $state<HTMLInputElement | undefined>(undefined);
 
 	let name = $state('');
+	let booking_accent = $state('#111827');
 	let timezone = $state('UTC');
 	let time_format = $state<'12h' | '24h'>('12h');
 	let week_start = $state(1);
@@ -74,6 +75,7 @@
 	onMount(() => loadingFlag.run(async () => {
 		user = await api.get<User>('/v1/users/me');
 		name = user.name ?? '';
+		booking_accent = user.booking_accent;
 		timezone = user.timezone;
 		time_format = user.time_format ?? '12h';
 		week_start = user.week_start ?? 1;
@@ -122,7 +124,7 @@
 	async function save() {
 		await savingFlag.run(async () => {
 			const updated = await api.patch<User>('/v1/users/me', {
-				name, timezone, time_format, week_start, date_format,
+				name, timezone, time_format, week_start, date_format, booking_accent,
 			});
 			currentUser.set(updated);
 			prefs.set(prefsFromUser(updated));
@@ -182,6 +184,14 @@
 					</div>
 				</div>
 
+				<div class="space-y-2">
+					<Label for="booking-accent">Booking accent color</Label>
+					<div class="flex items-center gap-3">
+						<input id="booking-accent" type="color" bind:value={booking_accent} class="h-10 w-14 cursor-pointer rounded border p-1" />
+						<span class="text-sm text-muted-foreground">{booking_accent}</span>
+					</div>
+					<p class="text-xs text-muted-foreground">Used on your booking pages.</p>
+				</div>
 				<div class="space-y-1.5">
 					<Label for="name">Name</Label>
 					<Input id="name" type="text" bind:value={name} placeholder="Your name" />

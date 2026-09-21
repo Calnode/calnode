@@ -593,7 +593,7 @@ func TestDuplicateEventType_handlesEveryEventTypeColumn(t *testing.T) {
 	copied := map[string]bool{
 		"user_id": true, "team_id": true, "name": true, "description": true,
 		"duration_minutes": true, "slot_interval_minutes": true,
-		"location_type": true, "location_value": true,
+		"location_type": true, "location_value": true, "allow_phone_call": true,
 		"routing_mode": true, "rr_strategy": true,
 		"buffer_before_minutes": true, "buffer_after_minutes": true,
 		"min_notice_minutes": true, "max_future_days": true,

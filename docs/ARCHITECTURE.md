@@ -186,6 +186,24 @@ the platform/recovery secret doesn't expose secrets.
   Owner-gated actions: grant/revoke admin, transfer ownership. Admins can cancel
   any booking, see all bookings, manage teams/members. Safe-removal + archive
   guards prevent orphaning.
+- **Sign out everywhere** (`POST /v1/auth/sessions/revoke-all`, `session.go`). With no
+  body it drops all of the caller's sessions **except the one that made the request** —
+  "sign out my other devices", as distinct from `POST /v1/auth/logout`, which ends the
+  current one. (An API-key caller has no current session, so for them every session
+  goes.) With `{"user_id": "..."}` it is an offboarding tool, gated on the same tiers as
+  `roles.go`: an admin may revoke a member, only the owner may revoke another admin, and
+  the owner's sessions are reachable only by the owner. The actor's tier is checked
+  *before* the target is loaded, so the 404 cannot be used to enumerate user ids.
+  ⛔ It also deletes the target's rows in **`oauth_access_tokens`**, cutting off any MCP
+  connector (§19) — those authenticate with a bearer token, not the session cookie, so
+  revoking sessions alone would leave an agent holding the authority just withdrawn.
+  Both deletes run in one transaction, so "revoked" is never half-true.
+  This endpoint signs someone out; it does not offboard them. Offboarding is archive
+  (next bullet), which ends MCP access on its own: the OAuth bearer check and the
+  refresh grant both refuse an archived member. API keys
+  (`cno_`) are deliberately left alone here, which is safe only because an archived
+  member's keys are already refused (the key path in `auth.go`), so an offboarded
+  member's keys stop working through archive, not through this endpoint.
 - **Offboarding = archive** (`users.archived_at`), never hard-delete — preserves
   bookings, event-type ownership, team links. Archived ⇒ no login, hidden from
   lists, skipped in routing/slots, event types deactivated. Reversible (restore).
@@ -199,6 +217,8 @@ the platform/recovery secret doesn't expose secrets.
 ---
 
 ## 7. Routing — the host-roles model
+
+An administrator who owns an event can transfer it to an active required host with `POST /v1/event-types/{slug}/transfer`. The request supplies `expected_owner_id` and `new_owner_id`. Upcoming bookings prevent transfer. The event ID, slug, and historical booking hosts are preserved. Event-specific availability rules move to the new owner; global availability and calendar connections do not.
 
 An event type owns a **host list** (`event_type_hosts`): each row = (user, role,
 priority), role ∈ **required | rotation | optional**. The editor authors these
@@ -379,6 +399,8 @@ them - the most common "why can't I see those times".
 
 ## 9. Booking lifecycle
 
+Google Meet and Teams event types can opt into `allow_phone_call`. Their booking page and widget then accept an optional `phone` value. A valid number selects a telephone appointment; leaving it empty preserves video. The booking stores its own location type so management pages, calendar retries, and paid confirmation do not generate a video link for a telephone appointment. Event duplication preserves the setting.
+
 `internal/booking/service.go` (transactions) + `internal/handler/booking_handler.go`
 (HTTP + async side effects).
 
@@ -450,6 +472,10 @@ committed booking) — which is why the reconciler (§11) exists.
 ---
 
 ## 10. Calendar integration (provider abstraction)
+
+The connected-provider lookup prefers the destination connection. A conflict-only connection must not select the provider used when deciding how to generate a meeting link.
+Availability checks return an error if any selected conflict calendar cannot be checked. Partial provider responses and unreadable busy periods are not treated as free time. An unavailable calendar can therefore temporarily prevent booking; reconnect it or deselect it from conflict checks to restore availability.
+Bookings also check pending local bookings owned by other accounts that use the same selected conflict calendar. This check runs inside the booking transaction, before asynchronous calendar creation can finish. Calendar identity currently includes the provider, account email, and calendar ID.
 
 Calnode talks to calendars through a **provider abstraction**, not a single vendor:
 
@@ -549,8 +575,25 @@ from the current destination.
 otherwise changing the destination orphans every existing booking: the provider 404s, the
 booking cancels in Calnode, and the meeting stays on the host's calendar with nothing
 surfaced. Empty means "resolve the old way", correct for bookings that predate the column.
-Known limit: this rescues a change of calendar *within* an account, not a move to a
-different account, which would need the account recorded too.
+Known limit (Google, Microsoft): this rescues a change of calendar *within* an account, not
+a move to a different account, which would need the account recorded too.
+
+CalDAV does not have that limit, because its event id is the event's absolute URL and so
+already names the server. `Service.UpdateEvent`/`CancelEvent` route an id the CalDAV
+provider recognizes (`calendar.EventRecognizer`) to it whatever the destination is now, and
+it authenticates as the connected account that holds the event (`caldav.eventConn`), never
+as the destination: the account whose bound or saved calendar is the recorded calendar id,
+else whose calendar URL contains the event URL (same scheme, host and port, path under it;
+most specific wins). No match, or a tie, sends nothing and returns an error. This is a
+credential boundary, not a routing nicety: accounts can live on different servers, and the
+destination's app password sent to an older event's URL goes to someone else's server.
+
+That refusal matches `calendar.ErrEventUnreachable`, and the reconciler treats it as final:
+it logs one warning, clears `needs_sync` (reschedule) or the event id (cancel, logged
+redacted since it is the only record), and does not retry. Retrying cannot help, because it
+re-reads the same connections and refuses the same way, and the cancellation sweep has no
+date bound, so it would repeat forever. Any other error, such as a server that is down or
+refuses the stored password, stays retryable.
 
 ---
 
@@ -715,6 +758,8 @@ as the desired state:
 
 ## 15. Frontend toolchain & conventions
 
+Each account can set `booking_accent` in its profile. The default preserves the dark booking controls. Booking pages, management pages, and the embed widget use the event owner's color, with a contrasting text color chosen by luminance. The profile API accepts only six-digit hex colors.
+
 - Svelte 5, SvelteKit 2 (adapter-static SPA), Vite 8 (Rolldown), Tailwind v4
   (`@tailwindcss/vite`), shadcn-svelte (nova style) + bits-ui, tailwind-variants 3,
   **tailwind-merge v3** (must match Tailwind v4 — v2 mis-merges v4 classes; memory
@@ -839,7 +884,7 @@ as the desired state:
   patching. The **public** booking surfaces are unaffected and are verified on mobile;
   this is admin-only. Deferred 2026-08-22, not a regression.
 - **LiveKit room is not translated** - the booking surfaces, emails and calendar invites
-  ship in 8 languages (§23), but the in-browser meeting UI is ~45 hardcoded English
+  ship in 9 languages (§23), but the in-browser meeting UI is ~45 hardcoded English
   strings. It has its own vanilla-JS asset pipeline and shares no string plumbing with
   the Go templates, so it needs a small runtime `t()` of its own. Separate work, not hard.
 - **Plural rules are 2-form only** (§23) - shipping Polish, Russian or Arabic correctly
@@ -1081,7 +1126,18 @@ LLM summary) — the next build; consent-gated (§8.11/§15 of the PRD).
 
 ## 23. Languages (i18n)
 
-Calnode ships **8 locales**: `en` (source) · `es` · `fr` · `de` · `it` · `pt` · `nl` · `sv`.
+Calnode ships **9 locales**: `en` (source) · `es` · `fr` · `fr-CA` · `de` · `it` · `pt` · `nl` · `sv`.
+
+`fr-CA` is the first **regional** locale, and it is a separate file rather than a fallback
+because the differences are real: `courriel` not `e-mail`, `reporter`/`report` not
+`reprogrammer`/`reprogrammation`, `renseignements personnels` never `données personnelles`
+(the Quebec statutory term), no space before `!` `?` `;` where France puts one, and CLDR
+itself disagrees on one abbreviation — `month_short_jul` is `juill.` in fr-CA and `juil.` in
+fr, which is exactly what `TestDateTablesMatchCLDR` exists to catch. Both keep the 24-hour
+clock and the day-month `date_format`. Currency and percent take a non-breaking space before
+`$` and `%` in Canadian French; no key carries either today, so the rule is recorded here
+rather than applied. A visitor sending `fr-FR` or plain `fr` is unaffected — the matcher
+picks the exact tag first (pinned in `TestResolve`).
 
 ### What is translated, and what is not
 

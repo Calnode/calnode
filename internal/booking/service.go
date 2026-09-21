@@ -138,9 +138,9 @@ func (s *Service) Create(ctx context.Context, p CreateParams) (*Booking, error) 
 
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO bookings
-		  (id, event_type_id, host_id, start_at, end_at, status, location_value, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, 'confirmed', ?, ?, ?)`,
-		bookingID, p.EventTypeID, chosenHost, startStr, endStr, p.LocationValue, now, now)
+		  (id, event_type_id, host_id, start_at, end_at, status, location_value, location_type, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, 'confirmed', ?, ?, ?, ?)`,
+		bookingID, p.EventTypeID, chosenHost, startStr, endStr, p.LocationValue, p.LocationType, now, now)
 	if err != nil {
 		if db.IsUniqueViolation(err) {
 			return nil, ErrDoubleBooked
@@ -201,6 +201,7 @@ func (s *Service) Create(ctx context.Context, p CreateParams) (*Booking, error) 
 		EndAt:         p.EndAt.UTC(),
 		Status:        "confirmed",
 		LocationValue: p.LocationValue,
+		LocationType:  p.LocationType,
 		CreatedAt:     nowT,
 		UpdatedAt:     nowT,
 	}, nil
@@ -271,7 +272,7 @@ func (s *Service) CancelByID(ctx context.Context, id, reason string) error {
 const bookingColumns = `id, event_type_id, host_id, start_at, end_at, status,
 	       COALESCE(cancellation_reason, ''), COALESCE(location_value, ''),
 	       created_at, updated_at,
-	       payment_status, amount_paid_cents, amount_paid_currency`
+	       payment_status, amount_paid_cents, amount_paid_currency, location_type`
 
 // hostBusy reports whether hostID has any non-cancelled booking overlapping
 // [start, end) — the double-booking invariant every write path (Create, Reschedule,
@@ -285,9 +286,17 @@ func hostBusy(ctx context.Context, tx *sql.Tx, hostID, start, end, excludeBookin
 	err := tx.QueryRowContext(ctx, `
 		SELECT COUNT(*) FROM bookings b
 		JOIN booking_hosts bh ON bh.booking_id = b.id
-		WHERE bh.user_id = ? AND b.status != 'cancelled' AND b.id != ?
+		WHERE (bh.user_id = ? OR EXISTS (
+            SELECT 1 FROM connection_calendars checked
+            JOIN connection_calendars destination
+              ON destination.provider = checked.provider
+             AND destination.account_email = checked.account_email
+             AND destination.calendar_id = checked.calendar_id
+            WHERE checked.user_id = ? AND checked.check_conflicts = 1
+              AND destination.user_id = bh.user_id AND destination.is_destination = 1
+        )) AND b.status != 'cancelled' AND b.id != ?
 		  AND b.start_at < ? AND b.end_at > ?`,
-		hostID, excludeBookingID, end, start).Scan(&n)
+		hostID, hostID, excludeBookingID, end, start).Scan(&n)
 	return n > 0, err
 }
 
@@ -628,7 +637,7 @@ func scanBooking(s scanner) (*Booking, error) {
 		&startStr, &endStr, &b.Status,
 		&b.CancellationReason, &b.LocationValue,
 		&createdStr, &updatedStr,
-		&b.PaymentStatus, &b.AmountPaidCents, &b.AmountPaidCurrency,
+		&b.PaymentStatus, &b.AmountPaidCents, &b.AmountPaidCurrency, &b.LocationType,
 	)
 	if err == sql.ErrNoRows {
 		return nil, ErrNotFound

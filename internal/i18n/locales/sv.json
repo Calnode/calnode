@@ -160,5 +160,6 @@
   "time_period": "Tid på dagen",
   "time_morning": "Förmiddag",
   "time_afternoon": "Eftermiddag",
-  "time_evening": "Kväll"
+  "time_evening": "Kväll",
+  "phone_call_number": "Telefonnummer (valfritt, för ett telefonsamtal)"
 }

@@ -160,5 +160,6 @@
   "time_period": "Dagdeel",
   "time_morning": "Ochtend",
   "time_afternoon": "Middag",
-  "time_evening": "Avond"
+  "time_evening": "Avond",
+  "phone_call_number": "Telefoonnummer (optioneel, voor een telefoongesprek)"
 }

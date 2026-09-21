@@ -474,3 +474,4 @@
 .time-periods button:focus-visible { outline: 2px solid #111827; outline-offset: 2px; }
 .time-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(72px, 1fr)); gap: 8px; }
 .time-grid .slot-btn { padding: 12px 4px; font-variant-numeric: tabular-nums; }
+.cd.sel, .slot-btn.sel, .btn-primary { background: var(--booking-accent, #111827) !important; border-color: var(--booking-accent, #111827); color: var(--booking-accent-text, #fff) !important; }

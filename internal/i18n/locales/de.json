@@ -160,5 +160,6 @@
   "time_period": "Tageszeit",
   "time_morning": "Vormittag",
   "time_afternoon": "Nachmittag",
-  "time_evening": "Abend"
+  "time_evening": "Abend",
+  "phone_call_number": "Telefonnummer (optional, für einen Anruf)"
 }
