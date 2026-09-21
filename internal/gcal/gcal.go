@@ -225,11 +225,6 @@ type fbConn struct {
 	calIDs []string
 }
 
-// freeBusyConnections returns an authorized client for EVERY Google connection the user has
-// with check_conflicts = 1 (so a user can connect several Google accounts and have them all
-// checked for conflicts), each paired with the set of that account's calendars to check for
-// conflicts (per-account sub-calendar selection). Decrypt failures on one row are logged and
-// skipped (fail-open); an account whose calendars are all deselected is dropped.
 func (c *Client) freeBusyConnections(ctx context.Context, userID string) ([]fbConn, error) {
 	rows, err := c.db.QueryContext(ctx, `
 		SELECT access_token_enc, COALESCE(refresh_token_enc,''), calendar_id, COALESCE(expiry_at,''), COALESCE(account_email,'')
@@ -265,8 +260,7 @@ func (c *Client) freeBusyConnections(ctx context.Context, userID string) ([]fbCo
 		}
 		hc, err := c.buildClient(ctx, userID, d.accessEnc, d.refreshEnc, d.calID, d.expiryStr, d.accountEmail)
 		if err != nil {
-			c.logger.Warn("gcal: skipping connection with bad credentials", "user_id", userID, "error", err)
-			continue
+			return nil, fmt.Errorf("gcal: load conflict calendar credentials: %w", err)
 		}
 		conns = append(conns, fbConn{hc: hc, calIDs: calIDs})
 	}
