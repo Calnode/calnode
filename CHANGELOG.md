@@ -92,6 +92,11 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
    CSP and would break the embedding this exists for.
 
 ### Fixed
+- **The calendar picker no longer drops calendars past the first page.** Microsoft
+  requested `$top=100` calendars once and Google `maxResults=250` once, so anything
+  beyond silently vanished: unreachable for conflict checks and unchoosable as the
+  destination. Both listings now follow `@odata.nextLink` / `nextPageToken` to the
+  end. Answers [#59](https://github.com/Calnode/calnode/issues/59).
 - **The Zoom setup text no longer promises that an unpublished app works for "your own
   team".** Zoom only lets users inside the Zoom account that owns an unpublished app
   authorize it, so a member with their own Zoom account was refused on a Zoom error page

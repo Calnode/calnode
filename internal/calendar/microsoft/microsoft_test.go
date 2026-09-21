@@ -356,6 +356,45 @@ func TestListCalendars_selectNamesEveryDecodedProperty(t *testing.T) {
 	}
 }
 
+func TestListCalendars_followsNextLink(t *testing.T) {
+	c := newTestClient(t)
+	connect(t, c, "u1")
+
+	var calls []string
+	var srv *httptest.Server
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls = append(calls, r.URL.String())
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Query().Get("$skiptoken") == "" {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"value":          []map[string]any{graphCalendars[0]},
+				"@odata.nextLink": srv.URL + "/me/calendars?$skiptoken=page2",
+			})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"value": []map[string]any{graphCalendars[1]},
+		})
+	}))
+	defer srv.Close()
+	c.apiBase = srv.URL
+
+	got, err := c.ListCalendars(context.Background(), "u1", "")
+	if err != nil {
+		t.Fatalf("ListCalendars: %v", err)
+	}
+	want := []calendar.CalendarInfo{
+		{ID: "cal-own", Name: "Calendar", Primary: true, Writable: true},
+		{ID: "cal-shared", Name: "Team rota", Primary: false, Writable: false},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("ListCalendars =\n  %+v\nwant\n  %+v", got, want)
+	}
+	if len(calls) != 2 {
+		t.Errorf("expected 2 page fetches, got %d: %v", len(calls), calls)
+	}
+}
+
 func mkIDToken(tid string) string {
 	payload := base64.RawURLEncoding.EncodeToString([]byte(`{"tid":"` + tid + `"}`))
 	return "header." + payload + ".sig"
