@@ -399,6 +399,8 @@ them - the most common "why can't I see those times".
 
 ## 9. Booking lifecycle
 
+New public and assistant bookings recheck selected external calendars before committing. This uses the same buffer orientation and own-event subtraction as the slots page and checks each required host; round-robin routing filters busy candidates and busy optional guests are omitted. A failed provider check rejects the request with HTTP 503 and a retry message; a busy slot returns HTTP 409. Assistant and MCP bookings keep the same distinction. The external check and database write cannot share a transaction. Rescheduling still uses the existing validation path.
+
 Google Meet and Teams event types can opt into `allow_phone_call`. Their booking page and widget then accept an optional `phone` value. A valid number selects a telephone appointment; leaving it empty preserves video. The booking stores its own location type so management pages, calendar retries, and paid confirmation do not generate a video link for a telephone appointment. Event duplication preserves the setting.
 
 `internal/booking/service.go` (transactions) + `internal/handler/booking_handler.go`

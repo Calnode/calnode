@@ -433,6 +433,8 @@ func (h *Handler) runAssistantTool(ctx context.Context, slug, tz, lang, name, ar
 // the model can relay.
 func assistantBookError(err error) string {
 	switch {
+	case errors.Is(err, errCalendarUnavailable):
+		return errCalendarUnavailable.Error()
 	case errors.Is(err, errEventTypeNotFound):
 		return "this event type is no longer available"
 	case errors.Is(err, booking.ErrDoubleBooked), errors.Is(err, errNoHostAvailable), errors.Is(err, errSlotUnavailable):
