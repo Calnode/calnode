@@ -30,6 +30,7 @@ This guide covers a generic Docker deploy and a step-by-step **Railway** deploy
 | `DATABASE_URL` | no | `sqlite://./data/calnode.db` | Point at the persistent volume, e.g. `sqlite:///data/calnode.db`. |
 | `PORT` | no | `3000` | The app listens on `$PORT`. Many platforms inject their own (Railway injects `8080`) — let them. |
 | `EMAIL_SMTP_HOST` / `_PORT` / `_USER` / `_PASS` | no¹ | — / `587` | SMTP. Can also be set later in Settings → Email (DB-stored, encrypted). |
+| `EMAIL_SMTP_CONNECT_HOST` / `EMAIL_SMTP_CONNECT_PORT` | no | SMTP host / port | TCP relay address, loaded at startup. Applies to environment and database SMTP settings; TLS and authentication still use the SMTP host. |
 | `EMAIL_SMTP_TLS` / `_STARTTLS` | no | `false` | `STARTTLS` for 587, implicit `TLS` for 465. |
 | `EMAIL_FROM_ADDRESS` / `EMAIL_FROM_NAME` | no | `bookings@localhost` / `Calnode` | The From identity. |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | no | — | Google sign-in + calendar. Can also be set in Settings → Google OAuth. |
@@ -354,3 +355,7 @@ first event type + availability.
 | Email `550 domain not verified` | From address domain isn't verified with your email provider. |
 | Logo broken in email when testing locally | Gmail's image proxy can't reach `localhost` — only loads from a public URL. |
 | Litestream `InvalidAccessKeyId` / 403, log shows `endpoint=""` | `LITESTREAM_ENDPOINT` unset (or the running build predates the endpoint/region config) → Litestream defaults to AWS. Set the **account** endpoint (no bucket) + `region=auto` for R2, and redeploy so the config is live. |
+
+### SMTP through a TCP relay
+
+Set `EMAIL_SMTP_CONNECT_HOST` and `EMAIL_SMTP_CONNECT_PORT` to dial a TCP relay instead of the configured SMTP address. Each unset value falls back to the SMTP host or port. The original SMTP host remains the TLS server name and authentication identity; certificate verification stays enabled. These overrides are loaded at startup and apply to both environment and database SMTP settings, including settings reloads and test emails. Restart after changing the relay environment variables. An active relay is logged when the SMTP mailer is configured. The relay must forward the SMTP connection without terminating TLS.

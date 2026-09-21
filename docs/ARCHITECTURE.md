@@ -643,6 +643,7 @@ as the desired state:
   genuinely broken SMTP config. Explicit credentials state intent. `GET /v1/settings/email`
   returns the live `transport`, and the admin UI badges it, so filled-in SMTP fields are
   never mistaken for SMTP delivery.
+- **TCP relay:** `EMAIL_SMTP_CONNECT_HOST` / `EMAIL_SMTP_CONNECT_PORT` are loaded by `internal/config` and passed through `SMTPConfig` / `BuildMailer` at boot and settings reload. They change only the dial address; TLS and authentication keep the original SMTP host. Active overrides are logged.
 - **The dial must stay bounded.** `defaultSMTPTimeout` once applied only via
   `conn.SetDeadline`, which runs *after* the dial returns, leaving the dial itself bounded
   by the OS SYN-retry limit (~2 min). Against a packet-dropping host that stalls the job

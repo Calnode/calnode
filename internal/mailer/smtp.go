@@ -35,6 +35,8 @@ var defaultSMTPTimeout = 30 * time.Second
 
 // SMTP sends email via an SMTP server.
 type SMTP struct {
+	connectHost string
+	connectPort string
 	host        string
 	port        string
 	username    string
@@ -48,8 +50,16 @@ type SMTP struct {
 // NewSMTP constructs an SMTP sender. implicitTLS selects port-465 mode;
 // startTLS selects port-587 STARTTLS mode. Both false means plain SMTP
 // (suitable for a local relay on port 25).
-func NewSMTP(host, port, username, password string, implicitTLS, startTLS bool, from, fromName string) *SMTP {
+func NewSMTP(host, port, connectHost, connectPort, username, password string, implicitTLS, startTLS bool, from, fromName string) *SMTP {
+	if connectHost == "" {
+		connectHost = host
+	}
+	if connectPort == "" {
+		connectPort = port
+	}
 	return &SMTP{
+		connectHost: connectHost,
+		connectPort: connectPort,
 		host:        host,
 		port:        port,
 		username:    username,
@@ -81,7 +91,7 @@ func newDialers(deadline time.Time, host string) (net.Dialer, tls.Dialer) {
 }
 
 func (s *SMTP) Send(ctx context.Context, msg Message) error {
-	addr := net.JoinHostPort(s.host, s.port)
+	addr := net.JoinHostPort(s.connectHost, s.connectPort)
 	// Built before anything is dialed, so an unusable recipient costs no connection.
 	raw, err := s.buildRaw(msg)
 	if err != nil {

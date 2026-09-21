@@ -20,14 +20,16 @@ type Config struct {
 	LogLevel       slog.Level
 
 	// Email / SMTP
-	SMTPHost      string
-	SMTPPort      string
-	SMTPUser      string
-	SMTPPass      string
-	SMTPTLS       bool // implicit TLS (port 465)
-	SMTPStartTLS  bool // STARTTLS (port 587)
-	EmailFrom     string
-	EmailFromName string
+	SMTPConnectHost string
+	SMTPConnectPort string
+	SMTPHost        string
+	SMTPPort        string
+	SMTPUser        string
+	SMTPPass        string
+	SMTPTLS         bool // implicit TLS (port 465)
+	SMTPStartTLS    bool // STARTTLS (port 587)
+	EmailFrom       string
+	EmailFromName   string
 
 	// Google OAuth (calendar + sign-in)
 	GoogleClientID     string
@@ -108,14 +110,16 @@ func Load() *Config {
 		DatabaseURL: getEnv("DATABASE_URL", "sqlite://./data/calnode.db"),
 		BaseURL:     getEnv("BASE_URL", "http://localhost:3000"),
 
-		SMTPHost:      getEnv("EMAIL_SMTP_HOST", ""),
-		SMTPPort:      getEnv("EMAIL_SMTP_PORT", "587"),
-		SMTPUser:      getEnv("EMAIL_SMTP_USER", ""),
-		SMTPPass:      getEnv("EMAIL_SMTP_PASS", ""),
-		SMTPTLS:       getBool("EMAIL_SMTP_TLS", false),
-		SMTPStartTLS:  getBool("EMAIL_SMTP_STARTTLS", false),
-		EmailFrom:     getEnv("EMAIL_FROM_ADDRESS", "bookings@localhost"),
-		EmailFromName: getEnv("EMAIL_FROM_NAME", "Calnode"),
+		SMTPConnectHost: getEnv("EMAIL_SMTP_CONNECT_HOST", ""),
+		SMTPConnectPort: getEnv("EMAIL_SMTP_CONNECT_PORT", ""),
+		SMTPHost:        getEnv("EMAIL_SMTP_HOST", ""),
+		SMTPPort:        getEnv("EMAIL_SMTP_PORT", "587"),
+		SMTPUser:        getEnv("EMAIL_SMTP_USER", ""),
+		SMTPPass:        getEnv("EMAIL_SMTP_PASS", ""),
+		SMTPTLS:         getBool("EMAIL_SMTP_TLS", false),
+		SMTPStartTLS:    getBool("EMAIL_SMTP_STARTTLS", false),
+		EmailFrom:       getEnv("EMAIL_FROM_ADDRESS", "bookings@localhost"),
+		EmailFromName:   getEnv("EMAIL_FROM_NAME", "Calnode"),
 
 		GoogleClientID:     getEnv("GOOGLE_CLIENT_ID", ""),
 		GoogleClientSecret: getEnv("GOOGLE_CLIENT_SECRET", ""),

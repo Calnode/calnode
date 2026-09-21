@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"strconv"
 	"time"
@@ -17,14 +18,16 @@ import (
 // SMTPConfig holds decrypted email settings loaded from the DB.
 // Used by server.go to build the initial mailer on startup.
 type SMTPConfig struct {
-	Host     string
-	Port     string
-	User     string
-	Pass     string
-	TLS      bool
-	StartTLS bool
-	From     string
-	FromName string
+	ConnectHost string
+	ConnectPort string
+	Host        string
+	Port        string
+	User        string
+	Pass        string
+	TLS         bool
+	StartTLS    bool
+	From        string
+	FromName    string
 
 	// ResendAPIKey, when set, switches delivery to Resend's HTTPS API instead of SMTP.
 	ResendAPIKey string
@@ -39,6 +42,28 @@ const (
 	TransportResend EmailTransport = "resend_api"
 	TransportSMTP   EmailTransport = "smtp"
 )
+
+func (h *Handler) SetSMTPConnectAddress(host, port string) {
+	h.smtpConnectHost = host
+	h.smtpConnectPort = port
+}
+
+func (h *Handler) BuildMailer(cfg SMTPConfig) (mailer.Mailer, EmailTransport) {
+	cfg.ConnectHost = h.smtpConnectHost
+	cfg.ConnectPort = h.smtpConnectPort
+	m, transport := BuildMailer(cfg)
+	if transport == TransportSMTP && (cfg.ConnectHost != "" || cfg.ConnectPort != "") {
+		host, port := cfg.ConnectHost, cfg.ConnectPort
+		if host == "" {
+			host = cfg.Host
+		}
+		if port == "" {
+			port = cfg.Port
+		}
+		h.logger.Info("mailer: SMTP relay active", "connect_address", net.JoinHostPort(host, port), "smtp_host", cfg.Host)
+	}
+	return m, transport
+}
 
 // BuildMailer picks the delivery transport for a config, and is the single place that
 // decision is made - both boot and the settings-save path call it, so they cannot drift.
@@ -57,7 +82,7 @@ func BuildMailer(cfg SMTPConfig) (mailer.Mailer, EmailTransport) {
 	case cfg.ResendAPIKey != "":
 		return mailer.NewResend(cfg.ResendAPIKey, cfg.From, cfg.FromName), TransportResend
 	case cfg.Host != "":
-		return mailer.NewSMTP(cfg.Host, cfg.Port, cfg.User, cfg.Pass,
+		return mailer.NewSMTP(cfg.Host, cfg.Port, cfg.ConnectHost, cfg.ConnectPort, cfg.User, cfg.Pass,
 			cfg.TLS, cfg.StartTLS, cfg.From, cfg.FromName), TransportSMTP
 	default:
 		return &mailer.Noop{}, TransportNone
@@ -311,7 +336,7 @@ func (h *Handler) PatchEmailSettings(w http.ResponseWriter, r *http.Request) {
 		if cfg == nil {
 			h.live.Swap(&mailer.Noop{})
 		} else {
-			m, transport := BuildMailer(*cfg)
+			m, transport := h.BuildMailer(*cfg)
 			h.live.Swap(m)
 			h.logger.InfoContext(r.Context(), "mailer: reconfigured", "transport", string(transport))
 		}
