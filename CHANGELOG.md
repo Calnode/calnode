@@ -35,6 +35,42 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
   parsed bare address, so a pasted `Bob <bob@example.com>` is recorded as
   `bob@example.com` - a small deliberate behaviour change, matching what the hourly
   throttle, the per-invitee cap and the `To:` header already assume they hold.
+### Added
+- **Sign out everywhere.** `POST /v1/auth/sessions/revoke-all` ends every session you
+  have except the one you asked from, so losing a laptop no longer means waiting out a
+  30-day cookie. Pass `{"user_id": "..."}` and an admin can do the same for someone
+  else: an admin may revoke a member, only the owner may revoke another admin, and the
+  owner's own sessions can only be ended by the owner.
+
+  It also revokes that person's MCP OAuth tokens, which is the part that makes it an
+  offboarding tool rather than a convenience. A connected agent authenticates with a
+  bearer token and not the session cookie, so ending the sessions alone would have left
+  it holding exactly the access that was just withdrawn.
+- **Canadian French (`fr-CA`) on the booker-facing surfaces.** A visitor whose browser asks
+  for `fr-CA` now gets Canadian French rather than the France copy; `fr` and `fr-FR` are
+  unaffected. It is the first regional locale, and a separate file rather than a fallback
+  because the differences are real: `courriel` rather than `e-mail`, `reporter`/`report`
+  rather than `reprogrammer`, `renseignements personnels` (the Quebec statutory term) rather
+  than `données personnelles`, no space before `!` `?` `;` where France puts one, and CLDR
+  itself spells July `juill.` here against `juil.` in France.
+
+  ⚠️ **The wording is an unreviewed draft**, like every non-English locale in this
+  repository: the structure is verified by the same three guards (same keys, printf-verb
+  parity, date tables cross-checked against CLDR), but no native Canadian French speaker has
+  read the copy. Corrections are welcome and easy to merge — see CONTRIBUTING.
+
+- **`FRAME_ANCESTORS`: embed the admin UI in your own console.** Space-separated origins
+  (`https://console.example.com 'self'`); when set, `/admin/` sends
+  `Content-Security-Policy: frame-ancestors <list>`. The public booking pages are
+  untouched and still deny framing outright — this is about the console, not the pages
+  that take card details.
+
+  Two deliberate refusals. An entry that is not `https://host[:port]` or `'self'` stops
+  the app booting rather than being ignored, because a browser drops a source list it
+  cannot parse, which would leave the admin UI *more* embeddable than the setting being
+  unset. And no `X-Frame-Options` is sent beside it: that header has no allow-list form,
+  so the only value it could carry is `SAMEORIGIN`, which browsers honour instead of the
+   CSP and would break the embedding this exists for.
 
 ### Fixed
 - **The Zoom setup text no longer promises that an unpublished app works for "your own
@@ -44,6 +80,12 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
   section with Zoom's three ways around it (same account, beta sharing, publishing) and
   the link-only fallback that needs no Zoom app. Answers
   [#35](https://github.com/Calnode/calnode/issues/35).
+
+- **Microsoft calendars can be chosen as the one bookings are written into.** Since 0.5.0
+  the calendar picker marked every Microsoft calendar "(read-only)" and disabled its Book
+  option. The calendar list read Graph's `canEdit` but left it out of `$select`, so Graph
+  never returned it and every calendar decoded as not writable. It is now requested, and a
+  test fails if that request omits any property the response decodes.
 
 ## [0.9.0] - 2026-09-10
 
@@ -74,19 +116,6 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
   something. A start that is simply in the past, one a booking took away, and one no host
   pool could satisfy are all excluded, so the explanation never appears attached to the
   wrong cause. Three new/changed keys in all eight locales.
-
-- **`FRAME_ANCESTORS`: embed the admin UI in your own console.** Space-separated origins
-  (`https://console.example.com 'self'`); when set, `/admin/` sends
-  `Content-Security-Policy: frame-ancestors <list>`. The public booking pages are
-  untouched and still deny framing outright — this is about the console, not the pages
-  that take card details.
-
-  Two deliberate refusals. An entry that is not `https://host[:port]` or `'self'` stops
-  the app booting rather than being ignored, because a browser drops a source list it
-  cannot parse, which would leave the admin UI *more* embeddable than the setting being
-  unset. And no `X-Frame-Options` is sent beside it: that header has no allow-list form,
-  so the only value it could carry is `SAMEORIGIN`, which browsers honour instead of the
-  CSP and would break the embedding this exists for.
 
 ### Fixed
 - **Constraint violations are recognised by SQLite's error code rather than by its

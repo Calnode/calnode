@@ -81,10 +81,10 @@ func TestSaveConnection_multiAccountDestinationInvariants(t *testing.T) {
 	ctx := context.Background()
 	seedUser(t, c.db, "u1")
 
-	if err := c.saveConnection(ctx, "u1", "a@icloud.com", "pw1", "https://x/cal/a/"); err != nil {
+	if err := c.saveConnection(ctx, "u1", "a@icloud.com", "pw1", "https://x/cal/a/", "https://x/home/"); err != nil {
 		t.Fatalf("save a: %v", err)
 	}
-	if err := c.saveConnection(ctx, "u1", "b@icloud.com", "pw2", "https://x/cal/b/"); err != nil {
+	if err := c.saveConnection(ctx, "u1", "b@icloud.com", "pw2", "https://x/cal/b/", "https://x/home/"); err != nil {
 		t.Fatalf("save b: %v", err)
 	}
 
@@ -103,7 +103,7 @@ func TestSaveConnection_multiAccountDestinationInvariants(t *testing.T) {
 	if err := svc.SetDestination(ctx, "u1", "caldav", "b@icloud.com"); err != nil {
 		t.Fatalf("set dest b: %v", err)
 	}
-	if err := c.saveConnection(ctx, "u1", "b@icloud.com", "pw2-rotated", "https://x/cal/b/"); err != nil {
+	if err := c.saveConnection(ctx, "u1", "b@icloud.com", "pw2-rotated", "https://x/cal/b/", "https://x/home/"); err != nil {
 		t.Fatalf("re-save b: %v", err)
 	}
 	if dest := destEmail(t, c.db, "u1"); dest != "b@icloud.com" {
@@ -114,15 +114,20 @@ func TestSaveConnection_multiAccountDestinationInvariants(t *testing.T) {
 	}
 }
 
-// A fake CalDAV server: answers the three discovery PROPFINDs, a calendar-query REPORT, and
-// records PUT/DELETE so write-back can be asserted.
-func fakeServer(t *testing.T, putBody, deletePath *string) *httptest.Server {
+// A fake CalDAV server: answers the three discovery PROPFINDs, a calendar-query REPORT,
+// and records PUT/DELETE so write-back can be asserted. The home exposes two VEVENT
+// calendars (work, personal) plus a tasks-only collection that must be filtered out.
+// REPORT targets are appended to reportPaths so multi-calendar conflict checks can be
+// asserted.
+func fakeServer(t *testing.T, putBody, deletePath *string, reportPaths *[]string) *httptest.Server {
 	t.Helper()
 	const principal = `<d:multistatus xmlns:d="DAV:"><d:response><d:href>/</d:href><d:propstat><d:status>HTTP/1.1 200 OK</d:status><d:prop><d:current-user-principal><d:href>/principals/user/</d:href></d:current-user-principal></d:prop></d:propstat></d:response></d:multistatus>`
 	const home = `<d:multistatus xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav"><d:response><d:href>/principals/user/</d:href><d:propstat><d:status>HTTP/1.1 200 OK</d:status><d:prop><c:calendar-home-set><d:href>/calendars/user/</d:href></c:calendar-home-set></d:prop></d:propstat></d:response></d:multistatus>`
 	const collections = `<d:multistatus xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">
 	  <d:response><d:href>/calendars/user/</d:href><d:propstat><d:status>HTTP/1.1 200 OK</d:status><d:prop><d:resourcetype><d:collection/></d:resourcetype></d:prop></d:propstat></d:response>
 	  <d:response><d:href>/calendars/user/work/</d:href><d:propstat><d:status>HTTP/1.1 200 OK</d:status><d:prop><d:resourcetype><d:collection/><c:calendar/></d:resourcetype><d:displayname>Calendar</d:displayname><c:supported-calendar-component-set><c:comp name="VEVENT"/></c:supported-calendar-component-set></d:prop></d:propstat></d:response>
+	  <d:response><d:href>/calendars/user/personal/</d:href><d:propstat><d:status>HTTP/1.1 200 OK</d:status><d:prop><d:resourcetype><d:collection/><c:calendar/></d:resourcetype><d:displayname>Personal</d:displayname><c:supported-calendar-component-set><c:comp name="VEVENT"/></c:supported-calendar-component-set></d:prop></d:propstat></d:response>
+	  <d:response><d:href>/calendars/user/tasks/</d:href><d:propstat><d:status>HTTP/1.1 200 OK</d:status><d:prop><d:resourcetype><d:collection/><c:calendar/></d:resourcetype><d:displayname>Reminders</d:displayname><c:supported-calendar-component-set><c:comp name="VTODO"/></c:supported-calendar-component-set></d:prop></d:propstat></d:response>
 	</d:multistatus>`
 	// One busy event, one TRANSPARENT (ignored), one CANCELLED (ignored).
 	const report = `<d:multistatus xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav"><d:response><d:href>/calendars/user/work/ev1.ics</d:href><d:propstat><d:status>HTTP/1.1 200 OK</d:status><d:prop><c:calendar-data>BEGIN:VCALENDAR
@@ -145,6 +150,14 @@ DTEND:20260625T140000Z
 STATUS:CANCELLED
 END:VEVENT
 END:VCALENDAR</c:calendar-data></d:prop></d:propstat></d:response></d:multistatus>`
+	const personalReport = `<d:multistatus xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav"><d:response><d:href>/calendars/user/personal/ev9.ics</d:href><d:propstat><d:status>HTTP/1.1 200 OK</d:status><d:prop><c:calendar-data>BEGIN:VCALENDAR
+BEGIN:VEVENT
+UID:personal-busy@x
+DTSTART:20260625T150000Z
+DTEND:20260625T160000Z
+SUMMARY:Personal busy
+END:VEVENT
+END:VCALENDAR</c:calendar-data></d:prop></d:propstat></d:response></d:multistatus>`
 
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
@@ -158,8 +171,17 @@ END:VCALENDAR</c:calendar-data></d:prop></d:propstat></d:response></d:multistatu
 			w.WriteHeader(http.StatusMultiStatus)
 			io.WriteString(w, collections)
 		case r.Method == "REPORT" && r.URL.Path == "/calendars/user/work/":
+			if reportPaths != nil {
+				*reportPaths = append(*reportPaths, r.URL.Path)
+			}
 			w.WriteHeader(http.StatusMultiStatus)
 			io.WriteString(w, report)
+		case r.Method == "REPORT" && r.URL.Path == "/calendars/user/personal/":
+			if reportPaths != nil {
+				*reportPaths = append(*reportPaths, r.URL.Path)
+			}
+			w.WriteHeader(http.StatusMultiStatus)
+			io.WriteString(w, personalReport)
 		case r.Method == "PUT":
 			if putBody != nil {
 				b, _ := io.ReadAll(r.Body)
@@ -184,7 +206,7 @@ func TestConnect_discoverFreeBusyWriteback(t *testing.T) {
 	seedUser(t, c.db, "u1")
 
 	var putBody, delPath string
-	srv := fakeServer(t, &putBody, &delPath)
+	srv := fakeServer(t, &putBody, &delPath, nil)
 	defer srv.Close()
 
 	// Connect → discovery walks principal/home/collections and stores the connection.
@@ -234,6 +256,144 @@ func TestConnect_discoverFreeBusyWriteback(t *testing.T) {
 	}
 	if !strings.HasSuffix(delPath, ".ics") {
 		t.Errorf("DELETE path = %q, want the .ics resource", delPath)
+	}
+}
+
+func TestConnect_discoversAllCalendars(t *testing.T) {
+	c := newTestClient(t)
+	ctx := context.Background()
+	seedUser(t, c.db, "u1")
+
+	srv := fakeServer(t, nil, nil, nil)
+	defer srv.Close()
+
+	_, calURL, err := c.Connect(ctx, "u1", srv.URL, "user@icloud.com", "app-pw")
+	if err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+	// The "Calendar"-named collection stays the bound default.
+	if !strings.HasSuffix(calURL, "/calendars/user/work/") {
+		t.Errorf("bound calendar = %q, want .../calendars/user/work/", calURL)
+	}
+
+	// Both VEVENT collections seeded; the tasks-only one filtered out.
+	type row struct{ id, name string }
+	var check int
+	rows, err := c.db.QueryContext(ctx,
+		`SELECT calendar_id, name, check_conflicts FROM connection_calendars
+		 WHERE user_id = 'u1' AND provider = 'caldav' ORDER BY calendar_id`)
+	if err != nil {
+		t.Fatalf("seeded rows: %v", err)
+	}
+	var got []row
+	var checks []int
+	for rows.Next() {
+		var r row
+		if err := rows.Scan(&r.id, &r.name, &check); err != nil {
+			t.Fatalf("scan: %v", err)
+		}
+		got = append(got, r)
+		checks = append(checks, check)
+	}
+	rows.Close()
+	if len(got) != 2 {
+		t.Fatalf("seeded calendars = %+v, want work + personal (no tasks)", got)
+	}
+	if got[0].name != "Personal" || got[1].name != "Calendar" {
+		t.Errorf("seeded names = %+v, want Personal + Calendar", got)
+	}
+	// Fresh connect preserves today's behaviour: the bound calendar is checked.
+	if checks[0] != 0 || checks[1] != 1 {
+		t.Errorf("seeded check flags = %v, want [0 1] (bound work checked)", checks)
+	}
+
+	var home string
+	if err := c.db.QueryRowContext(ctx,
+		`SELECT COALESCE(caldav_home_url,'') FROM calendar_connections WHERE user_id = 'u1'`).Scan(&home); err != nil {
+		t.Fatalf("home url: %v", err)
+	}
+	if home != srv.URL+"/calendars/user/" {
+		t.Errorf("stored home = %q, want %s/calendars/user/", home, srv.URL)
+	}
+}
+
+func TestListCalendars_liveThenFallback(t *testing.T) {
+	c := newTestClient(t)
+	ctx := context.Background()
+	seedUser(t, c.db, "u1")
+
+	srv := fakeServer(t, nil, nil, nil)
+
+	if _, _, err := c.Connect(ctx, "u1", srv.URL, "user@icloud.com", "app-pw"); err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+	cals, err := c.ListCalendars(ctx, "u1", "user@icloud.com")
+	if err != nil {
+		t.Fatalf("ListCalendars: %v", err)
+	}
+	if len(cals) != 2 {
+		t.Fatalf("live calendars = %d, want 2 (tasks filtered)", len(cals))
+	}
+	byID := map[string]calendar.CalendarInfo{}
+	for _, cal := range cals {
+		byID[cal.ID] = cal
+	}
+	work, ok := byID[srv.URL+"/calendars/user/work/"]
+	if !ok || work.Name != "Calendar" || !work.Primary || !work.Writable {
+		t.Errorf("work entry = %+v, want named Calendar + primary + writable", work)
+	}
+	personal, ok := byID[srv.URL+"/calendars/user/personal/"]
+	if !ok || personal.Name != "Personal" || personal.Primary {
+		t.Errorf("personal entry = %+v, want named Personal, not primary", personal)
+	}
+
+	// Server gone: the stored selection keeps the picker working.
+	srv.Close()
+	cals, err = c.ListCalendars(ctx, "u1", "user@icloud.com")
+	if err != nil {
+		t.Fatalf("fallback ListCalendars: %v", err)
+	}
+	if len(cals) != 2 {
+		t.Fatalf("fallback calendars = %d, want the 2 seeded rows", len(cals))
+	}
+}
+
+func TestFreeBusy_checksEverySelectedCalendar(t *testing.T) {
+	c := newTestClient(t)
+	ctx := context.Background()
+	seedUser(t, c.db, "u1")
+
+	var reports []string
+	srv := fakeServer(t, nil, nil, &reports)
+	defer srv.Close()
+
+	if _, _, err := c.Connect(ctx, "u1", srv.URL, "user@icloud.com", "app-pw"); err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+	// Fresh connect checks only the bound calendar; tick the second one like the picker would.
+	if _, err := c.db.ExecContext(ctx,
+		`UPDATE connection_calendars SET check_conflicts = 1 WHERE user_id = 'u1' AND provider = 'caldav'`); err != nil {
+		t.Fatalf("enable both: %v", err)
+	}
+
+	from := time.Date(2026, 6, 25, 0, 0, 0, 0, time.UTC)
+	busy, err := c.FreeBusy(ctx, "u1", from, from.Add(24*time.Hour))
+	if err != nil {
+		t.Fatalf("FreeBusy: %v", err)
+	}
+	if len(busy) != 2 {
+		t.Fatalf("busy intervals = %+v, want work 09:00 + personal 15:00", busy)
+	}
+	for _, want := range []string{"/calendars/user/work/", "/calendars/user/personal/"} {
+		found := false
+		for _, p := range reports {
+			if p == want {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("no REPORT to %s (targets hit: %v)", want, reports)
+		}
 	}
 }
 

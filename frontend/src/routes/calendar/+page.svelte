@@ -159,10 +159,21 @@
 		}
 	}
 
-	// Exclusive within this account's list. The backend clears the flag across every other
+	// Exclusive within this account's list, but clearable: selecting the current
+	// destination again removes it (plain radios can't express "none", and the
+	// backend accepts a save with no destination — writes then fall back to the
+	// account's bound calendar). The backend clears the flag across every other
 	// account when it saves, so the UI only has to keep this list consistent.
 	function pickDestination(chosen: CalendarPick) {
 		pickerCals = pickerCals.map((c) => ({ ...c, is_destination: c.id === chosen.id }));
+	}
+
+	function toggleDestination(chosen: CalendarPick) {
+		if (chosen.is_destination) {
+			pickerCals = pickerCals.map((c) => ({ ...c, is_destination: false }));
+		} else {
+			pickDestination(chosen);
+		}
 	}
 
 	async function savePicker(c: CalendarConnection) {
@@ -319,12 +330,12 @@
 								{:else}
 									<p class="text-xs text-muted-foreground">
 										Tick the calendars to check for conflicts, and choose the one bookings are
-										written into.
+										written into (select it again to clear the choice).
 									</p>
 									<div class="space-y-1.5">
 										<div class="flex items-center gap-2 pb-1 text-xs font-medium text-muted-foreground">
 											<span class="w-10 shrink-0 text-center">Check</span>
-											<span class="w-10 shrink-0 text-center">Book</span>
+											<span class="w-20 shrink-0 text-center">Destination</span>
 											<span>Calendar</span>
 										</div>
 										{#each pickerCals as cal (cal.id)}
@@ -333,13 +344,14 @@
 													<input type="checkbox" bind:checked={cal.check_conflicts} disabled={pickerSaving}
 														aria-label="Check {cal.name} for conflicts" />
 												</span>
-												<span class="w-10 shrink-0 text-center">
+												<span class="w-20 shrink-0 text-center">
 													<!-- One destination per account in the UI; the API enforces one per user
-													     across all accounts and moves the account-level destination to match. -->
-													<input type="radio" name="subcal-destination" disabled={pickerSaving || !cal.writable}
+													     across all accounts and moves the account-level destination to match.
+													     A checkbox (not a radio) so the choice can be cleared again. -->
+													<input type="checkbox" disabled={pickerSaving || !cal.writable}
 														checked={cal.is_destination}
-														onchange={() => pickDestination(cal)}
-														aria-label="Write bookings into {cal.name}" />
+														onchange={() => toggleDestination(cal)}
+														aria-label="Write bookings into {cal.name} (select again to clear)" />
 												</span>
 												<span class="truncate">
 													{cal.name}

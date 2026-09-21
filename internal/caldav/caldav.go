@@ -208,9 +208,9 @@ func (c *Client) conflictConns(ctx context.Context, userID string) ([]conn, erro
 		return nil, err
 	}
 	// Resolve selection + decrypt after the cursor is closed (single-connection DB pool; the
-	// ConflictCalendarIDs query would deadlock against an open cursor). CalDAV binds one
-	// calendar per connection, so the sub-calendar picker is simply an on/off toggle: an empty
-	// result means the user deselected it.
+	// ConflictCalendarIDs query would deadlock against an open cursor). One connection row
+	// can bind several selected collections (the picker), so every selected URL gets its
+	// own REPORT below; an empty result means the user deselected the whole account.
 	var conns []conn
 	for _, d := range data {
 		calIDs, err := calendar.ConflictCalendarIDs(ctx, c.db, "caldav", userID, d.username, d.calURL)
@@ -225,7 +225,9 @@ func (c *Client) conflictConns(ctx context.Context, userID string) ([]conn, erro
 			c.logger.Warn("caldav: skipping connection with bad credentials", "user_id", userID, "error", err)
 			continue
 		}
-		conns = append(conns, conn{id: d.id, username: d.username, password: string(pw), calURL: d.calURL})
+		for _, calURL := range calIDs {
+			conns = append(conns, conn{id: d.id, username: d.username, password: string(pw), calURL: calURL})
+		}
 	}
 	return conns, nil
 }
@@ -234,8 +236,8 @@ func (c *Client) conflictConns(ctx context.Context, userID string) ([]conn, erro
 // a user can connect several. On a new connection: check_conflicts=1, and it becomes the
 // destination only if the user has none yet. On a re-connect (row already exists for this
 // account): the existing check_conflicts/is_destination flags are preserved and only the
-// password + calendar URL are refreshed. Mirrors gcal.saveToken.
-func (c *Client) saveConnection(ctx context.Context, userID, accountEmail, password, calURL string) error {
+// password + calendar URL (+ home URL) are refreshed. Mirrors gcal.saveToken.
+func (c *Client) saveConnection(ctx context.Context, userID, accountEmail, password, calURL, homeURL string) error {
 	pwEnc, err := c.encrypt([]byte(password))
 	if err != nil {
 		return err
@@ -261,9 +263,9 @@ func (c *Client) saveConnection(ctx context.Context, userID, accountEmail, passw
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO calendar_connections
 		    (id, user_id, provider, account_email, access_token_enc, calendar_id,
-		     check_conflicts, is_destination, created_at)
-		VALUES (?, ?, 'caldav', ?, ?, ?, ?, ?, ?)`,
-		uid.New(), userID, accountEmail, pwEnc, calURL, checkConflicts, isDest, now); err != nil {
+		     check_conflicts, is_destination, caldav_home_url, created_at)
+		VALUES (?, ?, 'caldav', ?, ?, ?, ?, ?, ?, ?)`,
+		uid.New(), userID, accountEmail, pwEnc, calURL, checkConflicts, isDest, homeURL, now); err != nil {
 		return fmt.Errorf("caldav: save insert: %w", err)
 	}
 	return tx.Commit()
