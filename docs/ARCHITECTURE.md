@@ -754,6 +754,8 @@ as the desired state:
 
 ## 15. Frontend toolchain & conventions
 
+Each account can set `booking_accent` in its profile. The default preserves the dark booking controls. Booking pages, management pages, and the embed widget use the event owner's color, with a contrasting text color chosen by luminance. The profile API accepts only six-digit hex colors.
+
 - Svelte 5, SvelteKit 2 (adapter-static SPA), Vite 8 (Rolldown), Tailwind v4
   (`@tailwindcss/vite`), shadcn-svelte (nova style) + bits-ui, tailwind-variants 3,
   **tailwind-merge v3** (must match Tailwind v4 — v2 mis-merges v4 classes; memory
