@@ -209,6 +209,12 @@ body {
              .ID is the event type's own intake-question primary key (admin-configured, not
              attacker-controlled at booking time), and Go's html/template context-aware-escapes
              every {{.ID}} below regardless — there is no raw/unescaped output here. */}}
+        {{if .PhoneChoice}}
+        <div class="field">
+          <label for="f-phone">{{call .T "phone_call_number"}}</label>
+          <input id="f-phone" name="phone" type="tel" maxlength="40" autocomplete="tel">
+        </div>
+        {{end}}
         {{range .Questions}}
         <div class="field" data-qid="{{.ID}}" data-required="{{if .Required}}true{{else}}false{{end}}">
           {{if eq .QType "checkbox"}}
@@ -682,6 +688,7 @@ body {
           start_at: pickedSlot.start,
           name: form.name.value.trim(),
           email: form.email.value.trim(),
+          phone: form.elements.phone?.value.trim() || "",
           timezone: TZ,
           language: LOCALE,
           hp_extra: form.hp_extra.value,
@@ -739,6 +746,7 @@ body {
           host_name: (booked && Array.isArray(booked.hosts)) ? booked.hosts.map(function (h) { return h.name; }).join(', ') : '',
           attendee_name: form.name.value.trim(),
           attendee_email: form.email.value.trim(),
+          phone: form.elements.phone?.value.trim() || "",
           attendee_timezone: TZ,
           answers: dlAnswers,
           is_paid: false,

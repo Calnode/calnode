@@ -138,9 +138,9 @@ func (s *Service) Create(ctx context.Context, p CreateParams) (*Booking, error) 
 
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO bookings
-		  (id, event_type_id, host_id, start_at, end_at, status, location_value, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, 'confirmed', ?, ?, ?)`,
-		bookingID, p.EventTypeID, chosenHost, startStr, endStr, p.LocationValue, now, now)
+		  (id, event_type_id, host_id, start_at, end_at, status, location_value, location_type, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, 'confirmed', ?, ?, ?, ?)`,
+		bookingID, p.EventTypeID, chosenHost, startStr, endStr, p.LocationValue, p.LocationType, now, now)
 	if err != nil {
 		if db.IsUniqueViolation(err) {
 			return nil, ErrDoubleBooked
@@ -201,6 +201,7 @@ func (s *Service) Create(ctx context.Context, p CreateParams) (*Booking, error) 
 		EndAt:         p.EndAt.UTC(),
 		Status:        "confirmed",
 		LocationValue: p.LocationValue,
+		LocationType:  p.LocationType,
 		CreatedAt:     nowT,
 		UpdatedAt:     nowT,
 	}, nil
@@ -271,7 +272,7 @@ func (s *Service) CancelByID(ctx context.Context, id, reason string) error {
 const bookingColumns = `id, event_type_id, host_id, start_at, end_at, status,
 	       COALESCE(cancellation_reason, ''), COALESCE(location_value, ''),
 	       created_at, updated_at,
-	       payment_status, amount_paid_cents, amount_paid_currency`
+	       payment_status, amount_paid_cents, amount_paid_currency, location_type`
 
 // hostBusy reports whether hostID has any non-cancelled booking overlapping
 // [start, end) — the double-booking invariant every write path (Create, Reschedule,
@@ -636,7 +637,7 @@ func scanBooking(s scanner) (*Booking, error) {
 		&startStr, &endStr, &b.Status,
 		&b.CancellationReason, &b.LocationValue,
 		&createdStr, &updatedStr,
-		&b.PaymentStatus, &b.AmountPaidCents, &b.AmountPaidCurrency,
+		&b.PaymentStatus, &b.AmountPaidCents, &b.AmountPaidCurrency, &b.LocationType,
 	)
 	if err == sql.ErrNoRows {
 		return nil, ErrNotFound

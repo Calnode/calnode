@@ -44,6 +44,7 @@ type bookQuestion struct {
 }
 
 type bookPageData struct {
+	PhoneChoice      bool
 	AccentColor      string
 	AccentForeground string
 	Slug             string
@@ -321,17 +322,18 @@ func (h *Handler) PublicEventType(w http.ResponseWriter, r *http.Request) {
 		hostName, avatarURL, routingMode, currency string
 		durMins, maxDays, minNotice, priceCents    int
 		msgGreeting                                sql.NullString
+		allowPhoneCall                             bool
 		accentColor                                string
 	)
 	err := h.db.QueryRowContext(r.Context(), `
 		SELECT et.id, et.name, COALESCE(et.description, ''),
 		       et.duration_minutes, et.location_type, COALESCE(et.location_value, ''),
 		       et.max_future_days, et.min_notice_minutes, et.routing_mode, u.name, COALESCE(u.avatar_url, ''),
-		       et.price_cents, et.currency, et.msg_greeting, u.booking_accent
+		       et.price_cents, et.currency, et.msg_greeting, et.allow_phone_call, u.booking_accent
 		FROM event_types et
 		JOIN users u ON u.id = et.user_id
 		WHERE et.slug = ? AND et.is_active = 1 AND et.is_public = 1`,
-		slug).Scan(&etID, &name, &description, &durMins, &locType, &locValue, &maxDays, &minNotice, &routingMode, &hostName, &avatarURL, &priceCents, &currency, &msgGreeting, &accentColor)
+		slug).Scan(&etID, &name, &description, &durMins, &locType, &locValue, &maxDays, &minNotice, &routingMode, &hostName, &avatarURL, &priceCents, &currency, &msgGreeting, &allowPhoneCall, &accentColor)
 	if errors.Is(err, sql.ErrNoRows) {
 		h.writeError(w, http.StatusNotFound, "event type not found")
 		return
@@ -392,6 +394,7 @@ func (h *Handler) PublicEventType(w http.ResponseWriter, r *http.Request) {
 		// duration_minutes stays for clients that want the raw number.
 		"duration_label":            durationLabel(durMins, loc),
 		"location_type":             locType,
+		"allow_phone_call":          allowPhoneCall && onlineMeetingLocation(locType),
 		"booking_accent":            accentColor,
 		"booking_accent_foreground": accentForeground(accentColor),
 		"location_label":            locationLabel(locType, locValue, loc),
@@ -420,31 +423,32 @@ func (h *Handler) BookPage(w http.ResponseWriter, r *http.Request) {
 	slug := r.PathValue("slug")
 
 	var (
-		etID        string
-		name        string
-		description string
-		durMins     int
-		locType     string
-		locValue    string
-		maxDays     int
-		minNotice   int
-		hostName    string
-		avatarURL   string
-		routingMode string
-		priceCents  int
-		currency    string
-		msgGreeting sql.NullString
-		accentColor string
+		etID           string
+		name           string
+		description    string
+		durMins        int
+		locType        string
+		locValue       string
+		maxDays        int
+		minNotice      int
+		hostName       string
+		avatarURL      string
+		routingMode    string
+		priceCents     int
+		currency       string
+		msgGreeting    sql.NullString
+		allowPhoneCall bool
+		accentColor    string
 	)
 	err := h.db.QueryRowContext(r.Context(), `
 		SELECT et.id, et.name, COALESCE(et.description, ''),
 		       et.duration_minutes, et.location_type, COALESCE(et.location_value, ''),
 		       et.max_future_days, et.min_notice_minutes, et.routing_mode, u.name, COALESCE(u.avatar_url, ''),
-		       et.price_cents, et.currency, et.msg_greeting, u.booking_accent
+		       et.price_cents, et.currency, et.msg_greeting, et.allow_phone_call, u.booking_accent
 		FROM event_types et
 		JOIN users u ON u.id = et.user_id
 		WHERE et.slug = ? AND et.is_active = 1 AND et.is_public = 1`,
-		slug).Scan(&etID, &name, &description, &durMins, &locType, &locValue, &maxDays, &minNotice, &routingMode, &hostName, &avatarURL, &priceCents, &currency, &msgGreeting, &accentColor)
+		slug).Scan(&etID, &name, &description, &durMins, &locType, &locValue, &maxDays, &minNotice, &routingMode, &hostName, &avatarURL, &priceCents, &currency, &msgGreeting, &allowPhoneCall, &accentColor)
 
 	if errors.Is(err, sql.ErrNoRows) {
 		http.Error(w, "Page not found", http.StatusNotFound)
@@ -506,6 +510,7 @@ func (h *Handler) BookPage(w http.ResponseWriter, r *http.Request) {
 	i18nJSON, _ := loc.JSON()
 
 	data := bookPageData{
+		PhoneChoice:         allowPhoneCall && onlineMeetingLocation(locType),
 		AccentColor:         accentColor,
 		AccentForeground:    accentForeground(accentColor),
 		Slug:                slug,

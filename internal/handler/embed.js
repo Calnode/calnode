@@ -563,6 +563,8 @@
       var email = el('input', { type: 'email', required: 'required', autocomplete: 'email', placeholder: t(this.i18n, 'email_placeholder') });
       form.appendChild(el('div', { class: 'field' }, [el('label', { text: t(this.i18n, 'name_label') }), name]));
       form.appendChild(el('div', { class: 'field' }, [el('label', { text: t(this.i18n, 'email_label') }), email]));
+      var phone = el('input', { type: 'tel', maxlength: '40', autocomplete: 'tel', id: 'phone-call-number' });
+      if (this.info.allow_phone_call) form.appendChild(el('div', { class: 'field' }, [el('label', { for: 'phone-call-number', text: t(this.i18n, 'phone_call_number') }), phone]));
       var qInputs = [];
       this.questions.forEach(function (q) {
         var inp, field;
@@ -605,7 +607,7 @@
         });
         fetch(BASE + '/v1/bookings', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ event_type_slug: self.slug, start_at: slot.start, name: name.value.trim(), email: email.value.trim().toLowerCase(), timezone: TZ, language: self.locale, hp_extra: hp.value, answers: answers }),
+          body: JSON.stringify({ event_type_slug: self.slug, start_at: slot.start, name: name.value.trim(), email: email.value.trim().toLowerCase(), phone: phone.value.trim(), timezone: TZ, language: self.locale, hp_extra: hp.value, answers: answers }),
         }).then(function (r) {
           return r.json().then(function (data) { return { ok: r.ok, status: r.status, data: data }; });
         }).then(function (res) {

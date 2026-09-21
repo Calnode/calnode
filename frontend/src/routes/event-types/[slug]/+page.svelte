@@ -268,12 +268,14 @@
 	let testSent    = $state<Partial<Record<MsgKey, boolean>>>({});
 	let testError   = $state<Partial<Record<MsgKey, string>>>({});
 
+	let allowPhoneCall = $state(false);
 	const slug = $page.params.slug;
 
 	async function loadET() {
 		etError = '';
 		try {
 			et = await api.get<EventType>(`/v1/event-types/${slug}`);
+			allowPhoneCall = et.allow_phone_call;
 			form = {
 				name: et.name,
 				slug: et.slug,
@@ -341,6 +343,7 @@
 				is_active: form.is_active,
 				is_public: form.is_public,
 				show_taken_slots: form.show_taken_slots,
+				allow_phone_call: allowPhoneCall,
 				location_type: form.location_type,
 				location_value: form.location_value.trim() || null,
 				buffer_before_minutes: Number(form.buffer_before_minutes),
@@ -639,6 +642,9 @@
 			</p>
 		</div>
 
+		{#if isOnlineMeeting(form.location_type)}
+			<label class="flex items-center gap-3 text-sm"><input type="checkbox" bind:checked={allowPhoneCall} />Let invitees choose a phone call by entering their number</label>
+		{/if}
 		<!-- Location -->
 		<div class="mt-6 border-t pt-5">
 			<p class="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Location</p>

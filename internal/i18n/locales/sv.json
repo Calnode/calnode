@@ -156,5 +156,6 @@
   "assistant_iteration_cap": "Vi tar det enkelt: välj en tid i kalendern nedan.",
   "assistant_status_slots": "Kontrollerar tillgängliga tider…",
   "assistant_status_book": "Bokar…",
-  "assistant_status_working": "Arbetar…"
+  "assistant_status_working": "Arbetar…",
+  "phone_call_number": "Telefonnummer (valfritt, för ett telefonsamtal)"
 }

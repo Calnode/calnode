@@ -156,5 +156,6 @@
   "assistant_iteration_cap": "Simplifions les choses : choisissez un créneau dans le calendrier ci-dessous.",
   "assistant_status_slots": "Vérification des disponibilités…",
   "assistant_status_book": "Réservation…",
-  "assistant_status_working": "En cours…"
+  "assistant_status_working": "En cours…",
+  "phone_call_number": "Téléphone (facultatif, pour un appel)"
 }
