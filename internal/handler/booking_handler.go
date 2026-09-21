@@ -549,6 +549,9 @@ func (h *Handler) createBookingForSlug(ctx context.Context, slug string, startAt
 	}
 	candidates, optional, err = h.calendarFreeHosts(ctx, et, candidates, required, optional, startAt.UTC(), endAt)
 	if err != nil {
+		if !errors.Is(err, errSlotUnavailable) {
+			h.logger.ErrorContext(ctx, "booking calendar check failed", "error", err)
+		}
 		return nil, err
 	}
 	b, err := h.bookingSvc.Create(ctx, booking.CreateParams{
@@ -858,8 +861,16 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 
 	candidates, optional, err = h.calendarFreeHosts(r.Context(), et, candidates, required, optional, startAt.UTC(), endAt)
 	if err != nil {
-		h.logger.WarnContext(r.Context(), "booking calendar check rejected", "error", err)
-		h.writeError(w, http.StatusConflict, "this slot is no longer available; please select another time")
+		switch {
+		case errors.Is(err, errSlotUnavailable):
+			h.writeError(w, http.StatusConflict, "this slot is no longer available; please select another time")
+		case errors.Is(err, errCalendarUnavailable):
+			h.logger.ErrorContext(r.Context(), "booking calendar check failed", "error", err)
+			h.writeError(w, http.StatusServiceUnavailable, errCalendarUnavailable.Error())
+		default:
+			h.logger.ErrorContext(r.Context(), "booking calendar check failed", "error", err)
+			h.writeError(w, http.StatusInternalServerError, "could not complete the booking")
+		}
 		return
 	}
 	b, err := h.bookingSvc.Create(r.Context(), booking.CreateParams{

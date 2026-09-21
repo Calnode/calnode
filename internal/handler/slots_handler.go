@@ -464,31 +464,8 @@ func (h *Handler) hostAvailability(ctx context.Context, userID, eventTypeID stri
 	// only while we believe a Google event still exists (it's cleared on a successful
 	// cancel, inline or via the reconciler), so this targets exactly our own events.
 	// Materialise fully before the free/busy call (single-connection pool).
-	var ownEvents []slots.Interval
-	ownRows, err := h.db.QueryContext(ctx, `
-		SELECT b.start_at, b.end_at FROM bookings b
-		JOIN booking_hosts bh ON bh.booking_id = b.id
-		WHERE bh.user_id = ? AND COALESCE(bh.external_event_id, '') != ''
-		  AND b.start_at >= ? AND b.start_at < ?`,
-		userID, busyFrom, busyTo)
+	ownEvents, err := h.ownCalendarEvents(ctx, userID, busyFrom, busyTo)
 	if err != nil {
-		return slots.HostAvailability{}, err
-	}
-	for ownRows.Next() {
-		var startStr, endStr string
-		if err := ownRows.Scan(&startStr, &endStr); err != nil {
-			ownRows.Close() // #nosec G104 -- already returning the scan error; nothing more actionable
-			return slots.HostAvailability{}, err
-		}
-		s, err1 := time.Parse(time.RFC3339Nano, startStr)
-		e, err2 := time.Parse(time.RFC3339Nano, endStr)
-		if err1 != nil || err2 != nil {
-			continue
-		}
-		ownEvents = append(ownEvents, slots.Interval{Start: s, End: e})
-	}
-	ownRows.Close() // #nosec G104 -- rows already fully consumed above; nothing actionable on close error
-	if err := ownRows.Err(); err != nil {
 		return slots.HostAvailability{}, err
 	}
 
@@ -503,6 +480,32 @@ func (h *Handler) hostAvailability(ctx context.Context, userID, eventTypeID stri
 	}
 
 	return slots.HostAvailability{HostID: userID, Location: hostLoc, Rules: rules, Overrides: overrides, Busy: busy}, nil
+}
+
+func (h *Handler) ownCalendarEvents(ctx context.Context, userID, from, to string) ([]slots.Interval, error) {
+	rows, err := h.db.QueryContext(ctx, `
+		SELECT b.start_at, b.end_at FROM bookings b
+		JOIN booking_hosts bh ON bh.booking_id = b.id
+		WHERE bh.user_id = ? AND COALESCE(bh.external_event_id, '') != ''
+		  AND b.start_at < ? AND b.end_at > ?`, userID, to, from)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var events []slots.Interval
+	for rows.Next() {
+		var startStr, endStr string
+		if err := rows.Scan(&startStr, &endStr); err != nil {
+			return nil, err
+		}
+		start, startErr := time.Parse(time.RFC3339Nano, startStr)
+		end, endErr := time.Parse(time.RFC3339Nano, endStr)
+		if startErr != nil || endErr != nil {
+			continue
+		}
+		events = append(events, slots.Interval{Start: start, End: end})
+	}
+	return events, rows.Err()
 }
 
 // parseDateRangeStr resolves from/to date strings (either may be "") to UTC-midnight times.

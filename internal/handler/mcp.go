@@ -401,6 +401,8 @@ func (h *Handler) mcpCreateBooking(ctx context.Context, _ *mcp.CallToolRequest, 
 		booking.Attendee{Name: in.AttendeeName, Email: in.AttendeeEmail, IANATimezone: tz}, raw)
 	if err != nil {
 		switch {
+		case errors.Is(err, errCalendarUnavailable):
+			return nil, bookingJSON{}, errCalendarUnavailable
 		case errors.Is(err, errEventTypeNotFound):
 			return nil, bookingJSON{}, fmt.Errorf("event type not found: %s", in.EventTypeID)
 		case errors.Is(err, booking.ErrDoubleBooked), errors.Is(err, errNoHostAvailable), errors.Is(err, errSlotUnavailable):

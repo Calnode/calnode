@@ -2,8 +2,14 @@ package handler
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"time"
+
+	"github.com/calnode/calnode/internal/slots"
 )
+
+var errCalendarUnavailable = errors.New("calendar availability could not be checked; please try again shortly")
 
 func (h *Handler) calendarFreeHosts(ctx context.Context, et *bookableEventType, candidates, required, optional []string, start, end time.Time) ([]string, []string, error) {
 	gc := h.getCal()
@@ -12,20 +18,28 @@ func (h *Handler) calendarFreeHosts(ctx context.Context, et *bookableEventType, 
 	}
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
+	window := slots.Interval{
+		Start: start.Add(-time.Duration(et.BufferAfterMinutes) * time.Minute),
+		End:   end.Add(time.Duration(et.BufferBeforeMinutes) * time.Minute),
+	}
 	free := map[string]bool{}
 	check := func(id string) (bool, error) {
 		if ok, seen := free[id]; seen {
 			return ok, nil
 		}
-		busy, err := gc.FreeBusy(ctx, id, start.Add(-time.Duration(et.BufferBeforeMinutes)*time.Minute), end.Add(time.Duration(et.BufferAfterMinutes)*time.Minute))
+		ownEvents, err := h.ownCalendarEvents(ctx, id, window.Start.Format(time.RFC3339Nano), window.End.Format(time.RFC3339Nano))
 		if err != nil {
-			return false, err
+			return false, fmt.Errorf("load own calendar events: %w", err)
 		}
-		for _, iv := range busy {
-			if iv.Start.Before(end.Add(time.Duration(et.BufferAfterMinutes)*time.Minute)) && iv.End.After(start.Add(-time.Duration(et.BufferBeforeMinutes)*time.Minute)) {
-				free[id] = false
-				return false, nil
-			}
+		busy, err := gc.FreeBusy(ctx, id, window.Start, window.End)
+		if err != nil {
+			return false, fmt.Errorf("%w: %w", errCalendarUnavailable, err)
+		}
+		busy = slots.SubtractIntervals(busy, ownEvents)
+		remaining := slots.SubtractIntervals([]slots.Interval{window}, busy)
+		if len(remaining) != 1 || remaining[0] != window {
+			free[id] = false
+			return false, nil
 		}
 		free[id] = true
 		return true, nil
