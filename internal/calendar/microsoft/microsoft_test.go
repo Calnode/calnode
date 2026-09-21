@@ -4,9 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"encoding/base64"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -220,6 +222,137 @@ func TestCancelEvent_alreadyGoneIsOK(t *testing.T) {
 
 	if err := c.CancelEvent(context.Background(), "u1", "", "evt-1"); err != nil {
 		t.Errorf("CancelEvent(404): %v; want nil (already gone is fine)", err)
+	}
+}
+
+// fakeGraphCalendars serves GET /me/calendars the way Graph does: with $select, each
+// calendar carries only the selected properties. A fake that returned every property
+// regardless could never notice a decoded property missing from the request's $select.
+// onSelect, when non-nil, receives the raw $select value.
+func fakeGraphCalendars(t *testing.T, cals []map[string]any, onSelect func(string)) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || !strings.HasSuffix(r.URL.Path, "/me/calendars") {
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+		sel := r.URL.Query().Get("$select")
+		if onSelect != nil {
+			onSelect(sel)
+		}
+		value := cals
+		if sel != "" {
+			value = make([]map[string]any, 0, len(cals))
+			for _, cal := range cals {
+				picked := map[string]any{}
+				for _, prop := range strings.Split(sel, ",") {
+					if v, ok := cal[prop]; ok {
+						picked[prop] = v
+					}
+				}
+				value = append(value, picked)
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"value": value})
+	}))
+}
+
+// graphCalendars are two calendars as Graph describes them: the user's own default, and
+// one shared with them read-only (canEdit false).
+var graphCalendars = []map[string]any{
+	{
+		"id": "cal-own", "name": "Calendar", "isDefaultCalendar": true, "canEdit": true,
+		"canShare": true, "color": "auto",
+		"owner": map[string]any{"name": "Alex", "address": "alex@example.com"},
+	},
+	{
+		"id": "cal-shared", "name": "Team rota", "isDefaultCalendar": false, "canEdit": false,
+		"canShare": false, "color": "lightBlue",
+		"owner": map[string]any{"name": "Sam", "address": "sam@example.com"},
+	},
+}
+
+func TestListCalendars_writableFollowsCanEdit(t *testing.T) {
+	c := newTestClient(t)
+	connect(t, c, "u1")
+
+	srv := fakeGraphCalendars(t, graphCalendars, nil)
+	defer srv.Close()
+	c.apiBase = srv.URL
+
+	got, err := c.ListCalendars(context.Background(), "u1", "")
+	if err != nil {
+		t.Fatalf("ListCalendars: %v", err)
+	}
+	want := []calendar.CalendarInfo{
+		{ID: "cal-own", Name: "Calendar", Primary: true, Writable: true},
+		{ID: "cal-shared", Name: "Team rota", Primary: false, Writable: false},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("ListCalendars =\n  %+v\nwant\n  %+v", got, want)
+	}
+}
+
+// decodedJSONNames lists the JSON property names a struct decodes. For a Graph response
+// item that is the set of properties its request has to $select.
+func decodedJSONNames(t *testing.T, typ reflect.Type) []string {
+	t.Helper()
+	if typ.Kind() != reflect.Struct {
+		t.Fatalf("decodedJSONNames(%s): want a struct", typ)
+	}
+	var names []string
+	for i := 0; i < typ.NumField(); i++ {
+		f := typ.Field(i)
+		if f.Anonymous {
+			// encoding/json promotes an embedded struct's fields; not needed yet, so refuse
+			// rather than under-report.
+			t.Fatalf("decodedJSONNames(%s): embedded field %s is not handled", typ, f.Name)
+		}
+		if !f.IsExported() {
+			continue
+		}
+		name, _, _ := strings.Cut(f.Tag.Get("json"), ",")
+		if name == "-" {
+			continue
+		}
+		if name == "" {
+			name = f.Name
+		}
+		names = append(names, name)
+	}
+	return names
+}
+
+// Graph omits any property the request does not $select, and an absent bool decodes as
+// false without error. So every property the response item decodes must be selected, or
+// it silently reads as its zero value in production while a lenient fake hides it.
+func TestListCalendars_selectNamesEveryDecodedProperty(t *testing.T) {
+	c := newTestClient(t)
+	connect(t, c, "u1")
+
+	var gotSelect string
+	srv := fakeGraphCalendars(t, graphCalendars, func(s string) { gotSelect = s })
+	defer srv.Close()
+	c.apiBase = srv.URL
+
+	if _, err := c.ListCalendars(context.Background(), "u1", ""); err != nil {
+		t.Fatalf("ListCalendars: %v", err)
+	}
+	if gotSelect == "" {
+		return // no $select: Graph returns the default properties, which is not this bug
+	}
+	selected := map[string]bool{}
+	for _, prop := range strings.Split(gotSelect, ",") {
+		selected[prop] = true
+	}
+	value, ok := reflect.TypeOf(msCalListResp{}).FieldByName("Value")
+	if !ok {
+		t.Fatal("msCalListResp has no Value field")
+	}
+	for _, name := range decodedJSONNames(t, value.Type.Elem()) {
+		if !selected[name] {
+			t.Errorf("$select=%q omits %q, which msCalListResp decodes; Graph will not return it", gotSelect, name)
+		}
 	}
 }
 

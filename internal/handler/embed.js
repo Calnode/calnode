@@ -555,7 +555,7 @@
       var back = el('button', { class: 'back-btn', html: SVG_BACK + ' ' + t(this.i18n, 'back') });
       back.addEventListener('click', function () { self.state.view = 'pick'; self.render(); });
       var form = el('form', { novalidate: 'novalidate' });
-      var hp = el('input', { type: 'text', tabindex: '-1', autocomplete: 'off' });
+      var hp = el('input', { type: 'text', name: 'hp_extra', tabindex: '-1', autocomplete: 'off' });
       form.appendChild(el('div', { 'aria-hidden': 'true', style: 'position:absolute;left:-5000px;height:0;width:0;overflow:hidden;' }, [hp]));
       var name = el('input', { type: 'text', required: 'required', autocomplete: 'name', placeholder: t(this.i18n, 'name_placeholder') });
       var email = el('input', { type: 'email', required: 'required', autocomplete: 'email', placeholder: t(this.i18n, 'email_placeholder') });
@@ -603,7 +603,7 @@
         });
         fetch(BASE + '/v1/bookings', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ event_type_slug: self.slug, start_at: slot.start, name: name.value.trim(), email: email.value.trim().toLowerCase(), timezone: TZ, language: self.locale, company: hp.value, answers: answers }),
+          body: JSON.stringify({ event_type_slug: self.slug, start_at: slot.start, name: name.value.trim(), email: email.value.trim().toLowerCase(), timezone: TZ, language: self.locale, hp_extra: hp.value, answers: answers }),
         }).then(function (r) {
           return r.json().then(function (data) { return { ok: r.ok, status: r.status, data: data }; });
         }).then(function (res) {
