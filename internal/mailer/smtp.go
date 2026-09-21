@@ -11,7 +11,6 @@ import (
 	"net"
 	"net/mail"
 	"net/smtp"
-	"os"
 	"strings"
 	"time"
 
@@ -51,12 +50,10 @@ type SMTP struct {
 // NewSMTP constructs an SMTP sender. implicitTLS selects port-465 mode;
 // startTLS selects port-587 STARTTLS mode. Both false means plain SMTP
 // (suitable for a local relay on port 25).
-func NewSMTP(host, port, username, password string, implicitTLS, startTLS bool, from, fromName string) *SMTP {
-	connectHost := os.Getenv("EMAIL_SMTP_CONNECT_HOST")
+func NewSMTP(host, port, connectHost, connectPort, username, password string, implicitTLS, startTLS bool, from, fromName string) *SMTP {
 	if connectHost == "" {
 		connectHost = host
 	}
-	connectPort := os.Getenv("EMAIL_SMTP_CONNECT_PORT")
 	if connectPort == "" {
 		connectPort = port
 	}

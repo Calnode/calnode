@@ -36,7 +36,7 @@ func TestSMTP_Send_timesOutOnUnresponsiveServer(t *testing.T) {
 		t.Fatalf("split addr: %v", err)
 	}
 
-	s := NewSMTP(host, port, "", "", false, false, "from@test.local", "Test")
+	s := NewSMTP(host, port, "", "", "", "", false, false, "from@test.local", "Test")
 
 	// A short ctx deadline, not defaultSMTPTimeout's 30s, keeps this test fast — Send picks
 	// whichever deadline is earlier, so this proves ctx is actually honoured end-to-end, not
@@ -83,7 +83,7 @@ func TestSMTP_Send_appliesDefaultTimeoutWithNoCtxDeadline(t *testing.T) {
 		t.Fatalf("split addr: %v", err)
 	}
 
-	s := NewSMTP(host, port, "", "", false, false, "from@test.local", "Test")
+	s := NewSMTP(host, port, "", "", "", "", false, false, "from@test.local", "Test")
 
 	start := time.Now()
 	// No deadline on this ctx at all — must still fall back to defaultSMTPTimeout.
@@ -129,7 +129,7 @@ func TestSMTP_Send_invalidRecipientNeverDials(t *testing.T) {
 	if err != nil {
 		t.Fatalf("split addr: %v", err)
 	}
-	s := NewSMTP(host, port, "", "", false, false, "from@test.local", "Test")
+	s := NewSMTP(host, port, "", "", "", "", false, false, "from@test.local", "Test")
 
 	err = s.Send(context.Background(), Message{
 		To:      []string{"a@b.example\r\nBcc: attacker@example.com"},

@@ -49,6 +49,7 @@ func BuildHandler(ctx context.Context, cfg *config.Config, db *sql.DB, logger *s
 	}
 	h.SetDataDir(dataDir)
 	h.SetEncKey(cfg.EncryptionKey)
+	h.SetSMTPConnectAddress(cfg.SMTPConnectHost, cfg.SMTPConnectPort)
 	h.SetDemoMode(cfg.DemoMode)
 	h.SetDemoResetInterval(cfg.DemoResetInterval)
 
@@ -96,16 +97,17 @@ func BuildHandler(ctx context.Context, cfg *config.Config, db *sql.DB, logger *s
 	case dbSMTP != nil:
 		// BuildMailer, not NewSMTP directly, so boot and the settings-save path pick the
 		// transport by the same rule. A Resend API key here means HTTPS delivery.
-		m, transport := handler.BuildMailer(*dbSMTP)
+		m, transport := h.BuildMailer(*dbSMTP)
 		live.Swap(m)
 		logger.Info("mailer: configured from database",
 			"transport", string(transport), "host", dbSMTP.Host, "port", dbSMTP.Port)
 
 	case cfg.SMTPHost != "":
-		live.Swap(mailer.NewSMTP(
-			cfg.SMTPHost, cfg.SMTPPort, cfg.SMTPUser, cfg.SMTPPass,
-			cfg.SMTPTLS, cfg.SMTPStartTLS, cfg.EmailFrom, cfg.EmailFromName,
-		))
+		m, _ := h.BuildMailer(handler.SMTPConfig{
+			Host: cfg.SMTPHost, Port: cfg.SMTPPort, User: cfg.SMTPUser, Pass: cfg.SMTPPass,
+			TLS: cfg.SMTPTLS, StartTLS: cfg.SMTPStartTLS, From: cfg.EmailFrom, FromName: cfg.EmailFromName,
+		})
+		live.Swap(m)
 		logger.Info("mailer: configured from environment", "host", cfg.SMTPHost, "port", cfg.SMTPPort)
 		// Seed env-var settings into DB so they appear in the UI on first boot.
 		seedSMTPToDB(db, cfg, encKey, logger)
