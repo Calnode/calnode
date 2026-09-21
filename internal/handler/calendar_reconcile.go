@@ -2,6 +2,8 @@ package handler
 
 import (
 	"context"
+	"errors"
+	"net/url"
 	"time"
 
 	"github.com/calnode/calnode/internal/calendar"
@@ -96,8 +98,15 @@ func (h *Handler) reconcileReschedules(ctx context.Context, gc *calendar.Service
 			continue
 		}
 		if err := gc.UpdateEvent(ctx, d.userID, d.calendarID, d.eventID, start, end); err != nil {
-			h.logger.Error("reconcile: re-apply event time", "error", err, "booking_id", d.bookingID, "host", d.userID)
-			continue // leave the flag set; retry next sweep
+			if !errors.Is(err, calendar.ErrEventUnreachable) {
+				h.logger.Error("reconcile: re-apply event time", "error", err, "booking_id", d.bookingID, "host", d.userID)
+				continue // leave the flag set; retry next sweep
+			}
+			// Nothing was sent, and the next sweep would re-read the same connections and
+			// refuse the same way, so clear the flag rather than log this every sweep until
+			// the booking ends. The event keeps its old time.
+			h.logger.Warn("reconcile: not retrying an event no single account holds; it keeps its old time",
+				"error", err, "booking_id", d.bookingID, "host", d.userID)
 		}
 		if _, err := h.db.ExecContext(ctx,
 			`UPDATE booking_hosts SET needs_sync = 0 WHERE booking_id = ? AND user_id = ?`,
@@ -133,8 +142,20 @@ func (h *Handler) reconcileCancellations(ctx context.Context, gc *calendar.Servi
 
 	for _, o := range orphans {
 		if err := gc.CancelEvent(ctx, o.userID, o.calendarID, o.eventID); err != nil {
-			h.logger.Error("reconcile: cancel orphaned event", "error", err, "booking_id", o.bookingID, "host", o.userID)
-			continue // leave the id in place; retry next sweep
+			if !errors.Is(err, calendar.ErrEventUnreachable) {
+				h.logger.Error("reconcile: cancel orphaned event", "error", err, "booking_id", o.bookingID, "host", o.userID)
+				continue // leave the id in place; retry next sweep
+			}
+			// As for reschedules: no retry can succeed, and this query has no date bound, so
+			// leaving the id would repeat the refusal every sweep forever. The event stays on
+			// its calendar; its id is logged because clearing it drops the only copy. A CalDAV
+			// id is a URL and could carry userinfo, so it is logged redacted, or not at all.
+			eventForLog := ""
+			if u, perr := url.Parse(o.eventID); perr == nil {
+				eventForLog = u.Redacted()
+			}
+			h.logger.Warn("reconcile: not retrying the delete of an event no single account holds; it stays on its calendar",
+				"error", err, "booking_id", o.bookingID, "host", o.userID, "event_id", eventForLog)
 		}
 		if _, err := h.db.ExecContext(ctx,
 			`UPDATE booking_hosts SET external_event_id = NULL WHERE booking_id = ? AND user_id = ?`,

@@ -19,18 +19,14 @@ type freeBusyReq struct {
 
 type freeBusyResp struct {
 	Calendars map[string]struct {
-		Busy []struct {
+		Errors []json.RawMessage `json:"errors"`
+		Busy   []struct {
 			Start string `json:"start"`
 			End   string `json:"end"`
 		} `json:"busy"`
 	} `json:"calendars"`
 }
 
-// FreeBusy returns the UNION of Google Calendar busy intervals for userID in [from, to)
-// across every connected Google account with check_conflicts = 1 (so all of a user's
-// connected calendars are honoured, not just one). Returns (nil, nil) if the user has no such
-// connection. Fail-open: a single account that errors is logged and skipped, so a flaky
-// connection never blocks availability or a booking.
 func (c *Client) FreeBusy(ctx context.Context, userID string, from, to time.Time) ([]slots.Interval, error) {
 	conns, err := c.freeBusyConnections(ctx, userID)
 	if err != nil {
@@ -40,8 +36,7 @@ func (c *Client) FreeBusy(ctx context.Context, userID string, from, to time.Time
 	for _, conn := range conns {
 		intervals, err := c.freeBusyForConn(ctx, conn, from, to)
 		if err != nil {
-			c.logger.Warn("gcal: freebusy for connection failed, skipping", "user_id", userID, "error", err)
-			continue
+			return nil, err
 		}
 		out = append(out, intervals...)
 	}
@@ -84,13 +79,16 @@ func (c *Client) freeBusyForConn(ctx context.Context, conn fbConn, from, to time
 		return nil, fmt.Errorf("gcal: freeBusy decode: %w", err)
 	}
 	var out []slots.Interval
-	for _, cal := range fbr.Calendars {
+	for _, id := range conn.calIDs {
+		cal, ok := fbr.Calendars[id]
+		if !ok || len(cal.Errors) > 0 {
+			return nil, fmt.Errorf("gcal: calendar busy status unavailable")
+		}
 		for _, b := range cal.Busy {
 			s, err1 := time.Parse(time.RFC3339, b.Start)
 			e, err2 := time.Parse(time.RFC3339, b.End)
 			if err1 != nil || err2 != nil {
-				c.logger.Warn("gcal: skipping unparseable busy interval", "start", b.Start, "end", b.End)
-				continue
+				return nil, fmt.Errorf("gcal: invalid busy interval")
 			}
 			out = append(out, slots.Interval{Start: s, End: e})
 		}
