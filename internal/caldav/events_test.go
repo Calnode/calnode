@@ -134,10 +134,10 @@ func TestUpdateCancel_eventOnPreviousAccountUsesThatAccount(t *testing.T) {
 	seedUser(t, c.db, "u1")
 	srvA := newDAVServer(t, "a@a.test", "pw-a")
 	srvB := newDAVServer(t, "b@b.test", "pw-b")
-	if err := c.saveConnection(ctx, "u1", "a@a.test", "pw-a", srvA.URL+"/calendars/a/home/"); err != nil {
+	if err := c.saveConnection(ctx, "u1", "a@a.test", "pw-a", srvA.URL+"/calendars/a/home/", ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := c.saveConnection(ctx, "u1", "b@b.test", "pw-b", srvB.URL+"/calendars/b/home/"); err != nil {
+	if err := c.saveConnection(ctx, "u1", "b@b.test", "pw-b", srvB.URL+"/calendars/b/home/", ""); err != nil {
 		t.Fatal(err)
 	}
 	svc := newSvc(c)
@@ -174,10 +174,10 @@ func TestCancel_emptyCalendarIDResolvesOwnerByURL(t *testing.T) {
 	seedUser(t, c.db, "u1")
 	srvA := newDAVServer(t, "a@a.test", "pw-a")
 	srvB := newDAVServer(t, "b@b.test", "pw-b")
-	if err := c.saveConnection(ctx, "u1", "a@a.test", "pw-a", srvA.URL+"/calendars/a/home/"); err != nil {
+	if err := c.saveConnection(ctx, "u1", "a@a.test", "pw-a", srvA.URL+"/calendars/a/home/", ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := c.saveConnection(ctx, "u1", "b@b.test", "pw-b", srvB.URL+"/calendars/b/home/"); err != nil {
+	if err := c.saveConnection(ctx, "u1", "b@b.test", "pw-b", srvB.URL+"/calendars/b/home/", ""); err != nil {
 		t.Fatal(err)
 	}
 	svc := newSvc(c)
@@ -209,10 +209,10 @@ func TestUpdate_eventInPickedCalendarResolvesToItsAccount(t *testing.T) {
 	seedUser(t, c.db, "u1")
 	srvA := newDAVServer(t, "a@a.test", "pw-a")
 	srvB := newDAVServer(t, "b@b.test", "pw-b")
-	if err := c.saveConnection(ctx, "u1", "a@a.test", "pw-a", srvA.URL+"/calendars/a/home/"); err != nil {
+	if err := c.saveConnection(ctx, "u1", "a@a.test", "pw-a", srvA.URL+"/calendars/a/home/", ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := c.saveConnection(ctx, "u1", "b@b.test", "pw-b", srvB.URL+"/calendars/b/home/"); err != nil {
+	if err := c.saveConnection(ctx, "u1", "b@b.test", "pw-b", srvB.URL+"/calendars/b/home/", ""); err != nil {
 		t.Fatal(err)
 	}
 	svc := newSvc(c)
@@ -308,7 +308,7 @@ func TestUpdateCancel_destinationMovedToAnotherProvider(t *testing.T) {
 	ctx := context.Background()
 	seedUser(t, c.db, "u1")
 	srvA := newDAVServer(t, "a@a.test", "pw-a")
-	if err := c.saveConnection(ctx, "u1", "a@a.test", "pw-a", srvA.URL+"/calendars/a/home/"); err != nil {
+	if err := c.saveConnection(ctx, "u1", "a@a.test", "pw-a", srvA.URL+"/calendars/a/home/", ""); err != nil {
 		t.Fatal(err)
 	}
 	other := &otherProvider{}
@@ -349,7 +349,7 @@ func TestUpdateCancel_owningAccountDisconnectedSendsNothing(t *testing.T) {
 	ctx := context.Background()
 	seedUser(t, c.db, "u1")
 	srvA := newDAVServer(t, "a@a.test", "pw-a")
-	if err := c.saveConnection(ctx, "u1", "a@a.test", "pw-a", srvA.URL+"/calendars/a/home/"); err != nil {
+	if err := c.saveConnection(ctx, "u1", "a@a.test", "pw-a", srvA.URL+"/calendars/a/home/", ""); err != nil {
 		t.Fatal(err)
 	}
 	other := &otherProvider{}
@@ -392,10 +392,10 @@ func TestUpdateCancel_ambiguousOrUnknownOwnerSendsNothing(t *testing.T) {
 			stranger: newDAVServer(t, "a@a.test", "pw-a"),
 		}
 		ctx := context.Background()
-		if err := c.saveConnection(ctx, "u1", "a@a.test", "pw-a", s.srvA.URL+"/calendars/a/home/"); err != nil {
+		if err := c.saveConnection(ctx, "u1", "a@a.test", "pw-a", s.srvA.URL+"/calendars/a/home/", ""); err != nil {
 			t.Fatal(err)
 		}
-		if err := c.saveConnection(ctx, "u1", "b@b.test", "pw-b", s.srvB.URL+"/calendars/b/home"); err != nil {
+		if err := c.saveConnection(ctx, "u1", "b@b.test", "pw-b", s.srvB.URL+"/calendars/b/home", ""); err != nil {
 			t.Fatal(err)
 		}
 		return s
@@ -439,7 +439,7 @@ func TestUpdateCancel_ambiguousOrUnknownOwnerSendsNothing(t *testing.T) {
 		{
 			name: "two accounts bound to the same collection",
 			extra: func(t *testing.T, s setup) {
-				if err := s.c.saveConnection(context.Background(), "u1", "delegate@a.test", "pw-d", s.srvA.URL+"/calendars/a/home/"); err != nil {
+				if err := s.c.saveConnection(context.Background(), "u1", "delegate@a.test", "pw-d", s.srvA.URL+"/calendars/a/home/", ""); err != nil {
 					t.Fatal(err)
 				}
 			},
@@ -450,7 +450,7 @@ func TestUpdateCancel_ambiguousOrUnknownOwnerSendsNothing(t *testing.T) {
 		{
 			name: "two accounts bound to the same collection, no calendar id",
 			extra: func(t *testing.T, s setup) {
-				if err := s.c.saveConnection(context.Background(), "u1", "delegate@a.test", "pw-d", s.srvA.URL+"/calendars/a/home/"); err != nil {
+				if err := s.c.saveConnection(context.Background(), "u1", "delegate@a.test", "pw-d", s.srvA.URL+"/calendars/a/home/", ""); err != nil {
 					t.Fatal(err)
 				}
 			},
@@ -492,7 +492,7 @@ func TestUpdateCancel_serverFailureStaysRetryable(t *testing.T) {
 		fail func(t *testing.T, c *Client, s *davServer)
 	}{
 		{"server refuses the stored password", func(t *testing.T, c *Client, s *davServer) {
-			if err := c.saveConnection(context.Background(), "u1", "a@a.test", "revoked", s.URL+"/calendars/a/home/"); err != nil {
+			if err := c.saveConnection(context.Background(), "u1", "a@a.test", "revoked", s.URL+"/calendars/a/home/", ""); err != nil {
 				t.Fatal(err)
 			}
 		}},
@@ -504,7 +504,7 @@ func TestUpdateCancel_serverFailureStaysRetryable(t *testing.T) {
 			ctx := context.Background()
 			seedUser(t, c.db, "u1")
 			srvA := newDAVServer(t, "a@a.test", "pw-a")
-			if err := c.saveConnection(ctx, "u1", "a@a.test", "pw-a", srvA.URL+"/calendars/a/home/"); err != nil {
+			if err := c.saveConnection(ctx, "u1", "a@a.test", "pw-a", srvA.URL+"/calendars/a/home/", ""); err != nil {
 				t.Fatal(err)
 			}
 			svc := newSvc(c)
@@ -530,7 +530,7 @@ func TestUpdateCancel_singleAccountUnchanged(t *testing.T) {
 	ctx := context.Background()
 	seedUser(t, c.db, "u1")
 	srvA := newDAVServer(t, "a@a.test", "pw-a")
-	if err := c.saveConnection(ctx, "u1", "a@a.test", "pw-a", srvA.URL+"/calendars/a/home/"); err != nil {
+	if err := c.saveConnection(ctx, "u1", "a@a.test", "pw-a", srvA.URL+"/calendars/a/home/", ""); err != nil {
 		t.Fatal(err)
 	}
 	svc := newSvc(c)
