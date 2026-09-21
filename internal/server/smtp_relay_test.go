@@ -59,7 +59,7 @@ func TestSMTPRelayAtBootAndSettingsReload(t *testing.T) {
 			}
 			patch := func(h *handler.Handler, smtpHost string) {
 				t.Helper()
-				req := httptest.NewRequest(http.MethodPatch, "/v1/settings/email", strings.NewReader(fmt.Sprintf(`{"smtp_host":%q,"smtp_port":"465","smtp_tls":true,"from_address":"from@example.com"}`, smtpHost)))
+				req := httptest.NewRequest(http.MethodPatch, "/v1/settings/email", strings.NewReader(fmt.Sprintf(`{"smtp_host":%q,"smtp_port":"465","smtp_tls":true,"email_from":"from@example.com"}`, smtpHost)))
 				req.Header.Set("Authorization", "Bearer "+identity.APIKey)
 				rec := httptest.NewRecorder()
 				h.RequireAuth(h.PatchEmailSettings)(rec, req)
