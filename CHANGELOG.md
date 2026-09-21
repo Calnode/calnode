@@ -12,6 +12,16 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
 ## [Unreleased]
 
 ### Added
+- **Sign out everywhere.** `POST /v1/auth/sessions/revoke-all` ends every session you
+  have except the one you asked from, so losing a laptop no longer means waiting out a
+  30-day cookie. Pass `{"user_id": "..."}` and an admin can do the same for someone
+  else: an admin may revoke a member, only the owner may revoke another admin, and the
+  owner's own sessions can only be ended by the owner.
+
+  It also revokes that person's MCP OAuth tokens, which is the part that makes it an
+  offboarding tool rather than a convenience. A connected agent authenticates with a
+  bearer token and not the session cookie, so ending the sessions alone would have left
+  it holding exactly the access that was just withdrawn.
 - **Canadian French (`fr-CA`) on the booker-facing surfaces.** A visitor whose browser asks
   for `fr-CA` now gets Canadian French rather than the France copy; `fr` and `fr-FR` are
   unaffected. It is the first regional locale, and a separate file rather than a fallback
@@ -36,7 +46,7 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
   cannot parse, which would leave the admin UI *more* embeddable than the setting being
   unset. And no `X-Frame-Options` is sent beside it: that header has no allow-list form,
   so the only value it could carry is `SAMEORIGIN`, which browsers honour instead of the
-  CSP and would break the embedding this exists for.
+   CSP and would break the embedding this exists for.
 
 ### Fixed
 - **The Zoom setup text no longer promises that an unpublished app works for "your own
