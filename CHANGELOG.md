@@ -12,6 +12,25 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
 ## [Unreleased]
 
 ### Security
+- **Moving or cancelling a CalDAV booking no longer sends another account's app password
+  to the server holding the event.** A host can connect several CalDAV accounts, and
+  rescheduling or cancelling authenticated as whichever account was the destination at
+  the time, not the one the event was written to. After a host moved their destination
+  from an account on one server to an account on another, every reschedule or cancel of
+  an older booking sent the new account's username and app password to the old account's
+  server. A server that refused them left the calendar unchanged and the reconciler
+  retried, sending them again every sweep for a cancelled booking and until the end time
+  for a moved one. A server that answered 404 instead was taken at its word: the event
+  counted as already gone and stayed where it was.
+
+  Update and cancel now authenticate as the account that holds the event, found from what
+  the booking stored: the calendar recorded at creation, or failing that the connected
+  calendar whose URL contains the event's URL (same scheme, host and port). If no single
+  account can be established, nothing is sent, and the reconciler logs one warning and stops
+  retrying that event rather than refusing it again every sweep; the event stays where it
+  is. Hosts who moved a
+  CalDAV destination between accounts on different servers should consider rotating the
+  app password of the account they moved to.
 - **A booker's email address is validated where it enters, and is never written into an
   email header unparsed.** The `To:` header was the one header field assembled from
   caller-supplied input with no encoder in front of it: `buildRaw` parsed each recipient
@@ -81,6 +100,11 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
   the link-only fallback that needs no Zoom app. Answers
   [#35](https://github.com/Calnode/calnode/issues/35).
 
+- **A CalDAV event is moved or deleted even after the destination moves to Google or
+  Microsoft.** The event was handed to the new destination's provider, which could not
+  find an id it never issued, so the event stayed on the CalDAV calendar at its old time,
+  or after its booking was cancelled. A CalDAV event id is the event's URL, which is now
+  enough to route it back to the CalDAV provider whatever the destination is.
 - **Microsoft calendars can be chosen as the one bookings are written into.** Since 0.5.0
   the calendar picker marked every Microsoft calendar "(read-only)" and disabled its Book
   option. The calendar list read Graph's `canEdit` but left it out of `$select`, so Graph
