@@ -161,5 +161,6 @@
   "time_period": "Moment de la journée",
   "time_morning": "Matin",
   "time_afternoon": "Après-midi",
-  "time_evening": "Soir"
+  "time_evening": "Soir",
+  "calendar_degraded_notice": "Certains renseignements d'agenda n'ont pas pu être chargés, les disponibilités peuvent donc être incomplètes."
 }

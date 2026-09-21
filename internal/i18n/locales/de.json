@@ -161,5 +161,6 @@
   "time_morning": "Vormittag",
   "time_afternoon": "Nachmittag",
   "time_evening": "Abend",
-  "phone_call_number": "Telefonnummer (optional, für einen Anruf)"
+  "phone_call_number": "Telefonnummer (optional, für einen Anruf)",
+  "calendar_degraded_notice": "Einige Kalenderinformationen konnten nicht geladen werden, daher ist die Verfügbarkeit möglicherweise unvollständig."
 }

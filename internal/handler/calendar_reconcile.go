@@ -95,6 +95,17 @@ func (h *Handler) reconcileReschedules(ctx context.Context, gc *calendar.Service
 		start, err1 := time.Parse(time.RFC3339Nano, d.startStr)
 		end, err2 := time.Parse(time.RFC3339Nano, d.endStr)
 		if err1 != nil || err2 != nil {
+			// Corrupt row: the stored times will never parse, so retrying every
+			// sweep forever helps nothing. Quarantine it (clear the flag) with a
+			// warning rather than spinning on it until the booking ends.
+			h.logger.Warn("reconcile: unparseable booking times; clearing needs_sync",
+				"booking_id", d.bookingID, "host", d.userID,
+				"start", d.startStr, "end", d.endStr)
+			if _, err := h.db.ExecContext(ctx,
+				`UPDATE booking_hosts SET needs_sync = 0 WHERE booking_id = ? AND user_id = ?`,
+				d.bookingID, d.userID); err != nil {
+				h.logger.Error("reconcile: clear needs_sync", "error", err, "booking_id", d.bookingID)
+			}
 			continue
 		}
 		if err := gc.UpdateEvent(ctx, d.userID, d.calendarID, d.eventID, d.provider, start, end); err != nil {

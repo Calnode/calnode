@@ -161,5 +161,6 @@
   "time_morning": "Förmiddag",
   "time_afternoon": "Eftermiddag",
   "time_evening": "Kväll",
-  "phone_call_number": "Telefonnummer (valfritt, för ett telefonsamtal)"
+  "phone_call_number": "Telefonnummer (valfritt, för ett telefonsamtal)",
+  "calendar_degraded_notice": "Viss kalenderinformation kunde inte läsas in, så tillgängligheten kan vara ofullständig."
 }

@@ -272,16 +272,49 @@ func TestDeleteUser_blockedByUpcomingBookings(t *testing.T) {
 		t.Fatalf("got %d; want 409 (upcoming bookings block removal) — %s", rec.Code, rec.Body.String())
 	}
 
-	// Cancelling the upcoming booking clears the guard (the 409 no longer fires).
-	// NOTE: hard-deleting a user with *historical* booking rows is still blocked
-	// by the bookings.host_id foreign key — proper member offboarding needs
-	// soft-delete/deactivation, tracked separately.
+	// Cancelling the upcoming booking clears the upcoming guard, but the member
+	// is still the booking's primary host, so removal stays blocked: deleting
+	// them would break the booking's host reference (bookings.host_id has no
+	// ON DELETE action by design). Reassigning the booking away is the way out.
 	database.Exec(`UPDATE bookings SET status='cancelled' WHERE id='b1'`)
 	req = authReq(http.MethodDelete, "/v1/users/u2", "", ownerKey)
 	req.SetPathValue("id", "u2")
 	rec = httptest.NewRecorder()
 	h.RequireAuth(h.DeleteUser)(rec, req)
-	if rec.Code == http.StatusConflict {
-		t.Fatalf("after cancel the upcoming-booking guard should no longer block, got 409")
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("cancelled primary booking should still block removal, got %d — %s", rec.Code, rec.Body.String())
+	}
+
+	// A member who only ever attended as a non-primary seat (plus a stale MCP
+	// token) deletes cleanly: seats and tokens cascade away (migration 00063).
+	database.Exec(`INSERT INTO users (id,email,name,iana_timezone,is_admin) VALUES ('u3','seat@example.com','Seat','UTC',0)`)
+	database.Exec(`INSERT INTO booking_hosts (id,booking_id,user_id,is_primary) VALUES ('seat1','b1','u3',0)`)
+	database.Exec(`INSERT INTO oauth_access_tokens (id,token_hash,client_id,user_id,expires_at,created_at) VALUES ('tok1','hash1','c1','u3','2099-01-01T00:00:00Z','2026-01-01T00:00:00Z')`)
+	req = authReq(http.MethodDelete, "/v1/users/u3", "", ownerKey)
+	req.SetPathValue("id", "u3")
+	rec = httptest.NewRecorder()
+	h.RequireAuth(h.DeleteUser)(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("seat-only member delete: got %d; want 200 — %s", rec.Code, rec.Body.String())
+	}
+	var seats, toks int
+	database.QueryRow(`SELECT COUNT(*) FROM booking_hosts WHERE user_id='u3'`).Scan(&seats)
+	database.QueryRow(`SELECT COUNT(*) FROM oauth_access_tokens WHERE user_id='u3'`).Scan(&toks)
+	if seats != 0 || toks != 0 {
+		t.Fatalf("cascade left seats=%d tokens=%d; want 0 0", seats, toks)
+	}
+
+	// A non-primary seat on an UPCOMING booking blocks removal too: deleting
+	// the member would silently drop them from a meeting that still needs them.
+	database.Exec(`INSERT INTO users (id,email,name,iana_timezone,is_admin) VALUES ('u4','upcoming-seat@example.com','Upcoming','UTC',0)`)
+	database.Exec(`INSERT INTO bookings (id,event_type_id,host_id,start_at,end_at,status)
+		VALUES ('b2','et1','u2','2099-02-01T10:00:00Z','2099-02-01T10:30:00Z','confirmed')`)
+	database.Exec(`INSERT INTO booking_hosts (id,booking_id,user_id,is_primary) VALUES ('seat2','b2','u4',0)`)
+	req = authReq(http.MethodDelete, "/v1/users/u4", "", ownerKey)
+	req.SetPathValue("id", "u4")
+	rec = httptest.NewRecorder()
+	h.RequireAuth(h.DeleteUser)(rec, req)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("upcoming non-primary seat should block removal, got %d — %s", rec.Code, rec.Body.String())
 	}
 }

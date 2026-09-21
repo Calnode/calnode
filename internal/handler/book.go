@@ -343,6 +343,7 @@ func (h *Handler) PublicEventType(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+	accentColor = accentOrDefault(accentColor)
 
 	hosts := h.displayHosts(r.Context(), etID, routingMode)
 	if len(hosts) == 0 {
@@ -459,6 +460,7 @@ func (h *Handler) BookPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
+	accentColor = accentOrDefault(accentColor)
 
 	// Load active intake questions.
 	var questions []bookQuestion

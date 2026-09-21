@@ -161,5 +161,6 @@
   "time_morning": "Ochtend",
   "time_afternoon": "Middag",
   "time_evening": "Avond",
-  "phone_call_number": "Telefoonnummer (optioneel, voor een telefoongesprek)"
+  "phone_call_number": "Telefoonnummer (optioneel, voor een telefoongesprek)",
+  "calendar_degraded_notice": "Sommige agendagegevens konden niet worden geladen, dus de beschikbaarheid is mogelijk onvolledig."
 }

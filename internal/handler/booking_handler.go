@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/mail"
 	"net/url"
@@ -568,6 +569,7 @@ func (h *Handler) createBookingForSlug(ctx context.Context, slug string, startAt
 		Organizer:           organizer,
 		Answers:             answers,
 		MaxActivePerInvitee: et.MaxActiveBookings,
+		MaxBookingsPerHour:  maxBookingsPerEmailPerHour,
 	})
 	if err != nil {
 		return nil, err
@@ -606,7 +608,10 @@ type bookingJSON struct {
 	PaymentStatus      string         `json:"payment_status,omitempty" jsonschema:"payment state for paid event types: paid, refunded, or pending; absent for free bookings"`
 	AmountPaidCents    int            `json:"amount_paid_cents,omitempty" jsonschema:"amount charged in minor units (e.g. cents); absent for free bookings"`
 	AmountPaidCurrency string         `json:"amount_paid_currency,omitempty" jsonschema:"ISO 4217 currency of the charge (lowercase)"`
-	Attendees          []attendeeJSON `json:"attendees,omitempty"`
+	// ConfirmFailed flags a booking whose initial confirmation email failed after
+	// retry — operator-visible so a lost confirmation can be followed up manually.
+	ConfirmFailed  bool           `json:"confirm_failed,omitempty"`
+	Attendees      []attendeeJSON `json:"attendees,omitempty"`
 	Hosts              []hostBrief    `json:"hosts,omitempty"` // assigned host(s) for display; set on the public create response
 }
 
@@ -637,6 +642,7 @@ func toBookingJSON(b *booking.Booking) bookingJSON {
 		j.AmountPaidCents = b.AmountPaidCents
 		j.AmountPaidCurrency = b.AmountPaidCurrency
 	}
+	j.ConfirmFailed = b.ConfirmFailed
 	return j
 }
 
@@ -800,9 +806,10 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 
 	// Per-email throttle: cap how many bookings one email can create across the
 	// workspace in a rolling hour, independent of IP — backstops the per-IP rate
-	// limit against a single identity spamming via rotating IPs. Counts cancelled
-	// bookings too, so book/cancel/rebook churn is bounded. A query error is logged,
-	// not fatal (don't block a legit booking on a transient read failure).
+	// limit against a single identity spamming via rotating IPs. Enforced inside
+	// the creation transaction (see MaxBookingsPerHour), so concurrent requests
+	// can't both slip past; the pre-check here is only a fast path. Counts
+	// cancelled bookings too, so book/cancel/rebook churn is bounded.
 	{
 		windowStart := time.Now().UTC().Add(-time.Hour).Format(time.RFC3339Nano)
 		var recent int
@@ -892,10 +899,15 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 		},
 		Answers:             answers,
 		MaxActivePerInvitee: et.MaxActiveBookings,
+		MaxBookingsPerHour:  maxBookingsPerEmailPerHour,
 	})
 	if err != nil {
 		if errors.Is(err, booking.ErrDoubleBooked) {
 			h.writeError(w, http.StatusConflict, "this slot is no longer available")
+			return
+		}
+		if errors.Is(err, booking.ErrEmailThrottled) {
+			h.writeError(w, http.StatusTooManyRequests, loc.T("err_email_throttled"))
 			return
 		}
 		// Not 409 — the booking page treats 409 as "slot taken". Use 422 so its
@@ -1135,9 +1147,10 @@ func hostEventLocation(meetURL, livekitHostURL, attendeeLocationValue string) st
 // the only place such a link becomes available, since minting it is a side effect of the
 // calendar API call itself (see mintMeetingLink's doc comment). Returns the primary host's
 // notification prefs, for the caller's single attendee-confirmation send.
-func (h *Handler) createHostEventsAndNotify(ctx context.Context, b *booking.Booking, in bookingConfirmationInput, bData *mailer.BookingData, hosts []assignedHost, meetURL string, autoGenMeet bool, livekitHostURL string) hostPrefs {
+func (h *Handler) createHostEventsAndNotify(ctx context.Context, b *booking.Booking, in bookingConfirmationInput, bData *mailer.BookingData, hosts []assignedHost, meetURL string, autoGenMeet bool, livekitHostURL string) (hostPrefs, bool) {
 	gc := h.getCal()
 	primaryPrefs := allOnPrefs
+	confirmFailed := false
 	for _, host := range hosts {
 		// Create a calendar event on each host's connected calendar and record
 		// the per-host event ID so it can be cancelled later. The primary's id
@@ -1199,12 +1212,37 @@ func (h *Handler) createHostEventsAndNotify(ctx context.Context, b *booking.Book
 			if livekitHostURL != "" {
 				hd.LocationValue = livekitHostURL // host email gets the controls-enabled link
 			}
-			if err := mailer.SendConfirmationToHost(ctx, h.mailer, hd); err != nil {
-				h.logger.Error("booking confirmation email (host)", "error", err, "booking_id", b.ID, "host", host.UserID)
+			if err := sendWithRetry(ctx, h.logger, b.ID, "host/"+host.UserID, func() error {
+				return mailer.SendConfirmationToHost(ctx, h.mailer, hd)
+			}); err != nil {
+				confirmFailed = true
 			}
 		}
 	}
-	return primaryPrefs
+	return primaryPrefs, confirmFailed
+}
+
+// sendWithRetry delivers one confirmation email with a single retry: transient
+// SMTP stalls and 5xx blips are the common loss mode, and dispatch runs in the
+// background where waiting a few seconds costs nothing. Returns the final error;
+// the caller records it on the booking so a lost confirmation stays visible.
+func sendWithRetry(ctx context.Context, logger *slog.Logger, bookingID, who string, send func() error) error {
+	if err := send(); err == nil {
+		return nil
+	} else {
+		firstErr := err
+		logger.Error("booking confirmation email, retrying", "who", who, "error", firstErr, "booking_id", bookingID)
+		select {
+		case <-ctx.Done():
+			return firstErr
+		case <-time.After(5 * time.Second):
+		}
+		if err := send(); err != nil {
+			logger.Error("booking confirmation email (failed)", "who", who, "error", err, "booking_id", bookingID)
+			return err
+		}
+		return nil
+	}
 }
 
 // dispatchBookingConfirmation runs the post-create side effects for a booking:
@@ -1256,16 +1294,27 @@ func (h *Handler) dispatchBookingConfirmation(b *booking.Booking, in bookingConf
 	}
 
 	meetURL, autoGenMeet, livekitHostURL := h.mintMeetingLink(ctx, b, in, &bData, hosts)
-	primaryPrefs := h.createHostEventsAndNotify(ctx, b, in, &bData, hosts, meetURL, autoGenMeet, livekitHostURL)
+	primaryPrefs, hostFailed := h.createHostEventsAndNotify(ctx, b, in, &bData, hosts, meetURL, autoGenMeet, livekitHostURL)
 
 	// Attendee confirmation, once. "With:" names the primary host; gated on the
 	// primary host's notification preference (matches prior behaviour).
 	bData.HostName, bData.HostEmail = primaryHost(hosts).Name, primaryHost(hosts).Email
 	bData.AttachICS = h.noConnectedDestination(ctx, b.HostID)
 	bData.ICSSequence = int(b.UpdatedAt.Unix())
+	confirmFailed := hostFailed
 	if primaryPrefs.NotifyConfirmation {
-		if err := mailer.SendConfirmationToAttendee(ctx, h.mailer, bData); err != nil {
-			h.logger.Error("booking confirmation email (attendee)", "error", err, "booking_id", b.ID)
+		if err := sendWithRetry(ctx, h.logger, b.ID, "attendee", func() error {
+			return mailer.SendConfirmationToAttendee(ctx, h.mailer, bData)
+		}); err != nil {
+			confirmFailed = true
+		}
+	}
+	if confirmFailed {
+		// Operator-visible: the booking happened, but at least one confirmation
+		// never arrived. Surfaced on the booking JSON for follow-up.
+		if _, err := h.db.ExecContext(ctx,
+			`UPDATE bookings SET confirm_failed = 1 WHERE id = ?`, b.ID); err != nil {
+			h.logger.Error("booking confirmation: flag failure", "error", err, "booking_id", b.ID)
 		}
 	}
 	if h.webhookSvc != nil {

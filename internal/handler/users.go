@@ -84,6 +84,15 @@ func (h *Handler) ListUsers(w http.ResponseWriter, r *http.Request) {
 	for i := range out {
 		byID[out[i].ID] = &out[i]
 	}
+	// Close before the next query: the pool is a single connection, and an open
+	// cursor holds it (exhausted is not closed) — querying while rows is open
+	// deadlocks.
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		h.logger.ErrorContext(r.Context(), "list users: rows", "error", err)
+		h.writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
 
 	// Attach each member's teams (the Members↔Teams cross-reference).
 	tmRows, err := h.db.QueryContext(r.Context(), `
@@ -153,12 +162,17 @@ func (h *Handler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 
 	// Block removal while the user still hosts upcoming bookings, so attendees
 	// are never silently orphaned. They must be reassigned or cancelled first.
+	// Group/round-robin seats live in booking_hosts, not bookings.host_id, so a
+	// member check covers both — otherwise a non-primary attendee passes the
+	// guard and the delete either FK-aborts or silently drops their seat.
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	var upcoming int
 	if err := h.db.QueryRowContext(r.Context(), `
-		SELECT COUNT(*) FROM bookings
-		WHERE host_id = ? AND status != 'cancelled' AND end_at > ?`,
-		targetID, now).Scan(&upcoming); err != nil {
+		SELECT COUNT(DISTINCT b.id) FROM bookings b
+		LEFT JOIN booking_hosts bh ON bh.booking_id = b.id
+		WHERE (b.host_id = ? OR bh.user_id = ?)
+		  AND b.status != 'cancelled' AND b.end_at > ?`,
+		targetID, targetID, now).Scan(&upcoming); err != nil {
 		h.logger.ErrorContext(r.Context(), "delete user: count bookings", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -166,6 +180,26 @@ func (h *Handler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 	if upcoming > 0 {
 		h.writeError(w, http.StatusConflict,
 			"this member still has upcoming bookings; reassign or cancel them before removing the member")
+		return
+	}
+
+	// Past and cancelled bookings still reference their primary host
+	// (bookings.host_id has no ON DELETE action, deliberately: deleting a user
+	// must not cascade-delete booking history out from under other attendees).
+	// Non-primary seats and MCP tokens cascade away via migration 00063, so only
+	// primary-host rows block here. Reassigning a booking moves its host_id and
+	// clears this guard.
+	var historical int
+	if err := h.db.QueryRowContext(r.Context(), `
+		SELECT COUNT(*) FROM bookings WHERE host_id = ?`,
+		targetID).Scan(&historical); err != nil {
+		h.logger.ErrorContext(r.Context(), "delete user: count hosted bookings", "error", err)
+		h.writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	if historical > 0 {
+		h.writeError(w, http.StatusConflict,
+			"this member still hosts past bookings; reassign them before removing the member")
 		return
 	}
 

@@ -92,6 +92,26 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
    CSP and would break the embedding this exists for.
 
 ### Fixed
+- **Rescheduling on the manage page works again.** Its slot list called an `esc()`
+  helper that only ever existed on the booking page, so any day with availability
+  threw before rendering and could not be rescheduled. The helper is now defined
+  on both surfaces.
+- **Removing a member no longer 500s on booking history, and no longer leaves
+  their MCP tokens valid.** `booking_hosts.user_id` had no `ON DELETE` action;
+  both it and the token tables now cascade. The upcoming-booking guard covers
+  group seats too, and primary-host history (past or present) blocks with a 409
+  naming reassignment instead of failing in SQL.
+- **Cancelling a paid booking cannot double-refund.** The refund row is claimed
+  with a conditional update before Stripe is called, the call carries an
+  idempotency key, and a Stripe failure reverts the claim so a later cancel
+  retries instead of silently keeping the money.
+- **A lost confirmation email is retried once and then flagged, not just logged.**
+  Confirmation sends get one retry; a final failure sets `confirm_failed` on the
+  booking, surfaced on the booking JSON for follow-up.
+- **The slots response says when its busy data is incomplete.** A provider outage
+  used to read as free time while booking stayed fail-closed, offering slots that
+  could not be sold. Slots now carry `degraded: true`, and all three booking
+  surfaces show a warning.
 - **Rescheduling or cancelling after a destination change acts on the provider that
   holds the event.** The booking stored which calendar its event was written to but
   not which provider wrote it, so a destination move handed old event ids to a

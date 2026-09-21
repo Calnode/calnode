@@ -145,28 +145,51 @@ func (h *Handler) releaseUnpaidHold(ctx context.Context, bookingID string) {
 	}
 }
 
-// refundBookingPayment issues a Stripe refund when a PAID booking is cancelled. Best-effort
-// and idempotent (guards on payment_status='paid'); failures are logged, not fatal to cancel.
+// refundBookingPayment issues a Stripe refund when a PAID booking is cancelled.
+// Two concurrent cancels must not double-refund, and a Stripe failure must not
+// silently keep the money: the row is claimed first with a conditional UPDATE
+// (only one claimant wins), the Stripe call carries an idempotency key so a
+// retried request returns the original refund, and a failed Stripe call reverts
+// the claim so a later cancel retries instead of losing the refund.
 func (h *Handler) refundBookingPayment(ctx context.Context, bookingID string) {
 	sc := h.getStripe()
 	if sc == nil {
 		return
 	}
-	var paymentStatus, intentID string
+	var intentID string
 	if err := h.db.QueryRowContext(ctx,
-		`SELECT payment_status, COALESCE(stripe_payment_intent_id, '') FROM bookings WHERE id = ?`,
-		bookingID).Scan(&paymentStatus, &intentID); err != nil {
+		`SELECT COALESCE(stripe_payment_intent_id, '') FROM bookings WHERE id = ?`,
+		bookingID).Scan(&intentID); err != nil {
 		return
 	}
-	if paymentStatus != "paid" || intentID == "" {
+	if intentID == "" {
 		return
 	}
-	if err := sc.Refund(ctx, intentID); err != nil {
+	// Claim the refund: only a row still marked paid flips to refunding. A
+	// concurrent cancel hitting the same row updates zero rows and stops.
+	claimed, err := h.db.ExecContext(ctx,
+		`UPDATE bookings SET payment_status = 'refunding'
+		 WHERE id = ? AND payment_status = 'paid'`, bookingID)
+	if err != nil {
+		h.logger.ErrorContext(ctx, "stripe: claim refund", "error", err, "booking_id", bookingID)
+		return
+	}
+	if n, _ := claimed.RowsAffected(); n == 0 {
+		return // already refunded/refunding, or never paid
+	}
+	if err := sc.Refund(ctx, intentID, "refund:"+bookingID); err != nil {
 		h.logger.ErrorContext(ctx, "stripe: refund on cancel", "error", err, "booking_id", bookingID)
+		// Revert the claim so a later cancel retries; the money was not moved.
+		// If the revert itself fails, the row stays 'refunding' — still safe:
+		// no other cancel will claim it, and the error is logged above.
+		_, _ = h.db.ExecContext(ctx,
+			`UPDATE bookings SET payment_status = 'paid'
+			 WHERE id = ? AND payment_status = 'refunding'`, bookingID)
 		return
 	}
 	if _, err := h.db.ExecContext(ctx,
-		`UPDATE bookings SET payment_status = 'refunded' WHERE id = ?`, bookingID); err != nil {
+		`UPDATE bookings SET payment_status = 'refunded'
+		 WHERE id = ? AND payment_status = 'refunding'`, bookingID); err != nil {
 		h.logger.ErrorContext(ctx, "stripe: mark refunded", "error", err, "booking_id", bookingID)
 	}
 }

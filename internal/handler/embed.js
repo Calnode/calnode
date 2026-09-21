@@ -190,7 +190,7 @@
       this.root.appendChild(el('style', { text: STYLE }));
       this.wrap = el('div', { class: 'wrap' });
       this.root.appendChild(this.wrap);
-      this.state = { month: startOfMonth(new Date()), slotsByDay: {}, noticeDates: [], day: null, view: 'pick', slot: null };
+      this.state = { month: startOfMonth(new Date()), slotsByDay: {}, noticeDates: [], degraded: false, day: null, view: 'pick', slot: null };
       this.narrow = false;
       this.cw = 9999;
       this.descExpanded = false;
@@ -262,6 +262,9 @@
         // can say why instead of leaving the visitor to guess (#20). Server-side these are
         // already in TZ, so they match dayKey's output.
         this.state.noticeDates = (r.min_notice && r.min_notice.dates) || [];
+        // An external calendar check failed: busy data is incomplete, so offered
+        // times may be unbookable (booking stays fail-closed at commit time).
+        if (r.degraded) this.state.degraded = true;
         // Capture the id→host map so the header can narrow to a slot's actual host once
         // one is picked. Avatar URLs come back relative; make them absolute (the widget
         // runs cross-origin to the Calnode instance).
@@ -547,6 +550,11 @@
         // times" case.
         if (notice && st.noticeDates && st.noticeDates.indexOf(st.day) !== -1) {
           listEl.appendChild(el('p', { class: 'hint notice-hint', text: notice }));
+        }
+        // Shown whenever an external calendar check failed: the busy data behind
+        // this list is incomplete.
+        if (st.degraded) {
+          listEl.appendChild(el('p', { class: 'hint notice-hint', text: t(self.i18n, 'calendar_degraded_notice') }));
         }
         inner = el('div', {}, [el('p', { class: 'slots-header', text: list[0] ? shortDay(list[0].start, self.locale) : this.dayHeader(st.day) }), listEl]);
       } else {

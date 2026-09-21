@@ -161,5 +161,6 @@
   "time_morning": "Mattina",
   "time_afternoon": "Pomeriggio",
   "time_evening": "Sera",
-  "phone_call_number": "Telefono (facoltativo, per una chiamata)"
+  "phone_call_number": "Telefono (facoltativo, per una chiamata)",
+  "calendar_degraded_notice": "Non è stato possibile caricare alcune informazioni del calendario, quindi la disponibilità potrebbe essere incompleta."
 }

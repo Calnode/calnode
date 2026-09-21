@@ -137,6 +137,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	<-workerDone // wait for current poll cycle to complete before db.Close()
+	// Bound the worker drain: Poll uses context.Background internally, so an
+	// in-flight cycle (up to 10 jobs × 30 s SMTP bounds) could otherwise linger
+	// for minutes on SIGTERM and stall deploys. Jobs are idempotent across
+	// restarts (claimed rows, retried payloads), so abandoning the drain is safe.
+	select {
+	case <-workerDone: // wait for current poll cycle to complete before db.Close()
+	case <-time.After(60 * time.Second):
+		logger.Error("worker drain timed out; exiting with jobs to retry on restart")
+	}
 	logger.Info("server stopped")
 }

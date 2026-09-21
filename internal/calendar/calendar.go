@@ -330,10 +330,11 @@ func (s *Service) DisconnectOne(ctx context.Context, userID, provider, accountEm
 	}
 	// Without this the account's calendar picks survive the disconnect, and reconnecting the
 	// same address silently inherits them - including a destination pointing at a calendar
-	// the user may no longer have.
+	// the user may no longer have. COALESCE matches the lookup above: a legacy row with a
+	// NULL account_email would otherwise keep its calendars while losing its connection.
 	if _, err := tx.ExecContext(ctx,
 		`DELETE FROM connection_calendars
-		 WHERE user_id = ? AND provider = ? AND account_email = ?`,
+		 WHERE user_id = ? AND provider = ? AND COALESCE(account_email,'') = ?`,
 		userID, provider, accountEmail); err != nil {
 		return err
 	}

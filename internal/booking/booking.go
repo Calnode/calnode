@@ -11,6 +11,7 @@ var (
 	ErrAlreadyCancelled    = errors.New("booking: already cancelled")
 	ErrTokenNotFound       = errors.New("booking: manage token not found or expired")
 	ErrBookingLimitReached = errors.New("booking: active booking limit reached for this invitee")
+	ErrEmailThrottled      = errors.New("booking: too many bookings from this email address")
 )
 
 // Booking is a confirmed or cancelled appointment.
@@ -26,9 +27,12 @@ type Booking struct {
 	LocationType       string
 	CreatedAt          time.Time
 	UpdatedAt          time.Time
-	PaymentStatus      string // none | pending | paid | refunded
+	PaymentStatus      string // none | pending | paid | refunded | refunding (refund claimed, Stripe call in flight)
 	AmountPaidCents    int
 	AmountPaidCurrency string
+	// ConfirmFailed reports whether the initial confirmation email failed (after
+	// retry). Operator-visible via the booking JSON; see migration 00064.
+	ConfirmFailed bool
 }
 
 // Attendee is a participant in a booking (the person who made the booking).
@@ -78,4 +82,10 @@ type CreateParams struct {
 	// MaxActivePerInvitee caps how many active (upcoming, non-cancelled) bookings
 	// the organizer's email may already hold for this event type. 0 = unlimited.
 	MaxActivePerInvitee int
+	// MaxBookingsPerHour caps how many bookings the organizer's email may create
+	// workspace-wide in the trailing hour (cancelled bookings count, so
+	// book/cancel/rebook churn is bounded). 0 = unlimited. Checked inside the
+	// creation transaction, next to the active cap, so concurrent submissions
+	// can't both slip past a read-then-write check.
+	MaxBookingsPerHour int
 }

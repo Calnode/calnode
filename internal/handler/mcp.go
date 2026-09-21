@@ -409,6 +409,8 @@ func (h *Handler) mcpCreateBooking(ctx context.Context, _ *mcp.CallToolRequest, 
 			return nil, bookingJSON{}, fmt.Errorf("this slot is no longer available")
 		case errors.Is(err, booking.ErrBookingLimitReached):
 			return nil, bookingJSON{}, fmt.Errorf("the attendee already holds the maximum number of upcoming bookings for this event")
+		case errors.Is(err, booking.ErrEmailThrottled):
+			return nil, bookingJSON{}, fmt.Errorf("too many booking attempts from this email address — please try again later")
 		default:
 			return nil, bookingJSON{}, err // *answerError and others are human-readable
 		}

@@ -168,5 +168,6 @@
   "time_morning": "Morning",
   "time_afternoon": "Afternoon",
   "time_evening": "Evening",
-  "phone_call_number": "Phone number (optional, for a phone call)"
+  "phone_call_number": "Phone number (optional, for a phone call)",
+  "calendar_degraded_notice": "Some calendar information couldn't be loaded, so availability may be incomplete."
 }

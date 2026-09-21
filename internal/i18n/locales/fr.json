@@ -161,5 +161,6 @@
   "time_morning": "Matin",
   "time_afternoon": "Après-midi",
   "time_evening": "Soir",
-  "phone_call_number": "Téléphone (facultatif, pour un appel)"
+  "phone_call_number": "Téléphone (facultatif, pour un appel)",
+  "calendar_degraded_notice": "Certaines informations d'agenda n'ont pas pu être chargées, les disponibilités peuvent donc être incomplètes."
 }
