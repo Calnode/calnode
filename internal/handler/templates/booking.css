@@ -467,4 +467,11 @@
 .demo-banner strong { font-weight: 600; }
 .demo-banner a { color: inherit; text-decoration: underline; font-weight: 600; }
 
+.slots-list { max-height: none; overflow: visible; }
+.time-periods { display: flex; gap: 4px; padding: 4px; background: #f3f4f6; border-radius: 8px; }
+.time-periods button { flex: 1; min-width: 0; padding: 10px 4px; border: 0; border-radius: 6px; background: transparent; color: #374151; font: inherit; font-size: 12px; cursor: pointer; }
+.time-periods button[aria-pressed="true"] { background: white; color: #111827; box-shadow: 0 1px 3px #0002; font-weight: 600; }
+.time-periods button:focus-visible { outline: 2px solid #111827; outline-offset: 2px; }
+.time-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(72px, 1fr)); gap: 8px; }
+.time-grid .slot-btn { padding: 12px 4px; font-variant-numeric: tabular-nums; }
 .cd.sel, .slot-btn.sel, .btn-primary { background: var(--booking-accent, #111827) !important; border-color: var(--booking-accent, #111827); color: var(--booking-accent-text, #fff) !important; }

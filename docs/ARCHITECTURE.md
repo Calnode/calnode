@@ -263,6 +263,8 @@ members.
 
 ## 8. Slot generation
 
+Booking and rescheduling pages and the embed widget group the displayed starts into morning (before 12:00), afternoon (12:00–16:59), and evening (17:00 onward), in the selected timezone. Only groups with slots are shown. The time grid has no nested scrolling region. Taken slots remain disabled when the event opts to display them.
+
 - Engine: `internal/slots/generate.go`. Input: `[]HostAvailability` (rules,
   overrides, busy intervals, **Role**), `EventConfig` (duration, interval, buffers,
   min-notice, max-future, `RoutingMode`), date range, booker tz, injectable `Now`.

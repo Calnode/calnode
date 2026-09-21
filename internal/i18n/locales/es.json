@@ -164,5 +164,9 @@
   "assistant_status_slots": "Comprobando disponibilidad…",
   "assistant_status_book": "Reservando…",
   "assistant_status_working": "Trabajando…",
+  "time_period": "Momento del día",
+  "time_morning": "Mañana",
+  "time_afternoon": "Tarde",
+  "time_evening": "Noche",
   "phone_call_number": "Teléfono (opcional, para una llamada)"
 }

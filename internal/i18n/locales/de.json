@@ -157,5 +157,9 @@
   "assistant_status_slots": "Verfügbarkeit wird geprüft…",
   "assistant_status_book": "Wird gebucht…",
   "assistant_status_working": "Wird bearbeitet…",
+  "time_period": "Tageszeit",
+  "time_morning": "Vormittag",
+  "time_afternoon": "Nachmittag",
+  "time_evening": "Abend",
   "phone_call_number": "Telefonnummer (optional, für einen Anruf)"
 }
