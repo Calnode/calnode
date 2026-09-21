@@ -8,13 +8,13 @@ import (
 	"testing"
 )
 
-// TestCreateBooking_honeypotRejected: a filled honeypot ("company") field marks an
+// TestCreateBooking_honeypotRejected: a filled honeypot ("hp_extra") field marks an
 // automated submission and is rejected without creating a booking.
 func TestCreateBooking_honeypotRejected(t *testing.T) {
 	h, key, _ := setupWorkspace(t)
 	slug, _ := seedEventTypeHTTP(t, h, key)
 
-	body := fmt.Sprintf(`{"event_type_slug":%q,"start_at":"2026-06-15T09:00:00Z","name":"Bot","email":"bot@example.com","company":"Acme Spam Co"}`, slug)
+	body := fmt.Sprintf(`{"event_type_slug":%q,"start_at":"2026-06-15T09:00:00Z","name":"Bot","email":"bot@example.com","hp_extra":"Acme Spam Co"}`, slug)
 	req := httptest.NewRequest(http.MethodPost, "/v1/bookings", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -22,6 +22,25 @@ func TestCreateBooking_honeypotRejected(t *testing.T) {
 
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("honeypot-filled booking: %d; want 400", rec.Code)
+	}
+}
+
+// TestCreateBooking_legacyCompanyFieldIgnored: the honeypot used to be named "company",
+// which browsers autofill for real humans (#33). A submission carrying the old field
+// (e.g. an autofilled legacy page, or a stale embed) must be treated as a normal
+// booking, not a bot.
+func TestCreateBooking_legacyCompanyFieldIgnored(t *testing.T) {
+	h, key, _ := setupWorkspace(t)
+	slug, _ := seedEventTypeHTTP(t, h, key)
+
+	body := fmt.Sprintf(`{"event_type_slug":%q,"start_at":"2026-06-15T09:00:00Z","name":"Sam","email":"sam@example.com","company":"Acme Corp"}`, slug)
+	req := httptest.NewRequest(http.MethodPost, "/v1/bookings", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	h.CreateBooking(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Errorf("booking with legacy company value: %d; want 201 — %s", rec.Code, rec.Body.String())
 	}
 }
 

@@ -186,6 +186,24 @@ the platform/recovery secret doesn't expose secrets.
   Owner-gated actions: grant/revoke admin, transfer ownership. Admins can cancel
   any booking, see all bookings, manage teams/members. Safe-removal + archive
   guards prevent orphaning.
+- **Sign out everywhere** (`POST /v1/auth/sessions/revoke-all`, `session.go`). With no
+  body it drops all of the caller's sessions **except the one that made the request** —
+  "sign out my other devices", as distinct from `POST /v1/auth/logout`, which ends the
+  current one. (An API-key caller has no current session, so for them every session
+  goes.) With `{"user_id": "..."}` it is an offboarding tool, gated on the same tiers as
+  `roles.go`: an admin may revoke a member, only the owner may revoke another admin, and
+  the owner's sessions are reachable only by the owner. The actor's tier is checked
+  *before* the target is loaded, so the 404 cannot be used to enumerate user ids.
+  ⛔ It also deletes the target's rows in **`oauth_access_tokens`**, cutting off any MCP
+  connector (§19) — those authenticate with a bearer token, not the session cookie, so
+  revoking sessions alone would leave an agent holding the authority just withdrawn.
+  Both deletes run in one transaction, so "revoked" is never half-true.
+  This endpoint signs someone out; it does not offboard them. Offboarding is archive
+  (next bullet), which ends MCP access on its own: the OAuth bearer check and the
+  refresh grant both refuse an archived member. API keys
+  (`cno_`) are deliberately left alone here, which is safe only because an archived
+  member's keys are already refused (the key path in `auth.go`), so an offboarded
+  member's keys stop working through archive, not through this endpoint.
 - **Offboarding = archive** (`users.archived_at`), never hard-delete — preserves
   bookings, event-type ownership, team links. Archived ⇒ no login, hidden from
   lists, skipped in routing/slots, event types deactivated. Reversible (restore).
@@ -854,7 +872,7 @@ as the desired state:
   patching. The **public** booking surfaces are unaffected and are verified on mobile;
   this is admin-only. Deferred 2026-08-22, not a regression.
 - **LiveKit room is not translated** - the booking surfaces, emails and calendar invites
-  ship in 8 languages (§23), but the in-browser meeting UI is ~45 hardcoded English
+  ship in 9 languages (§23), but the in-browser meeting UI is ~45 hardcoded English
   strings. It has its own vanilla-JS asset pipeline and shares no string plumbing with
   the Go templates, so it needs a small runtime `t()` of its own. Separate work, not hard.
 - **Plural rules are 2-form only** (§23) - shipping Polish, Russian or Arabic correctly
@@ -1096,7 +1114,18 @@ LLM summary) — the next build; consent-gated (§8.11/§15 of the PRD).
 
 ## 23. Languages (i18n)
 
-Calnode ships **8 locales**: `en` (source) · `es` · `fr` · `de` · `it` · `pt` · `nl` · `sv`.
+Calnode ships **9 locales**: `en` (source) · `es` · `fr` · `fr-CA` · `de` · `it` · `pt` · `nl` · `sv`.
+
+`fr-CA` is the first **regional** locale, and it is a separate file rather than a fallback
+because the differences are real: `courriel` not `e-mail`, `reporter`/`report` not
+`reprogrammer`/`reprogrammation`, `renseignements personnels` never `données personnelles`
+(the Quebec statutory term), no space before `!` `?` `;` where France puts one, and CLDR
+itself disagrees on one abbreviation — `month_short_jul` is `juill.` in fr-CA and `juil.` in
+fr, which is exactly what `TestDateTablesMatchCLDR` exists to catch. Both keep the 24-hour
+clock and the day-month `date_format`. Currency and percent take a non-breaking space before
+`$` and `%` in Canadian French; no key carries either today, so the rule is recorded here
+rather than applied. A visitor sending `fr-FR` or plain `fr` is unaffected — the matcher
+picks the exact tag first (pinned in `TestResolve`).
 
 ### What is translated, and what is not
 

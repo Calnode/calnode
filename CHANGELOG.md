@@ -31,6 +31,65 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
   is. Hosts who moved a
   CalDAV destination between accounts on different servers should consider rotating the
   app password of the account they moved to.
+- **A booker's email address is validated where it enters, and is never written into an
+  email header unparsed.** The `To:` header was the one header field assembled from
+  caller-supplied input with no encoder in front of it: `buildRaw` parsed each recipient
+  with `net/mail` and, when that failed, appended the raw string anyway, so a CR/LF inside
+  an address would have ended the `To:` line and started a header of the sender's
+  choosing. Subject and the `From` display name already go through `mime.QEncoding`
+  (which renders CR/LF as `=0D`/`=0A`) and attachment filenames through `%q`.
+
+  Not exploitable as shipped: `Send` issues `c.Rcpt(to)` before `DATA`, and `net/smtp`
+  runs `validateLine` inside `Rcpt`, refusing any CR or LF - so a CRLF-bearing address
+  aborted the exchange at `RCPT TO` and never reached the body. That protection is
+  incidental, lives one call away in the standard library, and covers only this
+  transport. `buildRaw` now refuses an unparsed address (and an empty recipient list)
+  outright, returning `mailer.ErrInvalidRecipient` before anything is dialed; the
+  rejected value is kept out of the error, which is logged.
+
+  The public booking paths validate at intake rather than relying on the mailer: the REST
+  handler (`POST /v1/bookings`) answers 400 "email must be a valid email address", and
+  the shared core behind the conversational assistant's `book` tool and the MCP
+  `create_booking` tool checks the address before it persists anything. Both store the
+  parsed bare address, so a pasted `Bob <bob@example.com>` is recorded as
+  `bob@example.com` - a small deliberate behaviour change, matching what the hourly
+  throttle, the per-invitee cap and the `To:` header already assume they hold.
+### Added
+- **Sign out everywhere.** `POST /v1/auth/sessions/revoke-all` ends every session you
+  have except the one you asked from, so losing a laptop no longer means waiting out a
+  30-day cookie. Pass `{"user_id": "..."}` and an admin can do the same for someone
+  else: an admin may revoke a member, only the owner may revoke another admin, and the
+  owner's own sessions can only be ended by the owner.
+
+  It also revokes that person's MCP OAuth tokens, which is the part that makes it an
+  offboarding tool rather than a convenience. A connected agent authenticates with a
+  bearer token and not the session cookie, so ending the sessions alone would have left
+  it holding exactly the access that was just withdrawn.
+- **Canadian French (`fr-CA`) on the booker-facing surfaces.** A visitor whose browser asks
+  for `fr-CA` now gets Canadian French rather than the France copy; `fr` and `fr-FR` are
+  unaffected. It is the first regional locale, and a separate file rather than a fallback
+  because the differences are real: `courriel` rather than `e-mail`, `reporter`/`report`
+  rather than `reprogrammer`, `renseignements personnels` (the Quebec statutory term) rather
+  than `données personnelles`, no space before `!` `?` `;` where France puts one, and CLDR
+  itself spells July `juill.` here against `juil.` in France.
+
+  ⚠️ **The wording is an unreviewed draft**, like every non-English locale in this
+  repository: the structure is verified by the same three guards (same keys, printf-verb
+  parity, date tables cross-checked against CLDR), but no native Canadian French speaker has
+  read the copy. Corrections are welcome and easy to merge — see CONTRIBUTING.
+
+- **`FRAME_ANCESTORS`: embed the admin UI in your own console.** Space-separated origins
+  (`https://console.example.com 'self'`); when set, `/admin/` sends
+  `Content-Security-Policy: frame-ancestors <list>`. The public booking pages are
+  untouched and still deny framing outright — this is about the console, not the pages
+  that take card details.
+
+  Two deliberate refusals. An entry that is not `https://host[:port]` or `'self'` stops
+  the app booting rather than being ignored, because a browser drops a source list it
+  cannot parse, which would leave the admin UI *more* embeddable than the setting being
+  unset. And no `X-Frame-Options` is sent beside it: that header has no allow-list form,
+  so the only value it could carry is `SAMEORIGIN`, which browsers honour instead of the
+   CSP and would break the embedding this exists for.
 
 ### Fixed
 - **The Zoom setup text no longer promises that an unpublished app works for "your own
@@ -46,6 +105,11 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
   find an id it never issued, so the event stayed on the CalDAV calendar at its old time,
   or after its booking was cancelled. A CalDAV event id is the event's URL, which is now
   enough to route it back to the CalDAV provider whatever the destination is.
+- **Microsoft calendars can be chosen as the one bookings are written into.** Since 0.5.0
+  the calendar picker marked every Microsoft calendar "(read-only)" and disabled its Book
+  option. The calendar list read Graph's `canEdit` but left it out of `$select`, so Graph
+  never returned it and every calendar decoded as not writable. It is now requested, and a
+  test fails if that request omits any property the response decodes.
 
 ## [0.9.0] - 2026-09-10
 
@@ -76,19 +140,6 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
   something. A start that is simply in the past, one a booking took away, and one no host
   pool could satisfy are all excluded, so the explanation never appears attached to the
   wrong cause. Three new/changed keys in all eight locales.
-
-- **`FRAME_ANCESTORS`: embed the admin UI in your own console.** Space-separated origins
-  (`https://console.example.com 'self'`); when set, `/admin/` sends
-  `Content-Security-Policy: frame-ancestors <list>`. The public booking pages are
-  untouched and still deny framing outright — this is about the console, not the pages
-  that take card details.
-
-  Two deliberate refusals. An entry that is not `https://host[:port]` or `'self'` stops
-  the app booting rather than being ignored, because a browser drops a source list it
-  cannot parse, which would leave the admin UI *more* embeddable than the setting being
-  unset. And no `X-Frame-Options` is sent beside it: that header has no allow-list form,
-  so the only value it could carry is `SAMEORIGIN`, which browsers honour instead of the
-  CSP and would break the embedding this exists for.
 
 ### Fixed
 - **Constraint violations are recognised by SQLite's error code rather than by its
