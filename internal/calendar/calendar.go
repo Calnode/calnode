@@ -86,8 +86,9 @@ type Provider interface {
 // the events written before the move nor hands their ids to a provider that never issued them.
 //
 // CalDAV implements it: its event id is the absolute URL of the event resource. Google and
-// Microsoft ids are opaque and never URLs; they do not implement it and keep routing by
-// destination.
+// Microsoft ids are opaque and never URLs; for them the stamped provider recorded at creation
+// (booking_hosts.external_provider, migration 00062) decides, falling back to recognition and
+// then the destination for rows written before stamping.
 type EventRecognizer interface {
 	RecognizesEvent(eventID string) bool
 }
@@ -380,18 +381,32 @@ func (s *Service) FreeBusy(ctx context.Context, userID string, from, to time.Tim
 }
 
 // CreateEvent creates an event on the user's DESTINATION calendar. Returns the event id,
-// the join URL, and the calendar it was written to; ("","","",nil) if they have no
-// destination. Persist the calendar id alongside the event id.
-func (s *Service) CreateEvent(ctx context.Context, userID string, p CreateEventParams) (string, string, string, error) {
+// the join URL, the calendar it was written to, and the provider that wrote it;
+// ("","","","",nil) if they have no destination. Persist the calendar id AND the provider
+// alongside the event id: the provider stamp is what routes later updates and cancels
+// after a destination move (issue #58).
+func (s *Service) CreateEvent(ctx context.Context, userID string, p CreateEventParams) (string, string, string, string, error) {
 	if pr := s.providerForDestination(ctx, userID); pr != nil {
-		return pr.CreateEvent(ctx, userID, p)
+		eventID, joinURL, calendarID, err := pr.CreateEvent(ctx, userID, p)
+		if err != nil {
+			return "", "", "", "", err
+		}
+		return eventID, joinURL, calendarID, pr.Name(), nil
 	}
-	return "", "", "", nil
+	return "", "", "", "", nil
 }
 
-// providerForEvent resolves the provider an existing event belongs to: the one that recognizes
-// its id (EventRecognizer), else the user's destination provider. Returns nil if neither.
-func (s *Service) providerForEvent(ctx context.Context, userID, eventID string) Provider {
+// providerForEvent resolves the provider an existing event belongs to: the stamped
+// provider recorded at creation (empty for rows written before stamping), else one
+// that recognizes its id (EventRecognizer), else the user's destination provider.
+// Returns nil if none. A stamped provider that is no longer registered falls through
+// to recognition and destination rather than stranding the event.
+func (s *Service) providerForEvent(ctx context.Context, userID, eventID, storedProvider string) Provider {
+	if storedProvider != "" {
+		if pr := s.providers[storedProvider]; pr != nil {
+			return pr
+		}
+	}
 	for _, name := range s.ProviderNames() {
 		if r, ok := s.providers[name].(EventRecognizer); ok && r.RecognizesEvent(eventID) {
 			return s.providers[name]
@@ -400,20 +415,20 @@ func (s *Service) providerForEvent(ctx context.Context, userID, eventID string) 
 	return s.providerForDestination(ctx, userID)
 }
 
-// UpdateEvent moves an event. calendarID is the one recorded at creation; empty falls back
-// to the user's current destination. The provider is the one that recognizes eventID, if any
-// does, else the destination's (providerForEvent).
-func (s *Service) UpdateEvent(ctx context.Context, userID, calendarID, eventID string, start, end time.Time) error {
-	if pr := s.providerForEvent(ctx, userID, eventID); pr != nil {
+// UpdateEvent moves an event. calendarID is the one recorded at creation; provider is
+// the stamped provider recorded alongside it ("" for pre-stamp rows: recognition, then
+// the user's current destination).
+func (s *Service) UpdateEvent(ctx context.Context, userID, calendarID, eventID, provider string, start, end time.Time) error {
+	if pr := s.providerForEvent(ctx, userID, eventID, provider); pr != nil {
 		return pr.UpdateEvent(ctx, userID, calendarID, eventID, start, end)
 	}
 	return nil
 }
 
-// CancelEvent deletes an event. calendarID is the one recorded at creation; empty falls
-// back to the user's current destination. The provider is chosen as for UpdateEvent.
-func (s *Service) CancelEvent(ctx context.Context, userID, calendarID, eventID string) error {
-	if pr := s.providerForEvent(ctx, userID, eventID); pr != nil {
+// CancelEvent deletes an event. calendarID and provider are the ones recorded at
+// creation; provider "" falls back as for UpdateEvent.
+func (s *Service) CancelEvent(ctx context.Context, userID, calendarID, eventID, provider string) error {
+	if pr := s.providerForEvent(ctx, userID, eventID, provider); pr != nil {
 		return pr.CancelEvent(ctx, userID, calendarID, eventID)
 	}
 	return nil

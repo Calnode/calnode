@@ -98,15 +98,16 @@ func (h *Handler) ReassignBooking(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Capture the old host + calendar event + summary fields before the move.
-	var oldHostID, extEventID, etName, orgName, orgEmail, orgLocale string
+	var oldHostID, extEventID, extProvider, etName, orgName, orgEmail, orgLocale string
 	err = h.db.QueryRowContext(r.Context(), `
-		SELECT b.host_id, COALESCE(b.external_event_id,''), et.name,
-		       COALESCE(a.name,''), COALESCE(a.email,''), COALESCE(a.locale,'')
+		SELECT b.host_id, COALESCE(b.external_event_id,''), COALESCE(bh.external_provider,''),
+		       et.name, COALESCE(a.name,''), COALESCE(a.email,''), COALESCE(a.locale,'')
 		FROM bookings b
 		JOIN event_types et ON et.id = b.event_type_id
 		LEFT JOIN booking_attendees a ON a.booking_id = b.id AND a.is_organizer = 1
+		LEFT JOIN booking_hosts bh ON bh.booking_id = b.id AND bh.user_id = b.host_id
 		WHERE b.id = ?`, id).
-		Scan(&oldHostID, &extEventID, &etName, &orgName, &orgEmail, &orgLocale)
+		Scan(&oldHostID, &extEventID, &extProvider, &etName, &orgName, &orgEmail, &orgLocale)
 	if errors.Is(err, sql.ErrNoRows) {
 		h.writeError(w, http.StatusNotFound, "booking not found")
 		return
@@ -159,17 +160,14 @@ func (h *Handler) ReassignBooking(w http.ResponseWriter, r *http.Request) {
 		// produced nothing, e.g. the new host has no destination calendar).
 		if gc := h.getCal(); gc != nil {
 			if extEventID != "" {
-				// Reassignment cancels on the OLD host's calendar. Their stored calendar id is not
-				// loaded here, so this falls back to resolving their destination - the same
-				// behaviour as before, and correct unless they also moved their destination.
-				// A CalDAV event is the exception: its id is its URL, which is enough to find the
-				// account that holds it wherever the destination is now.
-				if err := gc.CancelEvent(ctx, oldHostID, "", extEventID); err != nil {
+				// Reassignment cancels on the OLD host's calendar. Their stamped provider
+				// routes it ("" falls back to id recognition, then their destination).
+				if err := gc.CancelEvent(ctx, oldHostID, "", extEventID, extProvider); err != nil {
 					h.logger.Error("reassign: delete old calendar event", "error", err, "booking_id", bCopy.ID)
 				}
 			}
 			loc := i18n.Get(orgLocale) // nil (→ English) if empty/unrecognized; i18n.Locale.T handles nil safely
-			newEventID, _, newCalID, err := gc.CreateEvent(ctx, newHostID, calendar.CreateEventParams{
+			newEventID, _, newCalID, newProvider, err := gc.CreateEvent(ctx, newHostID, calendar.CreateEventParams{
 				Summary:        loc.Tf("calendar_event_summary", etName, orgName),
 				Description:    loc.Tf("calendar_event_booking_id", bCopy.ID),
 				Location:       bCopy.LocationValue, // keep the existing Meet link (don't mint a new one)
@@ -186,9 +184,10 @@ func (h *Handler) ReassignBooking(w http.ResponseWriter, r *http.Request) {
 					h.logger.Error("reassign: persist new event id", "error", err, "booking_id", bCopy.ID)
 				}
 				if _, err := h.db.ExecContext(ctx,
-					`UPDATE booking_hosts SET external_event_id = ?, external_calendar_id = ?
+					`UPDATE booking_hosts SET external_event_id = ?, external_calendar_id = ?,
+					 external_provider = ?
 					 WHERE booking_id = ? AND is_primary = 1`,
-					newEventID, newCalID, bCopy.ID); err != nil {
+					newEventID, newCalID, newProvider, bCopy.ID); err != nil {
 					h.logger.Error("reassign: persist host event id", "error", err, "booking_id", bCopy.ID)
 				}
 			}

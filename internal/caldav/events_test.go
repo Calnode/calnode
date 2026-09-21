@@ -112,7 +112,7 @@ func createOn(t *testing.T, svc *calendar.Service, accountEmail string) (eventID
 	if err := svc.SetDestination(ctx, "u1", "caldav", accountEmail); err != nil {
 		t.Fatalf("set destination %s: %v", accountEmail, err)
 	}
-	eventID, _, calendarID, err := svc.CreateEvent(ctx, "u1", bookingParams())
+	eventID, _, calendarID, _, err := svc.CreateEvent(ctx, "u1", bookingParams())
 	if err != nil || eventID == "" {
 		t.Fatalf("CreateEvent on %s: id=%q err=%v", accountEmail, eventID, err)
 	}
@@ -147,10 +147,10 @@ func TestUpdateCancel_eventOnPreviousAccountUsesThatAccount(t *testing.T) {
 	}
 	srvA.reset()
 
-	if err := svc.UpdateEvent(ctx, "u1", calendarID, eventID, moveStart, moveEnd); err != nil {
+	if err := svc.UpdateEvent(ctx, "u1", calendarID, eventID, "", moveStart, moveEnd); err != nil {
 		t.Errorf("UpdateEvent: %v", err)
 	}
-	if err := svc.CancelEvent(ctx, "u1", calendarID, eventID); err != nil {
+	if err := svc.CancelEvent(ctx, "u1", calendarID, eventID, ""); err != nil {
 		t.Errorf("CancelEvent: %v", err)
 	}
 
@@ -187,10 +187,10 @@ func TestCancel_emptyCalendarIDResolvesOwnerByURL(t *testing.T) {
 	}
 	srvA.reset()
 
-	if err := svc.CancelEvent(ctx, "u1", "", eventID); err != nil {
+	if err := svc.CancelEvent(ctx, "u1", "", eventID, ""); err != nil {
 		t.Errorf("CancelEvent with no calendar id: %v", err)
 	}
-	if err := svc.UpdateEvent(ctx, "u1", "", eventID, moveStart, moveEnd); err != nil {
+	if err := svc.UpdateEvent(ctx, "u1", "", eventID, "", moveStart, moveEnd); err != nil {
 		t.Errorf("UpdateEvent with no calendar id: %v", err)
 	}
 	srvA.onlyOwnCredentials(t, "A")
@@ -223,7 +223,7 @@ func TestUpdate_eventInPickedCalendarResolvesToItsAccount(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	eventID, _, calendarID, err := svc.CreateEvent(ctx, "u1", bookingParams())
+	eventID, _, calendarID, _, err := svc.CreateEvent(ctx, "u1", bookingParams())
 	if err != nil || calendarID != work || !strings.HasPrefix(eventID, work) {
 		t.Fatalf("CreateEvent: id=%q cal=%q err=%v, want an event in %s", eventID, calendarID, err, work)
 	}
@@ -233,7 +233,7 @@ func TestUpdate_eventInPickedCalendarResolvesToItsAccount(t *testing.T) {
 	srvA.reset()
 
 	for _, calID := range []string{calendarID, ""} {
-		if err := svc.UpdateEvent(ctx, "u1", calID, eventID, moveStart, moveEnd); err != nil {
+		if err := svc.UpdateEvent(ctx, "u1", calID, eventID, "", moveStart, moveEnd); err != nil {
 			t.Errorf("UpdateEvent(calendarID=%q): %v", calID, err)
 		}
 	}
@@ -318,10 +318,10 @@ func TestUpdateCancel_destinationMovedToAnotherProvider(t *testing.T) {
 	seedOtherDestination(t, c, svc)
 	srvA.reset()
 
-	if err := svc.UpdateEvent(ctx, "u1", calendarID, eventID, moveStart, moveEnd); err != nil {
+	if err := svc.UpdateEvent(ctx, "u1", calendarID, eventID, "", moveStart, moveEnd); err != nil {
 		t.Errorf("UpdateEvent: %v", err)
 	}
-	if err := svc.CancelEvent(ctx, "u1", calendarID, eventID); err != nil {
+	if err := svc.CancelEvent(ctx, "u1", calendarID, eventID, ""); err != nil {
 		t.Errorf("CancelEvent: %v", err)
 	}
 	if len(other.touched) != 0 {
@@ -333,7 +333,7 @@ func TestUpdateCancel_destinationMovedToAnotherProvider(t *testing.T) {
 	}
 
 	// The other provider's own events still route to it, by destination, as before.
-	if err := svc.CancelEvent(ctx, "u1", "primary", "other-event-1"); err == nil {
+	if err := svc.CancelEvent(ctx, "u1", "primary", "other-event-1", ""); err == nil {
 		t.Error("CancelEvent of the other provider's event: want its error, got nil")
 	}
 	if !reflect.DeepEqual(other.touched, []string{"other-event-1"}) {
@@ -362,10 +362,10 @@ func TestUpdateCancel_owningAccountDisconnectedSendsNothing(t *testing.T) {
 	}
 	srvA.reset()
 
-	if err := svc.UpdateEvent(ctx, "u1", calendarID, eventID, moveStart, moveEnd); err != nil {
+	if err := svc.UpdateEvent(ctx, "u1", calendarID, eventID, "", moveStart, moveEnd); err != nil {
 		t.Errorf("UpdateEvent with no CalDAV account left: %v, want nil (no connection to act as)", err)
 	}
-	if err := svc.CancelEvent(ctx, "u1", calendarID, eventID); err != nil {
+	if err := svc.CancelEvent(ctx, "u1", calendarID, eventID, ""); err != nil {
 		t.Errorf("CancelEvent with no CalDAV account left: %v, want nil (no connection to act as)", err)
 	}
 	srvA.noRequests(t, "A")
@@ -470,10 +470,10 @@ func TestUpdateCancel_ambiguousOrUnknownOwnerSendsNothing(t *testing.T) {
 			calendarID, eventID := tc.ids(s)
 			// ErrEventUnreachable specifically, not just an error: it is what stops the
 			// reconciler retrying a refusal that no later sweep can change.
-			if err := svc.UpdateEvent(ctx, "u1", calendarID, eventID, moveStart, moveEnd); !errors.Is(err, calendar.ErrEventUnreachable) {
+			if err := svc.UpdateEvent(ctx, "u1", calendarID, eventID, "", moveStart, moveEnd); !errors.Is(err, calendar.ErrEventUnreachable) {
 				t.Errorf("UpdateEvent = %v, want calendar.ErrEventUnreachable when the owning account cannot be established", err)
 			}
-			if err := svc.CancelEvent(ctx, "u1", calendarID, eventID); !errors.Is(err, calendar.ErrEventUnreachable) {
+			if err := svc.CancelEvent(ctx, "u1", calendarID, eventID, ""); !errors.Is(err, calendar.ErrEventUnreachable) {
 				t.Errorf("CancelEvent = %v, want calendar.ErrEventUnreachable when the owning account cannot be established", err)
 			}
 			s.srvA.noRequests(t, "A")
@@ -511,11 +511,11 @@ func TestUpdateCancel_serverFailureStaysRetryable(t *testing.T) {
 			eventID, calendarID := createOn(t, svc, "a@a.test")
 			tc.fail(t, c, srvA)
 
-			err := svc.UpdateEvent(ctx, "u1", calendarID, eventID, moveStart, moveEnd)
+			err := svc.UpdateEvent(ctx, "u1", calendarID, eventID, "", moveStart, moveEnd)
 			if err == nil || errors.Is(err, calendar.ErrEventUnreachable) {
 				t.Errorf("UpdateEvent = %v, want a retryable error (not ErrEventUnreachable)", err)
 			}
-			err = svc.CancelEvent(ctx, "u1", calendarID, eventID)
+			err = svc.CancelEvent(ctx, "u1", calendarID, eventID, "")
 			if err == nil || errors.Is(err, calendar.ErrEventUnreachable) {
 				t.Errorf("CancelEvent = %v, want a retryable error (not ErrEventUnreachable)", err)
 			}
@@ -538,16 +538,16 @@ func TestUpdateCancel_singleAccountUnchanged(t *testing.T) {
 	path := strings.TrimPrefix(eventID, srvA.URL)
 	srvA.reset()
 
-	if err := svc.UpdateEvent(ctx, "u1", calendarID, eventID, moveStart, moveEnd); err != nil {
+	if err := svc.UpdateEvent(ctx, "u1", calendarID, eventID, "", moveStart, moveEnd); err != nil {
 		t.Errorf("UpdateEvent: %v", err)
 	}
-	if err := svc.UpdateEvent(ctx, "u1", "", eventID, moveStart, moveEnd); err != nil {
+	if err := svc.UpdateEvent(ctx, "u1", "", eventID, "", moveStart, moveEnd); err != nil {
 		t.Errorf("UpdateEvent (no calendar id): %v", err)
 	}
-	if err := svc.CancelEvent(ctx, "u1", calendarID, eventID); err != nil {
+	if err := svc.CancelEvent(ctx, "u1", calendarID, eventID, ""); err != nil {
 		t.Errorf("CancelEvent: %v", err)
 	}
-	if err := svc.CancelEvent(ctx, "u1", "", eventID); err != nil {
+	if err := svc.CancelEvent(ctx, "u1", "", eventID, ""); err != nil {
 		t.Errorf("CancelEvent (no calendar id): %v", err)
 	}
 	a := func(method, ifMatch string) davReq {

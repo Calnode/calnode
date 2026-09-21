@@ -1143,7 +1143,7 @@ func (h *Handler) createHostEventsAndNotify(ctx context.Context, b *booking.Book
 		// the per-host event ID so it can be cancelled later. The primary's id
 		// also lives on the booking row for back-compat.
 		if gc != nil {
-			eventID, link, calID, err := gc.CreateEvent(ctx, host.UserID, calendar.CreateEventParams{
+			eventID, link, calID, provider, err := gc.CreateEvent(ctx, host.UserID, calendar.CreateEventParams{
 				// The attendee is added as a calendar invitee below, so this text reaches
 				// them via the provider's own native invite (Google/Outlook/CalDAV) —
 				// follows their locale like the confirmation email, not English/host-fixed.
@@ -1164,9 +1164,10 @@ func (h *Handler) createHostEventsAndNotify(ctx context.Context, b *booking.Book
 				// re-resolving the host's destination, so changing that later cannot orphan
 				// this event (see migration 00055).
 				if _, err := h.db.ExecContext(ctx,
-					`UPDATE booking_hosts SET external_event_id = ?, external_calendar_id = ?
+					`UPDATE booking_hosts SET external_event_id = ?, external_calendar_id = ?,
+					 external_provider = ?
 					 WHERE booking_id = ? AND user_id = ?`,
-					eventID, calID, b.ID, host.UserID); err != nil {
+					eventID, calID, provider, b.ID, host.UserID); err != nil {
 					h.logger.Error("save host gcal event id", "error", err, "booking_id", b.ID)
 				}
 				if host.IsPrimary {
@@ -1649,7 +1650,7 @@ func (h *Handler) cancelSideEffects(b booking.Booking) {
 	}
 	for _, host := range hosts {
 		if gc != nil && host.ExternalEventID != "" {
-			if err := gc.CancelEvent(ctx, host.UserID, host.ExternalCalendarID, host.ExternalEventID); err != nil {
+			if err := gc.CancelEvent(ctx, host.UserID, host.ExternalCalendarID, host.ExternalEventID, host.ExternalProvider); err != nil {
 				h.logger.Error("cancel gcal event", "error", err, "booking_id", b.ID, "host", host.UserID)
 				h.nudgeCalendarReconcile() // event still on the calendar — heal on a later sweep
 			} else {
@@ -1768,7 +1769,7 @@ func (h *Handler) moveCalendarEvents(ctx context.Context, bookingID string, star
 		if host.ExternalEventID == "" {
 			continue
 		}
-		if err := gc.UpdateEvent(ctx, host.UserID, host.ExternalCalendarID, host.ExternalEventID, start, end); err != nil {
+		if err := gc.UpdateEvent(ctx, host.UserID, host.ExternalCalendarID, host.ExternalEventID, host.ExternalProvider, start, end); err != nil {
 			// The event is now at the wrong time — flag it so the reconciler re-applies
 			// the move on a later sweep (drift can't be inferred from booking state).
 			h.logger.Error("reschedule: move gcal event", "error", err, "booking_id", bookingID, "host", host.UserID)
@@ -1805,6 +1806,9 @@ type assignedHost struct {
 	// Which calendar that event lives in. Empty for bookings made before this was
 	// recorded, which means "resolve the host's current destination" - see migration 00055.
 	ExternalCalendarID string
+	// Which provider wrote the event. Empty for bookings made before this was
+	// stamped (migration 00062): fall back to id recognition, then the destination.
+	ExternalProvider string
 }
 
 // assignedHosts returns every host attending a booking, primary first. Group
@@ -1815,7 +1819,7 @@ type assignedHost struct {
 func (h *Handler) assignedHosts(ctx context.Context, bookingID string) ([]assignedHost, error) {
 	rows, err := h.db.QueryContext(ctx, `
 		SELECT bh.user_id, u.name, u.email, bh.is_primary, COALESCE(bh.external_event_id, ''),
-		       COALESCE(bh.external_calendar_id, '')
+		       COALESCE(bh.external_calendar_id, ''), COALESCE(bh.external_provider, '')
 		FROM booking_hosts bh JOIN users u ON u.id = bh.user_id
 		WHERE bh.booking_id = ?
 		ORDER BY bh.is_primary DESC, u.name ASC`, bookingID)
@@ -1827,7 +1831,7 @@ func (h *Handler) assignedHosts(ctx context.Context, bookingID string) ([]assign
 	for rows.Next() {
 		var a assignedHost
 		var primary int
-		if err := rows.Scan(&a.UserID, &a.Name, &a.Email, &primary, &a.ExternalEventID, &a.ExternalCalendarID); err != nil {
+		if err := rows.Scan(&a.UserID, &a.Name, &a.Email, &primary, &a.ExternalEventID, &a.ExternalCalendarID, &a.ExternalProvider); err != nil {
 			return nil, err
 		}
 		a.IsPrimary = primary != 0

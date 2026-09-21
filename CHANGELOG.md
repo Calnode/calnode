@@ -92,6 +92,14 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
    CSP and would break the embedding this exists for.
 
 ### Fixed
+- **Rescheduling or cancelling after a destination change acts on the provider that
+  holds the event.** The booking stored which calendar its event was written to but
+  not which provider wrote it, so a destination move handed old event ids to a
+  provider that never issued them: silent orphans one way, endless reconciler
+  retries the other. Each host event now stamps its provider at creation; updates
+  and cancels prefer the stamp, then id recognition (CalDAV URLs), then the current
+  destination for pre-stamp rows. Answers
+  [#58](https://github.com/Calnode/calnode/issues/58).
 - **The calendar picker no longer drops calendars past the first page.** Microsoft
   requested `$top=100` calendars once and Google `maxResults=250` once, so anything
   beyond silently vanished: unreachable for conflict checks and unchoosable as the
