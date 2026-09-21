@@ -1,4 +1,5 @@
 export type User = {
+	booking_accent: string;
 	id: string;
 	email: string;
 	name: string;

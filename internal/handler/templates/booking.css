@@ -466,3 +466,5 @@
 }
 .demo-banner strong { font-weight: 600; }
 .demo-banner a { color: inherit; text-decoration: underline; font-weight: 600; }
+
+.cd.sel, .slot-btn.sel, .btn-primary { background: var(--booking-accent, #111827) !important; border-color: var(--booking-accent, #111827); color: var(--booking-accent-text, #fff) !important; }

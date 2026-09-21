@@ -44,16 +44,18 @@ type bookQuestion struct {
 }
 
 type bookPageData struct {
-	PhoneChoice   bool
-	Slug          string
-	Name          string
-	Description   template.HTML
-	DurationLabel string
-	HostName      string
-	HostInitial   string
-	AvatarURL     string
-	Hosts         []hostDisplay // faces for the info panel (1 = single, >1 = group stack)
-	HostsLabel    string        // "Alex, Sam & 2 others" for the group case
+	PhoneChoice      bool
+	AccentColor      string
+	AccentForeground string
+	Slug             string
+	Name             string
+	Description      template.HTML
+	DurationLabel    string
+	HostName         string
+	HostInitial      string
+	AvatarURL        string
+	Hosts            []hostDisplay // faces for the info panel (1 = single, >1 = group stack)
+	HostsLabel       string        // "Alex, Sam & 2 others" for the group case
 	// SoleHostName is the host's name when this event type has exactly one, and "" when
 	// it has several. It is what lets an empty day read "Alex has no available times on
 	// …": a group label ("Alex, Sam & 2 others") in that sentence would need a plural
@@ -321,16 +323,17 @@ func (h *Handler) PublicEventType(w http.ResponseWriter, r *http.Request) {
 		durMins, maxDays, minNotice, priceCents    int
 		msgGreeting                                sql.NullString
 		allowPhoneCall                             bool
+		accentColor                                string
 	)
 	err := h.db.QueryRowContext(r.Context(), `
 		SELECT et.id, et.name, COALESCE(et.description, ''),
 		       et.duration_minutes, et.location_type, COALESCE(et.location_value, ''),
 		       et.max_future_days, et.min_notice_minutes, et.routing_mode, u.name, COALESCE(u.avatar_url, ''),
-		       et.price_cents, et.currency, et.msg_greeting, et.allow_phone_call
+		       et.price_cents, et.currency, et.msg_greeting, et.allow_phone_call, u.booking_accent
 		FROM event_types et
 		JOIN users u ON u.id = et.user_id
 		WHERE et.slug = ? AND et.is_active = 1 AND et.is_public = 1`,
-		slug).Scan(&etID, &name, &description, &durMins, &locType, &locValue, &maxDays, &minNotice, &routingMode, &hostName, &avatarURL, &priceCents, &currency, &msgGreeting, &allowPhoneCall)
+		slug).Scan(&etID, &name, &description, &durMins, &locType, &locValue, &maxDays, &minNotice, &routingMode, &hostName, &avatarURL, &priceCents, &currency, &msgGreeting, &allowPhoneCall, &accentColor)
 	if errors.Is(err, sql.ErrNoRows) {
 		h.writeError(w, http.StatusNotFound, "event type not found")
 		return
@@ -389,11 +392,13 @@ func (h *Handler) PublicEventType(w http.ResponseWriter, r *http.Request) {
 		// doesn't have to rebuild it from duration_minutes (it used to hardcode " min",
 		// which both skipped translation and disagreed with the pages for >= 60 min).
 		// duration_minutes stays for clients that want the raw number.
-		"duration_label":   durationLabel(durMins, loc),
-		"location_type":    locType,
-		"allow_phone_call": allowPhoneCall && onlineMeetingLocation(locType),
-		"location_label":   locationLabel(locType, locValue, loc),
-		"max_future_days":  maxDays,
+		"duration_label":            durationLabel(durMins, loc),
+		"location_type":             locType,
+		"allow_phone_call":          allowPhoneCall && onlineMeetingLocation(locType),
+		"booking_accent":            accentColor,
+		"booking_accent_foreground": accentForeground(accentColor),
+		"location_label":            locationLabel(locType, locValue, loc),
+		"max_future_days":           maxDays,
 		// min_notice_label is the translated minimum-notice duration ("4 hours"), empty
 		// when the event type sets none. The widget needs it here because the /slots call
 		// it makes later carries no language of its own, and min_notice_minutes alone
@@ -433,16 +438,17 @@ func (h *Handler) BookPage(w http.ResponseWriter, r *http.Request) {
 		currency       string
 		msgGreeting    sql.NullString
 		allowPhoneCall bool
+		accentColor    string
 	)
 	err := h.db.QueryRowContext(r.Context(), `
 		SELECT et.id, et.name, COALESCE(et.description, ''),
 		       et.duration_minutes, et.location_type, COALESCE(et.location_value, ''),
 		       et.max_future_days, et.min_notice_minutes, et.routing_mode, u.name, COALESCE(u.avatar_url, ''),
-		       et.price_cents, et.currency, et.msg_greeting, et.allow_phone_call
+		       et.price_cents, et.currency, et.msg_greeting, et.allow_phone_call, u.booking_accent
 		FROM event_types et
 		JOIN users u ON u.id = et.user_id
 		WHERE et.slug = ? AND et.is_active = 1 AND et.is_public = 1`,
-		slug).Scan(&etID, &name, &description, &durMins, &locType, &locValue, &maxDays, &minNotice, &routingMode, &hostName, &avatarURL, &priceCents, &currency, &msgGreeting, &allowPhoneCall)
+		slug).Scan(&etID, &name, &description, &durMins, &locType, &locValue, &maxDays, &minNotice, &routingMode, &hostName, &avatarURL, &priceCents, &currency, &msgGreeting, &allowPhoneCall, &accentColor)
 
 	if errors.Is(err, sql.ErrNoRows) {
 		http.Error(w, "Page not found", http.StatusNotFound)
@@ -505,6 +511,8 @@ func (h *Handler) BookPage(w http.ResponseWriter, r *http.Request) {
 
 	data := bookPageData{
 		PhoneChoice:         allowPhoneCall && onlineMeetingLocation(locType),
+		AccentColor:         accentColor,
+		AccentForeground:    accentForeground(accentColor),
 		Slug:                slug,
 		Name:                name,
 		Description:         renderMarkdown(description),
