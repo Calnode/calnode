@@ -156,5 +156,10 @@
   "assistant_iteration_cap": "Laten we het simpel houden: kies een tijd in de agenda hieronder.",
   "assistant_status_slots": "Beschikbaarheid controleren…",
   "assistant_status_book": "Boeken…",
-  "assistant_status_working": "Bezig…"
+  "assistant_status_working": "Bezig…",
+  "time_period": "Dagdeel",
+  "time_morning": "Ochtend",
+  "time_afternoon": "Middag",
+  "time_evening": "Avond",
+  "phone_call_number": "Telefoonnummer (optioneel, voor een telefoongesprek)"
 }

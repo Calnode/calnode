@@ -103,7 +103,7 @@ body {
 }
 </style>
 </head>
-<body>
+<body style="--booking-accent:{{.AccentColor}};--booking-accent-text:{{.AccentForeground}}">
 {{template "demoBanner" .}}
 
 {{if or .LogoURL .BusinessName}}
@@ -446,6 +446,11 @@ body {
     if (notice) list.appendChild(hintP(notice, 'notice-hint'));
   }
 
+  let selectedPeriod = null;
+  function slotPeriod(slot) {
+    const hour = Number(new Intl.DateTimeFormat('en-GB', {timeZone: TZ, hour: 'numeric', hourCycle: 'h23'}).format(new Date(slot.start)));
+    return hour < 12 ? 0 : hour < 17 ? 1 : 2;
+  }
   function fillSlots(list, ds) {
     // Only when this specific day lost starts to the policy - saying it on a day the
     // policy did not touch would be noise attached to the wrong cause.
@@ -464,10 +469,15 @@ body {
     }
     // Taken entries are disabled buttons: same box as a bookable slot, announced as
     // unavailable. `disabled` is what prevents picking one; the click guard is backup.
-    list.innerHTML = slotsCache.map((s, i) => s.taken
+    const periods = [...new Set(slotsCache.map(slotPeriod))].sort();
+    if (!periods.includes(selectedPeriod)) selectedPeriod = periods[0];
+    const labels = ['time_morning', 'time_afternoon', 'time_evening'];
+    const buttons = slotsCache.map((s, i) => ({s, i})).filter(({s}) => slotPeriod(s) === selectedPeriod).map(({s, i}) => s.taken
       ? `<button class="slot-btn taken" disabled aria-label="${fmtTime(s.start)} - ${t('slot_taken')}">${fmtTime(s.start)}</button>`
       : `<button class="slot-btn" data-i="${i}">${fmtTime(s.start)}</button>`
     ).join('');
+    const choices = periods.map(period => `<button type="button" data-period="${period}" aria-pressed="${period === selectedPeriod}">${esc(t(labels[period]))}</button>`).join('');
+    list.innerHTML = `<div class="time-periods" role="group" aria-label="${esc(t('time_period'))}">${choices}</div><div class="time-grid">${buttons}</div>`;
     if (slotsCache.length && !slotsCache.some(s => !s.taken)) {
       list.insertAdjacentHTML('beforeend', `<p class="hint">${t('all_times_taken')}</p>`);
     }
@@ -507,6 +517,13 @@ body {
   }
 
   $('slots-list').addEventListener('click', e => {
+    const period = e.target.closest('[data-period]');
+    if (period) {
+      selectedPeriod = Number(period.dataset.period);
+      fillSlots($('slots-list'), toDateStr(pickedDate.getFullYear(), pickedDate.getMonth(), pickedDate.getDate()));
+      $('slots-list').querySelector(`[data-period="${selectedPeriod}"]`).focus();
+      return;
+    }
     const btn = e.target.closest('.slot-btn');
     if (!btn || btn.disabled) return;
     const i = +btn.dataset.i;

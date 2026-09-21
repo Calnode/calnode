@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
@@ -104,17 +105,23 @@ func (h *Handler) Setup(w http.ResponseWriter, r *http.Request) {
 // GetMe handles GET /v1/users/me.
 func (h *Handler) GetMe(w http.ResponseWriter, r *http.Request) {
 	user, _ := userFromContext(r.Context())
+	var accent string
+	if err := h.db.QueryRowContext(r.Context(), `SELECT booking_accent FROM users WHERE id = ?`, user.ID).Scan(&accent); err != nil {
+		h.writeError(w, http.StatusInternalServerError, "could not load profile")
+		return
+	}
 	out := map[string]any{
-		"id":          user.ID,
-		"email":       user.Email,
-		"name":        user.Name,
-		"timezone":    user.IANATZ,
-		"time_format": user.TimeFormat,
-		"week_start":  user.WeekStart,
-		"date_format": user.DateFormat,
-		"is_admin":    user.IsAdmin,
-		"is_owner":    user.IsOwner,
-		"role":        user.Role(),
+		"booking_accent": accent,
+		"id":             user.ID,
+		"email":          user.Email,
+		"name":           user.Name,
+		"timezone":       user.IANATZ,
+		"time_format":    user.TimeFormat,
+		"week_start":     user.WeekStart,
+		"date_format":    user.DateFormat,
+		"is_admin":       user.IsAdmin,
+		"is_owner":       user.IsOwner,
+		"role":           user.Role(),
 		// Notification preferences
 		"notify_confirmation":    user.NotifyConfirmation,
 		"notify_cancellation":    user.NotifyCancellation,
@@ -137,6 +144,7 @@ func (h *Handler) PatchMe(w http.ResponseWriter, r *http.Request) {
 
 	var req struct {
 		Name                 *string `json:"name"`
+		BookingAccent        *string `json:"booking_accent"`
 		Timezone             *string `json:"timezone"`
 		TimeFormat           *string `json:"time_format"`
 		WeekStart            *int    `json:"week_start"`
@@ -154,6 +162,18 @@ func (h *Handler) PatchMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var accent string
+	if err := h.db.QueryRowContext(r.Context(), `SELECT booking_accent FROM users WHERE id = ?`, user.ID).Scan(&accent); err != nil {
+		h.writeError(w, http.StatusInternalServerError, "could not load profile")
+		return
+	}
+	if req.BookingAccent != nil {
+		if !regexp.MustCompile(`^#[0-9a-fA-F]{6}$`).MatchString(*req.BookingAccent) {
+			h.writeError(w, http.StatusBadRequest, "booking_accent must be a six-digit hex color")
+			return
+		}
+		accent = strings.ToLower(*req.BookingAccent)
+	}
 	current := struct {
 		Name                 string
 		Timezone             string
@@ -246,11 +266,11 @@ func (h *Handler) PatchMe(w http.ResponseWriter, r *http.Request) {
 
 	if _, err := h.db.ExecContext(r.Context(), `
 		UPDATE users SET
-			name = ?, iana_timezone = ?, time_format = ?, week_start = ?, date_format = ?,
+			booking_accent = ?, name = ?, iana_timezone = ?, time_format = ?, week_start = ?, date_format = ?,
 			notify_confirmation = ?, notify_cancellation = ?, notify_reschedule = ?, notify_reminder = ?,
 			notify_host_booking = ?, notify_host_cancel = ?, notify_host_reschedule = ?
 		WHERE id = ?`,
-		current.Name, current.Timezone, current.TimeFormat, current.WeekStart, current.DateFormat,
+		accent, current.Name, current.Timezone, current.TimeFormat, current.WeekStart, current.DateFormat,
 		boolToInt(current.NotifyConfirmation), boolToInt(current.NotifyCancellation),
 		boolToInt(current.NotifyReschedule), boolToInt(current.NotifyReminder),
 		boolToInt(current.NotifyHostBooking), boolToInt(current.NotifyHostCancel),
@@ -262,16 +282,17 @@ func (h *Handler) PatchMe(w http.ResponseWriter, r *http.Request) {
 	}
 
 	out := map[string]any{
-		"id":          user.ID,
-		"email":       user.Email,
-		"name":        current.Name,
-		"timezone":    current.Timezone,
-		"time_format": current.TimeFormat,
-		"week_start":  current.WeekStart,
-		"date_format": current.DateFormat,
-		"is_admin":    user.IsAdmin,
-		"is_owner":    user.IsOwner,
-		"role":        user.Role(),
+		"booking_accent": accent,
+		"id":             user.ID,
+		"email":          user.Email,
+		"name":           current.Name,
+		"timezone":       current.Timezone,
+		"time_format":    current.TimeFormat,
+		"week_start":     current.WeekStart,
+		"date_format":    current.DateFormat,
+		"is_admin":       user.IsAdmin,
+		"is_owner":       user.IsOwner,
+		"role":           user.Role(),
 		// Notification preferences
 		"notify_confirmation":    current.NotifyConfirmation,
 		"notify_cancellation":    current.NotifyCancellation,

@@ -1,4 +1,5 @@
 export type User = {
+	booking_accent: string;
 	id: string;
 	email: string;
 	name: string;
@@ -20,6 +21,7 @@ export type User = {
 };
 
 export type EventType = {
+	allow_phone_call: boolean;
 	id: string;
 	slug: string;
 	name: string;

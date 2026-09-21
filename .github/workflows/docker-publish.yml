@@ -59,7 +59,7 @@ jobs:
       # pre-release deploy can be pinned to an immutable tag that names its commit.
       - name: Docker metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
@@ -70,7 +70,7 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
 
       - name: Build (push on branch pushes and on tags)
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           platforms: linux/amd64,linux/arm64

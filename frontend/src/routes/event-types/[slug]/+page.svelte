@@ -108,6 +108,23 @@
 	let rotationHosts = $state<Host[]>([]);
 	let togetherHosts = $state<TogetherHost[]>([]);
 	let hostsLoaded = $state(false);
+	let transferOwner = $state('');
+	let transferring = $state(false);
+	let transferHosts = $state<EventTypeHost[]>([]);
+	async function transferEvent() {
+		if (!transferOwner || !$currentUser) return;
+		transferring = true;
+		try {
+			await api.post(`/v1/event-types/${slug}/transfer`, { expected_owner_id: $currentUser.id, new_owner_id: transferOwner });
+			toast.success('Event transferred');
+			await goto(`${base}/event-types`);
+		} catch (error) {
+			toast.error(error instanceof Error ? error.message : 'Could not transfer event');
+		} finally {
+			transferring = false;
+		}
+	}
+
 	let members = $state<TeamMember[]>([]);
 	let teams = $state<Team[]>([]);
 
@@ -120,6 +137,7 @@
 		try {
 			const res = await api.get<{ items: EventTypeHost[] }>(`/v1/event-types/${slug}/hosts`);
 			const items = res.items ?? [];
+			transferHosts = items.filter(h => h.role === 'required' && h.user_id !== $currentUser?.id);
 			const toHost = (h: EventTypeHost): Host => ({ user_id: h.user_id, name: h.name, email: h.email });
 			rotationHosts = items.filter((h) => h.role === 'rotation').map(toHost);
 			togetherHosts = items
@@ -250,12 +268,14 @@
 	let testSent    = $state<Partial<Record<MsgKey, boolean>>>({});
 	let testError   = $state<Partial<Record<MsgKey, string>>>({});
 
+	let allowPhoneCall = $state(false);
 	const slug = $page.params.slug;
 
 	async function loadET() {
 		etError = '';
 		try {
 			et = await api.get<EventType>(`/v1/event-types/${slug}`);
+			allowPhoneCall = et.allow_phone_call;
 			form = {
 				name: et.name,
 				slug: et.slug,
@@ -323,6 +343,7 @@
 				is_active: form.is_active,
 				is_public: form.is_public,
 				show_taken_slots: form.show_taken_slots,
+				allow_phone_call: allowPhoneCall,
 				location_type: form.location_type,
 				location_value: form.location_value.trim() || null,
 				buffer_before_minutes: Number(form.buffer_before_minutes),
@@ -377,6 +398,7 @@
 				return;
 			}
 			await loadET();
+			await loadHosts();
 		} catch (e: any) {
 			toast.error(e.message || 'Could not save changes');
 		} finally {
@@ -433,8 +455,8 @@
 		// Connected calendar — best-effort; drives the meeting-link hint only.
 		api.get<CalendarStatus>('/v1/calendar/status').then((s) => (calStatus = s)).catch(() => {});
 	api.get<ZoomStatus>('/v1/zoom/status').then((s) => (zoomStatus = s)).catch(() => {});
+		await loadHosts();
 		if (hostScope === 'people') {
-			await loadHosts();
 			loadMembers();
 			loadTeams();
 		}
@@ -620,6 +642,9 @@
 			</p>
 		</div>
 
+		{#if isOnlineMeeting(form.location_type)}
+			<label class="flex items-center gap-3 text-sm"><input type="checkbox" bind:checked={allowPhoneCall} />Let invitees choose a phone call by entering their number</label>
+		{/if}
 		<!-- Location -->
 		<div class="mt-6 border-t pt-5">
 			<p class="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Location</p>
@@ -1055,6 +1080,18 @@
 
 	</div>
 </div>
+{/if}
+
+{#if activeTab === 'hosts' && $currentUser?.is_admin}
+	<div class="mt-6 space-y-3 border-t pt-5">
+		<Label for="transfer-owner">Transfer ownership</Label>
+		<p class="text-sm text-muted-foreground">Choose a saved required host. The booking URL stays the same. Transfer is available only when there are no upcoming bookings. Calendar connections and global availability stay with each account.</p>
+		<select id="transfer-owner" bind:value={transferOwner} class="h-9 w-full rounded-md border bg-background px-3 text-sm">
+			<option value="">Select new owner</option>
+			{#each transferHosts as host}<option value={host.user_id}>{host.name || host.email}</option>{/each}
+		</select>
+		<Button variant="outline" disabled={!transferOwner || transferring} onclick={transferEvent}>{transferring ? 'Transferring…' : 'Transfer ownership'}</Button>
+	</div>
 {/if}
 
 {#if activeTab === 'questions'}
