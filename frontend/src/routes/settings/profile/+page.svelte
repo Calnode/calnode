@@ -18,6 +18,7 @@
 	let user = $state<User | null>(null);
 	const loadingFlag = createAsyncFlag(true);
 	const savingFlag = createAsyncFlag();
+	let handle = $state('');
 	const uploadingFlag = createAsyncFlag();
 	let avatarUrl = $state('');
 	let fileInput = $state<HTMLInputElement | undefined>(undefined);
@@ -75,6 +76,7 @@
 	onMount(() => loadingFlag.run(async () => {
 		user = await api.get<User>('/v1/users/me');
 		name = user.name ?? '';
+		handle = user.handle ?? '';
 		booking_accent = user.booking_accent;
 		timezone = user.timezone;
 		time_format = user.time_format ?? '12h';
@@ -124,7 +126,7 @@
 	async function save() {
 		await savingFlag.run(async () => {
 			const updated = await api.patch<User>('/v1/users/me', {
-				name, timezone, time_format, week_start, date_format, booking_accent,
+				name, timezone, time_format, week_start, date_format, booking_accent, handle,
 			});
 			currentUser.set(updated);
 			prefs.set(prefsFromUser(updated));
@@ -196,6 +198,11 @@
 					<Label for="name">Name</Label>
 					<Input id="name" type="text" bind:value={name} placeholder="Your name" />
 					<p class="text-xs text-muted-foreground">Your personal name, shown as the meeting host. Your business brand (logo, business name) is set separately in Settings → Branding.</p>
+				</div>
+				<div class="space-y-1.5">
+					<Label for="handle">Booking handle</Label>
+					<Input id="handle" type="text" bind:value={handle} placeholder="e.g. wynne" />
+					<p class="text-xs text-muted-foreground">Your public booking page{handle.trim() ? `: /u/${handle.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')}` : ''}. Leave blank for no page.</p>
 				</div>
 				<div class="space-y-1.5">
 					<Label class="text-muted-foreground">Email</Label>

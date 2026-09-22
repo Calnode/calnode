@@ -462,6 +462,8 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	mux.HandleFunc("GET /embed.js", h.EmbedJS)
 	mux.HandleFunc("GET /booking.css", h.BookingCSS)
 	mux.HandleFunc("GET /book/{slug}", h.BookPage)
+	mux.HandleFunc("GET /u/{handle}", h.PersonPage)
+	mux.HandleFunc("GET /team/{slug}", h.TeamPage)
 
 	// Built-in LiveKit video room (public): the page, its vendored assets, and the token
 	// exchange. The signed room token in the join URL is the capability — no auth.

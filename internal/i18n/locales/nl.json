@@ -162,5 +162,11 @@
   "time_afternoon": "Middag",
   "time_evening": "Avond",
   "phone_call_number": "Telefoonnummer (optioneel, voor een telefoongesprek)",
-  "calendar_degraded_notice": "Sommige agendagegevens konden niet worden geladen, dus de beschikbaarheid is mogelijk onvolledig."
+  "calendar_degraded_notice": "Sommige agendagegevens konden niet worden geladen, dus de beschikbaarheid is mogelijk onvolledig.",
+
+  "directory_book": "Boeken",
+  "directory_empty": "Er is momenteel niets te boeken.",
+  "directory_members": "Teamleden",
+  "directory_person_subtitle": "Boek tijd met %s",
+  "directory_team_subtitle": "Boek tijd met het %s-team"
 }

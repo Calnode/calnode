@@ -169,5 +169,11 @@
   "time_afternoon": "Tarde",
   "time_evening": "Noche",
   "phone_call_number": "Teléfono (opcional, para una llamada)",
-  "calendar_degraded_notice": "No se pudo cargar parte de la información del calendario, por lo que la disponibilidad puede estar incompleta."
+  "calendar_degraded_notice": "No se pudo cargar parte de la información del calendario, por lo que la disponibilidad puede estar incompleta.",
+
+  "directory_book": "Reservar",
+  "directory_empty": "No hay nada reservable por ahora.",
+  "directory_members": "Miembros del equipo",
+  "directory_person_subtitle": "Reserva tiempo con %s",
+  "directory_team_subtitle": "Reserva tiempo con el equipo %s"
 }

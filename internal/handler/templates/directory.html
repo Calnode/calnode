@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="{{.Locale}}">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<title>{{.Title}}</title>
+{{template "demoNoindex" .}}
+{{template "trackingHead" .}}
+<link rel="stylesheet" href="/booking.css?v={{.CSSVersion}}">
+<style>
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+  background: #f3f4f6;
+  color: #111827;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 2.5rem 1rem 2rem;
+  gap: 1.25rem;
+}
+.dir-card {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.75rem;
+  max-width: 36rem;
+  width: 100%;
+  padding: 1.75rem;
+}
+.dir-head { display: flex; align-items: center; gap: 1rem; margin-bottom: 0.25rem; }
+.dir-avatar {
+  width: 3.5rem; height: 3.5rem; border-radius: 9999px; flex-shrink: 0;
+  background: #111827; color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.25rem; font-weight: 600; overflow: hidden;
+}
+.dir-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.dir-title { font-size: 1.375rem; font-weight: 650; letter-spacing: -0.01em; margin: 0; }
+.dir-sub { color: #6b7280; font-size: 0.9375rem; margin: 0.35rem 0 0; }
+.dir-members { margin: 1.25rem 0 0; padding: 0; list-style: none; }
+.dir-members li { padding: 0.4rem 0; border-top: 1px solid #f3f4f6; font-size: 0.9375rem; }
+.dir-members li:first-child { border-top: 0; }
+.dir-members a { color: #111827; font-weight: 550; text-decoration: none; }
+.dir-members a:hover { text-decoration: underline; }
+.dir-list { margin: 1.25rem 0 0; padding: 0; list-style: none; display: grid; gap: 0.75rem; }
+.dir-item {
+  display: flex; align-items: center; gap: 1rem;
+  border: 1px solid #e5e7eb; border-radius: 0.625rem; padding: 0.9rem 1rem;
+}
+.dir-item-main { min-width: 0; flex: 1; }
+.dir-item-name { font-weight: 600; margin: 0; }
+.dir-item-name a { color: inherit; text-decoration: none; }
+.dir-item-name a:hover { text-decoration: underline; }
+.dir-item-meta { color: #6b7280; font-size: 0.8125rem; margin: 0.2rem 0 0; }
+.dir-book {
+  flex-shrink: 0; background: #111827; color: #fff; font-weight: 600; font-size: 0.875rem;
+  padding: 0.55rem 1.1rem; border-radius: 0.5rem; text-decoration: none; white-space: nowrap;
+}
+.dir-empty { color: #6b7280; margin: 1.25rem 0 0; }
+</style>
+</head>
+<body>
+{{template "demoBanner" .}}
+<main class="dir-card">
+  <div class="dir-head">
+    {{if .AvatarURL}}
+      <span class="dir-avatar"><img src="{{.AvatarURL}}" alt=""></span>
+    {{else}}
+      {{if .Initial}}<span class="dir-avatar" aria-hidden="true">{{.Initial}}</span>{{end}}
+    {{end}}
+    <div>
+      <h1 class="dir-title">{{.Title}}</h1>
+      <p class="dir-sub">{{.Subtitle}}</p>
+    </div>
+  </div>
+  {{if .Members}}
+  <h2 class="dir-sub" style="margin-top:1.25rem">{{call .T "directory_members"}}</h2>
+  <ul class="dir-members">
+    {{range .Members}}<li>{{if .Handle}}<a href="/u/{{.Handle}}">{{.Name}}</a>{{else}}{{.Name}}{{end}}</li>{{end}}
+  </ul>
+  {{end}}
+  {{if .Items}}
+  <ul class="dir-list">
+    {{range .Items}}<li class="dir-item">
+      <div class="dir-item-main">
+        <p class="dir-item-name"><a href="/book/{{.Slug}}">{{.Name}}</a></p>
+        <p class="dir-item-meta">{{.Meta}}</p>
+      </div>
+      <a class="dir-book" href="/book/{{.Slug}}">{{call $.T "directory_book"}}</a>
+    </li>{{end}}
+  </ul>
+  {{else}}
+  <p class="dir-empty">{{call .T "directory_empty"}}</p>
+  {{end}}
+</main>
+{{template "legalFooter" .}}
+</body>
+</html>

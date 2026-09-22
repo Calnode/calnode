@@ -162,5 +162,11 @@
   "time_morning": "Matin",
   "time_afternoon": "Après-midi",
   "time_evening": "Soir",
-  "calendar_degraded_notice": "Certains renseignements d'agenda n'ont pas pu être chargés, les disponibilités peuvent donc être incomplètes."
+  "calendar_degraded_notice": "Certains renseignements d'agenda n'ont pas pu être chargés, les disponibilités peuvent donc être incomplètes.",
+
+  "directory_book": "Réserver",
+  "directory_empty": "Rien à réserver pour le moment.",
+  "directory_members": "Membres de l'équipe",
+  "directory_person_subtitle": "Réservez du temps avec %s",
+  "directory_team_subtitle": "Réservez du temps avec l'équipe %s"
 }

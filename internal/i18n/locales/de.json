@@ -162,5 +162,11 @@
   "time_afternoon": "Nachmittag",
   "time_evening": "Abend",
   "phone_call_number": "Telefonnummer (optional, für einen Anruf)",
-  "calendar_degraded_notice": "Einige Kalenderinformationen konnten nicht geladen werden, daher ist die Verfügbarkeit möglicherweise unvollständig."
+  "calendar_degraded_notice": "Einige Kalenderinformationen konnten nicht geladen werden, daher ist die Verfügbarkeit möglicherweise unvollständig.",
+
+  "directory_book": "Buchen",
+  "directory_empty": "Derzeit ist nichts buchbar.",
+  "directory_members": "Teammitglieder",
+  "directory_person_subtitle": "Zeit mit %s buchen",
+  "directory_team_subtitle": "Zeit mit dem Team %s buchen"
 }
