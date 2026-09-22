@@ -207,7 +207,7 @@
 		const id = pendingCancelId;
 		if (!id) return;
 		try {
-			await api.post(`/v1/bookings/${id}/cancel`, { reason: 'cancelled by admin' });
+			await api.post(`/v1/bookings/${id}/cancel`, {});
 			await load();
 		} catch (e: any) {
 			error = e.message;

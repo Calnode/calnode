@@ -750,6 +750,62 @@ func TestCancelBooking(t *testing.T) {
 	}
 }
 
+// TestCancelBooking_attributesCallerName: the stored reason names who cancelled
+// (server-side), never the client-supplied string — a member cancelling their own
+// booking must not produce "cancelled by admin" (#90).
+func TestCancelBooking_attributesCallerName(t *testing.T) {
+	h, database, _, _ := setupWorkspaceWithDB(t)
+	database.Exec(`INSERT INTO users (id,email,name,iana_timezone,is_admin) VALUES ('u2','miri@example.com','Miri','UTC',0)`) //nolint:errcheck
+	const memberKey = "cno_memberkey"
+	database.Exec(`INSERT INTO api_keys (id,user_id,name,key_hash,created_at) VALUES ('k2','u2','test',?,'2024-01-01')`, sha256HexForTest(memberKey)) //nolint:errcheck
+
+	// Event type + availability owned by the member, so the booking is theirs.
+	slug, _ := seedEventTypeHTTP(t, h, memberKey)
+	body := fmt.Sprintf(`{"event_type_slug":%q,"start_at":"2026-06-15T11:00:00Z","name":"Carol","email":"carol@example.com"}`, slug)
+	req := httptest.NewRequest(http.MethodPost, "/v1/bookings", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	h.CreateBooking(rec, req)
+	created := mustCreated(t, rec, "create booking")
+	bookingID := mustString(t, created, "id", "create booking")
+
+	// Spoof the old hardcoded client string; the server must ignore it.
+	cancelReq := authReq(http.MethodPost, "/v1/bookings/"+bookingID+"/cancel",
+		`{"reason":"cancelled by admin"}`, memberKey)
+	cancelReq.SetPathValue("id", bookingID)
+	cancelRec := httptest.NewRecorder()
+	h.RequireAuth(h.CancelBooking)(cancelRec, cancelReq)
+	cancelled := mustJSON(t, cancelRec, http.StatusOK, "member cancel")
+	if cancelled["cancellation_reason"] != "Cancelled by Miri" {
+		t.Errorf("cancellation_reason = %v; want %q", cancelled["cancellation_reason"], "Cancelled by Miri")
+	}
+}
+
+// TestCancelBooking_attributesAdminName: same guarantee on the admin path — an admin
+// cancelling names themselves, not the booking's host or a client string.
+func TestCancelBooking_attributesAdminName(t *testing.T) {
+	h, key, _ := setupWorkspace(t)
+	slug, _ := seedEventTypeHTTP(t, h, key)
+
+	body := fmt.Sprintf(`{"event_type_slug":%q,"start_at":"2026-06-15T11:00:00Z","name":"Carol","email":"carol@example.com"}`, slug)
+	req := httptest.NewRequest(http.MethodPost, "/v1/bookings", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	h.CreateBooking(rec, req)
+	created := mustCreated(t, rec, "create booking")
+	bookingID := mustString(t, created, "id", "create booking")
+
+	cancelReq := authReq(http.MethodPost, "/v1/bookings/"+bookingID+"/cancel",
+		`{"reason":"whatever the client says"}`, key)
+	cancelReq.SetPathValue("id", bookingID)
+	cancelRec := httptest.NewRecorder()
+	h.RequireAuth(h.CancelBooking)(cancelRec, cancelReq)
+	cancelled := mustJSON(t, cancelRec, http.StatusOK, "admin cancel")
+	if cancelled["cancellation_reason"] != "Cancelled by Test User" {
+		t.Errorf("cancellation_reason = %v; want %q", cancelled["cancellation_reason"], "Cancelled by Test User")
+	}
+}
+
 func TestListBookings(t *testing.T) {
 	h, key, _ := setupWorkspace(t)
 	slug, _ := seedEventTypeHTTP(t, h, key)

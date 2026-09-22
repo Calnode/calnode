@@ -1622,16 +1622,26 @@ func (h *Handler) CancelBooking(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Reason string `json:"reason"`
 	}
-	// Ignore decode errors — reason is optional.
+	// Ignore decode errors — the client reason is accepted for backward
+	// compatibility but never trusted (see below).
 	_ = json.NewDecoder(r.Body).Decode(&req)
+
+	// Attribute server-side: the cancellation email names who cancelled, and a
+	// client-supplied string once hardcoded "cancelled by admin" for every
+	// non-admin host (#90). Booker manage-link cancels (CancelByToken) and system
+	// cancels keep their own reasons; this path always names the caller.
+	attribution := "Cancelled by " + user.Name
+	if strings.TrimSpace(user.Name) == "" {
+		attribution = "Cancelled by " + user.Email
+	}
 
 	// Admins (and the owner) may cancel any booking — needed to resolve a
 	// departing member's meetings. Non-admin hosts can cancel only their own.
 	var cancelErr error
 	if user.IsAdmin {
-		cancelErr = h.bookingSvc.CancelByID(r.Context(), id, req.Reason)
+		cancelErr = h.bookingSvc.CancelByID(r.Context(), id, attribution)
 	} else {
-		cancelErr = h.bookingSvc.Cancel(r.Context(), user.ID, id, req.Reason)
+		cancelErr = h.bookingSvc.Cancel(r.Context(), user.ID, id, attribution)
 	}
 	if err := cancelErr; err != nil {
 		switch {
