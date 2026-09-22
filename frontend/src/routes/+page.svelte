@@ -8,10 +8,10 @@
 	let calendarConfigured = $state(true);
 	let hasAvailability = $state(false);
 	let hasEventType = $state(false);
-	let firstSlug = $state('');
+	let eventLinks = $state<{ slug: string; name: string }[]>([]);
 	let origin = $state('');
 	let loading = $state(true);
-	let copied = $state(false);
+	let copiedSlug = $state<string | null>(null);
 	let copyFailed = $state(false);
 	let copyTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -27,7 +27,7 @@
 			calendarConnected = cal.connected;
 			hasAvailability = (rules.items?.length ?? 0) > 0;
 			hasEventType = (events.items?.length ?? 0) > 0;
-			firstSlug = events.items?.[0]?.slug ?? '';
+			eventLinks = (events.items ?? []).filter((e) => e.slug).map((e) => ({ slug: e.slug, name: e.name }));
 		} finally {
 			loading = false;
 		}
@@ -43,20 +43,21 @@
 	// pointing at a dead-end connect flow otherwise.
 	const calendarRequired = $derived(calendarConfigured && !$authStatus.demo_mode);
 	const allDone = $derived((!calendarRequired || calendarDone) && hasAvailability && hasEventType);
-	const bookingUrl = $derived(firstSlug && origin ? `${origin}/book/${firstSlug}` : '');
+	const bookingUrl = (slug: string) => (slug && origin ? `${origin}/book/${slug}` : '');
 
-	async function copyLink() {
-		if (!bookingUrl) return;
+	async function copyLink(slug: string) {
+		const url = bookingUrl(slug);
+		if (!url) return;
 		try {
-			await navigator.clipboard.writeText(bookingUrl);
-			copied = true;
+			await navigator.clipboard.writeText(url);
+			copiedSlug = slug;
 			copyFailed = false;
 		} catch {
 			copyFailed = true;
-			copied = false;
+			copiedSlug = null;
 		}
 		if (copyTimer !== null) clearTimeout(copyTimer);
-		copyTimer = setTimeout(() => { copied = false; copyFailed = false; }, 2000);
+		copyTimer = setTimeout(() => { copiedSlug = null; copyFailed = false; }, 2000);
 	}
 </script>
 
@@ -69,25 +70,51 @@
 		<h1 class="text-2xl font-semibold tracking-tight">Dashboard</h1>
 		<p class="mt-1 text-sm text-muted-foreground">Your booking page is live and ready to share.</p>
 	</div>
-	{#if bookingUrl}
+	{#if eventLinks.length === 1}
 		<div class="rounded-lg border bg-card px-5 py-4">
 			<p class="text-sm font-medium mb-2">Your booking link</p>
 			<div class="flex items-center gap-2">
 				<a
-					href={bookingUrl}
+					href={bookingUrl(eventLinks[0].slug)}
 					target="_blank"
 					rel="noopener noreferrer"
 					class="truncate text-sm text-primary hover:underline font-mono"
 				>
-					{bookingUrl}
+					{bookingUrl(eventLinks[0].slug)}
 				</a>
 				<button
-					onclick={copyLink}
+					onclick={() => copyLink(eventLinks[0].slug)}
 					class="shrink-0 rounded px-2 py-0.5 text-xs border bg-background hover:bg-muted transition-colors
 						{copyFailed ? 'border-destructive text-destructive' : ''}"
 				>
-					{copied ? 'Copied!' : copyFailed ? 'Failed' : 'Copy'}
+					{copiedSlug === eventLinks[0].slug ? 'Copied!' : copyFailed ? 'Failed' : 'Copy'}
 				</button>
+			</div>
+		</div>
+	{:else if eventLinks.length > 1}
+		<div class="rounded-lg border bg-card px-5 py-4">
+			<p class="text-sm font-medium mb-2">Your booking links</p>
+			<div class="space-y-2">
+				{#each eventLinks as e (e.slug)}
+					<div class="flex items-center gap-2">
+						<span class="shrink-0 truncate text-sm text-muted-foreground">{e.name}</span>
+						<a
+							href={bookingUrl(e.slug)}
+							target="_blank"
+							rel="noopener noreferrer"
+							class="truncate text-sm text-primary hover:underline font-mono"
+						>
+							{bookingUrl(e.slug)}
+						</a>
+						<button
+							onclick={() => copyLink(e.slug)}
+							class="shrink-0 rounded px-2 py-0.5 text-xs border bg-background hover:bg-muted transition-colors
+								{copyFailed ? 'border-destructive text-destructive' : ''}"
+						>
+							{copiedSlug === e.slug ? 'Copied!' : copyFailed ? 'Failed' : 'Copy'}
+						</button>
+					</div>
+				{/each}
 			</div>
 		</div>
 	{/if}
@@ -194,22 +221,22 @@
 				<p class="mt-0.5 text-xs text-muted-foreground">
 					{hasEventType ? 'Your page is live. Share it and start taking bookings.' : "Available once you've created an event type."}
 				</p>
-				{#if hasEventType && bookingUrl}
+				{#if hasEventType && eventLinks.length > 0}
 					<div class="mt-2 flex items-center gap-2">
 						<a
-							href={bookingUrl}
+							href={bookingUrl(eventLinks[0].slug)}
 							target="_blank"
 							rel="noopener noreferrer"
 							class="truncate text-xs text-primary hover:underline font-mono"
 						>
-							{bookingUrl}
+							{bookingUrl(eventLinks[0].slug)}
 						</a>
 						<button
-							onclick={copyLink}
+							onclick={() => copyLink(eventLinks[0].slug)}
 							class="shrink-0 rounded px-2 py-0.5 text-xs border bg-background hover:bg-muted transition-colors
 								{copyFailed ? 'border-destructive text-destructive' : ''}"
 						>
-							{copied ? 'Copied!' : copyFailed ? 'Failed' : 'Copy'}
+							{copiedSlug === eventLinks[0].slug ? 'Copied!' : copyFailed ? 'Failed' : 'Copy'}
 						</button>
 					</div>
 				{/if}
