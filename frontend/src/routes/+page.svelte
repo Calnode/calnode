@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import { base } from '$app/paths';
-	import { api, type CalendarStatus, type AvailabilityRule, type EventType } from '$lib/api';
+	import { api, type CalendarStatus, type AvailabilityRule, type EventType, type User } from '$lib/api';
 	import { authStatus } from '$lib/stores';
 
 	let calendarConnected = $state(false);
@@ -9,6 +9,7 @@
 	let hasAvailability = $state(false);
 	let hasEventType = $state(false);
 	let eventLinks = $state<{ slug: string; name: string }[]>([]);
+	let myHandle = $state('');
 	let origin = $state('');
 	let loading = $state(true);
 	let copiedSlug = $state<string | null>(null);
@@ -18,11 +19,13 @@
 	onMount(async () => {
 		origin = window.location.origin;
 		try {
-			const [cal, rules, events] = await Promise.all([
+			const [cal, rules, events, me] = await Promise.all([
 				api.get<CalendarStatus>('/v1/calendar/status').catch(() => ({ connected: false, configured: false })),
 				api.get<{ items: AvailabilityRule[] }>('/v1/availability-rules').catch(() => ({ items: [] })),
-				api.get<{ items: EventType[] }>('/v1/event-types').catch(() => ({ items: [] }))
+				api.get<{ items: EventType[] }>('/v1/event-types').catch(() => ({ items: [] })),
+				api.get<User>('/v1/users/me').catch(() => null)
 			]);
+			myHandle = me?.handle ?? '';
 			calendarConfigured = cal.configured !== false;
 			calendarConnected = cal.connected;
 			hasAvailability = (rules.items?.length ?? 0) > 0;
@@ -45,12 +48,11 @@
 	const allDone = $derived((!calendarRequired || calendarDone) && hasAvailability && hasEventType);
 	const bookingUrl = (slug: string) => (slug && origin ? `${origin}/book/${slug}` : '');
 
-	async function copyLink(slug: string) {
-		const url = bookingUrl(slug);
-		if (!url) return;
+	async function copyText(text: string, key: string) {
+		if (!text) return;
 		try {
-			await navigator.clipboard.writeText(url);
-			copiedSlug = slug;
+			await navigator.clipboard.writeText(text);
+			copiedSlug = key;
 			copyFailed = false;
 		} catch {
 			copyFailed = true;
@@ -58,6 +60,10 @@
 		}
 		if (copyTimer !== null) clearTimeout(copyTimer);
 		copyTimer = setTimeout(() => { copiedSlug = null; copyFailed = false; }, 2000);
+	}
+
+	function copyLink(slug: string) {
+		return copyText(bookingUrl(slug), slug);
 	}
 </script>
 
@@ -115,6 +121,28 @@
 						</button>
 					</div>
 				{/each}
+			</div>
+		</div>
+	{/if}
+	{#if myHandle && origin}
+		<div class="rounded-lg border bg-card px-5 py-4">
+			<p class="text-sm font-medium mb-2">Your profile page</p>
+			<div class="flex items-center gap-2">
+				<a
+					href={`${origin}/u/${myHandle}`}
+					target="_blank"
+					rel="noopener noreferrer"
+					class="truncate text-sm text-primary hover:underline font-mono"
+				>
+					{origin}/u/{myHandle}
+				</a>
+				<button
+					onclick={() => copyText(`${origin}/u/${myHandle}`, `u/${myHandle}`)}
+					class="shrink-0 rounded px-2 py-0.5 text-xs border bg-background hover:bg-muted transition-colors
+						{copyFailed ? 'border-destructive text-destructive' : ''}"
+				>
+					{copiedSlug === `u/${myHandle}` ? 'Copied!' : copyFailed ? 'Failed' : 'Copy'}
+				</button>
 			</div>
 		</div>
 	{/if}

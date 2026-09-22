@@ -431,6 +431,7 @@
 							<th class="px-4 pb-3 pt-3 text-left text-xs font-medium text-muted-foreground">Name</th>
 							<th class="px-4 pb-3 pt-3 text-left text-xs font-medium text-muted-foreground">Role</th>
 							<th class="px-4 pb-3 pt-3 text-left text-xs font-medium text-muted-foreground">Teams</th>
+							<th class="px-4 pb-3 pt-3 text-left text-xs font-medium text-muted-foreground">Page</th>
 							<th class="px-4 pb-3 pt-3 text-left text-xs font-medium text-muted-foreground">Auth</th>
 							<th class="px-4 pb-3 pt-3 text-left text-xs font-medium text-muted-foreground">Joined</th>
 							{#if $currentUser?.is_admin}<th class="px-4 pb-3 pt-3"></th>{/if}
@@ -471,6 +472,13 @@
 											<span class="text-xs text-muted-foreground/50">—</span>
 										{/each}
 									</div>
+								</td>
+								<td class="px-4 py-3">
+									{#if m.handle}
+										<a href="/u/{m.handle}" target="_blank" rel="noopener noreferrer" class="text-xs text-primary hover:underline font-mono">/u/{m.handle}</a>
+									{:else}
+										<span class="text-xs text-muted-foreground/50" title="No public page — set a handle in their profile">—</span>
+									{/if}
 								</td>
 								<td class="px-4 py-3">
 									<div class="flex gap-1.5 flex-wrap">

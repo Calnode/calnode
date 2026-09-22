@@ -22,7 +22,7 @@ func (h *Handler) ListUsers(w http.ResponseWriter, r *http.Request) {
 	}
 	rows, err := h.db.QueryContext(r.Context(), `
 		SELECT u.id, u.email, u.name, u.iana_timezone, u.is_admin, u.is_owner, u.email_login,
-		       COALESCE(u.provider,''), COALESCE(u.avatar_url,''), u.created_at,
+		       COALESCE(u.provider,''), COALESCE(u.avatar_url,''), COALESCE(u.handle,''), u.created_at,
 		       u.archived_at, COALESCE(u.archived_by,''), COALESCE(ab.name,'')
 		FROM users u LEFT JOIN users ab ON ab.id = u.archived_by
 		`+where+` ORDER BY u.created_at ASC`)
@@ -41,6 +41,7 @@ func (h *Handler) ListUsers(w http.ResponseWriter, r *http.Request) {
 		ID             string    `json:"id"`
 		Email          string    `json:"email"`
 		Name           string    `json:"name"`
+		Handle         string    `json:"handle,omitempty"`
 		Timezone       string    `json:"timezone"`
 		IsAdmin        bool      `json:"is_admin"`
 		IsOwner        bool      `json:"is_owner"`
@@ -62,7 +63,7 @@ func (h *Handler) ListUsers(w http.ResponseWriter, r *http.Request) {
 		var isAdmin, isOwner, emailLogin int
 		var archivedAt sql.NullString
 		if err := rows.Scan(&u.ID, &u.Email, &u.Name, &u.Timezone, &isAdmin, &isOwner, &emailLogin,
-			&u.Provider, &u.AvatarURL, &u.CreatedAt, &archivedAt, &u.ArchivedBy, &u.ArchivedByName); err != nil {
+			&u.Provider, &u.AvatarURL, &u.Handle, &u.CreatedAt, &archivedAt, &u.ArchivedBy, &u.ArchivedByName); err != nil {
 			continue
 		}
 		u.IsAdmin = isAdmin != 0

@@ -231,6 +231,7 @@ export type TeamMember = {
 	id: string;
 	email: string;
 	name: string;
+	handle?: string;
 	timezone: string;
 	is_admin: boolean;
 	is_owner: boolean;

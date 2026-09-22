@@ -185,6 +185,29 @@
 		}
 	}
 
+	// Dates whose custom-hours blocks overlap: they merge into one window at slot
+	// time, so flag them rather than silently showing two rows that act as one.
+	const overlappingOverrideDates = $derived.by((): string[] => {
+		const byDate = new Map<string, AvailabilityOverride[]>();
+		for (const ov of overrides) {
+			if (ov.reason !== 'custom_hours' || !ov.start_time || !ov.end_time) continue;
+			const arr = byDate.get(ov.date) ?? [];
+			arr.push(ov);
+			byDate.set(ov.date, arr);
+		}
+		const out: string[] = [];
+		for (const [date, blocks] of byDate) {
+			const sorted = [...blocks].sort((a, b) => (a.start_time ?? '').localeCompare(b.start_time ?? ''));
+			for (let i = 1; i < sorted.length; i++) {
+				if ((sorted[i].start_time ?? '') < (sorted[i - 1].end_time ?? '')) {
+					out.push(date);
+					break;
+				}
+			}
+		}
+		return out;
+	});
+
 
 
 
@@ -389,6 +412,9 @@
 
 	<div class="rounded-lg border bg-card">
 		{#if overridesError}<p class="px-4 pt-4 text-sm text-destructive">{overridesError}</p>{/if}
+		{#if overlappingOverrideDates.length > 0}
+			<p class="px-4 pt-4 text-xs text-amber-700">Overlapping blocks on {overlappingOverrideDates.map((d) => fmtDate(d, $prefs)).join(', ')} merge into one window — trim them if that wasn't the intent.</p>
+		{/if}
 
 		{#if overridesLoading}
 			<p class="px-4 py-4 text-sm text-muted-foreground">Loading…</p>
