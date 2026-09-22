@@ -42,21 +42,30 @@ func ResolveDayWindows(loc *time.Location, date time.Time, rules []AvailabilityR
 //
 // date should be a UTC midnight representing the calendar date to evaluate.
 func resolveDay(loc *time.Location, date time.Time, rules []AvailabilityRule, overrides []AvailabilityOverride) ([]Interval, error) {
-	// A date override takes priority over weekly rules.
+	// A date override takes priority over weekly rules. A date may carry several
+	// custom-hours blocks (#95); a blocking override wins over customs on the same
+	// date (write-time exclusivity keeps that combination rare, but resolve-time
+	// priority keeps it deterministic regardless).
+	var windows []Interval
+	matched := false
 	for _, ov := range overrides {
-		if sameLocalDate(ov.Date, date, loc) {
-			if !ov.IsAvailable {
-				return nil, nil // full day blocked
-			}
-			iv, err := wallClockInterval(loc, date, ov.StartTime, ov.EndTime)
-			if err != nil {
-				return nil, fmt.Errorf("override on %s: %w", date.Format("2006-01-02"), err)
-			}
-			if !iv.IsEmpty() {
-				return []Interval{iv}, nil
-			}
-			return nil, nil
+		if !sameLocalDate(ov.Date, date, loc) {
+			continue
 		}
+		matched = true
+		if !ov.IsAvailable {
+			return nil, nil // full day blocked
+		}
+		iv, err := wallClockInterval(loc, date, ov.StartTime, ov.EndTime)
+		if err != nil {
+			return nil, fmt.Errorf("override on %s: %w", date.Format("2006-01-02"), err)
+		}
+		if !iv.IsEmpty() {
+			windows = append(windows, iv)
+		}
+	}
+	if matched {
+		return windows, nil
 	}
 
 	// No override: apply all matching weekly rules.
@@ -66,7 +75,6 @@ func resolveDay(loc *time.Location, date time.Time, rules []AvailabilityRule, ov
 	// refer to the same calendar date.
 	localWeekday := date.Weekday()
 
-	var windows []Interval
 	for _, r := range rules {
 		if r.DayOfWeek != localWeekday {
 			continue

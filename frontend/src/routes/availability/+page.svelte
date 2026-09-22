@@ -518,6 +518,9 @@
 				<Button onclick={addOverride} disabled={addingOv}>
 					{addingOv ? 'Adding…' : 'Add override'}
 				</Button>
+				{#if ovForm.reason === 'custom_hours'}
+					<p class="w-full text-xs text-muted-foreground">Split day? Add one block, then add another on the same date.</p>
+				{/if}
 			</div>
 		</div>
 	</div>
