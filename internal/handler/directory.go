@@ -102,6 +102,7 @@ func (h *Handler) renderDirectory(w http.ResponseWriter, r *http.Request, data d
 	data.TermsURL = brand.TermsURL
 	data.DemoMode = h.demoMode
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Vary", "Accept-Language, Cookie") // see the same header in book.go's BookPage
 	if err := directoryTmpl.Execute(w, data); err != nil {
 		h.logger.ErrorContext(r.Context(), "directory: render", "error", err)
 	}

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/calnode/calnode/internal/db"
 	"github.com/calnode/calnode/internal/uid"
 )
 
@@ -311,6 +312,12 @@ func (h *Handler) PatchMe(w http.ResponseWriter, r *http.Request) {
 		boolToInt(current.NotifyHostBooking), boolToInt(current.NotifyHostCancel),
 		boolToInt(current.NotifyHostReschedule),
 		user.ID); err != nil {
+		if db.IsUniqueViolation(err) {
+			// Check-then-set race on the handle (or a legacy duplicate): the
+			// index is the backstop so two users can never share a page.
+			h.writeError(w, http.StatusConflict, "handle is already in use")
+			return
+		}
 		h.logger.ErrorContext(r.Context(), "patch me", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal error")
 		return
