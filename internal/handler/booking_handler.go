@@ -1625,13 +1625,31 @@ func (h *Handler) CancelBooking(w http.ResponseWriter, r *http.Request) {
 	// Ignore decode errors — reason is optional.
 	_ = json.NewDecoder(r.Body).Decode(&req)
 
+	
+	actor := user.Name
+	if actor == "" {
+		actor = user.Email
+	}
+	if actor == "" {
+		actor = "host"
+	}
+
+	// Compose the attribution server-side.
+	// Ignore legacy hardcoded "cancelled by admin" from older frontend builds.
+	reason := fmt.Sprintf("Cancelled by %s", actor)
+	cleanReason := strings.TrimSpace(req.Reason)
+	if cleanReason != "" && !strings.EqualFold(cleanReason, "cancelled by admin") {
+		reason = fmt.Sprintf("%s: %s", reason, cleanReason)
+	}
+
+	
 	// Admins (and the owner) may cancel any booking — needed to resolve a
 	// departing member's meetings. Non-admin hosts can cancel only their own.
 	var cancelErr error
 	if user.IsAdmin {
-		cancelErr = h.bookingSvc.CancelByID(r.Context(), id, req.Reason)
+		cancelErr = h.bookingSvc.CancelByID(r.Context(), id, reason)
 	} else {
-		cancelErr = h.bookingSvc.Cancel(r.Context(), user.ID, id, req.Reason)
+		cancelErr = h.bookingSvc.Cancel(r.Context(), user.ID, id, reason)
 	}
 	if err := cancelErr; err != nil {
 		switch {
