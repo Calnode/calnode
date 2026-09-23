@@ -592,27 +592,27 @@ type attendeeJSON struct {
 }
 
 type bookingJSON struct {
-	ID                 string         `json:"id"`
-	EventTypeID        string         `json:"event_type_id"`
-	EventTypeSlug      string         `json:"event_type_slug,omitempty"`
-	HostID             string         `json:"host_id"`
-	HostName           string         `json:"host_name,omitempty"` // set in the admin "All bookings" view
-	StartAt            string         `json:"start_at"`
-	EndAt              string         `json:"end_at"`
-	Status             string         `json:"status"`
-	CancellationReason string         `json:"cancellation_reason,omitempty"`
-	LocationValue      string         `json:"location_value,omitempty"`
-	LocationType       string         `json:"location_type,omitempty"`
-	CreatedAt          string         `json:"created_at"`
-	UpdatedAt          string         `json:"updated_at"`
-	PaymentStatus      string         `json:"payment_status,omitempty" jsonschema:"payment state for paid event types: paid, refunded, or pending; absent for free bookings"`
-	AmountPaidCents    int            `json:"amount_paid_cents,omitempty" jsonschema:"amount charged in minor units (e.g. cents); absent for free bookings"`
-	AmountPaidCurrency string         `json:"amount_paid_currency,omitempty" jsonschema:"ISO 4217 currency of the charge (lowercase)"`
+	ID                 string `json:"id"`
+	EventTypeID        string `json:"event_type_id"`
+	EventTypeSlug      string `json:"event_type_slug,omitempty"`
+	HostID             string `json:"host_id"`
+	HostName           string `json:"host_name,omitempty"` // set in the admin "All bookings" view
+	StartAt            string `json:"start_at"`
+	EndAt              string `json:"end_at"`
+	Status             string `json:"status"`
+	CancellationReason string `json:"cancellation_reason,omitempty"`
+	LocationValue      string `json:"location_value,omitempty"`
+	LocationType       string `json:"location_type,omitempty"`
+	CreatedAt          string `json:"created_at"`
+	UpdatedAt          string `json:"updated_at"`
+	PaymentStatus      string `json:"payment_status,omitempty" jsonschema:"payment state for paid event types: paid, refunded, or pending; absent for free bookings"`
+	AmountPaidCents    int    `json:"amount_paid_cents,omitempty" jsonschema:"amount charged in minor units (e.g. cents); absent for free bookings"`
+	AmountPaidCurrency string `json:"amount_paid_currency,omitempty" jsonschema:"ISO 4217 currency of the charge (lowercase)"`
 	// ConfirmFailed flags a booking whose initial confirmation email failed after
 	// retry — operator-visible so a lost confirmation can be followed up manually.
-	ConfirmFailed  bool           `json:"confirm_failed,omitempty"`
-	Attendees      []attendeeJSON `json:"attendees,omitempty"`
-	Hosts              []hostBrief    `json:"hosts,omitempty"` // assigned host(s) for display; set on the public create response
+	ConfirmFailed bool           `json:"confirm_failed,omitempty"`
+	Attendees     []attendeeJSON `json:"attendees,omitempty"`
+	Hosts         []hostBrief    `json:"hosts,omitempty"` // assigned host(s) for display; set on the public create response
 }
 
 // hostBrief is an assigned host's identity for the booking-confirmation screen.
@@ -1633,6 +1633,9 @@ func (h *Handler) CancelBooking(w http.ResponseWriter, r *http.Request) {
 	attribution := "Cancelled by " + user.Name
 	if strings.TrimSpace(user.Name) == "" {
 		attribution = "Cancelled by " + user.Email
+	}
+	if strings.TrimSpace(user.Name) == "" && strings.TrimSpace(user.Email) == "" {
+		attribution = "Cancelled by host"
 	}
 
 	// Admins (and the owner) may cancel any booking — needed to resolve a
