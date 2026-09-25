@@ -90,6 +90,52 @@ func newDialers(deadline time.Time, host string) (net.Dialer, tls.Dialer) {
 		}
 }
 
+// loginAuth implements the two-challenge AUTH LOGIN exchange. Credentials are
+// only sent after the connection has been upgraded to TLS.
+type loginAuth struct {
+	username string
+	password string
+	step     int
+}
+
+func (a *loginAuth) Start(server *smtp.ServerInfo) (string, []byte, error) {
+	if !server.TLS {
+		return "", nil, errors.New("mailer: AUTH LOGIN requires TLS")
+	}
+	return "LOGIN", nil, nil
+}
+
+func (a *loginAuth) Next(_ []byte, more bool) ([]byte, error) {
+	if !more {
+		return nil, nil
+	}
+	switch a.step {
+	case 0:
+		a.step++
+		return []byte(a.username), nil
+	case 1:
+		a.step++
+		return []byte(a.password), nil
+	default:
+		return nil, errors.New("mailer: unexpected AUTH LOGIN challenge")
+	}
+}
+
+func (s *SMTP) authForMethods(methods string) (smtp.Auth, error) {
+	available := strings.Fields(strings.ToUpper(methods))
+	for _, method := range available {
+		if method == "PLAIN" {
+			return smtp.PlainAuth("", s.username, s.password, s.host), nil
+		}
+	}
+	for _, method := range available {
+		if method == "LOGIN" {
+			return &loginAuth{username: s.username, password: s.password}, nil
+		}
+	}
+	return nil, errors.New("mailer: SMTP server does not offer AUTH PLAIN or LOGIN")
+}
+
 func (s *SMTP) Send(ctx context.Context, msg Message) error {
 	addr := net.JoinHostPort(s.connectHost, s.connectPort)
 	// Built before anything is dialed, so an unusable recipient costs no connection.
@@ -150,7 +196,11 @@ func (s *SMTP) Send(ctx context.Context, msg Message) error {
 	defer c.Close()
 
 	if s.username != "" {
-		auth := smtp.PlainAuth("", s.username, s.password, s.host)
+		_, methods := c.Extension("AUTH")
+		auth, err := s.authForMethods(methods)
+		if err != nil {
+			return err
+		}
 		if err := c.Auth(auth); err != nil {
 			// Don't wrap err — SMTP auth responses can contain server-side
 			// detail that may expose credential information in logs.
