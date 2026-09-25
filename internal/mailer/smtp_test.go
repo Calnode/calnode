@@ -4,10 +4,59 @@ import (
 	"context"
 	"errors"
 	"net"
+	"net/smtp"
 	"sync/atomic"
 	"testing"
 	"time"
 )
+
+func TestSMTPAuthForMethods(t *testing.T) {
+	s := &SMTP{host: "smtp.office365.com", username: "user@example.com", password: "secret"}
+
+	// Office 365 advertises LOGIN and XOAUTH2, but not PLAIN.
+	auth, err := s.authForMethods("LOGIN XOAUTH2")
+	if err != nil {
+		t.Fatalf("select LOGIN: %v", err)
+	}
+	if _, ok := auth.(*loginAuth); !ok {
+		t.Fatalf("AUTH LOGIN XOAUTH2 selected %T; want AUTH LOGIN", auth)
+	}
+
+	// Prefer the existing mechanism when a server supports both.
+	auth, err = s.authForMethods("LOGIN PLAIN")
+	if err != nil {
+		t.Fatalf("select PLAIN: %v", err)
+	}
+	if _, ok := auth.(*loginAuth); ok {
+		t.Fatal("AUTH LOGIN PLAIN selected LOGIN; want PLAIN")
+	}
+	if _, err := s.authForMethods("XOAUTH2"); err == nil {
+		t.Fatal("XOAUTH2-only server should reject unsupported password authentication")
+	}
+}
+
+func TestLoginAuthRequiresTLSAndAnswersChallenges(t *testing.T) {
+	auth := &loginAuth{username: "user@example.com", password: "secret"}
+	if _, _, err := auth.Start(&smtp.ServerInfo{TLS: false}); err == nil {
+		t.Fatal("AUTH LOGIN accepted an unencrypted connection")
+	}
+	mechanism, initial, err := auth.Start(&smtp.ServerInfo{TLS: true})
+	if err != nil || mechanism != "LOGIN" || initial != nil {
+		t.Fatalf("Start = %q, %q, %v; want LOGIN and no initial response", mechanism, initial, err)
+	}
+	for _, want := range []string{"user@example.com", "secret"} {
+		response, err := auth.Next(nil, true)
+		if err != nil || string(response) != want {
+			t.Fatalf("challenge response = %q, %v; want %q", response, err, want)
+		}
+	}
+	if _, err := auth.Next(nil, true); err == nil {
+		t.Fatal("AUTH LOGIN accepted a third challenge")
+	}
+	if response, err := auth.Next(nil, false); err != nil || response != nil {
+		t.Fatalf("completed exchange = %q, %v; want no response", response, err)
+	}
+}
 
 // A server that accepts the TCP connection but never writes the initial SMTP greeting
 // reproduces the exact class of hang this test guards against: a port/TLS-mode mismatch
