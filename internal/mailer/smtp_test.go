@@ -27,8 +27,12 @@ func TestSMTPAuthForMethods(t *testing.T) {
 	if err != nil {
 		t.Fatalf("select PLAIN: %v", err)
 	}
-	if _, ok := auth.(*loginAuth); ok {
-		t.Fatal("AUTH LOGIN PLAIN selected LOGIN; want PLAIN")
+	if auth == nil {
+		t.Fatal("AUTH LOGIN PLAIN selected no authentication mechanism; want PLAIN")
+	}
+	mechanism, _, err := auth.Start(&smtp.ServerInfo{Name: s.host, TLS: true})
+	if err != nil || mechanism != "PLAIN" {
+		t.Fatalf("AUTH LOGIN PLAIN selected %q (error: %v); want PLAIN", mechanism, err)
 	}
 	if _, err := s.authForMethods("XOAUTH2"); err == nil {
 		t.Fatal("XOAUTH2-only server should reject unsupported password authentication")
