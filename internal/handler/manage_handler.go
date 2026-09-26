@@ -290,6 +290,11 @@ func (h *Handler) rescheduleSideEffects(bCopy booking.Booking, capturedEtID stri
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
+	// LiveKit join URLs expire with the original meeting: re-mint them first so the
+	// email data loaded below, the manage page, and the stored record all carry
+	// links valid past the new end (#98). Same room, new expiry.
+	h.remintLiveKitLinks(ctx, &bCopy)
+
 	d, err := h.loadCancellationData(ctx, &bCopy)
 	if err != nil {
 		h.logger.Error("reschedule: load email data", "error", err, "booking_id", bCopy.ID)

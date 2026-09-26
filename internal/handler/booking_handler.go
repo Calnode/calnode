@@ -1123,6 +1123,32 @@ func (h *Handler) mintMeetingLink(ctx context.Context, b *booking.Booking, in bo
 	return meetURL, autoGenMeet, livekitHostURL
 }
 
+// remintLiveKitLinks re-mints a LiveKit booking's join URLs after a reschedule. The
+// room itself is stable ("booking-<id>"), but the signed URLs expire shortly after
+// the meeting end — without this, the reschedule email, the manage page, and the
+// stored record keep pointing at tokens that die with the original date (#98).
+// Updates bookings.location_value (attendee link) and b in place; the room column
+// is unchanged. No-op when LiveKit is disabled or the booking never minted a room.
+func (h *Handler) remintLiveKitLinks(ctx context.Context, b *booking.Booking) {
+	lk := h.getLiveKit()
+	if lk == nil {
+		return
+	}
+	var room string
+	if err := h.db.QueryRowContext(ctx,
+		`SELECT COALESCE(livekit_room,'') FROM bookings WHERE id = ?`, b.ID).Scan(&room); err != nil || room == "" {
+		return
+	}
+	exp := b.EndAt.Add(2 * time.Hour)
+	attendeeURL := lk.BookingJoinURL(h.baseURL, room, "", exp)
+	if _, err := h.db.ExecContext(ctx,
+		`UPDATE bookings SET location_value = ? WHERE id = ?`, attendeeURL, b.ID); err != nil {
+		h.logger.Error("livekit: refresh location on reschedule", "error", err, "booking_id", b.ID)
+		return
+	}
+	b.LocationValue = attendeeURL
+}
+
 // hostEventLocation picks the Location for a host's calendar event. That event adds the
 // attendee as a guest (see gcal's CreateEvent), so the calendar provider (Google/Microsoft/
 // CalDAV) emails this value straight to the attendee via its own native invite — bypassing
