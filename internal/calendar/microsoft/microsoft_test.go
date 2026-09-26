@@ -400,6 +400,24 @@ func mkIDToken(tid string) string {
 	return "header." + payload + ".sig"
 }
 
+func mkIDTokenClaims(claims map[string]string) string {
+	parts := make([]string, 0, len(claims)*2)
+	for k, v := range claims {
+		part, _ := json.Marshal(v)
+		parts = append(parts, `"`+k+`":`+string(part))
+	}
+	payload := base64.RawURLEncoding.EncodeToString([]byte(`{` + strings.Join(parts, ",") + `}`))
+	return "header." + payload + ".sig"
+}
+
+func idToken(t *testing.T, raw string) *oauth2.Token {
+	t.Helper()
+	if raw == "" {
+		return &oauth2.Token{}
+	}
+	return (&oauth2.Token{}).WithExtra(map[string]any{"id_token": raw})
+}
+
 func TestAccountKindFromIDToken(t *testing.T) {
 	cases := []struct {
 		name, idToken, want string
@@ -418,6 +436,76 @@ func TestAccountKindFromIDToken(t *testing.T) {
 		if got := accountKindFromIDToken(tok); got != tc.want {
 			t.Errorf("%s: accountKindFromIDToken=%q; want %q", tc.name, got, tc.want)
 		}
+	}
+}
+
+func TestAccountIdentityFromIDToken(t *testing.T) {
+	cases := []struct {
+		name   string
+		claims map[string]string
+		raw    string
+		want   string
+	}{
+		{"preferred_username wins", map[string]string{"preferred_username": "a@x.com", "email": "b@x.com"}, "", "a@x.com"},
+		{"email fallback", map[string]string{"email": "b@x.com"}, "", "b@x.com"},
+		{"tid:oid fallback", map[string]string{"tid": "t1", "oid": "o1"}, "", "t1:o1"},
+		{"oid without tid is nothing", map[string]string{"oid": "o1"}, "", ""},
+		{"no id_token", nil, "", ""},
+		{"malformed", nil, "not-a-jwt", ""},
+	}
+	for _, tc := range cases {
+		var tok *oauth2.Token
+		if tc.raw != "" {
+			tok = idToken(t, tc.raw)
+		} else if tc.claims != nil {
+			tok = idToken(t, mkIDTokenClaims(tc.claims))
+		} else {
+			tok = idToken(t, "")
+		}
+		if got := accountIdentityFromIDToken(tok); got != tc.want {
+			t.Errorf("%s: accountIdentityFromIDToken=%q; want %q", tc.name, got, tc.want)
+		}
+	}
+}
+
+func TestExchangeScopesRequestIdentity(t *testing.T) {
+	c := newTestClient(t)
+	var scopes []string
+	for _, s := range c.config.Scopes {
+		scopes = append(scopes, s)
+	}
+	for _, want := range []string{"openid", "profile", "email", "offline_access"} {
+		found := false
+		for _, s := range scopes {
+			if s == want {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("scopes=%v; want %q (account identification, #99)", scopes, want)
+		}
+	}
+}
+
+// TestSaveToken_distinctFallbackIdentitiesCoexist is the #99 regression: two accounts
+// whose tenants send no email claims must not collapse onto each other.
+func TestSaveToken_distinctFallbackIdentitiesCoexist(t *testing.T) {
+	c := newTestClient(t)
+	ctx := context.Background()
+	seedUser(t, c.db, "u1")
+	tok := &oauth2.Token{AccessToken: "a", RefreshToken: "r", Expiry: time.Now().Add(time.Hour)}
+	if err := c.saveToken(ctx, "u1", "primary", "t1:o1", "work", tok); err != nil {
+		t.Fatalf("save first: %v", err)
+	}
+	if err := c.saveToken(ctx, "u1", "primary", "t1:o2", "work", tok); err != nil {
+		t.Fatalf("save second: %v", err)
+	}
+	var n int
+	if err := c.db.QueryRow(`SELECT COUNT(*) FROM calendar_connections WHERE user_id = 'u1'`).Scan(&n); err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if n != 2 {
+		t.Errorf("connections = %d; want 2 (no replacement)", n)
 	}
 }
 

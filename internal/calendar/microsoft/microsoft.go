@@ -15,6 +15,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -66,8 +67,11 @@ func New(db *sql.DB, clientID, clientSecret, tenant, redirectURL, encKeyHex stri
 			RedirectURL:  redirectURL,
 			// offline_access → refresh token; Calendars.ReadWrite → read free/busy +
 			// write events; openid → an id_token whose `tid` claim tells us whether
-			// this is a work/school or personal account (Teams links need work).
-			Scopes: []string{"openid", "offline_access", "https://graph.microsoft.com/Calendars.ReadWrite"},
+			// this is a work/school or personal account (Teams links need work);
+			// profile + email → the preferred_username/email claims that identify
+			// which account connected, so a second account can't collapse onto the
+			// first when the tenant omits them by default (#99).
+			Scopes: []string{"openid", "profile", "email", "offline_access", "https://graph.microsoft.com/Calendars.ReadWrite"},
 		},
 		key:     key,
 		db:      db,
@@ -103,6 +107,12 @@ func (c *Client) DecryptState(state string) (string, error) {
 	return string(b), err
 }
 
+// ErrNoAccountIdentity means the id_token carried no usable account identifier
+// (no preferred_username, email, or oid claim). The caller must surface this,
+// not store the connection: an empty identifier would collide with — and delete —
+// another empty-identifier connection (#99).
+var ErrNoAccountIdentity = errors.New("microsoft: id_token identifies no account (no preferred_username, email, or oid claim)")
+
 // Exchange converts an auth code into OAuth tokens and persists them for userID.
 // calendarID is unused for Graph (events go to /me/events) but kept for the
 // calendar.Provider interface; stored as a placeholder.
@@ -115,14 +125,22 @@ func (c *Client) Exchange(ctx context.Context, userID, code, calendarID string) 
 		calendarID = "primary"
 	}
 	kind := accountKindFromIDToken(tok)
-	email := accountEmailFromIDToken(tok)
+	email := accountIdentityFromIDToken(tok)
+	if email == "" {
+		// Never treat a missing identifier as a deduplication key: saveToken
+		// deletes the row it is about to replace, so one blank identity would
+		// wipe the other account (#99). Fail loudly at connect instead.
+		return ErrNoAccountIdentity
+	}
 	return c.saveToken(ctx, userID, calendarID, email, kind, tok)
 }
 
-// accountEmailFromIDToken reads the connected account's email/UPN from the id_token
-// (preferred_username, falling back to email). "" if unavailable — used to identify accounts
-// so a user can connect several Microsoft accounts.
-func accountEmailFromIDToken(tok *oauth2.Token) string {
+// accountIdentityFromIDToken identifies the connected account for the
+// calendar_connections row: the email/UPN (preferred_username, falling back to
+// email) when the tenant sends it, else the stable tid:oid pair. It is an opaque
+// account key, not necessarily an email address — "" only when the token carries
+// nothing usable at all.
+func accountIdentityFromIDToken(tok *oauth2.Token) string {
 	raw, _ := tok.Extra("id_token").(string)
 	parts := strings.Split(raw, ".")
 	if len(parts) != 3 {
@@ -135,6 +153,8 @@ func accountEmailFromIDToken(tok *oauth2.Token) string {
 	var claims struct {
 		PreferredUsername string `json:"preferred_username"`
 		Email             string `json:"email"`
+		TID               string `json:"tid"`
+		OID               string `json:"oid"`
 	}
 	if json.Unmarshal(payload, &claims) != nil {
 		return ""
@@ -142,7 +162,13 @@ func accountEmailFromIDToken(tok *oauth2.Token) string {
 	if claims.PreferredUsername != "" {
 		return claims.PreferredUsername
 	}
-	return claims.Email
+	if claims.Email != "" {
+		return claims.Email
+	}
+	if claims.TID != "" && claims.OID != "" {
+		return claims.TID + ":" + claims.OID
+	}
+	return ""
 }
 
 // consumersTenantID is the fixed tenant a personal Microsoft account reports in

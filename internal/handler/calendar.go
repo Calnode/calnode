@@ -9,6 +9,7 @@ import (
 
 	"github.com/calnode/calnode/internal/caldav"
 	"github.com/calnode/calnode/internal/calendar"
+	"github.com/calnode/calnode/internal/calendar/microsoft"
 )
 
 // stateSep separates the provider name from the userID inside the (encrypted)
@@ -93,6 +94,10 @@ func (h *Handler) CalendarCallback(w http.ResponseWriter, r *http.Request) {
 
 	if err := p.Exchange(r.Context(), userID, code, "primary"); err != nil {
 		h.logger.ErrorContext(r.Context(), "calendar callback: exchange", "error", err, "user_id", userID)
+		if errors.Is(err, microsoft.ErrNoAccountIdentity) {
+			h.writeError(w, http.StatusBadRequest, "Microsoft did not identify the account: add the profile and email scopes (or the ID-token email optional claim) in the Entra app registration, then connect again")
+			return
+		}
 		h.writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
