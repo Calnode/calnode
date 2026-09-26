@@ -92,6 +92,12 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
    CSP and would break the embedding this exists for.
 
 ### Fixed
+- **SMTP email works with servers that offer AUTH LOGIN but not AUTH PLAIN.**
+  Calnode previously used PLAIN for every authenticated SMTP connection, which
+  failed against servers such as Microsoft 365 that advertise `LOGIN XOAUTH2`
+  after STARTTLS. It now prefers PLAIN when offered and uses LOGIN otherwise.
+  LOGIN requires TLS, and servers offering neither supported method return a
+  clear error.
 - **Rescheduling on the manage page works again.** Its slot list called an `esc()`
   helper that only ever existed on the booking page, so any day with availability
   threw before rendering and could not be rescheduled. The helper is now defined
