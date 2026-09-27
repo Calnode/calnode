@@ -11,6 +11,8 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-09-27
+
 ### Security
 - **Moving or cancelling a CalDAV booking no longer sends another account's app password
   to the server holding the event.** A host can connect several CalDAV accounts, and
@@ -89,7 +91,25 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
   cannot parse, which would leave the admin UI *more* embeddable than the setting being
   unset. And no `X-Frame-Options` is sent beside it: that header has no allow-list form,
   so the only value it could carry is `SAMEORIGIN`, which browsers honour instead of the
-   CSP and would break the embedding this exists for.
+  CSP and would break the embedding this exists for.
+
+- **Per-person and team booking pages.** A handle set in profile settings buys
+  `/u/{handle}`: every public, active event type the person owns or hosts, with
+  duration, location and price per type. Teams get `/team/{slug}` with their types
+  plus a member roster linking to each member's page. Archived users 404, and handles
+  are slugified, unique, and cleared by blanking the field. Answers
+  [#94](https://github.com/Calnode/calnode/issues/94).
+- **Custom-hours date overrides take several blocks.** A date override used to hold a
+  single window while weekly rules take as many as you like, so a split day (open
+  morning and afternoon around a mid-day appointment) had no honest expression. Dates
+  now hold any number of custom blocks; a blocking override replaces the customs on
+  its date, an exact duplicate still 409s, and the list flags blocks that overlap
+  and merge. Answers
+  [#95](https://github.com/Calnode/calnode/issues/95).
+- **SMTP through a separate relay address.** Some providers require the SMTP session
+  to open against a relay host distinct from the mail domain: the relay address is
+  now configured explicitly instead of derived. Thanks
+  [@marijnbent](https://github.com/marijnbent) ([#65](https://github.com/Calnode/calnode/pull/65)).
 
 ### Fixed
 - **SMTP email works with servers that offer AUTH LOGIN but not AUTH PLAIN.**
@@ -149,6 +169,33 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
   option. The calendar list read Graph's `canEdit` but left it out of `$select`, so Graph
   never returned it and every calendar decoded as not writable. It is now requested, and a
   test fails if that request omits any property the response decodes.
+- **Cancellations name who cancelled.** The bookings page sent a hardcoded "cancelled by
+  admin" reason that the server stored verbatim, so a member cancelling their own booking
+  emailed as an admin cancel. The server now composes "Cancelled by {name}" from the
+  authenticated caller and ignores the client string; booker manage-link and system
+  cancels keep their own reasons. Answers
+  [#90](https://github.com/Calnode/calnode/issues/90).
+- **The dashboard lists every booking link instead of crowning one.** With several event
+  types it showed a single "Your booking link" pointing at whichever came first. One
+  event type keeps the single-link box; several render a per-type list with names, copy
+  buttons, and the profile page link once a handle is set. Answers
+  [#93](https://github.com/Calnode/calnode/issues/93).
+- **A rescheduled LiveKit meeting gets fresh join links.** Room names are stable but the
+  signed URLs expire past the meeting end, so rescheduling past the original date left
+  every stored link dead. Reschedule now re-mints both links on the same room with an
+  expiry past the new end before the emails go out. Answers
+  [#98](https://github.com/Calnode/calnode/issues/98).
+- **A second Microsoft account no longer replaces the first.** Entra tenants omit the
+  `preferred_username`/`email` claims by default, so the account identifier came back
+  empty and saving the new connection deleted the old one. Calnode now requests the
+  `profile` and `email` scopes, falls back to the stable `tid:oid` pair, and refuses the
+  connection with an actionable error rather than storing an empty dedup key. Answers
+  [#99](https://github.com/Calnode/calnode/issues/99).
+- **External calendars are rechecked before a booking is created.** Availability was
+  computed, then the booking was written without re-reading the providers, so an event
+  landing in the gap double-booked. Creation now rechecks and fails closed with
+  provider failures distinguished. Thanks
+  [@marijnbent](https://github.com/marijnbent) ([#66](https://github.com/Calnode/calnode/pull/66)).
 
 ## [0.9.0] - 2026-09-10
 
