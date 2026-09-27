@@ -88,7 +88,7 @@ func (h *Handler) ListUsers(w http.ResponseWriter, r *http.Request) {
 	// Close before the next query: the pool is a single connection, and an open
 	// cursor holds it (exhausted is not closed) — querying while rows is open
 	// deadlocks.
-	rows.Close()
+	rows.Close() // #nosec G104 -- rows already fully consumed above; nothing actionable on close error
 	if err := rows.Err(); err != nil {
 		h.logger.ErrorContext(r.Context(), "list users: rows", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal error")

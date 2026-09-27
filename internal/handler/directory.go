@@ -191,7 +191,7 @@ func (h *Handler) TeamPage(w http.ResponseWriter, r *http.Request) {
 		}
 		members = append(members, m)
 	}
-	mRows.Close()
+	mRows.Close() // #nosec G104 -- rows already fully consumed above; nothing actionable on close error
 	if err := mRows.Err(); err != nil {
 		h.logger.ErrorContext(r.Context(), "team page: members rows", "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)

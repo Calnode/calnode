@@ -367,7 +367,7 @@ func TestListCalendars_followsNextLink(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		if r.URL.Query().Get("$skiptoken") == "" {
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"value":          []map[string]any{graphCalendars[0]},
+				"value":           []map[string]any{graphCalendars[0]},
 				"@odata.nextLink": srv.URL + "/me/calendars?$skiptoken=page2",
 			})
 			return
