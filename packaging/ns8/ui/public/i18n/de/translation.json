@@ -1,0 +1,57 @@
+{
+    "error": {
+        "403": "Vorgang nicht autorisiert",
+        "cannot_retrieve_installed_modules": "Fehler beim Abruf installierter Module",
+        "401": "Authentifizierung fehlerhaft",
+        "cannot_retrieve_module_info": "Fehler beim Abruf der Modul-Info",
+        "generic_error": "Etwas ist schief gegangen",
+        "error": "Fehler",
+        "network_timeout": "Netzwerk-Zeitüberschreitung",
+        "404": "Ressource nicht gefunden",
+        "network_error": "Netzwerk-Fehler",
+        "validation_error": "Fehler bei der Validierung"
+    },
+    "settings": {
+        "test_field": "Testfeld",
+        "configure_instance": "{instance} konfigurieren",
+        "save": "Speichern",
+        "title": "Einstellungen"
+    },
+    "common": {
+        "required": "Erforderlich",
+        "work_in_progress": "In Bearbeitung",
+        "processing": "Verarbeitung läuft..."
+    },
+    "status": {
+        "created": "Erstellt",
+        "size": "Größe",
+        "name": "Name",
+        "no_images": "Keine Abbilder",
+        "app_volumes": "App Volumen | App Volumen",
+        "services": "Dienst | Dienste",
+        "app_images": "App Abbild | App Abbilder",
+        "no_services": "Keine Dienste",
+        "app_instance": "App Instanz",
+        "mount": "Mount",
+        "title": "Status",
+        "installation_node": "Knoten der Installation",
+        "node": "Knoten",
+        "no_volumes": "Keine Volumen"
+    },
+    "about": {
+        "title": "Über"
+    },
+    "action": {
+        "list-backup-repositories": "Backup-Speicherorte auflisten",
+        "get-module-info": "Modul-Info abrufen",
+        "list-installed-modules": "Installierte Module auflisten",
+        "list-backups": "Backups auflisten",
+        "get-status": "Status abrufen",
+        "configure-module": "Modul konfigurieren",
+        "get-configuration": "Konfiguration abrufen",
+        "get-name": "Name abrufen"
+    },
+    "task": {
+        "cannot_create_task": "Aufgabe {action} kann nicht erstellt werden"
+    }
+}

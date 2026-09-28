@@ -1,0 +1,43 @@
+#
+# Copyright (C) 2023 Nethesis S.r.l.
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+
+#
+# This systemd unit starts a calnode instance using Podman.
+# Most parts of this file come from podman-generate-systemd.
+#
+# Calnode is a single static Go binary with an embedded SQLite database.
+# The database file lives on the calnode-data named volume: never remove
+# that volume or point the unit at a different one, or all bookings,
+# users and settings are lost. TLS is terminated by the cluster Traefik
+# instance, so the container only listens on 127.0.0.1.
+#
+[Unit]
+Description=calnode server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Environment=PODMAN_SYSTEMD_UNIT=%n
+EnvironmentFile=%E/state/environment
+WorkingDirectory=%E/state
+Restart=always
+ExecStartPre=/bin/rm -f %t/calnode.pid %t/calnode.ctr-id
+ExecStart=/usr/bin/podman run \
+    --detach \
+    --conmon-pidfile=%t/calnode.pid \
+    --cidfile=%t/calnode.ctr-id \
+    --cgroups=no-conmon \
+    --replace --name=%N \
+    --publish=127.0.0.1:${TCP_PORT}:3000 \
+    --volume=calnode-data:/data \
+    --env-file=calnode.env \
+    __CALNODE_APP_IMAGE__
+ExecStop=/usr/bin/podman stop --ignore --cidfile %t/calnode.ctr-id -t 10
+ExecStopPost=/usr/bin/podman rm --ignore -f --cidfile %t/calnode.ctr-id
+PIDFile=%t/calnode.pid
+Type=forking
+
+[Install]
+WantedBy=default.target

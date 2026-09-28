@@ -1,0 +1,120 @@
+#!/usr/bin/env python3
+
+#
+# Copyright (C) 2023 Nethesis S.r.l.
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+
+#
+# Configure a calnode instance:
+#  1. persist the public hostname and TLS flags to state/config.json
+#  2. write the container env file state/calnode.env (BASE_URL follows
+#     the hostname; the encryption key is generated once and preserved
+#     across reconfigures, since losing it locks the SQLite data key)
+#  3. register a host-based Traefik route (TLS is handled by the cluster)
+#  4. pull the Calnode image so a first install works offline of updates
+#
+import json
+import os
+import secrets
+import sys
+
+import agent
+import agent.tasks
+
+STATE_DIR = os.getcwd()
+ENV_FILE = os.path.join(STATE_DIR, "calnode.env")
+CONFIG_FILE = os.path.join(STATE_DIR, "config.json")
+CALNODE_IMAGE = "ghcr.io/calnode/calnode:latest"
+
+
+def read_env_file(path):
+    values = {}
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            for line in handle.read().splitlines():
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, _, value = line.partition("=")
+                values[key.strip()] = value.strip()
+    except FileNotFoundError:
+        pass
+    return values
+
+
+def read_config():
+    try:
+        with open(CONFIG_FILE, "r", encoding="utf-8") as handle:
+            data = json.load(handle)
+            return data if isinstance(data, dict) else {}
+    except (FileNotFoundError, ValueError):
+        return {}
+
+
+request = json.load(sys.stdin)
+
+host = str(request.get("host", "")).strip().lower()
+lets_encrypt = bool(request.get("lets_encrypt", True))
+http2https = bool(request.get("http2https", True))
+provided_key = str(request.get("encryption_key", "") or "")
+
+if not host:
+    print("host is required", file=sys.stderr)
+    sys.exit(1)
+
+previous = read_config()
+old_host = str(previous.get("host", "") or "")
+
+# Refuse to steal a hostname that another route already answers, unless
+# it is our own previously configured hostname.
+if host != old_host:
+    try:
+        if agent.http_route_in_use(domain=host):
+            print(f"hostname {host} is already in use", file=sys.stderr)
+            sys.exit(2)
+    except AttributeError:
+        pass  # older core without the helper: Traefik decides
+
+existing_env = read_env_file(ENV_FILE)
+encryption_key = provided_key or existing_env.get("CALNODE_ENCRYPTION_KEY", "")
+if not encryption_key:
+    encryption_key = secrets.token_hex(32)
+
+with open(ENV_FILE, "w", encoding="utf-8") as handle:
+    handle.write("# Written by configure-module. CALNODE_ENCRYPTION_KEY\n")
+    handle.write("# unlocks the database key vault: it is covered by cluster\n")
+    handle.write("# backup together with the calnode-data volume. Losing both\n")
+    handle.write("# means bookings become unreadable, so keep backups working.\n")
+    handle.write("PORT=3000\n")
+    handle.write("DATABASE_URL=sqlite:///data/calnode.db\n")
+    handle.write(f"BASE_URL=https://{host}\n")
+    handle.write(f"CALNODE_ENCRYPTION_KEY={encryption_key}\n")
+os.chmod(ENV_FILE, 0o600)
+
+with open(CONFIG_FILE, "w", encoding="utf-8") as handle:
+    json.dump(
+        {"host": host, "lets_encrypt": lets_encrypt, "http2https": http2https},
+        handle,
+        indent=2,
+    )
+
+# Make sure the app image is present before the service starts.
+agent.run_helper("podman", "pull", CALNODE_IMAGE).check_returncode()
+
+# Register a host-based route. Since the "instance" attribute starts with
+# MODULE_ID, the route is removed automatically with the module.
+response = agent.tasks.run(
+    agent_id=agent.resolve_agent_id("traefik@node"),
+    action="set-route",
+    data={
+        "instance": os.environ["MODULE_ID"],
+        "url": "http://127.0.0.1:" + os.environ["TCP_PORT"],
+        "host": host,
+        "http2https": http2https,
+        "lets_encrypt": lets_encrypt,
+    },
+)
+
+# Check if traefik configuration has been successful
+agent.assert_exp(response["exit_code"] == 0)

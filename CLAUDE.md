@@ -237,3 +237,14 @@ at an unconditional `"zoom"`.
 - `pnpm` (not npm). Use `pnpm exec <tool>` for local binaries.
 - Verify changes against the real app, not just builds — this codebase has been
   bitten by CSS that compiles fine but renders wrong.
+
+## Distribution packaging (packaging/)
+
+- One channel per directory: `packaging/ns8/` is the NethServer 8 module
+  (imageroot actions, systemd unit, Vue settings UI, robot tests). Future
+  channels (Umbrel, Coolify, TrueNAS, etc.) get siblings, never a mega-PR.
+- The NS8 module is a thin wrapper around the published app image, built by
+  `.github/workflows/ns8-module.yml` with the same tag scheme as
+  `docker-publish.yml`. Release tags pin module and app to the same version.
+- The committed systemd unit keeps a `__CALNODE_APP_IMAGE__` placeholder;
+  `packaging/ns8/build-images.sh` stamps the real app ref at build time.

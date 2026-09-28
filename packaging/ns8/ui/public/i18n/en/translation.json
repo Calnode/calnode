@@ -1,0 +1,60 @@
+{
+    "common": {
+        "required": "Required",
+        "work_in_progress": "Work in progress",
+        "processing": "Processing..."
+    },
+    "status": {
+        "title": "Status",
+        "app_instance": "App instance",
+        "services": "Service | Services",
+        "app_images": "App image | App images",
+        "app_volumes": "App volume | App volumes",
+        "installation_node": "Installation node",
+        "node": "Node",
+        "name": "Name",
+        "size": "Size",
+        "created": "Created",
+        "mount": "Mount",
+        "no_services": "No services",
+        "no_images": "No images",
+        "no_volumes": "No volumes"
+    },
+    "settings": {
+        "title": "Settings",
+        "configure_instance": "Configure {instance}",
+        "save": "Save",
+        "host": "Hostname",
+        "host_helper": "Public address Calnode is reached at, e.g. book.example.com",
+        "lets_encrypt": "Obtain a Let's Encrypt certificate",
+        "http2https": "Redirect HTTP to HTTPS"
+    },
+    "about": {
+        "title": "About"
+    },
+    "task": {
+        "cannot_create_task": "Cannot create task {action}"
+    },
+    "action": {
+        "get-status": "Get status",
+        "get-configuration": "Get configuration",
+        "configure-module": "Configure module",
+        "get-module-info": "Get module info",
+        "get-name": "Get name",
+        "list-backup-repositories": "List backup repositories",
+        "list-backups": "List backups",
+        "list-installed-modules": "List installed modules"
+    },
+    "error": {
+        "error": "Error",
+        "generic_error": "Something went wrong",
+        "validation_error": "Validation error",
+        "network_error": "Network error",
+        "network_timeout": "Network timeout",
+        "401": "Invalid authentication",
+        "403": "Operation not authorized",
+        "404": "Resource not found",
+        "cannot_retrieve_module_info": "Cannot retrieve module info",
+        "cannot_retrieve_installed_modules": "Cannot retrieve installed modules"
+    }
+}
