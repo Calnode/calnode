@@ -28,8 +28,10 @@ if [ ! -d imageroot ] || [ ! -d ui ]; then
     exit 1
 fi
 
-# Prepare variables for later use
+# Prepare variables for later use. Registry namespaces must be lowercase
+# (docker:// rejects uppercase); normalize up front so every use below is safe.
 repobase="${REPOBASE:-ghcr.io/calnode}"
+repobase="${repobase,,}"
 reponame="ns8-calnode"
 app_image="${APP_IMAGE:-ghcr.io/calnode/calnode:latest}"
 read -r -a imagetags <<< "${IMAGETAGS:-latest}"
@@ -73,12 +75,8 @@ buildah config --entrypoint=/ \
     --label="org.nethserver.volumes=calnode-data" \
     --label="org.nethserver.images=${app_image}" \
     "${container}"
-# Commit the image
+# Commit the image (repobase already lowercased at variable prep above).
 buildah commit "${container}" "${repobase}/${reponame}:build"
-
-# Warning! docker:// protocol expects lowercase letters (,,)
-repobase="${repobase,,}"
-reponame="${reponame,,}"
 
 if [ "${PUSH:-0}" = "1" ]; then
     for imagetag in "${imagetags[@]}"; do
