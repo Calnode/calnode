@@ -5,7 +5,8 @@ name: NS8 module publish
 # the Calnode app itself is pulled from its own registry at install time.
 #   * PR                → validate + build only. Nothing is pushed.
 #   * push to dev       → push `:dev`, running app `:dev`.
-#   * push to main      → push `:edge` + `:latest`, running app `:edge`.
+#   * push to main      → push `:edge`, running app `:edge` (`:latest` stays
+#                         pinned to releases, mirroring docker-publish.yml).
 #   * push a `vX.Y.Z` tag → push `:X.Y.Z`, `:X.Y` and `:latest`, running app
 #                         `:X.Y.Z`. Module and app tags move together, so a
 #                         module release can never point at the wrong app.
@@ -53,7 +54,7 @@ jobs:
             echo "module_tags=${version} ${version%.*} latest" >> "$GITHUB_OUTPUT"
             echo "app_image=ghcr.io/calnode/calnode:${version}" >> "$GITHUB_OUTPUT"
           elif [[ "${GITHUB_REF}" == refs/heads/main ]]; then
-            echo "module_tags=edge latest" >> "$GITHUB_OUTPUT"
+            echo "module_tags=edge" >> "$GITHUB_OUTPUT"
             echo "app_image=ghcr.io/calnode/calnode:edge" >> "$GITHUB_OUTPUT"
           elif [[ "${GITHUB_REF}" == refs/heads/dev ]]; then
             echo "module_tags=dev" >> "$GITHUB_OUTPUT"

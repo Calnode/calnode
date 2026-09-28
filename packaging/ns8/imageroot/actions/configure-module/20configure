@@ -25,7 +25,9 @@ import agent.tasks
 STATE_DIR = os.getcwd()
 ENV_FILE = os.path.join(STATE_DIR, "calnode.env")
 CONFIG_FILE = os.path.join(STATE_DIR, "config.json")
-CALNODE_IMAGE = "ghcr.io/calnode/calnode:latest"
+# Stamped at build time (build-images.sh) to the exact app ref this module
+# release runs, so a pinned install warms the right image instead of :latest.
+CALNODE_IMAGE = "__CALNODE_APP_IMAGE__"
 
 
 def read_env_file(path):

@@ -37,12 +37,14 @@ app_image="${APP_IMAGE:-ghcr.io/calnode/calnode:latest}"
 read -r -a imagetags <<< "${IMAGETAGS:-latest}"
 
 # Stage imageroot with the app image reference stamped in, so the committed
-# tree keeps a placeholder and releases pin the exact app tag.
+# tree keeps a placeholder and releases pin the exact app tag. Both the
+# systemd unit and configure-module's warm-pull default are stamped.
 stage=$(mktemp -d)
 trap 'rm -rf "${stage}"' EXIT
 cp -r imageroot "${stage}/imageroot"
 sed -i "s#__CALNODE_APP_IMAGE__#${app_image}#g" \
-    "${stage}/imageroot/systemd/user/calnode.service"
+    "${stage}/imageroot/systemd/user/calnode.service" \
+    "${stage}/imageroot/actions/configure-module/20configure"
 if grep -q "__CALNODE_APP_IMAGE__" -r "${stage}/imageroot"; then
     echo "App image placeholder was not fully substituted." >&2
     exit 1

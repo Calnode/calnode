@@ -34,7 +34,10 @@ ExecStart=/usr/bin/podman run \
     --volume=calnode-data:/data \
     --env-file=calnode.env \
     __CALNODE_APP_IMAGE__
-ExecStop=/usr/bin/podman stop --ignore --cidfile %t/calnode.ctr-id -t 10
+# 45s grace: the app allows up to 30s HTTP drain plus worker shutdown, so the
+# default 10s would SIGKILL updates mid-request. Data stays safe either way
+# (jobs are crash-recoverable), this is about clean connection draining.
+ExecStop=/usr/bin/podman stop --ignore --cidfile %t/calnode.ctr-id -t 45
 ExecStopPost=/usr/bin/podman rm --ignore -f --cidfile %t/calnode.ctr-id
 PIDFile=%t/calnode.pid
 Type=forking

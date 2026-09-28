@@ -74,6 +74,13 @@ section, then re-run `configure-module` with the same hostname if the route
 needs recreating. Keep at least one tested backup: the encryption key and
 the database are only useful together.
 
+Adopting data from a non-NS8 install is CLI-only: import the SQLite file
+into the `calnode-data` volume, then pass its key explicitly, e.g.
+`api-cli run module/<id>/configure-module --data '{"host": "...",
+"encryption_key": "<key from the old install>"}'`. The Settings page does
+not expose the key field; cluster backup/restore never needs it (the key
+travels inside the backed-up module state).
+
 UNTESTED: no live NS8 node was reachable while writing this, so install,
 configure, update, backup and restore steps above are documented from the
 NS8 module layout but have not been run against a real cluster. The
