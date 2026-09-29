@@ -127,6 +127,22 @@ API key takes precedence over the SMTP fields; clearing it ("Remove key") switch
 
 > Email settings are stored **per instance** in that instance's DB — staging/prod/local each need their own.
 
+### RSVP tracking (optional, Resend only)
+
+For event types whose calendar invite is **sent by Calnode** (event type → Calendar invite),
+Calnode can record whether the booker accepted, declined or said maybe. The answer shows on
+the booking and fires a `booking.rsvp` webhook.
+
+1. In Resend, set up **receiving** on a subdomain, e.g. `reply.yourdomain` (one MX record).
+   Use a subdomain: the MX record would take over your main domain's mail.
+2. In Resend → Webhooks, add `https://<your-domain>/v1/email/inbound/resend` for the
+   `email.received` event and copy its signing secret (`whsec_…`).
+3. Settings → Email → RSVP tracking: enter an address on that subdomain (e.g.
+   `rsvp@reply.yourdomain`) and the signing secret. It also needs the Resend API key above.
+
+Each invite is organized by its own private variant of that address, so no mailbox has to
+exist. Bookings made before you switch it on keep the organizer they were invited with.
+
 ---
 
 ## 5. Google OAuth (sign-in + calendar)

@@ -517,6 +517,9 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	// Stripe payment webhook — public, authenticated by the signing secret (no session
 	// cookie, so the CSRF check doesn't apply). Must receive the raw body.
 	mux.HandleFunc("POST /v1/stripe/webhook", h.StripeWebhook)
+	// Resend inbound email (email.received): RSVPs to Calnode-sent invites. Public,
+	// authenticated by the webhook signature.
+	mux.HandleFunc("POST /v1/email/inbound/resend", h.InboundEmailResend)
 
 	// API keys
 	mux.HandleFunc("GET /v1/api-keys", h.RequireAuth(h.ListAPIKeys))

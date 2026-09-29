@@ -27,6 +27,10 @@
 	// Distinct from "the field is blank": blank means keep the stored key, this means
 	// deliberately remove it and go back to SMTP.
 	let clearResendKey = $state(false);
+	// RSVP tracking (Resend inbound) for invites Calnode sends itself.
+	let rsvpAddress = $state('');
+	let webhookSecret = $state('');
+	let webhookUrl = $state('');
 
 	let userEmail = $state('');
 
@@ -53,6 +57,8 @@
 		smtpStartTLS = email.smtp_starttls;
 		emailFrom = email.email_from;
 		emailFromName = email.email_from_name || 'Calnode';
+		rsvpAddress = email.rsvp_address ?? '';
+		webhookUrl = `${window.location.origin}/v1/email/inbound/resend`;
 	}, 'Could not load email settings'));
 
 	async function save() {
@@ -66,9 +72,13 @@
 			// Omit the key entirely to keep the stored one; send "" only to clear it.
 			if (resendApiKey) body.resend_api_key = resendApiKey;
 			else if (clearResendKey) body.resend_api_key = '';
+			body.rsvp_address = rsvpAddress.trim();
+			// Like the API key: omit to keep the stored secret.
+			if (webhookSecret) body.resend_webhook_secret = webhookSecret.trim();
 			emailSettings = await api.patch<EmailSettings>('/v1/settings/email', body);
 			smtpPass = '';
 			resendApiKey = '';
+			webhookSecret = '';
 			clearResendKey = false;
 			toast.success('Email settings saved');
 		}, 'Could not save email settings');
@@ -221,6 +231,60 @@
 				</Button>
 				<Button variant="outline" onclick={test} disabled={testingFlag.active || !emailSettings?.enabled}>
 					{testingFlag.active ? 'Sending…' : 'Send test email'}
+				</Button>
+			</div>
+		</div>
+
+		<div class="mt-4 rounded-lg border bg-card p-6">
+			<div class="mb-4 flex items-start justify-between gap-2">
+				<div>
+					<h2 class="text-sm font-semibold">RSVP tracking</h2>
+					<p class="mt-0.5 text-xs text-muted-foreground">
+						For event types whose invites Calnode sends. Bookers' Yes / No / Maybe comes back
+						through Resend and shows on the booking.
+					</p>
+				</div>
+				{#if emailSettings !== null}
+					<span class="flex shrink-0 items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium {emailSettings.rsvp_tracking ? 'bg-green-50 text-green-700' : 'bg-muted text-muted-foreground'}">
+						<span class="h-1.5 w-1.5 rounded-full {emailSettings.rsvp_tracking ? 'bg-green-500' : 'bg-muted-foreground/50'}"></span>
+						{emailSettings.rsvp_tracking ? 'On' : 'Off'}
+					</span>
+				{/if}
+			</div>
+
+			{#if !emailSettings?.resend_api_key_set}
+				<p class="mb-4 rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
+					Needs a Resend API key above: Calnode uses it to read the replies.
+				</p>
+			{/if}
+
+			<div class="space-y-4">
+				<div class="space-y-1.5">
+					<Label for="rsvp-address">RSVP address</Label>
+					<Input id="rsvp-address" type="email" placeholder="rsvp@reply.example.com" bind:value={rsvpAddress} />
+					<p class="text-xs text-muted-foreground">
+						An address on a domain Resend receives email for. Each invite gets its own private
+						variant of it, so answers find their booking.
+					</p>
+				</div>
+				<div class="space-y-1.5">
+					<Label for="rsvp-webhook-url">Webhook URL</Label>
+					<Input id="rsvp-webhook-url" readonly value={webhookUrl} />
+					<p class="text-xs text-muted-foreground">
+						Add this in Resend → Webhooks for the <code>email.received</code> event.
+					</p>
+				</div>
+				<div class="space-y-1.5">
+					<Label for="rsvp-webhook-secret">Webhook signing secret</Label>
+					<Input id="rsvp-webhook-secret" type="password"
+						placeholder={emailSettings?.resend_webhook_secret_set ? '•••••••• (stored)' : 'whsec_...'}
+						bind:value={webhookSecret} />
+				</div>
+			</div>
+
+			<div class="mt-5">
+				<Button onclick={save} disabled={savingFlag.active}>
+					{savingFlag.active ? 'Saving…' : 'Save'}
 				</Button>
 			</div>
 		</div>

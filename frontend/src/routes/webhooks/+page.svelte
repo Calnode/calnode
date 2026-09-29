@@ -18,6 +18,7 @@
 		'booking.created',
 		'booking.cancelled',
 		'booking.rescheduled',
+		'booking.rsvp',
 		'recording.completed',
 		'transcript.ready',
 		'notes.ready'
@@ -37,6 +38,7 @@
 			{ key: 'cancellation_reason', label: 'Cancellation reason' },
 			{ key: 'previous_start_at', label: 'Previous start (reschedule)' },
 			{ key: 'previous_end_at', label: 'Previous end (reschedule)' },
+			{ key: 'rsvp_status', label: 'RSVP answer (booking.rsvp)' },
 		] },
 		{ group: 'Payment', fields: [
 			{ key: 'payment_status', label: 'Payment status' },

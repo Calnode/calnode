@@ -561,6 +561,22 @@ the **booking**, not the event type, so a booking is always updated through the 
 its invite went out on. Switching an event type to `calnode` requires email to be set up
 (validated on change).
 
+**RSVPs to Calnode-sent invites (migration 00069, `rsvp_inbound.go`).** A booker's
+Yes/No/Maybe is an iTIP `REPLY` their mail client emails to the invite's `ORGANIZER`. Each
+booking's organizer address is fixed at its first send (`bookings.invite_organizer`,
+`bookingInviteOrganizer`), because clients match later updates by UID *and* organizer. With
+RSVP tracking set up (Settings → Email: an address on a Resend receiving domain, the
+webhook signing secret, and a Resend API key) that address is private per booking,
+`rsvp+<128-bit token>@domain`. Resend posts `email.received` to
+`POST /v1/email/inbound/resend`; the handler verifies the Svix signature
+(`mailer.VerifyResendWebhook`), routes by recipient to the booking, downloads the raw
+message (`mailer.FetchReceivedRaw`), parses the `REPLY` (`mailer.ParseICSReply`), and
+records the answer on `booking_attendees.rsvp_status` only if the UID is that booking's
+and the answering attendee is its booker. A changed answer fires `booking.rsvp`. It
+answers 200 to anything it will not act on and 5xx only when the fetch failed, so Resend
+retries exactly what a retry can fix. Hosts' calendar events are not updated with the
+answer: no provider has an "edit event" write op yet.
+
 **Adding another provider (Apple/iCloud, CalDAV):** implement `calendar.Provider`,
 register it in `internal/server`, set `InvitesGuests()` correctly (drives the `.ics`
 gate above), and extend `providerMintsPlatform`/`CanAutoGenerate` if it offers a

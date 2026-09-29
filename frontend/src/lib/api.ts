@@ -110,6 +110,8 @@ export type Booking = {
 	payment_status?: 'pending' | 'paid' | 'refunded';
 	amount_paid_cents?: number;
 	amount_paid_currency?: string;
+	/** The booker's RSVP to a Calnode-sent invite; absent until an answer arrives. */
+	rsvp_status?: 'accepted' | 'declined' | 'tentative';
 };
 
 export type APIKey = {
@@ -188,6 +190,12 @@ export type EmailSettings = {
 	// being delivered over SMTP" can differ, so the server reports the live answer.
 	transport: 'none' | 'smtp' | 'resend_api';
 	enabled: boolean;
+	/** RSVP tracking for invites Calnode sends: the Resend inbound address RSVPs are routed
+	 *  through (e.g. rsvp@reply.example.com). */
+	rsvp_address: string;
+	resend_webhook_secret_set: boolean; // never returned directly
+	/** True when address, webhook secret and Resend API key are all present. */
+	rsvp_tracking: boolean;
 };
 
 export type GoogleSettings = {
