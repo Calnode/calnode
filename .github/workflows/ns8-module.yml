@@ -1,0 +1,81 @@
+name: NS8 module publish
+
+# Builds the ns8-calnode module image from packaging/ns8. The module is a thin
+# wrapper: this image carries configuration scripts and the settings UI, while
+# the Calnode app itself is pulled from its own registry at install time.
+#   * PR                → validate + build only. Nothing is pushed.
+#   * push to dev       → push `:dev`, running app `:dev`.
+#   * push to main      → push `:edge`, running app `:edge` (`:latest` stays
+#                         pinned to releases, mirroring docker-publish.yml).
+#   * push a `vX.Y.Z` tag → push `:X.Y.Z`, `:X.Y` and `:latest`, running app
+#                         `:X.Y.Z`. Module and app tags move together, so a
+#                         module release can never point at the wrong app.
+on:
+  push:
+    branches: [main, dev]
+    tags: ['v*.*.*']
+  pull_request:
+
+concurrency:
+  group: ns8-module-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate action scripts and schemas
+        working-directory: packaging/ns8
+        run: |
+          python3 -m py_compile imageroot/actions/configure-module/20configure imageroot/actions/get-configuration/20read
+          python3 -c "import json, glob; [json.load(open(f)) for f in glob.glob('imageroot/actions/*/*.json') + glob.glob('ui/public/*.json') + ['ui/public/i18n/en/translation.json']]"
+          bash -n imageroot/actions/configure-module/80start_services
+          bash -n build-images.sh
+          grep -rn '__CALNODE_APP_IMAGE__' imageroot/systemd/user/calnode.service
+
+  build:
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      # Mirror the app tagging in docker-publish.yml: release tags pin both
+      # images to the same version, branches track the moving app tags.
+      - name: Resolve tags
+        id: tags
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            version="${GITHUB_REF_NAME#v}"
+            echo "module_tags=${version} ${version%.*} latest" >> "$GITHUB_OUTPUT"
+            echo "app_image=ghcr.io/calnode/calnode:${version}" >> "$GITHUB_OUTPUT"
+          elif [[ "${GITHUB_REF}" == refs/heads/main ]]; then
+            echo "module_tags=edge" >> "$GITHUB_OUTPUT"
+            echo "app_image=ghcr.io/calnode/calnode:edge" >> "$GITHUB_OUTPUT"
+          elif [[ "${GITHUB_REF}" == refs/heads/dev ]]; then
+            echo "module_tags=dev" >> "$GITHUB_OUTPUT"
+            echo "app_image=ghcr.io/calnode/calnode:dev" >> "$GITHUB_OUTPUT"
+          else
+            echo "module_tags=build" >> "$GITHUB_OUTPUT"
+            echo "app_image=ghcr.io/calnode/calnode:edge" >> "$GITHUB_OUTPUT"
+          fi
+
+      # buildah is preinstalled on the ubuntu runners, same as the upstream
+      # NS8 publish workflow assumes.
+      - name: Build (push on branch pushes and on tags)
+        working-directory: packaging/ns8
+        env:
+          REPOBASE: ghcr.io/${{ github.repository_owner }}
+          APP_IMAGE: ${{ steps.tags.outputs.app_image }}
+          IMAGETAGS: ${{ steps.tags.outputs.module_tags }}
+        run: |
+          push=0
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            push=1
+            buildah login -u "${{ github.actor }}" --password-stdin ghcr.io <<<"${{ secrets.GITHUB_TOKEN }}"
+          fi
+          PUSH="$push" bash build-images.sh

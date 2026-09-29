@@ -1,0 +1,7 @@
+FROM node:24-bookworm
+RUN corepack enable \
+    && yarn set version stable
+WORKDIR /app
+ENV NODE_OPTIONS=--openssl-legacy-provider
+EXPOSE 8080
+ENTRYPOINT ["./container-entrypoint.sh"]

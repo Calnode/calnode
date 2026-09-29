@@ -1,0 +1,34 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "configure-module input",
+    "$id": "http://schema.nethserver.org/calnode/configure-module-input.json",
+    "description": "Configure calnode",
+    "type": "object",
+    "properties": {
+        "host": {
+            "type": "string",
+            "description": "Public fully qualified domain name Calnode is reached at",
+            "minLength": 1,
+            "maxLength": 253,
+            "pattern": "^(?=.{1,253}$)[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$"
+        },
+        "lets_encrypt": {
+            "type": "boolean",
+            "description": "Obtain a Let's Encrypt certificate for the hostname",
+            "default": true
+        },
+        "http2https": {
+            "type": "boolean",
+            "description": "Redirect plain HTTP to HTTPS",
+            "default": true
+        },
+        "encryption_key": {
+            "type": "string",
+            "description": "Optional existing CALNODE_ENCRYPTION_KEY, only needed when restoring or migrating data from another install",
+            "minLength": 16,
+            "maxLength": 128
+        }
+    },
+    "required": ["host"],
+    "additionalProperties": false
+}
