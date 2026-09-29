@@ -14,6 +14,17 @@ var (
 	ErrEmailThrottled      = errors.New("booking: too many bookings from this email address")
 )
 
+// Who sends a booking's calendar invite to the booker (event_types/bookings.invite_delivery,
+// migration 00068).
+const (
+	// InviteByCalendar: the booker is a guest on each host's calendar event, and the host's
+	// provider (Google, Microsoft) emails the invite from the host's own account.
+	InviteByCalendar = "calendar"
+	// InviteByCalnode: the hosts' events are created without guests, and Calnode sends the
+	// invite itself, organized by the instance's sender identity instead of any one host.
+	InviteByCalnode = "calnode"
+)
+
 // Booking is a confirmed or cancelled appointment.
 type Booking struct {
 	ID                 string
@@ -33,6 +44,9 @@ type Booking struct {
 	// ConfirmFailed reports whether the initial confirmation email failed (after
 	// retry). Operator-visible via the booking JSON; see migration 00064.
 	ConfirmFailed bool
+	// InviteDelivery is who sent this booking's invite (InviteByCalendar/InviteByCalnode),
+	// fixed at creation; reschedule, cancel and reassign follow it.
+	InviteDelivery string
 }
 
 // Attendee is a participant in a booking (the person who made the booking).
@@ -88,4 +102,10 @@ type CreateParams struct {
 	// creation transaction, next to the active cap, so concurrent submissions
 	// can't both slip past a read-then-write check.
 	MaxBookingsPerHour int
+	// InviteDelivery records who sends the booker's calendar invite for this booking:
+	// InviteByCalendar (the hosts' connected calendars; the default when empty) or
+	// InviteByCalnode (Calnode's own .ics, with the hosts' events created guestless).
+	// Stored on the booking so its reschedule and cancel follow the mode it was created
+	// with, not whatever the event type is set to by then.
+	InviteDelivery string
 }

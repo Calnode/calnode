@@ -9,6 +9,17 @@ All notable changes to Calnode are recorded here. The format follows
 exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrades.
 `1.0.0` will mark the point at which the API and schema are declared stable.
 
+## [Unreleased]
+
+### Added
+- **Calendar invites can come from Calnode instead of the host's calendar.** A new
+  per-event-type setting, *Calendar invite → Sent by*. The default is unchanged: the host's
+  connected calendar invites the booker, from the host's own address. Choose *Calnode* and
+  the booker's invite comes from your workspace's email sender (Settings → Email) instead,
+  so no host's personal address reaches them, and a team can book under one name. Hosts
+  still get the meeting, with its Meet/Teams link, on their own calendar. Needs email set
+  up. Existing bookings keep the way they were invited.
+
 ## [0.10.1] - 2026-09-29
 
 ### Added

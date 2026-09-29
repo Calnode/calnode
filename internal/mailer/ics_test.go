@@ -40,6 +40,44 @@ func TestBuildICS_cancel(t *testing.T) {
 	}
 }
 
+// A Calnode-sent invite exists to keep the host's address off the booker's calendar, so a
+// missing sender identity must drop ORGANIZER, never quietly fall back to the host.
+func TestBuildICS_hideHostNeverFallsBackToHost(t *testing.T) {
+	d := testBookingData()
+	d.HideHostInInvite = true
+	d.InviteOrganizerName, d.InviteOrganizerEmail = "Team", "bookings@team.example"
+	got := string(BuildICS(d, "REQUEST"))
+	if !strings.Contains(got, `ORGANIZER;CN="Team":mailto:bookings@team.example`) {
+		t.Errorf("ORGANIZER is not the instance sender:\n%s", got)
+	}
+
+	d.InviteOrganizerName, d.InviteOrganizerEmail = "", ""
+	got = string(BuildICS(d, "REQUEST"))
+	if strings.Contains(got, "ORGANIZER") || strings.Contains(got, d.HostEmail) {
+		t.Errorf("with no sender identity the invite fell back to the host:\n%s", got)
+	}
+}
+
+// A host's own copy of a Calnode-invited booking must never list the booker: a calendar
+// client holding them as a guest could re-invite them from the host's own account.
+func TestICSAttachment_withoutAttendeeIsPublish(t *testing.T) {
+	d := testBookingData()
+	d.ICSWithoutAttendee = true
+	for _, method := range []string{"REQUEST", "CANCEL"} {
+		a := icsAttachment(d, method)
+		got := string(a.Content)
+		if strings.Contains(got, "ATTENDEE") || strings.Contains(got, d.OrganizerEmail) {
+			t.Errorf("%s: host copy lists the booker:\n%s", method, got)
+		}
+		if !strings.Contains(got, "METHOD:PUBLISH") || !strings.HasSuffix(a.ContentType, "method=PUBLISH") {
+			t.Errorf("%s: attendee-less copy not sent as PUBLISH (content type %q):\n%s", method, a.ContentType, got)
+		}
+	}
+	if got := string(BuildICS(d, "CANCEL")); !strings.Contains(got, "STATUS:CANCELLED") {
+		t.Errorf("a cancelled host copy lost STATUS:CANCELLED:\n%s", got)
+	}
+}
+
 func TestBuildICS_escapesText(t *testing.T) {
 	d := testBookingData()
 	d.EventTypeName = "Strategy, Planning; Q3"
