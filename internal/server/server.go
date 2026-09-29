@@ -451,7 +451,7 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	// a non-simple request, so the OPTIONS preflight is handled too.
 	mux.HandleFunc("POST /v1/bookings", cors(bookingRL(h.CreateBooking)))
 	mux.HandleFunc("OPTIONS /v1/bookings", cors(func(http.ResponseWriter, *http.Request) {}))
-	mux.HandleFunc("GET /v1/bookings/{id}", h.GetBooking)
+	mux.HandleFunc("GET /v1/bookings/{id}", bookingRL(h.GetBooking))
 	mux.HandleFunc("GET /v1/bookings", h.RequireAuth(h.ListBookings))
 	mux.HandleFunc("POST /v1/bookings/{id}/cancel", h.RequireAuth(h.CancelBooking))
 	mux.HandleFunc("PATCH /v1/bookings/{id}/reschedule", h.RequireAuth(h.RescheduleBooking))
