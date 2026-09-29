@@ -447,3 +447,40 @@ func countConns(t *testing.T, database *sql.DB, userID string) int {
 	}
 	return n
 }
+
+// TestPropfind_stripsAuthOnCrossOriginRedirect is the #105 regression: a 302 to
+// another host must not carry the app password. Same-origin redirects keep it.
+func TestPropfind_stripsAuthOnCrossOriginRedirect(t *testing.T) {
+	c := newTestClient(t)
+	ctx := context.Background()
+
+	var gotAuthAtB bool
+	var gotAuthAtA bool
+	srvB := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "" {
+			gotAuthAtB = true
+		}
+		w.WriteHeader(http.StatusMultiStatus)
+		io.WriteString(w, `<d:multistatus xmlns:d="DAV:"><d:response><d:href>/</d:href><d:propstat><d:status>HTTP/1.1 200 OK</d:status><d:prop><d:displayname>x</d:displayname></d:prop></d:propstat></d:response></d:multistatus>`)
+	}))
+	defer srvB.Close()
+	srvA := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "" {
+			gotAuthAtA = true
+		}
+		w.Header().Set("Location", srvB.URL+"/home/")
+		w.WriteHeader(http.StatusFound)
+	}))
+	defer srvA.Close()
+
+	body := `<?xml version="1.0" encoding="utf-8"?><D:propfind xmlns:D="DAV:"><D:prop><D:displayname/></D:prop></D:propfind>`
+	if _, _, err := c.propfind(ctx, srvA.URL+"/", "user", "s3cret", "0", body); err != nil {
+		t.Fatalf("propfind: %v", err)
+	}
+	if !gotAuthAtA {
+		t.Error("original host saw no Authorization header; want credentials on first hop")
+	}
+	if gotAuthAtB {
+		t.Error("redirect target saw Authorization header; credentials must not cross origins")
+	}
+}

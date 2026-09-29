@@ -23,7 +23,11 @@ func (c *Client) do(ctx context.Context, method, rawURL, username, password, dep
 	if err != nil {
 		return 0, nil, "", err
 	}
-	req.SetBasicAuth(username, password)
+	// Credentials go only on requests the caller authenticated: propfind strips
+	// them on cross-origin redirects, so an empty username means "send none".
+	if username != "" {
+		req.SetBasicAuth(username, password)
+	}
 	if body != "" {
 		req.Header.Set("Content-Type", "application/xml; charset=utf-8")
 	}
@@ -43,11 +47,17 @@ func (c *Client) do(ctx context.Context, method, rawURL, username, password, dep
 }
 
 // propfind issues a PROPFIND, following up to 5 redirects with the method preserved, and
-// returns the parsed multistatus. A non-2xx terminal status is an error.
+// returns the parsed multistatus. A non-2xx terminal status is an error. Credentials are
+// sent only while the redirect chain stays on the original scheme+host: a compromised
+// server must not be able to harvest the app password with a 302 elsewhere (#105).
 func (c *Client) propfind(ctx context.Context, rawURL, username, password, depth, body string) (*msMultistatus, string, error) {
 	cur := rawURL
 	for hop := 0; hop < 6; hop++ {
-		status, b, loc, err := c.do(ctx, "PROPFIND", cur, username, password, depth, body)
+		user, pass := username, password
+		if !sameOrigin(rawURL, cur) {
+			user, pass = "", ""
+		}
+		status, b, loc, err := c.do(ctx, "PROPFIND", cur, user, pass, depth, body)
 		if err != nil {
 			return nil, cur, err
 		}
@@ -86,6 +96,20 @@ func resolveRef(base, ref string) string {
 		return ref
 	}
 	return b.ResolveReference(r).String()
+}
+
+// sameOrigin reports whether two URLs share scheme and host (case-insensitive).
+// Unparseable URLs compare unequal, so credentials are withheld on doubt.
+func sameOrigin(a, b string) bool {
+	ua, err := url.Parse(a)
+	if err != nil {
+		return false
+	}
+	ub, err := url.Parse(b)
+	if err != nil {
+		return false
+	}
+	return strings.EqualFold(ua.Scheme, ub.Scheme) && strings.EqualFold(ua.Host, ub.Host)
 }
 
 // ----- WebDAV / CalDAV multistatus XML -----
