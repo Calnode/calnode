@@ -20,6 +20,20 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
   one end to end yet — see `packaging/ns8/README.md`.
 
 ### Fixed
+- **Public booking lookup is now rate-limited.** `GET /v1/bookings/{id}` needs no
+  auth by design (it carries no PII), but it was the one public route outside
+  any rate limiter — an enumeration free-for-all. It shares the manage-token
+  bucket now.
+- **CalDAV connect failures no longer distinguish error classes.** Refused vs
+  timeout vs TLS vs auth failures were surfaced verbatim to the member form, a
+  usable LAN-scan oracle. The form returns one generic message and logs the
+  detail server-side; timing side-channels are accepted as residual.
+- **CalDAV no longer sends Basic credentials on cross-origin redirects.** A
+  redirect to another origin now drops the Authorization header instead of
+  forwarding the app password to a server the user never configured.
+- **A short `GOOGLE_CLIENT_ID` no longer panics at boot.** The startup log
+  sliced the first 20 characters unconditionally; unset-or-short values
+  crashed the process instead of logging the usual "not configured" warning.
 - **Video room explains host takeover instead of silently dropping controls.**
   Sharing the host link lets anyone take over as host, and the demoted side
   just lost its controls with no explanation. Host-link holders are now warned
