@@ -71,14 +71,14 @@ func (h *Handler) inviteSenderReady(ctx context.Context) bool {
 }
 
 // applyInviteDelivery prepares the booker's email .ics for the booking's invite mode.
-// Calnode-sent: always attach, organized by the instance sender, never the host.
-// Calendar-sent: attach only when the primary host's calendar will not invite the booker
-// itself (noConnectedDestination), with the host as organizer, exactly as before.
+// Calnode-sent: always attach, organized by the booking's fixed invite organizer, never
+// the host. Calendar-sent: attach only when the primary host's calendar will not invite
+// the booker itself (noConnectedDestination), with the host as organizer, exactly as before.
 func (h *Handler) applyInviteDelivery(ctx context.Context, d *mailer.BookingData, mode, primaryHostID string) {
 	if mode == booking.InviteByCalnode {
 		d.AttachICS = true
 		d.HideHostInInvite = true
-		d.InviteOrganizerName, d.InviteOrganizerEmail = h.inviteSender(ctx)
+		d.InviteOrganizerName, d.InviteOrganizerEmail = h.bookingInviteOrganizer(ctx, d.BookingID)
 		return
 	}
 	d.AttachICS = h.noConnectedDestination(ctx, primaryHostID)
@@ -91,4 +91,44 @@ func (h *Handler) applyHostInvite(ctx context.Context, d *mailer.BookingData, mo
 	d.HideHostInInvite = false
 	d.ICSWithoutAttendee = mode == booking.InviteByCalnode
 	d.AttachICS = h.noConnectedDestination(ctx, hostID)
+}
+
+// bookingInviteOrganizer returns the name and address a Calnode-sent invite is organized
+// by. The address is fixed on the booking at its first send (bookings.invite_organizer):
+// calendar clients match a reschedule or cancellation by UID and organizer, so editing the
+// sender or switching RSVP tracking on later must not change it for invites already out.
+// New bookings get a private reply address when RSVP tracking is on, else the sender.
+func (h *Handler) bookingInviteOrganizer(ctx context.Context, bookingID string) (name, email string) {
+	name, sender := h.inviteSender(ctx)
+	var stored string
+	if err := h.db.QueryRowContext(ctx,
+		`SELECT invite_organizer FROM bookings WHERE id = ?`, bookingID).Scan(&stored); err != nil {
+		h.logger.ErrorContext(ctx, "load invite organizer", "error", err, "booking_id", bookingID)
+		return name, sender
+	}
+	if stored != "" {
+		return name, stored
+	}
+	addr := sender
+	if base := h.rsvpAddress(ctx); base != "" {
+		if reply, err := newReplyAddress(base); err == nil {
+			addr = reply
+		} else {
+			h.logger.ErrorContext(ctx, "mint rsvp reply address", "error", err, "booking_id", bookingID)
+		}
+	}
+	if addr == "" {
+		return name, ""
+	}
+	// Only the first send writes; a concurrent first send reads the winner back.
+	if _, err := h.db.ExecContext(ctx,
+		`UPDATE bookings SET invite_organizer = ? WHERE id = ? AND invite_organizer = ''`, addr, bookingID); err != nil {
+		h.logger.ErrorContext(ctx, "fix invite organizer", "error", err, "booking_id", bookingID)
+		return name, addr
+	}
+	if err := h.db.QueryRowContext(ctx,
+		`SELECT invite_organizer FROM bookings WHERE id = ?`, bookingID).Scan(&stored); err != nil || stored == "" {
+		return name, addr
+	}
+	return name, stored
 }

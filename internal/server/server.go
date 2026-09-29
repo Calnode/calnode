@@ -365,6 +365,7 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	mux.HandleFunc("GET /v1/settings/email", h.RequireAuth(h.GetEmailSettings))
 	mux.HandleFunc("PATCH /v1/settings/email", settingsRL(h.RequireAuth(h.PatchEmailSettings)))
 	mux.HandleFunc("POST /v1/settings/email/test", settingsRL(h.RequireAuth(h.TestEmailConnection)))
+	mux.HandleFunc("POST /v1/settings/email/rsvp-webhook", settingsRL(h.RequireAuth(h.SetupRSVPWebhook)))
 	mux.HandleFunc("GET /v1/settings/google", h.RequireAuth(h.GetGoogleSettings))
 	mux.HandleFunc("PATCH /v1/settings/google", settingsRL(h.RequireAuth(h.PatchGoogleSettings)))
 	mux.HandleFunc("GET /v1/settings/zoom", h.RequireAuth(h.GetZoomSettings))
@@ -517,6 +518,9 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	// Stripe payment webhook — public, authenticated by the signing secret (no session
 	// cookie, so the CSRF check doesn't apply). Must receive the raw body.
 	mux.HandleFunc("POST /v1/stripe/webhook", h.StripeWebhook)
+	// Resend inbound email (email.received): RSVPs to Calnode-sent invites. Public,
+	// authenticated by the webhook signature.
+	mux.HandleFunc("POST /v1/email/inbound/resend", h.InboundEmailResend)
 
 	// API keys
 	mux.HandleFunc("GET /v1/api-keys", h.RequireAuth(h.ListAPIKeys))

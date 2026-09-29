@@ -19,6 +19,12 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
   so no host's personal address reaches them, and a team can book under one name. Hosts
   still get the meeting, with its Meet/Teams link, on their own calendar. Needs email set
   up. Existing bookings keep the way they were invited.
+- **RSVP tracking for invites Calnode sends.** With Resend receiving set up (Settings →
+  Email → RSVP tracking), a booker's Yes / No / Maybe is read from their calendar reply,
+  shown on the booking, and sent as a new `booking.rsvp` webhook event. Calnode sets up the
+  Resend webhook itself (manual steps as a fallback) and needs a full-access Resend API
+  key. Each invite gets a private reply address, and an answer only counts when Resend
+  verified it came from that booking's booker.
 
 ## [0.10.1] - 2026-09-29
 

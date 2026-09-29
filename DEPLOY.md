@@ -127,6 +127,32 @@ API key takes precedence over the SMTP fields; clearing it ("Remove key") switch
 
 > Email settings are stored **per instance** in that instance's DB — staging/prod/local each need their own.
 
+### RSVP tracking (optional, Resend only)
+
+For event types whose calendar invite is **sent by Calnode** (event type → Calendar invite),
+Calnode can record whether the booker accepted, declined or said maybe. The answer shows on
+the booking and fires a `booking.rsvp` webhook.
+
+It needs a **Full access** Resend API key (Settings → Email): Calnode uses it to set up the
+webhook and to read the replies. A sending-only key can do neither.
+
+1. In Resend → Domains, enable **receiving** on a subdomain, e.g. `reply.yourdomain` (one MX
+   record). Use a subdomain: the MX record would take over your main domain's mail.
+2. Settings → Email → RSVP tracking: enter an address on that subdomain (e.g.
+   `rsvp@reply.yourdomain`) and save.
+3. Calnode then creates the `email.received` webhook in your Resend account and stores its
+   signing secret (or reuses the webhook if one already points at this instance). It needs
+   the instance to be reachable at a public `https://` `BASE_URL`.
+
+If automatic setup fails, the page says why and shows the manual steps: in Resend → Webhooks,
+add `https://<your-domain>/v1/email/inbound/resend` for `email.received`, then paste its
+signing secret (`whsec_…`) into the RSVP tracking section.
+
+Each invite is organized by its own private variant of that address, so no mailbox has to
+exist. An answer only counts when Resend verified the sender (DKIM or DMARC pass) and the
+sender is that booking's booker. Bookings made before you switch it on keep the organizer
+they were invited with.
+
 ---
 
 ## 5. Google OAuth (sign-in + calendar)

@@ -616,9 +616,12 @@ type bookingJSON struct {
 	AmountPaidCurrency string `json:"amount_paid_currency,omitempty" jsonschema:"ISO 4217 currency of the charge (lowercase)"`
 	// ConfirmFailed flags a booking whose initial confirmation email failed after
 	// retry — operator-visible so a lost confirmation can be followed up manually.
-	ConfirmFailed bool           `json:"confirm_failed,omitempty"`
-	Attendees     []attendeeJSON `json:"attendees,omitempty"`
-	Hosts         []hostBrief    `json:"hosts,omitempty"` // assigned host(s) for display; set on the public create response
+	ConfirmFailed bool `json:"confirm_failed,omitempty"`
+	// RSVPStatus is the booker's answer to a Calnode-sent invite ("accepted", "declined",
+	// "tentative"), absent until one arrives. Admin list views only.
+	RSVPStatus string         `json:"rsvp_status,omitempty"`
+	Attendees  []attendeeJSON `json:"attendees,omitempty"`
+	Hosts      []hostBrief    `json:"hosts,omitempty"` // assigned host(s) for display; set on the public create response
 }
 
 // hostBrief is an assigned host's identity for the booking-confirmation screen.
@@ -1579,6 +1582,15 @@ func (h *Handler) enrichBookings(ctx context.Context, bookings []booking.Booking
 		}
 	}
 
+	// The booker's RSVP to a Calnode-sent invite, once one has arrived.
+	if err := h.scanPairs(ctx, bookingRSVPQuery, ids, func(bid, val string) {
+		if i, ok := idxByID[bid]; ok {
+			items[i].RSVPStatus = val
+		}
+	}); err != nil {
+		return nil, err
+	}
+
 	// Organizer attendee. Three columns, so it doesn't fit scanPairs; ph is a generated
 	// run of "?" and every id is bound.
 	rows, err := h.db.QueryContext(ctx, // #nosec G701 -- ph is placeholders(), a generated run of "?"; every value is bound via ids..., never concatenated into the SQL text
@@ -1618,6 +1630,9 @@ const (
 	bookingHostNamesQuery pairQuery = `SELECT b.id, COALESCE(u.name, '') FROM bookings b
 		 LEFT JOIN users u ON u.id = b.host_id
 		 WHERE b.id IN (%s)`
+
+	bookingRSVPQuery pairQuery = `SELECT a.booking_id, a.rsvp_status FROM booking_attendees a
+		 WHERE a.is_organizer = 1 AND a.rsvp_status != 'needs-action' AND a.booking_id IN (%s)`
 )
 
 // placeholders returns "?,?,?" for n, for an IN clause. n must be positive.
