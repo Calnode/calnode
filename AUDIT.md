@@ -1,6 +1,6 @@
 # Auditing Calnode — a 10-minute self-serve security & quality check
 
-Calnode's backend is ~24,000 lines of Go across ~105 files (~840KB, excluding
+Calnode's backend is ~30,800 lines of Go across 128 files (~1.1MB, excluding
 tests). That's small enough to fit entirely in one LLM context window — which most
 scheduling software (cal.com included) can't do. This page is our attempt to turn
 "auditable" from a slogan into something you actually run, yourself, before you
@@ -82,7 +82,7 @@ semgrep scan --config p/security-audit --config p/secrets \
 ```
 
 Our own latest run of this exact block: **govulncheck 0 · gosec 0 unresolved (all
-findings annotated) · gitleaks 0 across 337 commits · semgrep 0**. Yours should
+findings annotated) · gitleaks 0 across 560 commits · semgrep 0**. Yours should
 match — if it doesn't, that's either drift since our last run or something we need
 to know about. (`govulncheck` and `gosec` are also re-run on every push to `main`
 via `.github/workflows/audit.yml`, so an unannotated gosec finding or a new CVE
