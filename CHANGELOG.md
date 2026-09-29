@@ -9,7 +9,22 @@ All notable changes to Calnode are recorded here. The format follows
 exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrades.
 `1.0.0` will mark the point at which the API and schema are declared stable.
 
-## [Unreleased]
+## [0.10.1] - 2026-09-29
+
+### Added
+- **NethServer 8 module (`packaging/ns8`).** Calnode ships as a one-click NS8
+  app: host-based Traefik route with cluster TLS, SQLite on a persistent
+  volume, generated encryption key preserved across reconfigures, and release
+  tags that pin module and app to the same version. Preview-grade: installed
+  and configured paths are covered by robot tests but no live node has run
+  one end to end yet — see `packaging/ns8/README.md`.
+
+### Fixed
+- **Video room explains host takeover instead of silently dropping controls.**
+  Sharing the host link lets anyone take over as host, and the demoted side
+  just lost its controls with no explanation. Host-link holders are now warned
+  pre-join not to share it, and a demotion names who took over with a reclaim
+  hint for owners.
 
 ## [0.10.0] - 2026-09-27
 
