@@ -61,3 +61,30 @@ test('hostUi — consent not re-prompted once decided', () => {
 test('hostUi — host is never consent-prompted (their record click IS consent)', () => {
   assert.equal(RL.hostUi({ isHost: true, recording: true, consentDecided: false }).consentPrompt, false);
 });
+
+function roomTokenFor(role) {
+  const raw = Buffer.from(JSON.stringify({ r: 'booking-b1', e: 9999999999, role })).toString('base64')
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  return raw + '.sig';
+}
+
+test('roleFromToken — host vs attendee vs garbage', () => {
+  assert.equal(RL.roleFromToken(roomTokenFor('host')), 'host');
+  assert.equal(RL.roleFromToken(roomTokenFor('')), '');
+  assert.equal(RL.roleFromToken(roomTokenFor('admin')), '');
+  assert.equal(RL.roleFromToken('not-a-token'), '');
+  assert.equal(RL.roleFromToken(''), '');
+  assert.equal(RL.roleFromToken(null), '');
+});
+
+test('demoteNotice — names the new host, reclaim hint only when capable', () => {
+  assert.equal(RL.demoteNotice(true, false, 'Ana', true),
+    'Ana took over as host — you are now attending. Take host back from the menu if that was a mistake.');
+  assert.equal(RL.demoteNotice(true, false, 'Ana', false),
+    'Ana took over as host — you are now attending.');
+  assert.equal(RL.demoteNotice(true, false, '', false),
+    'Someone else took over as host — you are now attending.');
+  assert.equal(RL.demoteNotice(false, false, 'Ana', false), null); // never was host: nothing to explain
+  assert.equal(RL.demoteNotice(true, true, 'Ana', false), null);   // still host: controls say it
+  assert.equal(RL.demoteNotice(false, true, '', false), null);     // upgrade: controls say it
+});
