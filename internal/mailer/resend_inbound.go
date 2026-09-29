@@ -5,7 +5,6 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -84,55 +83,69 @@ func (e ResendInboundEvent) Recipients() []string {
 	return append(out, e.Data.ReceivedFor...)
 }
 
-// resendReceivingEndpoint is the Received emails API. A var so tests can stub it.
-var resendReceivingEndpoint = "https://api.resend.com/emails/receiving/"
-
 // maxRawEmail bounds a downloaded message. An RSVP is a few KB; this only stops a
 // pathological message from being read into memory whole.
 const maxRawEmail = 5 << 20
 
-// FetchReceivedRaw downloads the original bytes of a received email: one API call for the
-// short-lived signed URL, one GET for the message.
-func FetchReceivedRaw(ctx context.Context, apiKey, emailID string) ([]byte, error) {
-	if apiKey == "" {
-		return nil, errors.New("resend inbound: api key not configured")
-	}
-	client := &http.Client{Timeout: resendTimeout}
+// ReceivedEmail is a message Resend received: its original bytes plus what Resend itself
+// established about the sender. From is the header From address; the authentication
+// results are computed by Resend's receiving server, so the sender cannot forge them.
+type ReceivedEmail struct {
+	Raw  []byte
+	From string
+	SPF  string // "pass", "fail", "gray", ...; "" when Resend reported none
+	DKIM string
+	// DMARC "pass" means SPF or DKIM passed aligned with the From domain.
+	DMARC string
+}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, resendReceivingEndpoint+url.PathEscape(emailID), nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Authorization", "Bearer "+apiKey)
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("resend inbound: retrieve email: %w", err)
-	}
+// SenderAuthenticated reports whether Resend verified the From domain: DMARC passed, or
+// DKIM passed (Resend's DKIM pass requires the signing domain to match From). A header
+// From that nothing vouches for is just text anyone can type.
+func (e ReceivedEmail) SenderAuthenticated() bool {
+	return e.DMARC == "pass" || e.DKIM == "pass"
+}
+
+// FetchReceived retrieves a received email: one API call for its metadata and the
+// short-lived raw download URL, one GET for the message. Needs a full-access API key;
+// a sending-only key fails with ErrResendRestrictedKey.
+func FetchReceived(ctx context.Context, apiKey, emailID string) (ReceivedEmail, error) {
 	var meta struct {
+		From           string `json:"from"`
+		Authentication *struct {
+			SPF   string `json:"spf"`
+			DKIM  string `json:"dkim"`
+			DMARC string `json:"dmarc"`
+		} `json:"authentication"`
 		Raw *struct {
 			DownloadURL string `json:"download_url"`
 		} `json:"raw"`
 	}
-	decodeErr := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&meta)
-	resp.Body.Close() // #nosec G104 -- body fully consumed above; a close error changes nothing
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("resend inbound: retrieve email: status %d", resp.StatusCode)
+	if err := resendAPI(ctx, apiKey, http.MethodGet, "/emails/receiving/"+url.PathEscape(emailID), nil, &meta); err != nil {
+		return ReceivedEmail{}, fmt.Errorf("resend inbound: retrieve email: %w", err)
 	}
-	if decodeErr != nil || meta.Raw == nil || meta.Raw.DownloadURL == "" {
-		return nil, errors.New("resend inbound: retrieve email: no raw download url")
+	if meta.Raw == nil || meta.Raw.DownloadURL == "" {
+		return ReceivedEmail{}, errors.New("resend inbound: retrieve email: no raw download url")
+	}
+	got := ReceivedEmail{From: meta.From}
+	if a := meta.Authentication; a != nil {
+		got.SPF, got.DKIM, got.DMARC = a.SPF, a.DKIM, a.DMARC
 	}
 
-	req, err = http.NewRequestWithContext(ctx, http.MethodGet, meta.Raw.DownloadURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, meta.Raw.DownloadURL, nil)
 	if err != nil {
-		return nil, err
+		return ReceivedEmail{}, err
 	}
-	resp, err = client.Do(req)
+	resp, err := (&http.Client{Timeout: resendTimeout}).Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("resend inbound: download raw email: %w", err)
+		return ReceivedEmail{}, fmt.Errorf("resend inbound: download raw email: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("resend inbound: download raw email: status %d", resp.StatusCode)
+		return ReceivedEmail{}, fmt.Errorf("resend inbound: download raw email: status %d", resp.StatusCode)
 	}
-	return io.ReadAll(io.LimitReader(resp.Body, maxRawEmail))
+	if got.Raw, err = io.ReadAll(io.LimitReader(resp.Body, maxRawEmail)); err != nil {
+		return ReceivedEmail{}, fmt.Errorf("resend inbound: download raw email: %w", err)
+	}
+	return got, nil
 }

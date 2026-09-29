@@ -174,6 +174,7 @@ func (h *Handler) GetEmailSettings(w http.ResponseWriter, r *http.Request) {
 		"rsvp_address":              rsvpAddr,
 		"resend_webhook_secret_set": webhookSecretEnc != "",
 		"rsvp_tracking":             rsvpAddr != "" && webhookSecretEnc != "" && resendEnc != "",
+		"rsvp_webhook_url":          h.rsvpWebhookURL(),
 	})
 }
 

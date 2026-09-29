@@ -566,16 +566,20 @@ Yes/No/Maybe is an iTIP `REPLY` their mail client emails to the invite's `ORGANI
 booking's organizer address is fixed at its first send (`bookings.invite_organizer`,
 `bookingInviteOrganizer`), because clients match later updates by UID *and* organizer. With
 RSVP tracking set up (Settings → Email: an address on a Resend receiving domain, the
-webhook signing secret, and a Resend API key) that address is private per booking,
-`rsvp+<128-bit token>@domain`. Resend posts `email.received` to
-`POST /v1/email/inbound/resend`; the handler verifies the Svix signature
-(`mailer.VerifyResendWebhook`), routes by recipient to the booking, downloads the raw
-message (`mailer.FetchReceivedRaw`), parses the `REPLY` (`mailer.ParseICSReply`), and
-records the answer on `booking_attendees.rsvp_status` only if the UID is that booking's
-and the answering attendee is its booker. A changed answer fires `booking.rsvp`. It
-answers 200 to anything it will not act on and 5xx only when the fetch failed, so Resend
-retries exactly what a retry can fix. Hosts' calendar events are not updated with the
-answer: no provider has an "edit event" write op yet.
+webhook signing secret, and a **full-access** Resend API key) that address is private per
+booking, `rsvp+<128-bit token>@domain`. `POST /v1/settings/email/rsvp-webhook`
+(`mailer.EnsureResendInboundWebhook`) creates or reuses the Resend webhook and stores its
+secret; the page falls back to manual steps when it cannot. Resend posts `email.received`
+to `POST /v1/email/inbound/resend`; the handler verifies the Svix signature
+(`mailer.VerifyResendWebhook`), routes by recipient to a confirmed, upcoming booking,
+fetches the message with Resend's own SPF/DKIM/DMARC verdicts (`mailer.FetchReceived`),
+and records the answer on `booking_attendees.rsvp_status` only if Resend verified the From
+domain (DKIM or DMARC pass), the From is the booker, the UID is the booking's, and the
+`REPLY` answers for the booker. The body is sender-written, so its `ATTENDEE` line is never
+trusted on its own. A changed answer fires `booking.rsvp`. It answers 200 to anything it
+will not act on and 5xx only when the fetch failed, so Resend retries exactly what a retry
+can fix. Hosts' calendar events are not updated with the answer: no provider has an "edit
+event" write op yet.
 
 **Adding another provider (Apple/iCloud, CalDAV):** implement `calendar.Provider`,
 register it in `internal/server`, set `InvitesGuests()` correctly (drives the `.ics`

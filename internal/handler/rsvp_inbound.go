@@ -25,13 +25,18 @@ import (
 // POST /v1/email/inbound/resend with the message's metadata; Calnode checks the signature,
 // fetches the message, reads the REPLY and records the answer on the booking.
 //
-// Three checks stand between a stranger and a forged RSVP: the Resend signature, the
-// unguessable per-booking address, and the REPLY's attendee having to be that booking's
-// booker. A forwarded invite answered by someone else is therefore ignored.
+// An answer is recorded only when all of these hold:
+//   - the webhook carries a valid Resend signature;
+//   - it is addressed to the unguessable per-booking reply address of a booking that is
+//     still confirmed and upcoming;
+//   - Resend authenticated the message's From domain (DMARC or DKIM pass) and that From is
+//     the booking's booker. The REPLY body itself is sender-controlled, so its ATTENDEE
+//     line alone proves nothing: anyone holding a forwarded invite could write one;
+//   - the REPLY is for this booking's event, and answers for the booker.
 
-// fetchReceivedRaw downloads a received message from Resend; a var so tests can stand in
+// fetchReceived retrieves a received message from Resend; a var so tests can stand in
 // for Resend.
-var fetchReceivedRaw = mailer.FetchReceivedRaw
+var fetchReceived = mailer.FetchReceived
 
 // rsvpStatuses are the PARTSTAT answers recorded; anything else in a REPLY is ignored.
 var rsvpStatuses = map[string]bool{"accepted": true, "declined": true, "tentative": true}
@@ -108,11 +113,13 @@ func (h *Handler) InboundEmailResend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Unconfigured and wrongly signed answer the same, so the endpoint does not reveal
+	// whether RSVP tracking is set up to someone probing it.
 	var addr, secretEnc, apiKeyEnc string
 	if err := h.db.QueryRowContext(ctx,
 		`SELECT rsvp_address, resend_webhook_secret_enc, resend_api_key_enc FROM server_settings WHERE id = 1`).
 		Scan(&addr, &secretEnc, &apiKeyEnc); err != nil || secretEnc == "" {
-		h.writeError(w, http.StatusNotFound, "inbound email is not configured")
+		h.writeError(w, http.StatusUnauthorized, "invalid signature")
 		return
 	}
 	whSecret, err := secret.Decrypt(h.encKey, secretEnc)
@@ -151,13 +158,24 @@ func (h *Handler) InboundEmailResend(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusServiceUnavailable, "resend api key not configured")
 		return
 	}
-	raw, err := fetchReceivedRaw(ctx, apiKey, ev.Data.EmailID)
+	msg, err := fetchReceived(ctx, apiKey, ev.Data.EmailID)
 	if err != nil {
-		h.logger.ErrorContext(ctx, "inbound email: fetch message", "error", err, "booking_id", bookingID)
+		if errors.Is(err, mailer.ErrResendRestrictedKey) {
+			h.logger.ErrorContext(ctx, "inbound email: the Resend API key is sending-only; RSVP tracking needs a full-access key (Settings → Email)",
+				"booking_id", bookingID)
+		} else {
+			h.logger.ErrorContext(ctx, "inbound email: fetch message", "error", err, "booking_id", bookingID)
+		}
+		// 5xx so Resend retries: once the key or network is fixed, the answer still lands.
 		h.writeError(w, http.StatusBadGateway, "could not fetch the received email")
 		return
 	}
-	reply, err := mailer.ParseICSReply(raw)
+	from, err := mail.ParseAddress(msg.From)
+	if err != nil || !strings.EqualFold(from.Address, bookerEmail) || !msg.SenderAuthenticated() {
+		ignore("not sent, verifiably, by this booking's booker")
+		return
+	}
+	reply, err := mailer.ParseICSReply(msg.Raw)
 	if err != nil {
 		ignore("no calendar reply in message")
 		return
@@ -191,11 +209,14 @@ func (h *Handler) InboundEmailResend(w http.ResponseWriter, r *http.Request) {
 }
 
 // bookingForReplyAddress finds the booking one of the recipients was minted for, and that
-// booking's booker address.
+// booking's booker address. Only confirmed bookings that have not ended take answers: a
+// reply to a cancelled or past meeting says nothing anyone can act on, and it bounds how
+// long a leaked reply address is worth anything.
 func (h *Handler) bookingForReplyAddress(ctx context.Context, recipients []string, base string) (bookingID, bookerEmail string) {
 	if base == "" {
 		return "", ""
 	}
+	now := time.Now().UTC().Format(time.RFC3339)
 	for _, rcpt := range recipients {
 		a, err := mail.ParseAddress(rcpt)
 		if err != nil || !isReplyAddressFor(a.Address, base) {
@@ -205,7 +226,8 @@ func (h *Handler) bookingForReplyAddress(ctx context.Context, recipients []strin
 			SELECT b.id, COALESCE(o.email, '')
 			FROM bookings b
 			LEFT JOIN booking_attendees o ON o.booking_id = b.id AND o.is_organizer = 1
-			WHERE b.invite_organizer = ? COLLATE NOCASE`, a.Address).Scan(&bookingID, &bookerEmail)
+			WHERE b.invite_organizer = ? COLLATE NOCASE
+			  AND b.status = 'confirmed' AND b.end_at > ?`, a.Address, now).Scan(&bookingID, &bookerEmail)
 		if err == nil {
 			return bookingID, bookerEmail
 		}
@@ -252,4 +274,68 @@ func (h *Handler) enqueueRSVPWebhook(ctx context.Context, bookingID, status stri
 	}); err != nil {
 		h.logger.ErrorContext(ctx, "enqueue booking.rsvp webhook", "error", err, "booking_id", bookingID)
 	}
+}
+
+// ensureInboundWebhook creates or reuses the Resend webhook; a var so tests can stand in
+// for Resend.
+var ensureInboundWebhook = mailer.EnsureResendInboundWebhook
+
+// rsvpWebhookURL is where Resend has to deliver email.received for this instance.
+func (h *Handler) rsvpWebhookURL() string {
+	return strings.TrimRight(h.baseURL, "/") + "/v1/email/inbound/resend"
+}
+
+// SetupRSVPWebhook handles POST /v1/settings/email/rsvp-webhook (admin). It points a
+// Resend webhook for email.received at this instance - reusing one that already targets
+// it - and stores its signing secret, so the operator never copies a secret by hand.
+// When that cannot work (no public https address, a sending-only key) the error says
+// why, and the settings page falls back to the manual steps.
+func (h *Handler) SetupRSVPWebhook(w http.ResponseWriter, r *http.Request) {
+	if _, ok := h.requireAdmin(w, r); !ok {
+		return
+	}
+	if h.demoMode {
+		h.writeError(w, http.StatusServiceUnavailable, "not available in the demo")
+		return
+	}
+	ctx := r.Context()
+	endpoint := h.rsvpWebhookURL()
+	if !strings.HasPrefix(endpoint, "https://") {
+		h.writeError(w, http.StatusUnprocessableEntity,
+			"Resend can only deliver to a public https address, and this instance is at "+h.baseURL+
+				". Set the webhook up by hand once it is reachable over https.")
+		return
+	}
+	var keyEnc string
+	if err := h.db.QueryRowContext(ctx,
+		`SELECT resend_api_key_enc FROM server_settings WHERE id = 1`).Scan(&keyEnc); err != nil || keyEnc == "" {
+		h.writeError(w, http.StatusUnprocessableEntity, "Add a Resend API key above first.")
+		return
+	}
+	apiKey, err := secret.Decrypt(h.encKey, keyEnc)
+	if err != nil {
+		h.logger.ErrorContext(ctx, "rsvp webhook setup: decrypt resend key", "error", err)
+		h.writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+
+	whSecret, created, err := ensureInboundWebhook(ctx, apiKey, endpoint)
+	switch {
+	case errors.Is(err, mailer.ErrResendRestrictedKey):
+		h.writeError(w, http.StatusUnprocessableEntity,
+			"Your Resend API key can only send email. RSVP tracking needs a Full access key "+
+				"(Resend → API Keys) to set up the webhook and read replies. Replace the key above, "+
+				"or set the webhook up by hand.")
+		return
+	case err != nil:
+		h.logger.ErrorContext(ctx, "rsvp webhook setup", "error", err)
+		h.writeError(w, http.StatusBadGateway, "Resend could not set up the webhook: "+err.Error())
+		return
+	}
+	if err := h.storeEmailSecret(ctx, h.db, secretResendWebhook, whSecret); err != nil {
+		h.logger.ErrorContext(ctx, "rsvp webhook setup: store secret", "error", err)
+		h.writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	h.writeJSON(w, http.StatusOK, map[string]any{"created": created, "webhook_url": endpoint})
 }

@@ -196,6 +196,8 @@ export type EmailSettings = {
 	resend_webhook_secret_set: boolean; // never returned directly
 	/** True when address, webhook secret and Resend API key are all present. */
 	rsvp_tracking: boolean;
+	/** Where Resend must deliver email.received: this instance's BASE_URL + the inbound path. */
+	rsvp_webhook_url: string;
 };
 
 export type GoogleSettings = {

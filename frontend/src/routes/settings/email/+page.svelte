@@ -30,7 +30,11 @@
 	// RSVP tracking (Resend inbound) for invites Calnode sends itself.
 	let rsvpAddress = $state('');
 	let webhookSecret = $state('');
-	let webhookUrl = $state('');
+	let clearWebhookSecret = $state(false);
+	// Automatic webhook setup in Resend; its error, when it fails, opens the manual steps.
+	let settingUpWebhook = $state(false);
+	let webhookSetupError = $state('');
+	let showManualWebhook = $state(false);
 
 	let userEmail = $state('');
 
@@ -58,10 +62,12 @@
 		emailFrom = email.email_from;
 		emailFromName = email.email_from_name || 'Calnode';
 		rsvpAddress = email.rsvp_address ?? '';
-		webhookUrl = `${window.location.origin}/v1/email/inbound/resend`;
 	}, 'Could not load email settings'));
 
 	async function save() {
+		// A save that removes the secret is the admin turning RSVP tracking off; it must not
+		// immediately set the webhook back up below.
+		const removingSecret = clearWebhookSecret;
 		await savingFlag.run(async () => {
 			const body: Record<string, unknown> = {
 				smtp_host: smtpHost, smtp_port: smtpPort, smtp_user: smtpUser,
@@ -75,13 +81,41 @@
 			body.rsvp_address = rsvpAddress.trim();
 			// Like the API key: omit to keep the stored secret.
 			if (webhookSecret) body.resend_webhook_secret = webhookSecret.trim();
+			else if (clearWebhookSecret) body.resend_webhook_secret = '';
 			emailSettings = await api.patch<EmailSettings>('/v1/settings/email', body);
 			smtpPass = '';
 			resendApiKey = '';
 			webhookSecret = '';
 			clearResendKey = false;
+			clearWebhookSecret = false;
+			if (emailSettings.resend_webhook_secret_set) {
+				webhookSetupError = '';
+				showManualWebhook = false;
+			}
 			toast.success('Email settings saved');
 		}, 'Could not save email settings');
+		// First time RSVP tracking has everything but the webhook: try to set that up too,
+		// so the admin only falls back to the manual steps when Resend says no.
+		const s = emailSettings;
+		if (!removingSecret && s?.rsvp_address && s.resend_api_key_set && !s.resend_webhook_secret_set) {
+			await setupWebhook();
+		}
+	}
+
+	async function setupWebhook() {
+		settingUpWebhook = true;
+		webhookSetupError = '';
+		try {
+			const res = await api.post<{ created: boolean }>('/v1/settings/email/rsvp-webhook');
+			emailSettings = await api.get<EmailSettings>('/v1/settings/email');
+			showManualWebhook = false;
+			toast.success(res.created ? 'Webhook created in Resend' : 'Connected to your existing Resend webhook');
+		} catch (e: any) {
+			webhookSetupError = e.message || 'Could not set up the webhook in Resend.';
+			showManualWebhook = true;
+		} finally {
+			settingUpWebhook = false;
+		}
 	}
 
 	async function test() {
@@ -252,33 +286,82 @@
 				{/if}
 			</div>
 
-			{#if !emailSettings?.resend_api_key_set}
-				<p class="mb-4 rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
-					Needs a Resend API key above: Calnode uses it to read the replies.
-				</p>
-			{/if}
+			<p class="mb-4 rounded-md px-3 py-2 text-xs {emailSettings?.resend_api_key_set ? 'bg-muted text-muted-foreground' : 'border border-amber-200 bg-amber-50 text-amber-800'}">
+				Needs a <strong>Full access</strong> Resend API key above: Calnode uses it to set up the
+				webhook and to read replies. A sending-only key can't do either.
+			</p>
 
 			<div class="space-y-4">
 				<div class="space-y-1.5">
 					<Label for="rsvp-address">RSVP address</Label>
 					<Input id="rsvp-address" type="email" placeholder="rsvp@reply.example.com" bind:value={rsvpAddress} />
 					<p class="text-xs text-muted-foreground">
-						An address on a domain Resend receives email for. Each invite gets its own private
-						variant of it, so answers find their booking.
+						An address on a subdomain you receive email on in Resend (Resend → Domains → enable
+						receiving, then add its MX record). Each invite gets its own private variant of it,
+						so answers find their booking.
 					</p>
 				</div>
-				<div class="space-y-1.5">
-					<Label for="rsvp-webhook-url">Webhook URL</Label>
-					<Input id="rsvp-webhook-url" readonly value={webhookUrl} />
-					<p class="text-xs text-muted-foreground">
-						Add this in Resend → Webhooks for the <code>email.received</code> event.
-					</p>
-				</div>
-				<div class="space-y-1.5">
-					<Label for="rsvp-webhook-secret">Webhook signing secret</Label>
-					<Input id="rsvp-webhook-secret" type="password"
-						placeholder={emailSettings?.resend_webhook_secret_set ? '•••••••• (stored)' : 'whsec_...'}
-						bind:value={webhookSecret} />
+
+				<div class="space-y-2 rounded-md border p-3">
+					<p class="text-xs font-medium">Resend webhook</p>
+					{#if emailSettings?.resend_webhook_secret_set && !clearWebhookSecret}
+						<p class="text-xs text-muted-foreground">
+							Connected: Resend delivers replies to <code>{emailSettings.rsvp_webhook_url}</code>.
+						</p>
+						<div class="flex flex-wrap items-center gap-2">
+							<Button variant="outline" size="sm" class="h-7 text-xs" onclick={setupWebhook}
+								disabled={settingUpWebhook || !emailSettings?.resend_api_key_set}>
+								{settingUpWebhook ? 'Checking…' : 'Re-run setup'}
+							</Button>
+							<Button variant="ghost" size="sm" class="h-7 px-2 text-xs"
+								onclick={() => (clearWebhookSecret = true)}>Remove secret</Button>
+						</div>
+					{:else}
+						{#if clearWebhookSecret}
+							<div class="flex items-center justify-between gap-2">
+								<p class="text-xs text-amber-700">The stored secret will be removed on save; RSVP tracking turns off.</p>
+								<Button variant="ghost" size="sm" class="h-6 px-2 text-xs"
+									onclick={() => (clearWebhookSecret = false)}>Undo</Button>
+							</div>
+						{:else}
+							<p class="text-xs text-muted-foreground">
+								Calnode can create the webhook in your Resend account and store its signing secret.
+							</p>
+							<div class="flex flex-wrap items-center gap-2">
+								<Button size="sm" class="h-7 text-xs" onclick={setupWebhook}
+									disabled={settingUpWebhook || !emailSettings?.resend_api_key_set}>
+									{settingUpWebhook ? 'Setting up…' : 'Set up webhook in Resend'}
+								</Button>
+								<Button variant="ghost" size="sm" class="h-7 px-2 text-xs"
+									onclick={() => (showManualWebhook = !showManualWebhook)}>
+									{showManualWebhook ? 'Hide manual steps' : 'Set it up by hand'}
+								</Button>
+							</div>
+						{/if}
+					{/if}
+
+					{#if webhookSetupError}
+						<p class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+							{webhookSetupError}
+						</p>
+					{/if}
+
+					{#if showManualWebhook && !clearWebhookSecret}
+						<ol class="list-decimal space-y-2 pl-4 text-xs text-muted-foreground">
+							<li>In Resend, open <strong>Webhooks</strong> and choose <strong>Add webhook</strong>.</li>
+							<li class="space-y-1">
+								<span>Endpoint URL:</span>
+								<Input id="rsvp-webhook-url" readonly value={emailSettings?.rsvp_webhook_url ?? ''} />
+							</li>
+							<li>Event: <code>email.received</code>.</li>
+							<li class="space-y-1">
+								<span>Copy the webhook's signing secret, paste it here and save:</span>
+								<Input id="rsvp-webhook-secret" type="password"
+									placeholder={emailSettings?.resend_webhook_secret_set ? '•••••••• (stored)' : 'whsec_...'}
+									bind:value={webhookSecret} />
+							</li>
+						</ol>
+					{/if}
 				</div>
 			</div>
 

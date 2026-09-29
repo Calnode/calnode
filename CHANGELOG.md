@@ -21,8 +21,10 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
   up. Existing bookings keep the way they were invited.
 - **RSVP tracking for invites Calnode sends.** With Resend receiving set up (Settings →
   Email → RSVP tracking), a booker's Yes / No / Maybe is read from their calendar reply,
-  shown on the booking, and sent as a new `booking.rsvp` webhook event. Each invite gets a
-  private reply address, and an answer only counts when it comes from that booking's booker.
+  shown on the booking, and sent as a new `booking.rsvp` webhook event. Calnode sets up the
+  Resend webhook itself (manual steps as a fallback) and needs a full-access Resend API
+  key. Each invite gets a private reply address, and an answer only counts when Resend
+  verified it came from that booking's booker.
 
 ## [0.10.1] - 2026-09-29
 
