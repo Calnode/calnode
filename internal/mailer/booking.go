@@ -47,6 +47,11 @@ type BookingData struct {
 	HideHostInInvite     bool
 	InviteOrganizerName  string
 	InviteOrganizerEmail string
+	// ICSWithoutAttendee leaves the booker out of the .ics and sends it as PUBLISH: a
+	// host's own copy of a Calnode-invited booking. The host's calendar client must never
+	// hold the booker as a guest, or editing the entry there could re-invite them from the
+	// host's personal account - the very thing Calnode-sent invites avoid.
+	ICSWithoutAttendee bool
 	// Branding — instance-wide, threaded in by the handler. BrandName is the
 	// wordmark/footer name (falls back to "Calnode" when empty); LogoURL is an
 	// optional absolute https image shown in the HTML email header.

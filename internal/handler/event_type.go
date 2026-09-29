@@ -72,6 +72,11 @@ type eventTypeJSON struct {
 	// contact for changes. Populated only for the host (read-only) GET case.
 	OwnerName  string `json:"owner_name,omitempty"`
 	OwnerEmail string `json:"owner_email,omitempty"`
+	// InviteSenderReady reports, on the single-event-type GET, whether Calnode can
+	// currently deliver the invites it is set to send. False means email was removed
+	// after the event type switched to Calnode-sent invites: bookers get no invite until
+	// Settings → Email is fixed, so the editor warns.
+	InviteSenderReady bool `json:"invite_sender_ready"`
 }
 
 type rowScanner interface {
@@ -303,15 +308,16 @@ func (h *Handler) CreateEventType(w http.ResponseWriter, r *http.Request) {
 	}
 	inviteDelivery := booking.InviteByCalendar
 	if req.InviteDelivery != nil {
-		if !validInviteDelivery(*req.InviteDelivery) {
+		mode, ok := normalizeInviteDelivery(*req.InviteDelivery)
+		if !ok {
 			h.writeError(w, http.StatusBadRequest, "invite_delivery must be 'calendar' or 'calnode'")
 			return
 		}
-		if *req.InviteDelivery == booking.InviteByCalnode && !h.inviteSenderReady(r.Context()) {
+		if mode == booking.InviteByCalnode && !h.inviteSenderReady(r.Context()) {
 			h.writeError(w, http.StatusBadRequest, errInviteSenderMissing.Error())
 			return
 		}
-		inviteDelivery = *req.InviteDelivery
+		inviteDelivery = mode
 	}
 
 	id := uid.New()
@@ -433,6 +439,7 @@ func (h *Handler) GetEventType(w http.ResponseWriter, r *http.Request) {
 		et.OwnerName = ownerName
 		et.OwnerEmail = ownerEmail
 	}
+	et.InviteSenderReady = h.inviteSenderReady(r.Context())
 	if err := h.loadReminders(r.Context(), et.ID, et); err != nil {
 		h.logger.ErrorContext(r.Context(), "get event type: load reminders", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal error")
@@ -621,9 +628,14 @@ func (h *Handler) PatchEventType(w http.ResponseWriter, r *http.Request) {
 		}
 		set("show_taken_slots", v)
 	}
-	if req.InviteDelivery != nil && !validInviteDelivery(*req.InviteDelivery) {
-		h.writeError(w, http.StatusBadRequest, "invite_delivery must be 'calendar' or 'calnode'")
-		return
+	var newInviteDelivery string
+	if req.InviteDelivery != nil {
+		mode, ok := normalizeInviteDelivery(*req.InviteDelivery)
+		if !ok {
+			h.writeError(w, http.StatusBadRequest, "invite_delivery must be 'calendar' or 'calnode'")
+			return
+		}
+		newInviteDelivery = mode
 	}
 	if req.Archived != nil {
 		if *req.Archived {
@@ -740,12 +752,12 @@ func (h *Handler) PatchEventType(w http.ResponseWriter, r *http.Request) {
 	// Same on-change rule for invite delivery: switching to Calnode-sent invites needs a
 	// working email sender (the invite IS an email), but an event type already set that
 	// way stays saveable if email is later removed - that is fixed in Settings → Email.
-	if req.InviteDelivery != nil && *req.InviteDelivery != curInviteDelivery {
-		if *req.InviteDelivery == booking.InviteByCalnode && !h.inviteSenderReady(r.Context()) {
+	if newInviteDelivery != "" && newInviteDelivery != curInviteDelivery {
+		if newInviteDelivery == booking.InviteByCalnode && !h.inviteSenderReady(r.Context()) {
 			h.writeError(w, http.StatusBadRequest, errInviteSenderMissing.Error())
 			return
 		}
-		set("invite_delivery", *req.InviteDelivery)
+		set("invite_delivery", newInviteDelivery)
 	}
 
 	// The slug is the public booking URL, so renaming one that is already in circulation

@@ -217,16 +217,17 @@ func (s *Service) Create(ctx context.Context, p CreateParams) (*Booking, error) 
 
 	nowT, _ := time.Parse(time.RFC3339Nano, now)
 	return &Booking{
-		ID:            bookingID,
-		EventTypeID:   p.EventTypeID,
-		HostID:        chosenHost,
-		StartAt:       p.StartAt.UTC(),
-		EndAt:         p.EndAt.UTC(),
-		Status:        "confirmed",
-		LocationValue: p.LocationValue,
-		LocationType:  p.LocationType,
-		CreatedAt:     nowT,
-		UpdatedAt:     nowT,
+		ID:             bookingID,
+		EventTypeID:    p.EventTypeID,
+		HostID:         chosenHost,
+		StartAt:        p.StartAt.UTC(),
+		EndAt:          p.EndAt.UTC(),
+		Status:         "confirmed",
+		LocationValue:  p.LocationValue,
+		LocationType:   p.LocationType,
+		InviteDelivery: inviteDelivery,
+		CreatedAt:      nowT,
+		UpdatedAt:      nowT,
 	}, nil
 }
 
@@ -306,7 +307,7 @@ const bookingColumns = `id, event_type_id, host_id, start_at, end_at, status,
 	       COALESCE(cancellation_reason, ''), COALESCE(location_value, ''),
 	       created_at, updated_at,
 	       payment_status, amount_paid_cents, amount_paid_currency, location_type,
-	       confirm_failed`
+	       confirm_failed, invite_delivery`
 
 // hostBusy reports whether hostID has any non-cancelled booking overlapping
 // [start, end) — the double-booking invariant every write path (Create, Reschedule,
@@ -675,7 +676,7 @@ func scanBooking(s scanner) (*Booking, error) {
 		&b.CancellationReason, &b.LocationValue,
 		&createdStr, &updatedStr,
 		&b.PaymentStatus, &b.AmountPaidCents, &b.AmountPaidCurrency, &b.LocationType,
-		&confirmFailed,
+		&confirmFailed, &b.InviteDelivery,
 	)
 	if err == sql.ErrNoRows {
 		return nil, ErrNotFound

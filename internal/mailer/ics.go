@@ -21,6 +21,7 @@ func BuildICS(d BookingData, method string) []byte {
 	if method == "CANCEL" {
 		status = "CANCELLED"
 	}
+	method = d.icsMethod(method)
 	stamp := time.Now().UTC().Format(icsTimeLayout)
 
 	var b strings.Builder
@@ -51,7 +52,7 @@ func BuildICS(d BookingData, method string) []byte {
 	if orgEmail != "" {
 		writeICSLine(&b, "ORGANIZER;CN="+escapeICSParam(orgName)+":mailto:"+orgEmail)
 	}
-	if d.OrganizerEmail != "" {
+	if d.OrganizerEmail != "" && !d.ICSWithoutAttendee {
 		writeICSLine(&b, "ATTENDEE;CN="+escapeICSParam(d.OrganizerName)+";RSVP=TRUE:mailto:"+d.OrganizerEmail)
 	}
 	writeICSLine(&b, "STATUS:"+status)
@@ -67,9 +68,19 @@ const icsTimeLayout = "20060102T150405Z"
 func icsAttachment(d BookingData, method string) Attachment {
 	return Attachment{
 		Filename:    "invite.ics",
-		ContentType: "text/calendar; charset=utf-8; method=" + method,
+		ContentType: "text/calendar; charset=utf-8; method=" + d.icsMethod(method),
 		Content:     BuildICS(d, method),
 	}
+}
+
+// icsMethod is the iTIP method actually sent. A copy without the attendee is a plain
+// calendar entry, which is PUBLISH (RFC 5546 §3.2.1): REQUEST and CANCEL are addressed to
+// attendees, and a client handed a REQUEST with none may try to invite them itself.
+func (d BookingData) icsMethod(method string) string {
+	if d.ICSWithoutAttendee {
+		return "PUBLISH"
+	}
+	return method
 }
 
 // escapeICSText escapes a value for an iCalendar TEXT field (RFC 5545 §3.3.11).

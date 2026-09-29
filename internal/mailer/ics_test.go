@@ -58,6 +58,26 @@ func TestBuildICS_hideHostNeverFallsBackToHost(t *testing.T) {
 	}
 }
 
+// A host's own copy of a Calnode-invited booking must never list the booker: a calendar
+// client holding them as a guest could re-invite them from the host's own account.
+func TestICSAttachment_withoutAttendeeIsPublish(t *testing.T) {
+	d := testBookingData()
+	d.ICSWithoutAttendee = true
+	for _, method := range []string{"REQUEST", "CANCEL"} {
+		a := icsAttachment(d, method)
+		got := string(a.Content)
+		if strings.Contains(got, "ATTENDEE") || strings.Contains(got, d.OrganizerEmail) {
+			t.Errorf("%s: host copy lists the booker:\n%s", method, got)
+		}
+		if !strings.Contains(got, "METHOD:PUBLISH") || !strings.HasSuffix(a.ContentType, "method=PUBLISH") {
+			t.Errorf("%s: attendee-less copy not sent as PUBLISH (content type %q):\n%s", method, a.ContentType, got)
+		}
+	}
+	if got := string(BuildICS(d, "CANCEL")); !strings.Contains(got, "STATUS:CANCELLED") {
+		t.Errorf("a cancelled host copy lost STATUS:CANCELLED:\n%s", got)
+	}
+}
+
 func TestBuildICS_escapesText(t *testing.T) {
 	d := testBookingData()
 	d.EventTypeName = "Strategy, Planning; Q3"

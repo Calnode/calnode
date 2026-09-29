@@ -197,7 +197,8 @@ func (f *inviteFixture) waitFor(t *testing.T, addr string, n int) *mailer.Messag
 func icsOf(m *mailer.Message) string {
 	for _, a := range m.Attachments {
 		if strings.HasPrefix(a.ContentType, "text/calendar") {
-			return string(a.Content)
+			// Unfold RFC 5545 continuation lines so assertions see whole properties.
+			return strings.ReplaceAll(string(a.Content), "\r\n ", "")
 		}
 	}
 	return ""
@@ -316,5 +317,115 @@ func TestInviteDelivery_requiresEmailSender(t *testing.T) {
 	rec = f.do(t, f.h.PatchEventType, http.MethodPatch, "/v1/event-types/intro", `{"invite_delivery":"carrier-pigeon"}`)
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("unknown invite_delivery: %d; want 400", rec.Code)
+	}
+}
+
+// assertWorkspaceInvite fails unless ics is a Calnode-organized invite of the given method
+// that carries none of the listed host addresses.
+func assertWorkspaceInvite(t *testing.T, what, ics, method string, hostAddrs ...string) {
+	t.Helper()
+	if !strings.Contains(ics, "METHOD:"+method) {
+		t.Fatalf("%s: no %s invite; with the host's calendar silenced it is the booker's only update:\n%s", what, method, ics)
+	}
+	if !strings.Contains(ics, "mailto:"+inviteSenderEmail) {
+		t.Errorf("%s: invite not organized by the workspace sender:\n%s", what, ics)
+	}
+	for _, a := range hostAddrs {
+		if strings.Contains(ics, a) {
+			t.Errorf("%s: invite carries host address %s:\n%s", what, a, ics)
+		}
+	}
+}
+
+func (f *inviteFixture) calnodeBooking(t *testing.T) (*booking.Booking, string) {
+	t.Helper()
+	if rec := f.createEventType(t, "intro", booking.InviteByCalnode); rec.Code != http.StatusCreated {
+		t.Fatalf("create event type: %d — %s", rec.Code, rec.Body.String())
+	}
+	id, _ := f.book(t, "intro")
+	b, err := f.h.bookingSvc.Get(context.Background(), id)
+	if err != nil {
+		t.Fatalf("get booking: %v", err)
+	}
+	if b.InviteDelivery != booking.InviteByCalnode {
+		t.Fatalf("booking invite_delivery = %q; want calnode copied from the event type", b.InviteDelivery)
+	}
+	return b, b.EventTypeID
+}
+
+// A reschedule must reach the booker as Calnode's updated invite, since the host's
+// calendar event (moved silently) never listed them.
+func TestInviteDelivery_rescheduleSendsWorkspaceInvite(t *testing.T) {
+	f := newInviteFixture(t, true)
+	b, etID := f.calnodeBooking(t)
+
+	newStart := b.StartAt.Add(24 * time.Hour)
+	updated, err := f.h.bookingSvc.Reschedule(context.Background(), b.ID, newStart, newStart.Add(30*time.Minute))
+	if err != nil {
+		t.Fatalf("reschedule: %v", err)
+	}
+	f.h.rescheduleSideEffects(*updated, etID, b.StartAt, b.EndAt)
+
+	ics := icsOf(f.waitFor(t, inviteBookerEmail, 2))
+	assertWorkspaceInvite(t, "reschedule", ics, "REQUEST", inviteHostEmail)
+	if !strings.Contains(ics, "DTSTART:"+newStart.UTC().Format("20060102T150405Z")) {
+		t.Errorf("reschedule invite does not carry the new time:\n%s", ics)
+	}
+}
+
+// Reassigning moves the event to the new host's calendar without inviting the booker
+// there, and re-issues Calnode's invite: neither host's address reaches the booker.
+func TestInviteDelivery_reassignKeepsBothHostsPrivate(t *testing.T) {
+	f := newInviteFixture(t, true)
+	b, _ := f.calnodeBooking(t)
+
+	const newHostEmail = "colleague@host.example"
+	if _, err := f.h.db.Exec(`INSERT INTO users (id, email, name, iana_timezone, is_admin, created_at)
+		VALUES ('host-2', ?, 'Colleague', 'UTC', 0, '2026-01-01T00:00:00Z')`, newHostEmail); err != nil {
+		t.Fatalf("seed second host: %v", err)
+	}
+	if _, err := f.h.db.Exec(`INSERT INTO calendar_connections
+		  (id, user_id, provider, access_token_enc, calendar_id, check_conflicts, is_destination, created_at)
+		VALUES ('conn-2', 'host-2', 'google', 'e', 'primary', 1, 1, '2026-01-01T00:00:00Z')`); err != nil {
+		t.Fatalf("seed second host calendar: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/v1/bookings/"+b.ID+"/reassign", strings.NewReader(`{"host_id":"host-2"}`))
+	req.SetPathValue("id", b.ID)
+	req.Header.Set("X-API-Key", f.apiKey)
+	rec := httptest.NewRecorder()
+	f.h.RequireAuth(f.h.ReassignBooking)(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("reassign: %d — %s", rec.Code, rec.Body.String())
+	}
+
+	assertWorkspaceInvite(t, "reassign", icsOf(f.waitFor(t, inviteBookerEmail, 2)), "REQUEST",
+		inviteHostEmail, newHostEmail)
+	events := f.cal.events()
+	if len(events) != 2 || events[1].OrganizerEmail != "" {
+		t.Errorf("new host's calendar events = %+v; want the moved event created without the booker", events)
+	}
+}
+
+// The reconciler re-creates a host event whose inline create failed; for a Calnode
+// booking it must not add the booker, or the provider would invite them after all.
+func TestInviteDelivery_reconcilerHealsWithoutInvitingBooker(t *testing.T) {
+	f := newInviteFixture(t, true)
+	b, _ := f.calnodeBooking(t)
+
+	if _, err := f.h.db.Exec(`UPDATE booking_hosts SET external_event_id = NULL WHERE booking_id = ?`, b.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.h.db.Exec(`UPDATE bookings SET created_at = ? WHERE id = ?`,
+		time.Now().UTC().Add(-time.Hour).Format(time.RFC3339), b.ID); err != nil {
+		t.Fatal(err)
+	}
+	f.h.reconcileCreations(context.Background(), f.h.getCal())
+
+	events := f.cal.events()
+	if len(events) != 2 {
+		t.Fatalf("host calendar events = %d; want the missing one re-created", len(events))
+	}
+	if events[1].OrganizerEmail != "" {
+		t.Errorf("healed event invites %q; want no guest", events[1].OrganizerEmail)
 	}
 }

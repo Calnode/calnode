@@ -41,6 +41,9 @@ export type EventType = {
 	 *  from the host's own address. 'calnode': Calnode's own invite, from the email sender
 	 *  in Settings → Email, so no host's personal address reaches the booker. */
 	invite_delivery: 'calendar' | 'calnode';
+	/** Whether Calnode can currently send invites (a sender and working email). Only
+	 *  returned on the single event type GET. */
+	invite_sender_ready?: boolean;
 	location_type: string;
 	location_value?: string;
 	buffer_before_minutes: number;

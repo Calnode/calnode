@@ -743,6 +743,12 @@
 					{/if}
 				</p>
 			</div>
+			{#if form.invite_delivery === 'calnode' && et?.invite_sender_ready === false}
+				<p class="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+					Email isn't set up, so bookers won't receive an invite. Add a sender in
+					<a href="{base}/settings/email" class="underline">Settings → Email</a>.
+				</p>
+			{/if}
 		</div>
 
 		<!-- Price -->

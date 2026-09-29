@@ -554,7 +554,9 @@ every provider reads as "no attendee", so nobody is emailed from a host's accoun
 always attaches Calnode's `.ics` to the booker's emails, with `ORGANIZER` set to the
 instance sender from Settings → Email (`applyInviteDelivery`, `BookingData.HideHostInInvite`).
 No sender address means no `ORGANIZER` line, never a fallback to the host. Host copies keep
-the host as organizer. Reschedule, cancel, reassign and the reconciler read the mode from
+the host as organizer and, for a `calnode` booking, leave the booker out entirely and go out as
+`METHOD:PUBLISH` (`applyHostInvite`, `ICSWithoutAttendee`), so no host calendar holds them as
+a guest it could re-invite. Reschedule, cancel, reassign and the reconciler read the mode from
 the **booking**, not the event type, so a booking is always updated through the channel
 its invite went out on. Switching an event type to `calnode` requires email to be set up
 (validated on change).

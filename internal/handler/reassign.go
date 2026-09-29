@@ -158,7 +158,7 @@ func (h *Handler) ReassignBooking(w http.ResponseWriter, r *http.Request) {
 		// Move the Google Calendar event: remove from the old host, recreate on
 		// the new host, and persist the new event ID (clearing it if recreation
 		// produced nothing, e.g. the new host has no destination calendar).
-		inviteMode := h.bookingInviteDelivery(ctx, bCopy.ID)
+		inviteMode := bCopy.InviteDelivery
 		if gc := h.getCal(); gc != nil {
 			if extEventID != "" {
 				// Reassignment cancels on the OLD host's calendar. Their stamped provider
@@ -221,8 +221,8 @@ func (h *Handler) ReassignBooking(w http.ResponseWriter, r *http.Request) {
 		}
 		if prefs.NotifyHostBooking {
 			hd := d
-			hd.HideHostInInvite = false
-			hd.AttachICS = false
+			h.applyHostInvite(ctx, &hd, inviteMode, newHostID)
+			hd.ICSSequence = int(time.Now().Unix())
 			if err := mailer.SendConfirmationToHost(ctx, h.mailer, hd); err != nil {
 				h.logger.Error("reassign: email new host", "error", err, "booking_id", bCopy.ID)
 			}

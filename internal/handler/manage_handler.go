@@ -314,7 +314,7 @@ func (h *Handler) rescheduleSideEffects(bCopy booking.Booking, capturedEtID stri
 	if tok, err := h.bookingSvc.RotateManageToken(ctx, bCopy.ID); err == nil {
 		d.ManageURL = h.publicURL() + "/manage/" + tok
 	}
-	h.applyInviteDelivery(ctx, &d, h.bookingInviteDelivery(ctx, bCopy.ID), bCopy.HostID)
+	h.applyInviteDelivery(ctx, &d, bCopy.InviteDelivery, bCopy.HostID)
 	d.ICSSequence = int(bCopy.UpdatedAt.Unix())
 
 	prefs := h.hostPrefsOrDefault(ctx, bCopy.ID, bCopy.HostID)
@@ -333,11 +333,8 @@ func (h *Handler) rescheduleSideEffects(bCopy booking.Booking, capturedEtID stri
 		}
 	}
 	if prefs.NotifyHostReschedule {
-		// The host's copy keeps the host as organizer and attaches only when the host has
-		// no calendar of their own holding the event, whoever invited the booker.
 		hd := d
-		hd.HideHostInInvite = false
-		hd.AttachICS = h.noConnectedDestination(ctx, bCopy.HostID)
+		h.applyHostInvite(ctx, &hd, bCopy.InviteDelivery, bCopy.HostID)
 		if err := mailer.SendRescheduleToHost(ctx, h.mailer, hd); err != nil {
 			h.logger.Error("reschedule email (host)", "error", err, "booking_id", bCopy.ID)
 		}

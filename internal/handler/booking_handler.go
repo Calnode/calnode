@@ -1019,9 +1019,6 @@ type bookingConfirmationInput struct {
 	// OrganizerLocale is the attendee's resolved locale code (e.g. "es") — same value
 	// stored on booking_attendees.locale, threaded into the confirmation email.
 	OrganizerLocale string
-	// InviteDelivery is the booking's stored invite mode; dispatchBookingConfirmation
-	// fills it from the booking row, so callers need not.
-	InviteDelivery string
 }
 
 // hostPrefsOrDefault loads a host's notification prefs, defaulting to allOnPrefs and
@@ -1040,15 +1037,12 @@ func (h *Handler) hostPrefsOrDefault(ctx context.Context, bookingID, userID stri
 
 // hostBookingData returns a per-host copy of base with the fields every host
 // notification email needs filled in: the host's own name/email (so "with <name>"
-// reads correctly), whether to attach an ICS (only when that host has no connected
-// destination calendar of their own), and the ICS sequence number.
-func (h *Handler) hostBookingData(ctx context.Context, base mailer.BookingData, host assignedHost, updatedAt time.Time) mailer.BookingData {
+// reads correctly), the host's own invite (applyHostInvite), and the ICS sequence number.
+func (h *Handler) hostBookingData(ctx context.Context, base mailer.BookingData, host assignedHost, inviteMode string, updatedAt time.Time) mailer.BookingData {
 	hd := base
 	hd.HostName, hd.HostEmail = host.Name, host.Email
-	hd.AttachICS = h.noConnectedDestination(ctx, host.UserID)
+	h.applyHostInvite(ctx, &hd, inviteMode, host.UserID)
 	hd.ICSSequence = int(updatedAt.Unix())
-	// The host's own copy is organized by the host, whichever way the booker was invited.
-	hd.HideHostInInvite = false
 	return hd
 }
 
@@ -1204,7 +1198,7 @@ func (h *Handler) createHostEventsAndNotify(ctx context.Context, b *booking.Book
 				Start:          b.StartAt,
 				End:            b.EndAt,
 				OrganizerName:  in.OrganizerName,
-				OrganizerEmail: calendarInvitee(in.InviteDelivery, in.OrganizerEmail),
+				OrganizerEmail: calendarInvitee(b.InviteDelivery, in.OrganizerEmail),
 				AddMeet:        autoGenMeet && host.IsPrimary,
 			})
 			if err != nil {
@@ -1246,7 +1240,7 @@ func (h *Handler) createHostEventsAndNotify(ctx context.Context, b *booking.Book
 			primaryPrefs = prefs
 		}
 		if prefs.NotifyHostBooking {
-			hd := h.hostBookingData(ctx, *bData, host, b.UpdatedAt)
+			hd := h.hostBookingData(ctx, *bData, host, b.InviteDelivery, b.UpdatedAt)
 			if livekitHostURL != "" {
 				hd.LocationValue = livekitHostURL // host email gets the controls-enabled link
 			}
@@ -1292,7 +1286,6 @@ func sendWithRetry(ctx context.Context, logger *slog.Logger, bookingID, who stri
 func (h *Handler) dispatchBookingConfirmation(b *booking.Booking, in bookingConfirmationInput) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	in.InviteDelivery = h.bookingInviteDelivery(ctx, b.ID)
 	bData := mailer.BookingData{
 		BookingID:         b.ID,
 		EventTypeName:     in.EventTypeName,
@@ -1338,7 +1331,7 @@ func (h *Handler) dispatchBookingConfirmation(b *booking.Booking, in bookingConf
 	// Attendee confirmation, once. "With:" names the primary host; gated on the
 	// primary host's notification preference (matches prior behaviour).
 	bData.HostName, bData.HostEmail = primaryHost(hosts).Name, primaryHost(hosts).Email
-	h.applyInviteDelivery(ctx, &bData, in.InviteDelivery, b.HostID)
+	h.applyInviteDelivery(ctx, &bData, b.InviteDelivery, b.HostID)
 	bData.ICSSequence = int(b.UpdatedAt.Unix())
 	confirmFailed := hostFailed
 	if primaryPrefs.NotifyConfirmation {
@@ -1777,13 +1770,13 @@ func (h *Handler) cancelSideEffects(b booking.Booking) {
 			d.HostName, d.HostEmail = host.Name, host.Email // attendee "With:" = primary host, not owner
 		}
 		if prefs.NotifyHostCancel {
-			hd := h.hostBookingData(ctx, d, host, b.UpdatedAt)
+			hd := h.hostBookingData(ctx, d, host, b.InviteDelivery, b.UpdatedAt)
 			if err := mailer.SendCancellationToHost(ctx, h.mailer, hd); err != nil {
 				h.logger.Error("booking cancellation email (host)", "error", err, "booking_id", b.ID, "host", host.UserID)
 			}
 		}
 	}
-	h.applyInviteDelivery(ctx, &d, h.bookingInviteDelivery(ctx, b.ID), b.HostID)
+	h.applyInviteDelivery(ctx, &d, b.InviteDelivery, b.HostID)
 	d.ICSSequence = int(b.UpdatedAt.Unix())
 	if primaryPrefs.NotifyCancellation {
 		if err := mailer.SendCancellationToAttendee(ctx, h.mailer, d); err != nil {

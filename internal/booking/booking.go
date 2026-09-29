@@ -44,6 +44,9 @@ type Booking struct {
 	// ConfirmFailed reports whether the initial confirmation email failed (after
 	// retry). Operator-visible via the booking JSON; see migration 00064.
 	ConfirmFailed bool
+	// InviteDelivery is who sent this booking's invite (InviteByCalendar/InviteByCalnode),
+	// fixed at creation; reschedule, cancel and reassign follow it.
+	InviteDelivery string
 }
 
 // Attendee is a participant in a booking (the person who made the booking).
