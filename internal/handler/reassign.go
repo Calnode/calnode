@@ -158,6 +158,7 @@ func (h *Handler) ReassignBooking(w http.ResponseWriter, r *http.Request) {
 		// Move the Google Calendar event: remove from the old host, recreate on
 		// the new host, and persist the new event ID (clearing it if recreation
 		// produced nothing, e.g. the new host has no destination calendar).
+		inviteMode := h.bookingInviteDelivery(ctx, bCopy.ID)
 		if gc := h.getCal(); gc != nil {
 			if extEventID != "" {
 				// Reassignment cancels on the OLD host's calendar. Their stamped provider
@@ -174,7 +175,7 @@ func (h *Handler) ReassignBooking(w http.ResponseWriter, r *http.Request) {
 				Start:          bCopy.StartAt,
 				End:            bCopy.EndAt,
 				OrganizerName:  orgName,
-				OrganizerEmail: orgEmail,
+				OrganizerEmail: calendarInvitee(inviteMode, orgEmail),
 			})
 			if err != nil {
 				h.logger.Error("reassign: create new calendar event", "error", err, "booking_id", bCopy.ID)
@@ -205,7 +206,13 @@ func (h *Handler) ReassignBooking(w http.ResponseWriter, r *http.Request) {
 		if err := h.loadHostIntoData(ctx, newHostID, &d); err != nil {
 			h.logger.Error("reassign: load new host", "error", err, "booking_id", bCopy.ID)
 		}
-
+		// A Calnode-sent invite is re-issued (same UID, newer SEQUENCE) so the booker's
+		// calendar entry follows the change. A calendar-sent one needs nothing here: the
+		// new host's calendar invited the booker when the event was recreated above.
+		if inviteMode == booking.InviteByCalnode {
+			h.applyInviteDelivery(ctx, &d, inviteMode, newHostID)
+			d.ICSSequence = int(time.Now().Unix())
+		}
 		prefs := h.hostPrefsOrDefault(ctx, bCopy.ID, newHostID)
 		if prefs.NotifyConfirmation {
 			if err := mailer.SendConfirmationToAttendee(ctx, h.mailer, d); err != nil {
@@ -213,7 +220,10 @@ func (h *Handler) ReassignBooking(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if prefs.NotifyHostBooking {
-			if err := mailer.SendConfirmationToHost(ctx, h.mailer, d); err != nil {
+			hd := d
+			hd.HideHostInInvite = false
+			hd.AttachICS = false
+			if err := mailer.SendConfirmationToHost(ctx, h.mailer, hd); err != nil {
 				h.logger.Error("reassign: email new host", "error", err, "booking_id", bCopy.ID)
 			}
 		}

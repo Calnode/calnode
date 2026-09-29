@@ -12,8 +12,10 @@ import (
 // reschedule update, and the eventual CANCEL to the same event; d.ICSSequence must
 // not decrease across that lifecycle (the handlers feed it updated_at's unix time).
 //
-// This is only used when the host has no Google destination calendar — otherwise
-// Google already invites the attendee and a second invite would duplicate it.
+// Attached when the host has no Google destination calendar (otherwise Google already
+// invites the attendee and a second invite would duplicate it), and always when the
+// booking's invites are sent by Calnode — then d.HideHostInInvite swaps the host out of
+// ORGANIZER for the instance's sender identity.
 func BuildICS(d BookingData, method string) []byte {
 	status := "CONFIRMED"
 	if method == "CANCEL" {
@@ -42,8 +44,12 @@ func BuildICS(d BookingData, method string) []byte {
 	if d.LocationValue != "" {
 		writeICSLine(&b, "LOCATION:"+escapeICSText(d.LocationValue))
 	}
-	if d.HostEmail != "" {
-		writeICSLine(&b, "ORGANIZER;CN="+escapeICSParam(d.HostName)+":mailto:"+d.HostEmail)
+	orgName, orgEmail := d.HostName, d.HostEmail
+	if d.HideHostInInvite {
+		orgName, orgEmail = d.InviteOrganizerName, d.InviteOrganizerEmail
+	}
+	if orgEmail != "" {
+		writeICSLine(&b, "ORGANIZER;CN="+escapeICSParam(orgName)+":mailto:"+orgEmail)
 	}
 	if d.OrganizerEmail != "" {
 		writeICSLine(&b, "ATTENDEE;CN="+escapeICSParam(d.OrganizerName)+";RSVP=TRUE:mailto:"+d.OrganizerEmail)

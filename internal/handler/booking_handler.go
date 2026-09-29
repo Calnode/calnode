@@ -472,6 +472,9 @@ type bookableEventType struct {
 	// so the page can grey them out. Read by the public slots endpoint only: the MCP
 	// tool and the booking assistant must keep seeing bookable times and nothing else.
 	ShowTakenSlots bool
+	// InviteDelivery is who sends the booker's invite (booking.InviteByCalendar/ByCalnode),
+	// copied onto each booking at creation.
+	InviteDelivery string
 }
 
 // loadBookableEventType loads an event type by slug for the booking-creation/slot paths.
@@ -486,12 +489,14 @@ func (h *Handler) loadBookableEventType(ctx context.Context, slug string) (*book
 		SELECT id, user_id, name, duration_minutes, slot_interval_minutes,
 		       location_type, location_value, allow_phone_call, routing_mode, rr_strategy,
 		       buffer_before_minutes, buffer_after_minutes, min_notice_minutes, max_future_days,
-		       is_active, is_public, show_taken_slots, max_active_bookings, price_cents, currency
+		       is_active, is_public, show_taken_slots, max_active_bookings, price_cents, currency,
+		       invite_delivery
 		FROM event_types WHERE slug = ?`, slug).
 		Scan(&et.ID, &et.UserID, &et.Name, &et.DurationMinutes, &et.SlotIntervalMinutes,
 			&et.LocationType, &et.LocationValue, &et.AllowPhoneCall, &et.RoutingMode, &et.RRStrategy,
 			&et.BufferBeforeMinutes, &et.BufferAfterMinutes, &et.MinNoticeMinutes, &et.MaxFutureDays,
-			&isActive, &isPublic, &showTaken, &et.MaxActiveBookings, &et.PriceCents, &et.Currency)
+			&isActive, &isPublic, &showTaken, &et.MaxActiveBookings, &et.PriceCents, &et.Currency,
+			&et.InviteDelivery)
 	if err != nil || isActive == 0 || isPublic == 0 {
 		return nil, errEventTypeNotFound
 	}
@@ -570,6 +575,7 @@ func (h *Handler) createBookingForSlug(ctx context.Context, slug string, startAt
 		Answers:             answers,
 		MaxActivePerInvitee: et.MaxActiveBookings,
 		MaxBookingsPerHour:  maxBookingsPerEmailPerHour,
+		InviteDelivery:      et.InviteDelivery,
 	})
 	if err != nil {
 		return nil, err
@@ -900,6 +906,7 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 		Answers:             answers,
 		MaxActivePerInvitee: et.MaxActiveBookings,
 		MaxBookingsPerHour:  maxBookingsPerEmailPerHour,
+		InviteDelivery:      et.InviteDelivery,
 	})
 	if err != nil {
 		if errors.Is(err, booking.ErrDoubleBooked) {
@@ -1012,6 +1019,9 @@ type bookingConfirmationInput struct {
 	// OrganizerLocale is the attendee's resolved locale code (e.g. "es") — same value
 	// stored on booking_attendees.locale, threaded into the confirmation email.
 	OrganizerLocale string
+	// InviteDelivery is the booking's stored invite mode; dispatchBookingConfirmation
+	// fills it from the booking row, so callers need not.
+	InviteDelivery string
 }
 
 // hostPrefsOrDefault loads a host's notification prefs, defaulting to allOnPrefs and
@@ -1037,6 +1047,8 @@ func (h *Handler) hostBookingData(ctx context.Context, base mailer.BookingData, 
 	hd.HostName, hd.HostEmail = host.Name, host.Email
 	hd.AttachICS = h.noConnectedDestination(ctx, host.UserID)
 	hd.ICSSequence = int(updatedAt.Unix())
+	// The host's own copy is organized by the host, whichever way the booker was invited.
+	hd.HideHostInInvite = false
 	return hd
 }
 
@@ -1192,7 +1204,7 @@ func (h *Handler) createHostEventsAndNotify(ctx context.Context, b *booking.Book
 				Start:          b.StartAt,
 				End:            b.EndAt,
 				OrganizerName:  in.OrganizerName,
-				OrganizerEmail: in.OrganizerEmail,
+				OrganizerEmail: calendarInvitee(in.InviteDelivery, in.OrganizerEmail),
 				AddMeet:        autoGenMeet && host.IsPrimary,
 			})
 			if err != nil {
@@ -1280,6 +1292,7 @@ func sendWithRetry(ctx context.Context, logger *slog.Logger, bookingID, who stri
 func (h *Handler) dispatchBookingConfirmation(b *booking.Booking, in bookingConfirmationInput) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+	in.InviteDelivery = h.bookingInviteDelivery(ctx, b.ID)
 	bData := mailer.BookingData{
 		BookingID:         b.ID,
 		EventTypeName:     in.EventTypeName,
@@ -1325,7 +1338,7 @@ func (h *Handler) dispatchBookingConfirmation(b *booking.Booking, in bookingConf
 	// Attendee confirmation, once. "With:" names the primary host; gated on the
 	// primary host's notification preference (matches prior behaviour).
 	bData.HostName, bData.HostEmail = primaryHost(hosts).Name, primaryHost(hosts).Email
-	bData.AttachICS = h.noConnectedDestination(ctx, b.HostID)
+	h.applyInviteDelivery(ctx, &bData, in.InviteDelivery, b.HostID)
 	bData.ICSSequence = int(b.UpdatedAt.Unix())
 	confirmFailed := hostFailed
 	if primaryPrefs.NotifyConfirmation {
@@ -1770,7 +1783,7 @@ func (h *Handler) cancelSideEffects(b booking.Booking) {
 			}
 		}
 	}
-	d.AttachICS = h.noConnectedDestination(ctx, b.HostID)
+	h.applyInviteDelivery(ctx, &d, h.bookingInviteDelivery(ctx, b.ID), b.HostID)
 	d.ICSSequence = int(b.UpdatedAt.Unix())
 	if primaryPrefs.NotifyCancellation {
 		if err := mailer.SendCancellationToAttendee(ctx, h.mailer, d); err != nil {

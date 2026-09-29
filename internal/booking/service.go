@@ -152,12 +152,18 @@ func (s *Service) Create(ctx context.Context, p CreateParams) (*Booking, error) 
 	}
 
 	bookingID := uid.New()
+	inviteDelivery := p.InviteDelivery
+	if inviteDelivery == "" {
+		inviteDelivery = InviteByCalendar
+	}
 
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO bookings
-		  (id, event_type_id, host_id, start_at, end_at, status, location_value, location_type, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, 'confirmed', ?, ?, ?, ?)`,
-		bookingID, p.EventTypeID, chosenHost, startStr, endStr, p.LocationValue, p.LocationType, now, now)
+		  (id, event_type_id, host_id, start_at, end_at, status, location_value, location_type,
+		   invite_delivery, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, 'confirmed', ?, ?, ?, ?, ?)`,
+		bookingID, p.EventTypeID, chosenHost, startStr, endStr, p.LocationValue, p.LocationType,
+		inviteDelivery, now, now)
 	if err != nil {
 		if db.IsUniqueViolation(err) {
 			return nil, ErrDoubleBooked

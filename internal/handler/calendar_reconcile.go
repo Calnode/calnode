@@ -187,13 +187,13 @@ func (h *Handler) reconcileCreations(ctx context.Context, gc *calendar.Service) 
 	cutoff := nowT.Add(-5 * time.Minute).Format(time.RFC3339)
 	type missing struct {
 		bookingID, userID, etName, orgName, orgEmail, orgLocale, startStr, endStr string
-		locationType, bookingLoc                                                  string
+		locationType, bookingLoc, inviteMode                                      string
 		isPrimary                                                                 bool
 	}
 	var items []missing
 	rows, err := h.db.QueryContext(ctx, `
 		SELECT bh.booking_id, bh.user_id, bh.is_primary, et.name, COALESCE(NULLIF(b.location_type, ''), et.location_type),
-		       COALESCE(b.location_value, ''),
+		       COALESCE(b.location_value, ''), b.invite_delivery,
 		       COALESCE(o.name, ''), COALESCE(o.email, ''), COALESCE(o.locale, ''), b.start_at, b.end_at
 		FROM booking_hosts bh
 		JOIN bookings b ON b.id = bh.booking_id
@@ -209,7 +209,7 @@ func (h *Handler) reconcileCreations(ctx context.Context, gc *calendar.Service) 
 		var m missing
 		var primary int
 		if err := rows.Scan(&m.bookingID, &m.userID, &primary, &m.etName, &m.locationType,
-			&m.bookingLoc, &m.orgName, &m.orgEmail, &m.orgLocale, &m.startStr, &m.endStr); err == nil {
+			&m.bookingLoc, &m.inviteMode, &m.orgName, &m.orgEmail, &m.orgLocale, &m.startStr, &m.endStr); err == nil {
 			m.isPrimary = primary != 0
 			items = append(items, m)
 		}
@@ -248,7 +248,7 @@ func (h *Handler) reconcileCreations(ctx context.Context, gc *calendar.Service) 
 			Start:          start,
 			End:            end,
 			OrganizerName:  m.orgName,
-			OrganizerEmail: m.orgEmail,
+			OrganizerEmail: calendarInvitee(m.inviteMode, m.orgEmail),
 			AddMeet:        autoGenMeet,
 		})
 		if err != nil {

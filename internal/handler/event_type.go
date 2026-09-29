@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/calnode/calnode/internal/booking"
 	"github.com/calnode/calnode/internal/db"
 	"github.com/calnode/calnode/internal/uid"
 )
@@ -39,7 +40,11 @@ type eventTypeJSON struct {
 	// ShowTakenSlots renders already-booked times greyed out on the booking page
 	// instead of omitting them. Off by default: the slots endpoint is public, so this
 	// makes the host's booked hours legible to anyone with the link (#19).
-	ShowTakenSlots  bool    `json:"show_taken_slots"`
+	ShowTakenSlots bool `json:"show_taken_slots"`
+	// InviteDelivery is who sends the booker's calendar invite: "calendar" (each host's
+	// connected calendar, from the host's own address) or "calnode" (Calnode's own .ics,
+	// from the instance sender, so no host address reaches the booker). See migration 00068.
+	InviteDelivery  string  `json:"invite_delivery"`
 	IsPublic        bool    `json:"is_public"`
 	CreatedAt       string  `json:"created_at"`
 	MsgConfirmation *string `json:"msg_confirmation"`
@@ -95,7 +100,7 @@ func scanEventTypeRow(s rowScanner, trailing ...any) (*eventTypeJSON, error) {
 		&isActive, &isPublic, &showTaken, &et.CreatedAt,
 		&msgConf, &msgCancel, &msgResched, &msgRemind, &msgGreeting,
 		&subjConf, &subjCancel, &subjResched, &subjRemind,
-		&et.PriceCents, &et.Currency,
+		&et.PriceCents, &et.Currency, &et.InviteDelivery,
 	}
 	dests = append(dests, trailing...)
 	err := s.Scan(dests...)
@@ -154,7 +159,7 @@ const etColumns = `id, slug, name, description,
 	is_active, is_public, show_taken_slots, created_at,
 	msg_confirmation, msg_cancellation, msg_reschedule, msg_reminder, msg_greeting,
 	subj_confirmation, subj_cancellation, subj_reschedule, subj_reminder,
-	price_cents, currency`
+	price_cents, currency, invite_delivery`
 
 // selectETCols fetches a single owner-scoped event type (no `owned` column).
 const selectETCols = "SELECT " + etColumns + " FROM event_types"
@@ -221,6 +226,7 @@ func (h *Handler) CreateEventType(w http.ResponseWriter, r *http.Request) {
 		MaxActiveBookings   *int    `json:"max_active_bookings"`
 		AllowPhoneCall      *bool   `json:"allow_phone_call"`
 		ShowTakenSlots      *bool   `json:"show_taken_slots"`
+		InviteDelivery      *string `json:"invite_delivery"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.writeError(w, http.StatusBadRequest, "invalid JSON")
@@ -295,6 +301,18 @@ func (h *Handler) CreateEventType(w http.ResponseWriter, r *http.Request) {
 	if req.ShowTakenSlots != nil && *req.ShowTakenSlots {
 		showTaken = 1
 	}
+	inviteDelivery := booking.InviteByCalendar
+	if req.InviteDelivery != nil {
+		if !validInviteDelivery(*req.InviteDelivery) {
+			h.writeError(w, http.StatusBadRequest, "invite_delivery must be 'calendar' or 'calnode'")
+			return
+		}
+		if *req.InviteDelivery == booking.InviteByCalnode && !h.inviteSenderReady(r.Context()) {
+			h.writeError(w, http.StatusBadRequest, errInviteSenderMissing.Error())
+			return
+		}
+		inviteDelivery = *req.InviteDelivery
+	}
 
 	id := uid.New()
 	tx, err := h.db.BeginTx(r.Context(), nil)
@@ -310,12 +328,12 @@ func (h *Handler) CreateEventType(w http.ResponseWriter, r *http.Request) {
 		  (id, user_id, slug, name, description, duration_minutes,
 		   slot_interval_minutes, location_type, location_value, allow_phone_call,
 		   routing_mode, buffer_before_minutes, buffer_after_minutes,
-		   min_notice_minutes, max_future_days, max_active_bookings, show_taken_slots,
+		   min_notice_minutes, max_future_days, max_active_bookings, show_taken_slots, invite_delivery,
 		   msg_confirmation, msg_cancellation, msg_reschedule, msg_reminder)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		id, user.ID, req.Slug, req.Name, req.Description,
 		req.DurationMinutes, slotInterval, locType, req.LocationValue, req.AllowPhoneCall != nil && *req.AllowPhoneCall,
-		routingMode, bufBefore, bufAfter, minNotice, maxFuture, maxActive, showTaken,
+		routingMode, bufBefore, bufAfter, minNotice, maxFuture, maxActive, showTaken, inviteDelivery,
 		defaultMsgConfirmation, defaultMsgCancellation, defaultMsgReschedule, defaultMsgReminder)
 	if err != nil {
 		if db.IsUniqueViolation(err) {
@@ -448,6 +466,7 @@ func (h *Handler) PatchEventType(w http.ResponseWriter, r *http.Request) {
 		IsPublic            *bool   `json:"is_public"`
 		AllowPhoneCall      *bool   `json:"allow_phone_call"`
 		ShowTakenSlots      *bool   `json:"show_taken_slots"`
+		InviteDelivery      *string `json:"invite_delivery"`
 		Archived            *bool   `json:"archived"`
 		MsgConfirmation     *string `json:"msg_confirmation"`
 		MsgCancellation     *string `json:"msg_cancellation"`
@@ -602,6 +621,10 @@ func (h *Handler) PatchEventType(w http.ResponseWriter, r *http.Request) {
 		}
 		set("show_taken_slots", v)
 	}
+	if req.InviteDelivery != nil && !validInviteDelivery(*req.InviteDelivery) {
+		h.writeError(w, http.StatusBadRequest, "invite_delivery must be 'calendar' or 'calnode'")
+		return
+	}
 	if req.Archived != nil {
 		if *req.Archived {
 			// strftime literal (no bound value) — matches the DB's timestamp format;
@@ -670,10 +693,10 @@ func (h *Handler) PatchEventType(w http.ResponseWriter, r *http.Request) {
 
 	// Look up the event type ID + current location (needed for reminder upsert, to
 	// verify ownership, and to validate the effective online-meeting location below).
-	var etID, curLocType, curLocVal string
+	var etID, curLocType, curLocVal, curInviteDelivery string
 	if err := h.db.QueryRowContext(r.Context(),
-		`SELECT id, location_type, COALESCE(location_value, '') FROM event_types WHERE slug = ? AND user_id = ?`, slug, user.ID).
-		Scan(&etID, &curLocType, &curLocVal); err != nil {
+		`SELECT id, location_type, COALESCE(location_value, ''), invite_delivery FROM event_types WHERE slug = ? AND user_id = ?`, slug, user.ID).
+		Scan(&etID, &curLocType, &curLocVal, &curInviteDelivery); err != nil {
 		if err == sql.ErrNoRows {
 			h.writeError(w, http.StatusNotFound, "event type not found")
 			return
@@ -712,6 +735,17 @@ func (h *Handler) PatchEventType(w http.ResponseWriter, r *http.Request) {
 			h.writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
+	}
+
+	// Same on-change rule for invite delivery: switching to Calnode-sent invites needs a
+	// working email sender (the invite IS an email), but an event type already set that
+	// way stays saveable if email is later removed - that is fixed in Settings → Email.
+	if req.InviteDelivery != nil && *req.InviteDelivery != curInviteDelivery {
+		if *req.InviteDelivery == booking.InviteByCalnode && !h.inviteSenderReady(r.Context()) {
+			h.writeError(w, http.StatusBadRequest, errInviteSenderMissing.Error())
+			return
+		}
+		set("invite_delivery", *req.InviteDelivery)
 	}
 
 	// The slug is the public booking URL, so renaming one that is already in circulation

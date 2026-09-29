@@ -546,6 +546,19 @@ CalDAV without iTIP scheduling (RFC 6638) does **not** auto-invite, so a future 
 provider would want the `.ics` — the rule is "no destination whose provider
 auto-delivers invites," not "no Google."
 
+**Who sends the invite: `invite_delivery` (migration 00068).** Per event type, copied onto
+each booking at creation. `calendar` (default) is everything above: the booker is a guest
+on each host's event and the provider invites them, from the host's own address.
+`calnode` writes the hosts' events **without guests** (`calendarInvitee` returns "", which
+every provider reads as "no attendee", so nobody is emailed from a host's account) and
+always attaches Calnode's `.ics` to the booker's emails, with `ORGANIZER` set to the
+instance sender from Settings → Email (`applyInviteDelivery`, `BookingData.HideHostInInvite`).
+No sender address means no `ORGANIZER` line, never a fallback to the host. Host copies keep
+the host as organizer. Reschedule, cancel, reassign and the reconciler read the mode from
+the **booking**, not the event type, so a booking is always updated through the channel
+its invite went out on. Switching an event type to `calnode` requires email to be set up
+(validated on change).
+
 **Adding another provider (Apple/iCloud, CalDAV):** implement `calendar.Provider`,
 register it in `internal/server`, set `InvitesGuests()` correctly (drives the `.ics`
 gate above), and extend `providerMintsPlatform`/`CanAutoGenerate` if it offers a

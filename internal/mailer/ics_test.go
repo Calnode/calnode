@@ -40,6 +40,24 @@ func TestBuildICS_cancel(t *testing.T) {
 	}
 }
 
+// A Calnode-sent invite exists to keep the host's address off the booker's calendar, so a
+// missing sender identity must drop ORGANIZER, never quietly fall back to the host.
+func TestBuildICS_hideHostNeverFallsBackToHost(t *testing.T) {
+	d := testBookingData()
+	d.HideHostInInvite = true
+	d.InviteOrganizerName, d.InviteOrganizerEmail = "Team", "bookings@team.example"
+	got := string(BuildICS(d, "REQUEST"))
+	if !strings.Contains(got, `ORGANIZER;CN="Team":mailto:bookings@team.example`) {
+		t.Errorf("ORGANIZER is not the instance sender:\n%s", got)
+	}
+
+	d.InviteOrganizerName, d.InviteOrganizerEmail = "", ""
+	got = string(BuildICS(d, "REQUEST"))
+	if strings.Contains(got, "ORGANIZER") || strings.Contains(got, d.HostEmail) {
+		t.Errorf("with no sender identity the invite fell back to the host:\n%s", got)
+	}
+}
+
 func TestBuildICS_escapesText(t *testing.T) {
 	d := testBookingData()
 	d.EventTypeName = "Strategy, Planning; Q3"
