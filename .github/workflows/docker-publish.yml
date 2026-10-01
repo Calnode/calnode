@@ -8,7 +8,8 @@ name: Docker publish
 #                         Deliberately does NOT move `:edge` or `:latest`.
 #   * push to main      → push `:edge` + `:sha-<short>` (bleeding edge).
 #   * push a `vX.Y.Z` tag → push `:X.Y.Z`, `:X.Y`, and `:latest`, then cut a GitHub
-#                         Release. So `:latest` always tracks the newest *release*,
+#                         Release with standalone binaries and checksums.
+#                         So `:latest` always tracks the newest *release*,
 #                         never raw main.
 #
 # Pin a deployment to `:sha-<short>`, never to `:dev` or `:edge` — those move under
@@ -28,6 +29,7 @@ env:
   # Hardcoded lowercase — GHCR tags reject the repo's actual "Calnode/calnode"
   # casing (${{ github.repository }} would break the push).
   IMAGE_NAME: calnode/calnode
+  BUILD_PLATFORMS: linux/amd64,linux/arm64
 
 jobs:
   build:
@@ -73,13 +75,44 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
-          platforms: linux/amd64,linux/arm64
+          platforms: ${{ env.BUILD_PLATFORMS }}
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             VERSION=${{ steps.meta.outputs.version }}
             COMMIT=${{ github.sha }}
+
+      - name: Export standalone binaries
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          target: standalone
+          platforms: ${{ env.BUILD_PLATFORMS }}
+          outputs: type=local,dest=dist/binaries,platform-split=true
+          build-args: |
+            VERSION=${{ steps.meta.outputs.version }}
+            COMMIT=${{ github.sha }}
+
+      - name: Package standalone binaries
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          mkdir -p dist/release
+          for platform_dir in dist/binaries/linux_*; do
+            platform="${platform_dir##*/}"
+            tar -czf "dist/release/calnode_${VERSION#v}_${platform}.tar.gz" \
+              -C "$platform_dir" calnode LICENSE
+          done
+          cd dist/release
+          sha256sum ./*.tar.gz > checksums.txt
+
+      - name: Upload standalone binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: standalone-binaries
+          path: dist/release/
+          if-no-files-found: error
 
   release:
     # Only on a version tag, and only once the image built + pushed.
@@ -90,6 +123,11 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: standalone-binaries
+          path: dist/release
 
       # Pull the matching version's section out of CHANGELOG.md for the release body,
       # so the GitHub Release and the CHANGELOG stay identical. Index-based (not a `\[`
@@ -119,8 +157,8 @@ jobs:
         run: |
           if [ "${{ steps.notes.outputs.have_notes }}" = "true" ]; then
             gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" \
-              --notes-file release-notes.md --verify-tag
+              --notes-file release-notes.md --verify-tag dist/release/*
           else
             gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" \
-              --generate-notes --verify-tag
+              --generate-notes --verify-tag dist/release/*
           fi
