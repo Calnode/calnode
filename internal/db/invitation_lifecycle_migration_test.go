@@ -116,4 +116,18 @@ func TestInvitationUpgradeAfterDirectoryOrderMigration(t *testing.T) {
 	if err := database.QueryRow(`SELECT MAX(version_id) FROM goose_db_version WHERE is_applied=1`).Scan(&version); err != nil || version != 72 {
 		t.Fatalf("upgrade version: %d %v", version, err)
 	}
+	// Invitation rollback must leave the additive upstream migration applied,
+	// otherwise re-upgrading would try to add display_order a second time.
+	if _, err := provider.DownTo(t.Context(), 70); err != nil {
+		t.Fatal("invitation rollback:", err)
+	}
+	if err := database.QueryRow(`SELECT MAX(version_id) FROM goose_db_version WHERE is_applied=1`).Scan(&version); err != nil || version != 70 {
+		t.Fatalf("rollback version: %d %v", version, err)
+	}
+	if _, err := provider.Up(t.Context()); err != nil {
+		t.Fatal("re-upgrade after directory migration:", err)
+	}
+	if err := database.QueryRow(`SELECT display_order FROM event_types WHERE id='event'`).Scan(&order); err != nil || order != 7 {
+		t.Fatalf("directory order changed after rollback: %d %v", order, err)
+	}
 }

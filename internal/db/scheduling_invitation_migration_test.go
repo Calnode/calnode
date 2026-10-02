@@ -82,8 +82,9 @@ func TestSchedulingInvitationMigrationExistingDatabase(t *testing.T) {
 			t.Fatalf("invalid state accepted: %s", statement)
 		}
 	}
-	// Down works on a populated database, and does not disturb legacy data.
-	if _, err := provider.DownTo(ctx, 69); err != nil {
+	// Roll back only invitation migrations. Upstream version 70 deliberately
+	// retains display_order on Down, so it must remain applied during this cycle.
+	if _, err := provider.DownTo(ctx, 70); err != nil {
 		t.Fatal("down:", err)
 	}
 	if _, err := provider.Up(ctx); err != nil {
