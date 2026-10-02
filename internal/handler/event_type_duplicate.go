@@ -133,7 +133,7 @@ func (h *Handler) DuplicateEventType(w http.ResponseWriter, r *http.Request) {
 	if _, err := tx.ExecContext(r.Context(), `
 		INSERT INTO event_types (
 		  id, user_id, team_id, slug, name, description,
-		  duration_minutes, slot_interval_minutes,
+		  duration_minutes, slot_interval_minutes, min_duration_minutes, max_duration_minutes, duration_increment_minutes,
 		  location_type, location_value, allow_phone_call,
 		  routing_mode, rr_strategy,
 		  buffer_before_minutes, buffer_after_minutes,
@@ -144,7 +144,7 @@ func (h *Handler) DuplicateEventType(w http.ResponseWriter, r *http.Request) {
 		  price_cents, currency, invite_delivery)
 		SELECT
 		  ?, user_id, team_id, ?, name, description,
-		  duration_minutes, slot_interval_minutes,
+		  duration_minutes, slot_interval_minutes, min_duration_minutes, max_duration_minutes, duration_increment_minutes,
 		  location_type, location_value, allow_phone_call,
 		  routing_mode, rr_strategy,
 		  buffer_before_minutes, buffer_after_minutes,

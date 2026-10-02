@@ -161,10 +161,15 @@ type slotsWanted struct {
 // tool. tzName "" → UTC; fromStr/toStr "" → today / the max-future cap. Returns one
 // of the sentinel errors above on bad input, or a wrapped error on internal failure.
 func (h *Handler) computeSlots(ctx context.Context, slug, tzName, fromStr, toStr string, want slotsWanted) (slotsResult, error) {
-	et, err := h.loadBookableEventType(ctx, slug)
+	schedule, err := h.eventTypeSchedulingContext(ctx, slug)
 	if err != nil {
 		return slotsResult{}, err
 	}
+	return h.computeSlotsForContext(ctx, schedule, tzName, fromStr, toStr, want)
+}
+
+func (h *Handler) computeSlotsForContext(ctx context.Context, schedule schedulingContext, tzName, fromStr, toStr string, want slotsWanted) (slotsResult, error) {
+	et := schedule.Event
 
 	if tzName == "" {
 		tzName = "UTC"
@@ -180,13 +185,10 @@ func (h *Handler) computeSlots(ctx context.Context, slug, tzName, fromStr, toStr
 		return slotsResult{}, errBadDateRange
 	}
 
-	// Resolve the host pool for this event type by routing mode. Round-robin
+	// Select the resolved host pool by routing mode. Round-robin
 	// offers a slot if any rotation host is free; fixed/collective gate on the
-	// required hosts. Archived hosts are already excluded by resolveEventTypeHosts.
-	hosts, err := h.resolveEventTypeHosts(ctx, et.ID)
-	if err != nil {
-		return slotsResult{}, fmt.Errorf("resolve event-type hosts: %w", err)
-	}
+	// required hosts. The scheduling-context resolver has handled archived hosts.
+	hosts := schedule.Hosts
 	// Pool the hosts that gate this event's slots, tagged with the role the engine
 	// needs. Round-robin: required (fixed, always attend) + rotation (pick one).
 	// fixed/collective: the required hosts (all must be free).
@@ -224,7 +226,7 @@ func (h *Handler) computeSlots(ctx context.Context, slug, tzName, fromStr, toStr
 		wg.Add(1)
 		go func(i int, ph poolHost) {
 			defer wg.Done()
-			ha, degraded, err := h.hostAvailability(ctx, ph.id, et.ID, dateFrom, dateTo)
+			ha, degraded, err := h.hostAvailability(ctx, ph.id, schedule.EventTypeID, dateFrom, dateTo)
 			if err != nil {
 				errsByHost[i] = err
 				return
@@ -246,26 +248,19 @@ func (h *Handler) computeSlots(ctx context.Context, slug, tzName, fromStr, toStr
 	}
 
 	req := slots.Request{
-		Event: slots.EventConfig{
-			DurationMinutes:     et.DurationMinutes,
-			SlotIntervalMinutes: et.SlotIntervalMinutes,
-			BufferBeforeMinutes: et.BufferBeforeMinutes,
-			BufferAfterMinutes:  et.BufferAfterMinutes,
-			MinNoticeMinutes:    et.MinNoticeMinutes,
-			MaxFutureDays:       et.MaxFutureDays,
-			RoutingMode:         et.RoutingMode,
-		},
-		Hosts:    hostAvails,
-		DateFrom: dateFrom,
-		DateTo:   dateTo,
-		BookerTZ: bookerTZ,
-		Now:      now,
+		Event:         et,
+		Hosts:         hostAvails,
+		DateFrom:      dateFrom,
+		DateTo:        dateTo,
+		BookerTZ:      bookerTZ,
+		Now:           now,
+		AllowedWindow: schedule.AllowedWindow,
 	}
 
 	// Taken slots are produced only when the caller asked for them AND this event type
 	// opted in. GenerateWithTaken walks the range a second time with busy ignored, so
 	// it is not free, and it returns exactly the information the default must withhold.
-	showsTaken := want.Taken && et.ShowTakenSlots
+	showsTaken := want.Taken && schedule.ShowTakenSlots
 	result, err := slots.GenerateDetailed(req, slots.Extras{Taken: showsTaken, NoticeGap: want.NoticeGap})
 	if err != nil {
 		return slotsResult{}, fmt.Errorf("slots generate: %w", err)

@@ -104,6 +104,9 @@ partial unique index covers) — no TOCTOU between concurrent bookings.
   **not enforced**); `team_id` — vestigial for routing), `event_type_hosts`
   (the host-roles table), `event_type_questions` (intake form),
   `event_type_reminders` (per-ET `hours_before`, UNIQUE).
+- **Scheduling invitations:** `scheduling_invitations`,
+  `scheduling_invitation_hosts`, `scheduling_invitation_tokens` (migration 00070).
+  Separate from account `invite_tokens` and calendar `invite_delivery`; see §8.
 - **Availability:** `availability_rules` (weekly), `availability_overrides` (dated).
 - **Bookings:** `bookings` (primary `host_id`, `external_event_id`, status),
   `booking_hosts` (every attending host + `is_primary` + per-host
@@ -267,7 +270,8 @@ Booking and rescheduling pages and the embed widget group the displayed starts i
 
 - Engine: `internal/slots/generate.go`. Input: `[]HostAvailability` (rules,
   overrides, busy intervals, **Role**), `EventConfig` (duration, interval, buffers,
-  min-notice, max-future, `RoutingMode`), date range, booker tz, injectable `Now`.
+  min-notice, max-future, `RoutingMode`), date range, booker tz, injectable `Now`,
+  and an optional `AllowedWindow` bounding the whole appointment.
 - Computes per-host free windows per UTC day, intersects/subtracts busy, aligns to
   the slot interval, then `pickHosts` decides per-slot which hosts to surface:
   - `collective`: all hosts must be free → return all.
@@ -305,6 +309,64 @@ Booking and rescheduling pages and the embed widget group the displayed starts i
   stored UTC; a morning slot for a +UTC host maps to the previous UTC day. The busy
   fetch window is widened ±1–2 days so it isn't missed (regression-tested in
   `slots_busy_test.go`).
+
+### Scheduling invitation foundation
+
+The accepted direction is [discussion #47](https://github.com/Calnode/calnode/discussions/47)
+and [issue #92](https://github.com/Calnode/calnode/issues/92). Event types remain
+reusable defaults; an invitation is a separate, staff-authorized scheduling
+snapshot. `internal/handler/scheduling_context.go` resolves live event-type values
+or persisted invitation values into the same input to `computeSlotsForContext`.
+Existing event-type booking, MCP, and assistant paths keep their live defaults.
+
+- Owner-authenticated `POST /v1/scheduling-invitations` takes `event_type_slug`,
+  `recipient {name, email}`, a future `expires_at`, and optional `duration_minutes`,
+  `hosts [{user_id, role, priority}]`, `available_from`, `available_until`,
+  `availability_timezone` (default UTC), `external {system, reference, url}`, and
+  `delivery` (`external`, the default, or `calnode`). Active private templates are
+  eligible because issuance is authenticated. The response includes the snapshot
+  and a cryptographically random token **once**, with `Cache-Control: no-store`.
+  Delivery is metadata only in this slice; neither mode sends an invitation email.
+- `GET /v1/scheduling-invitations/{id}` reads the creator's snapshot without the
+  token. `GET .../{id}/slots` previews availability, accepting the same
+  `timezone`/`from`/`to` parameters as event-type slots. Both are authenticated and
+  creator-scoped. No public scheduling URL or token endpoint is exposed yet.
+- Event types optionally configure `min_duration_minutes`, `max_duration_minutes`,
+  and `duration_increment_minutes` through create/PATCH. All three must be set
+  together initially; durations must lie in the range and advance from the minimum
+  in the configured increment. NULL limits preserve fixed-duration semantics,
+  including for existing rows whose default is later edited. These limits authorize
+  staff invitation overrides; regular bookings still use `duration_minutes`.
+- Creation snapshots the effective duration, interval, buffers, notice/future
+  policies, routing/rotation strategy, and hosts **in one transaction**. Explicit
+  hosts must be active members of the source template's eligible pool; they reuse
+  `EventHost` and the existing required/rotation/optional rules. Explicit roles
+  determine fixed/collective/round-robin routing for that invitation. Omitted hosts
+  and routing are copied from the template. Subsequent template edits never rewrite
+  these snapshots. Host working hours, date overrides, bookings, and external
+  calendar conflicts remain live; event-specific hours still use the source ID.
+- Date-only bounds use the supplied IANA timezone, with `available_until`
+  inclusive through the end of that local day. RFC3339 timestamps allow precise
+  bounds; a timestamp upper bound is the latest appointment end. Both normalize to
+  UTC. Bounds may be omitted independently. `slots.Window.Contains` enforces the
+  whole appointment, including in taken-slot and notice-gap passes. A window
+  intersects the snapshotted notice/future policies; it never widens them.
+- Only active, unexpired invitations with an unused, unexpired credential can
+  preview slots. Required hosts later archived make the invitation unavailable;
+  archived rotation/optional hosts are excluded. Deactivated/archived source
+  templates also suspend preview. Foreign keys retain the source template and
+  referenced users; deletion returns 409 with archive guidance, preserving history.
+- Tokens are 32 random bytes, hex-encoded, with only their SHA-256 hash stored.
+  The schema has `draft`/`active`/`booked`/`cancelled`/`expired` states, a unique
+  optional booking reference, and token consumption/expiry fields. Issuance creates
+  active records; expiry is checked before slot preview, without a background state
+  transition. This is lifecycle groundwork, **not a redemption workflow**.
+
+Deferred slices must validate the same effective duration/hosts/window at booking
+time and atomically create the booking, mark the invitation booked, and consume
+the token. Public links/pages, lifecycle management, token replacement,
+verification codes, delivery, webhook enrichment, and retention/purging remain
+deferred. No Zammad-specific integration or ticket/calendar synchronization is added.
 
 ### Client calendar perf (book.html / manage.html)
 
