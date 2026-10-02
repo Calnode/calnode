@@ -403,6 +403,9 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	mux.HandleFunc("POST /v1/event-types/{slug}/transfer", h.RequireAuth(h.TransferEventType))
 	mux.HandleFunc("GET /v1/event-types/{slug}/hosts", h.RequireAuth(h.ListEventTypeHosts))
 	mux.HandleFunc("PUT /v1/event-types/{slug}/hosts", h.RequireAuth(h.SetEventTypeHosts))
+	mux.HandleFunc("POST /v1/scheduling-invitations", h.RequireAuth(h.CreateSchedulingInvitation))
+	mux.HandleFunc("GET /v1/scheduling-invitations/{id}", h.RequireAuth(h.GetSchedulingInvitation))
+	mux.HandleFunc("GET /v1/scheduling-invitations/{id}/slots", h.RequireAuth(h.GetSchedulingInvitationSlots))
 	testEmailRL := RateLimit(10, time.Minute)
 	mux.HandleFunc("POST /v1/event-types/{slug}/test-email", testEmailRL(h.RequireAuth(h.SendTestEmail)))
 
