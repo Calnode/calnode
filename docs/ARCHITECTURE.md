@@ -69,6 +69,14 @@ app you must `pnpm build` in `frontend/` **and** rebuild/restart the Go binary
 
 ## 4. Persistence (SQLite) — and the single-connection rule
 
+Public person (`/u/{handle}`) and team (`/team/{slug}`) directories list public,
+active event types by `display_order` ascending, then name and unique slug for
+deterministic ties. The integer defaults to 0, preserving alphabetical order for
+existing types. Owners can set it through event-type create/PATCH or the event
+editor's Directory order field; negative values put an event ahead of the default
+group. It applies wherever the event is listed and is retained on duplication.
+It does not affect the admin event-type list or team member roster ordering.
+
 - `internal/db`: opens SQLite with **`SetMaxOpenConns(1)`** + `SetMaxIdleConns(1)`,
   **WAL** journal mode, `busy_timeout=5000`. One writer connection by design.
 - Migrations: **goose** SQL files in `internal/db/migrations/` (00001→00029). Run
