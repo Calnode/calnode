@@ -92,7 +92,42 @@ func (h *Handler) InvitationPage(w http.ResponseWriter, r *http.Request) {
 	loc := h.resolveLocaleWithFallback(r, brand.FallbackLocale)
 	translations, _ := loc.JSON()
 	accent = accentOrDefault(accent)
-	data := bookPageData{IsInvitation: true, RecipientName: inv.Recipient.Name, RecipientEmail: inv.Recipient.Email, SlotsURL: "/v1/schedule/" + r.PathValue("token") + "/slots", BookingURL: "/v1/schedule/" + r.PathValue("token") + "/book", Slug: slug, Name: name, DurationLabel: durationLabel(inv.DurationMinutes, loc), AccentColor: accent, AccentForeground: accentForeground(accent), Hosts: hosts, HostsLabel: hostsLabel(hosts, loc), HostName: hosts[0].Name, HostInitial: hosts[0].Initial, SoleHostName: soleHostName(hosts), LocationLabel: locationLabel(inv.LocationType, inv.LocationValue, loc), MinNoticeLabel: noticeLabel(schedule.Event.MinNoticeMinutes, loc), MaxFutureDays: schedule.Event.MaxFutureDays, Questions: questions, CSSVersion: bookingCSSVersion, BookingLogicJS: template.JS(bookingLogicJS), Locale: loc.Code, T: loc.T, I18NJSON: template.JS(translations), DataLayerFields: template.JS("[]"), QuestionsJSON: template.JS("{}"), BusinessName: brand.BusinessName, LogoURL: credentialImage(brand.LogoURL), LogoHeight: pageLogoHeight(brand.LogoHeight), LogoOpacity: opacityCSS(brand.LogoOpacity), BannerURL: credentialImage(brand.BannerURL), BannerOpacity: opacityCSS(brand.BannerOpacity), PrivacyURL: brand.PrivacyURL, TermsURL: brand.TermsURL}
+	data := bookPageData{
+		IsInvitation:     true,
+		RecipientName:    inv.Recipient.Name,
+		RecipientEmail:   inv.Recipient.Email,
+		SlotsURL:         "/v1/schedule/" + r.PathValue("token") + "/slots",
+		BookingURL:       "/v1/schedule/" + r.PathValue("token") + "/book",
+		Slug:             slug,
+		Name:             name,
+		DurationLabel:    durationLabel(inv.DurationMinutes, loc),
+		AccentColor:      accent,
+		AccentForeground: accentForeground(accent),
+		Hosts:            hosts,
+		HostsLabel:       hostsLabel(hosts, loc),
+		HostName:         hosts[0].Name,
+		HostInitial:      hosts[0].Initial,
+		SoleHostName:     soleHostName(hosts),
+		LocationLabel:    locationLabel(inv.LocationType, inv.LocationValue, loc),
+		MinNoticeLabel:   noticeLabel(schedule.Event.MinNoticeMinutes, loc),
+		MaxFutureDays:    schedule.Event.MaxFutureDays,
+		Questions:        questions,
+		CSSVersion:       bookingCSSVersion,
+		BookingLogicJS:   template.JS(bookingLogicJS),
+		Locale:           loc.Code,
+		T:                loc.T,
+		I18NJSON:         template.JS(translations),
+		DataLayerFields:  template.JS("[]"),
+		QuestionsJSON:    template.JS("{}"),
+		BusinessName:     brand.BusinessName,
+		LogoURL:          credentialImage(brand.LogoURL),
+		LogoHeight:       pageLogoHeight(brand.LogoHeight),
+		LogoOpacity:      opacityCSS(brand.LogoOpacity),
+		BannerURL:        credentialImage(brand.BannerURL),
+		BannerOpacity:    opacityCSS(brand.BannerOpacity),
+		PrivacyURL:       brand.PrivacyURL,
+		TermsURL:         brand.TermsURL,
+	}
 	if data.RecipientName == "" {
 		data.RecipientName = data.RecipientEmail
 	}

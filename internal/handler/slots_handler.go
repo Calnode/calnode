@@ -226,7 +226,7 @@ func (h *Handler) computeSlotsForContext(ctx context.Context, schedule schedulin
 		wg.Add(1)
 		go func(i int, ph poolHost) {
 			defer wg.Done()
-			ha, degraded, err := h.hostAvailabilityExcluding(ctx, ph.id, schedule.EventTypeID, dateFrom, dateTo, schedule.ExcludeBookingID)
+			ha, degraded, err := h.hostAvailabilityForContext(ctx, ph.id, schedule, dateFrom, dateTo)
 			if err != nil {
 				errsByHost[i] = err
 				return
@@ -432,11 +432,19 @@ func loadHostScheduleFrom(ctx context.Context, source dbQuerier, userID, eventTy
 }
 
 func (h *Handler) hostAvailability(ctx context.Context, userID, eventTypeID string, dateFrom, dateTo time.Time) (slots.HostAvailability, bool, error) {
-	return h.hostAvailabilityExcluding(ctx, userID, eventTypeID, dateFrom, dateTo, "")
+	return h.hostAvailabilityForContext(ctx, userID, schedulingContext{EventTypeID: eventTypeID}, dateFrom, dateTo)
 }
 
-func (h *Handler) hostAvailabilityExcluding(ctx context.Context, userID, eventTypeID string, dateFrom, dateTo time.Time, excludeBookingID string) (slots.HostAvailability, bool, error) {
-	hostLoc, rules, overrides, err := h.loadHostSchedule(ctx, userID, eventTypeID)
+// Widen host-local dates for UTC offsets and for busy intervals whose buffers
+// reach into the requested days. Loading overlaps also catches appointments
+// that started before the range and continue into it.
+func schedulingBusyRange(event slots.EventConfig, dateFrom, dateTo time.Time) (time.Time, time.Time) {
+	return dateFrom.Add(-24*time.Hour - time.Duration(event.BufferAfterMinutes)*time.Minute),
+		dateTo.Add(48*time.Hour + time.Duration(event.BufferBeforeMinutes)*time.Minute)
+}
+
+func (h *Handler) hostAvailabilityForContext(ctx context.Context, userID string, schedule schedulingContext, dateFrom, dateTo time.Time) (slots.HostAvailability, bool, error) {
+	hostLoc, rules, overrides, err := h.loadHostSchedule(ctx, userID, schedule.EventTypeID)
 	if err != nil {
 		return slots.HostAvailability{}, false, err
 	}
@@ -447,8 +455,8 @@ func (h *Handler) hostAvailabilityExcluding(ctx context.Context, userID, eventTy
 	// tight [dateFrom, dateTo] UTC window would miss the booking that blocks it
 	// and the slot would be wrongly offered (then 409 at booking time).
 	// Over-fetching is harmless: the engine only subtracts busy that overlaps.
-	busyFrom := dateFrom.Add(-24 * time.Hour).Format(time.RFC3339)
-	busyTo := dateTo.Add(48 * time.Hour).Format(time.RFC3339)
+	from, to := schedulingBusyRange(schedule.Event, dateFrom, dateTo)
+	busyFrom, busyTo := from.Format(time.RFC3339), to.Format(time.RFC3339)
 	// Count every booking this host attends (primary OR a Group/fixed-host seat) as
 	// busy — join booking_hosts rather than matching bookings.host_id, so a host on
 	// a multi-host call isn't offered an overlapping slot on another event.
@@ -456,8 +464,8 @@ func (h *Handler) hostAvailabilityExcluding(ctx context.Context, userID, eventTy
 		SELECT b.start_at, b.end_at FROM bookings b
 		JOIN booking_hosts bh ON bh.booking_id = b.id
 		WHERE bh.user_id = ? AND b.status != 'cancelled'
-		  AND b.start_at >= ? AND b.start_at < ? AND b.id != ?`,
-		userID, busyFrom, busyTo, excludeBookingID)
+		  AND julianday(b.end_at) > julianday(?) AND julianday(b.start_at) < julianday(?) AND b.id != ?`,
+		userID, busyFrom, busyTo, schedule.ExcludeBookingID)
 	if err != nil {
 		return slots.HostAvailability{}, false, err
 	}
@@ -498,7 +506,7 @@ func (h *Handler) hostAvailabilityExcluding(ctx context.Context, userID, eventTy
 	// and rejects these slots at commit time).
 	degraded := false
 	if gc := h.getCal(); gc != nil {
-		if gcalBusy, err := gc.FreeBusy(ctx, userID, dateFrom, dateTo.Add(24*time.Hour)); err != nil {
+		if gcalBusy, err := gc.FreeBusy(ctx, userID, from, to); err != nil {
 			h.logger.ErrorContext(ctx, "slots: gcal freebusy", "error", err, "host", userID)
 			degraded = true
 		} else {

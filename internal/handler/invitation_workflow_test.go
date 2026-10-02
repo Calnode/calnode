@@ -276,3 +276,77 @@ func TestInvitationConcurrentConsumptionAndCompetingBookings(t *testing.T) {
 		})
 	}
 }
+
+func TestInvitationRetainsRotationUnlessFixedHostRestricted(t *testing.T) {
+	for _, restricted := range []bool{false, true} {
+		t.Run(fmt.Sprintf("restricted %v", restricted), func(t *testing.T) {
+			h, db, key, owner, slug, etID, day := invitationFixture(t)
+			calendarCheckExec(t, db, `INSERT INTO users (id,email,name,iana_timezone) VALUES ('rotation','rotation@example.com','Rotation','UTC')`)
+			seedInvitationHours(t, db, "rotation", day, "09:00", "12:00")
+			mustStatus(t, putHosts(t, h, slug, key, fmt.Sprintf(`{"hosts":[{"user_id":%q,"role":"rotation"},{"user_id":"rotation","role":"rotation"}]}`, owner)), 200, "rotation hosts")
+			mustStatus(t, patchInvitationEvent(t, h, slug, key, `{"routing_mode":"round_robin"}`), 200, "routing")
+			start := day.Add(10 * time.Hour)
+			calendarCheckExec(t, db, `INSERT INTO bookings (id,event_type_id,host_id,start_at,end_at,status) VALUES ('busy',?,?,?,?,'confirmed')`, etID, owner, start.Format(time.RFC3339), start.Add(time.Hour).Format(time.RFC3339))
+			calendarCheckExec(t, db, `INSERT INTO booking_hosts (booking_id,user_id,is_primary) VALUES ('busy',?,1)`, owner)
+			body := invitationBody(slug)
+			if restricted {
+				body["host_id"] = owner
+			}
+			rec, inv := createInvitation(t, h, key, body)
+			mustStatus(t, rec, 201, "create")
+			rec = invitationPublic(h, h.GetPublicInvitationSlots, "GET", inv.Token, "/slots?from=0001-01-01&to="+day.Format("2006-01-02"), "")
+			mustStatus(t, rec, 400, "bound historical slot scans")
+			rec = invitationSubmit(h, inv.Token, start)
+			if restricted {
+				mustStatus(t, rec, 409, "selected busy host never falls back")
+				return
+			}
+			id := mustString(t, mustJSON(t, rec, 201, "normal rotation"), "id", "normal rotation")
+			waitInvitationConfirmation(t, db, id)
+			var assigned string
+			if err := db.QueryRow(`SELECT host_id FROM bookings WHERE id=?`, id).Scan(&assigned); err != nil || assigned != "rotation" {
+				t.Fatalf("routing changed %q %v", assigned, err)
+			}
+		})
+	}
+}
+
+func TestInvitationBusyRangesIncludeLongBookingsAndBuffers(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		startDays     int
+		endDays       int
+		before, after int
+		blockedHour   int
+		wantHours     []float64
+	}{
+		{"booking spanning several days", -5, 0, 0, 0, 9, []float64{10.5, 11, 11.5}},
+		{"past appointment with long after buffer", -5, -4, 0, 4 * 24 * 60, 9, []float64{10.5, 11, 11.5}},
+		{"future appointment with long before buffer", 4, 4, 4 * 24 * 60, 0, 11, []float64{9, 9.5, 10}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h, db, key, owner, slug, etID, day := invitationFixture(t)
+			mustStatus(t, patchInvitationEvent(t, h, slug, key, fmt.Sprintf(`{"buffer_before_minutes":%d,"buffer_after_minutes":%d}`, tc.before, tc.after)), 200, "buffers")
+			start := day.AddDate(0, 0, tc.startDays).Add(10*time.Hour + 30*time.Minute)
+			end := day.AddDate(0, 0, tc.endDays).Add(10*time.Hour + 30*time.Minute)
+			if tc.startDays == tc.endDays {
+				end = end.Add(time.Hour)
+			}
+			calendarCheckExec(t, db, `INSERT INTO bookings (id,event_type_id,host_id,start_at,end_at,status) VALUES ('busy',?,?,?,?,'confirmed')`, etID, owner, start.Format(time.RFC3339), end.Format(time.RFC3339))
+			calendarCheckExec(t, db, `INSERT INTO booking_hosts (booking_id,user_id,is_primary) VALUES ('busy',?,1)`, owner)
+			rec, inv := createInvitation(t, h, key, invitationBody(slug))
+			mustStatus(t, rec, 201, "create")
+			rec, result := previewInvitation(t, h, key, inv.ID, day)
+			mustStatus(t, rec, 200, "preview")
+			if len(result.Slots) != len(tc.wantHours) {
+				t.Fatalf("slots=%v; want starts at hours %v", result.Slots, tc.wantHours)
+			}
+			for i, hour := range tc.wantHours {
+				if !result.Slots[i].Start.Equal(day.Add(time.Duration(hour * float64(time.Hour)))) {
+					t.Fatalf("unexpected slot %+v", result.Slots[i])
+				}
+			}
+			mustStatus(t, invitationSubmit(h, inv.Token, day.Add(time.Duration(tc.blockedHour)*time.Hour)), 409, "blocked submission")
+		})
+	}
+}
