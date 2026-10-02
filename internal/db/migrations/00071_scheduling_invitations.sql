@@ -1,4 +1,5 @@
 -- +goose Up
+-- Directory-order PR #127 is expected to land first at version 00070.
 -- Discussion #47 / issue #92: event types remain reusable defaults; invitations
 -- snapshot authorized scheduling values. NULL duration limits preserve the
 -- existing fixed-duration policy, including when the default duration changes.

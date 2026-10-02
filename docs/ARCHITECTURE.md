@@ -105,8 +105,8 @@ partial unique index covers) — no TOCTOU between concurrent bookings.
   (the host-roles table), `event_type_questions` (intake form),
   `event_type_reminders` (per-ET `hours_before`, UNIQUE).
 - **Scheduling invitations:** `scheduling_invitations`,
-  `scheduling_invitation_hosts`, `scheduling_invitation_tokens` (migration 00070),
-  plus booking correlation and the transactional lifecycle outbox (00071).
+  `scheduling_invitation_hosts`, `scheduling_invitation_tokens` (migration 00071),
+  plus booking correlation and the transactional lifecycle outbox (00072).
   Separate from account `invite_tokens` and calendar `invite_delivery`; see §8.
 - **Availability:** `availability_rules` (weekly), `availability_overrides` (dated).
 - **Bookings:** `bookings` (primary `host_id`, `external_event_id`, status),
@@ -346,7 +346,7 @@ authorization, snapshot semantics, date boundaries and integration limitations.
   shared slot engine again against transaction-local hours/bookings. The existing
   booking service assigns hosts and atomically inserts the booking, conditionally
   marks the invitation booked, and consumes the credential. A unique booking FK
-  provides a second single-use invariant (migration 00071).
+  provides a second single-use invariant (migration 00072).
 - Existing calendar/meeting/email/reminder side effects use the persisted interval
   after commit. Management uses the existing booking credential, retaining duration,
   assigned hosts, window and correlation after invitation consumption/expiration.
@@ -362,9 +362,10 @@ authorization, snapshot semantics, date boundaries and integration limitations.
 
 Verification codes, replacement tokens, draft/edit/activation, initial email
 delivery, payments, ticket adapters/synchronization and retention policy remain
-deferred. Migration 00070 is preserved from the completed foundation; 00071 is
-additive. Open directory-order PR #127 also proposes 00070: coordinate its unmerged
-migration before combining branches, without changing applied migration history.
+deferred. Directory-order PR #127 is assumed to land first at 00070. The unmerged
+invitation foundation/lifecycle migrations use 00071/00072. Development uses clean
+databases; databases from the earlier experimental 00070/00071 numbering require
+a separate compatibility upgrade and must not have their Goose history rewritten.
 
 ### Client calendar perf (book.html / manage.html)
 

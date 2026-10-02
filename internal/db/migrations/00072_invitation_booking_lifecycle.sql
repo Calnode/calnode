@@ -1,5 +1,5 @@
 -- +goose Up
--- Continue the already-applied invitation foundation without renumbering 00070.
+-- Follow the invitation foundation at 00071; directory-order PR #127 owns 00070.
 ALTER TABLE scheduling_invitations ADD COLUMN updated_at TEXT;
 ALTER TABLE scheduling_invitations ADD COLUMN location_type TEXT NOT NULL DEFAULT '';
 ALTER TABLE scheduling_invitations ADD COLUMN location_value TEXT NOT NULL DEFAULT '';
