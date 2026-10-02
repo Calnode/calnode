@@ -10,11 +10,12 @@ import (
 // Event types resolve live defaults; invitations resolve persisted snapshots.
 // The slot engine and host availability loader do not need to know the source.
 type schedulingContext struct {
-	EventTypeID    string
-	Event          slots.EventConfig
-	Hosts          []EventHost
-	AllowedWindow  *slots.Window
-	ShowTakenSlots bool
+	EventTypeID      string
+	Event            slots.EventConfig
+	Hosts            []EventHost
+	AllowedWindow    *slots.Window
+	ShowTakenSlots   bool
+	ExcludeBookingID string // management availability excludes the appointment being moved
 }
 
 func (h *Handler) eventTypeSchedulingContext(ctx context.Context, slug string) (schedulingContext, error) {

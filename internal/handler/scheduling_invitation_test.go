@@ -183,14 +183,20 @@ func TestSchedulingInvitationHostRestrictionAndSnapshot(t *testing.T) {
 			t.Fatalf("wrong host: %+v", slot)
 		}
 	}
-	// Every snapshotted scheduling scalar and the host rows remain independent
-	// of later template edits; live calendar/working-hours inputs still apply.
-	mustStatus(t, patchInvitationEvent(t, h, slug, key, `{"duration_minutes":60,"slot_interval_minutes":60,"buffer_before_minutes":30,"buffer_after_minutes":30,"min_notice_minutes":10000,"max_future_days":4,"routing_mode":"fixed"}`), http.StatusOK, "change template")
+	// Authorized values and host rows remain independent of template edits.
+	// Current notice/future policy intersects the snapshot, as required by #92.
+	mustStatus(t, patchInvitationEvent(t, h, slug, key, `{"duration_minutes":60,"slot_interval_minutes":60,"buffer_before_minutes":30,"buffer_after_minutes":30,"max_future_days":4,"routing_mode":"fixed"}`), http.StatusOK, "change template")
 	mustStatus(t, putHosts(t, h, slug, key, fmt.Sprintf(`{"hosts":[{"user_id":%q,"role":"required"}]}`, owner)), http.StatusOK, "replace template hosts")
 	rec, after := previewInvitation(t, h, key, inv.ID, day)
 	mustStatus(t, rec, http.StatusOK, "snapshot preview")
 	if !reflect.DeepEqual(before, after) {
 		t.Fatalf("snapshot changed: %+v -> %+v", before, after)
+	}
+	mustStatus(t, patchInvitationEvent(t, h, slug, key, `{"min_notice_minutes":10000}`), http.StatusOK, "tighten live notice")
+	rec, after = previewInvitation(t, h, key, inv.ID, day)
+	mustStatus(t, rec, http.StatusOK, "live notice intersection")
+	if len(after.Slots) != 0 {
+		t.Fatal("invitation bypassed current minimum notice")
 	}
 	if normal := eventSlotsForDay(t, h, slug, day); len(normal.Slots) != 0 {
 		t.Fatal("normal slots ignored updated notice/future policy")

@@ -226,7 +226,7 @@ func (h *Handler) computeSlotsForContext(ctx context.Context, schedule schedulin
 		wg.Add(1)
 		go func(i int, ph poolHost) {
 			defer wg.Done()
-			ha, degraded, err := h.hostAvailability(ctx, ph.id, schedule.EventTypeID, dateFrom, dateTo)
+			ha, degraded, err := h.hostAvailabilityExcluding(ctx, ph.id, schedule.EventTypeID, dateFrom, dateTo, schedule.ExcludeBookingID)
 			if err != nil {
 				errsByHost[i] = err
 				return
@@ -365,8 +365,12 @@ func (h *Handler) hostDisplayMap(ctx context.Context, ids []string) map[string]m
 // drift. Returns materialized slices, closing each cursor before opening the next — the
 // MaxOpenConns(1) pool can't hold two open cursors at once (see [[sqlite-single-connection]]).
 func (h *Handler) loadHostSchedule(ctx context.Context, userID, eventTypeID string) (*time.Location, []slots.AvailabilityRule, []slots.AvailabilityOverride, error) {
+	return loadHostScheduleFrom(ctx, h.db, userID, eventTypeID)
+}
+
+func loadHostScheduleFrom(ctx context.Context, source dbQuerier, userID, eventTypeID string) (*time.Location, []slots.AvailabilityRule, []slots.AvailabilityOverride, error) {
 	var hostTZName string
-	if err := h.db.QueryRowContext(ctx,
+	if err := source.QueryRowContext(ctx,
 		`SELECT iana_timezone FROM users WHERE id = ?`, userID).Scan(&hostTZName); err != nil {
 		return nil, nil, nil, err
 	}
@@ -375,7 +379,7 @@ func (h *Handler) loadHostSchedule(ctx context.Context, userID, eventTypeID stri
 		hostLoc = time.UTC
 	}
 
-	ruleRows, err := h.db.QueryContext(ctx, `
+	ruleRows, err := source.QueryContext(ctx, `
 		SELECT day_of_week, start_time, end_time
 		FROM availability_rules
 		WHERE user_id = ? AND (event_type_id = ? OR event_type_id IS NULL)
@@ -398,7 +402,7 @@ func (h *Handler) loadHostSchedule(ctx context.Context, userID, eventTypeID stri
 		return nil, nil, nil, err
 	}
 
-	ovRows, err := h.db.QueryContext(ctx, `
+	ovRows, err := source.QueryContext(ctx, `
 		SELECT date, is_available, COALESCE(start_time,''), COALESCE(end_time,'')
 		FROM availability_overrides WHERE user_id = ?`, userID)
 	if err != nil {
@@ -428,6 +432,10 @@ func (h *Handler) loadHostSchedule(ctx context.Context, userID, eventTypeID stri
 }
 
 func (h *Handler) hostAvailability(ctx context.Context, userID, eventTypeID string, dateFrom, dateTo time.Time) (slots.HostAvailability, bool, error) {
+	return h.hostAvailabilityExcluding(ctx, userID, eventTypeID, dateFrom, dateTo, "")
+}
+
+func (h *Handler) hostAvailabilityExcluding(ctx context.Context, userID, eventTypeID string, dateFrom, dateTo time.Time, excludeBookingID string) (slots.HostAvailability, bool, error) {
 	hostLoc, rules, overrides, err := h.loadHostSchedule(ctx, userID, eventTypeID)
 	if err != nil {
 		return slots.HostAvailability{}, false, err
@@ -448,8 +456,8 @@ func (h *Handler) hostAvailability(ctx context.Context, userID, eventTypeID stri
 		SELECT b.start_at, b.end_at FROM bookings b
 		JOIN booking_hosts bh ON bh.booking_id = b.id
 		WHERE bh.user_id = ? AND b.status != 'cancelled'
-		  AND b.start_at >= ? AND b.start_at < ?`,
-		userID, busyFrom, busyTo)
+		  AND b.start_at >= ? AND b.start_at < ? AND b.id != ?`,
+		userID, busyFrom, busyTo, excludeBookingID)
 	if err != nil {
 		return slots.HostAvailability{}, false, err
 	}
