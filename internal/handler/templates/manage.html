@@ -263,6 +263,7 @@ body {
 
   const TOKEN       = {{.Token}};
   const SLUG        = {{.EventTypeSlug}};
+  const SLOTS_URL = {{if .SlotsURL}}{{.SlotsURL}}{{else}}`/v1/event-types/${SLUG}/slots`{{end}};
   const MAX_DAYS    = {{.MaxFutureDays}};
   const CURRENT_ISO = {{.CurrentStartISO}};
   const ORG_TZ      = {{.OrganizerTZ}};
@@ -338,7 +339,7 @@ body {
     const lastDay = new Date(y, m + 1, 0).getDate();
     const to = toDateStr(y, m, lastDay);
     try {
-      const r = await fetch(`/v1/event-types/${SLUG}/slots?from=${from}&to=${to}&tz=${encodeURIComponent(TZ)}`);
+      const r = await fetch(`${SLOTS_URL}?from=${from}&to=${to}&tz=${encodeURIComponent(TZ)}`);
       if (!r.ok) throw new Error(r.status);
       const data = await r.json();
       // Cache the month's slots grouped by the SELECTED-timezone day (BookingLogic — tested,
@@ -515,7 +516,7 @@ body {
     // Fallback (clicked before the month load finished): fetch just this day.
     list.innerHTML = `<p class="hint">${t('loading')}</p>`;
     try {
-      const r = await fetch(`/v1/event-types/${SLUG}/slots?from=${ds}&to=${ds}&tz=${encodeURIComponent(TZ)}`);
+      const r = await fetch(`${SLOTS_URL}?from=${ds}&to=${ds}&tz=${encodeURIComponent(TZ)}`);
       if (!r.ok) throw new Error(r.status);
       const data = await r.json();
       ((data.min_notice && data.min_notice.dates) || []).forEach(k => noticeDates.add(k));

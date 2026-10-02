@@ -404,6 +404,8 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	mux.HandleFunc("GET /v1/event-types/{slug}/hosts", h.RequireAuth(h.ListEventTypeHosts))
 	mux.HandleFunc("PUT /v1/event-types/{slug}/hosts", h.RequireAuth(h.SetEventTypeHosts))
 	mux.HandleFunc("POST /v1/scheduling-invitations", h.RequireAuth(h.CreateSchedulingInvitation))
+	mux.HandleFunc("GET /v1/scheduling-invitations", h.RequireAuth(h.ListSchedulingInvitations))
+	mux.HandleFunc("POST /v1/scheduling-invitations/{id}/cancel", h.RequireAuth(h.CancelSchedulingInvitation))
 	mux.HandleFunc("GET /v1/scheduling-invitations/{id}", h.RequireAuth(h.GetSchedulingInvitation))
 	mux.HandleFunc("GET /v1/scheduling-invitations/{id}/slots", h.RequireAuth(h.GetSchedulingInvitationSlots))
 	testEmailRL := RateLimit(10, time.Minute)
@@ -450,6 +452,9 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 
 	bookingRL := RateLimit(20, time.Minute)
 	manageRL := RateLimit(30, time.Minute)
+	mux.HandleFunc("GET /s/{token}", slotsRL(h.InvitationPage))
+	mux.HandleFunc("GET /v1/schedule/{token}/slots", slotsRL(h.GetPublicInvitationSlots))
+	mux.HandleFunc("POST /v1/schedule/{token}/book", bookingRL(h.CreateInvitationBooking))
 
 	// Bookings — public create is CORS-enabled for the widget; the JSON body makes it
 	// a non-simple request, so the OPTIONS preflight is handled too.
@@ -491,6 +496,7 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 
 	// Manage booking (reschedule / cancel via token link)
 	mux.HandleFunc("GET /manage/{token}", manageRL(h.ManagePage))
+	mux.HandleFunc("GET /manage/{token}/slots", slotsRL(h.GetManageInvitationSlots))
 	mux.HandleFunc("POST /manage/{token}/reschedule", manageRL(h.RescheduleByToken))
 	mux.HandleFunc("POST /manage/{token}/cancel", manageRL(h.CancelByToken))
 

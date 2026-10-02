@@ -199,11 +199,11 @@ body {
         </div>
         <div class="field">
           <label for="f-name">{{call .T "name_label"}}</label>
-          <input id="f-name" name="name" type="text" required autocomplete="name" placeholder="{{call .T "name_placeholder"}}">
+          <input id="f-name" name="name" type="text" required autocomplete="name" placeholder="{{call .T "name_placeholder"}}" {{if .IsInvitation}}value="{{.RecipientName}}" readonly{{end}}>
         </div>
         <div class="field">
           <label for="f-email">{{call .T "email_label"}}</label>
-          <input id="f-email" name="email" type="email" required autocomplete="email" placeholder="{{call .T "email_placeholder"}}">
+          <input id="f-email" name="email" type="email" required autocomplete="email" placeholder="{{call .T "email_placeholder"}}" {{if .IsInvitation}}value="{{.RecipientEmail}}" readonly{{end}}>
         </div>
         {{/* SAFE (generic.html-templates.security.unquoted-attribute-var, this whole block):
              .ID is the event type's own intake-question primary key (admin-configured, not
@@ -271,6 +271,9 @@ body {
   'use strict';
 
   const SLUG     = "{{.Slug}}";
+  const IS_INVITATION = {{.IsInvitation}};
+  const SLOTS_URL = {{if .SlotsURL}}{{.SlotsURL}}{{else}}`/v1/event-types/${SLUG}/slots`{{end}};
+  const BOOKING_URL = {{if .BookingURL}}{{.BookingURL}}{{else}}'/v1/bookings'{{end}};
   const MAX_DAYS = {{.MaxFutureDays}};
   const PRICE_CENTS = {{.PriceCents}};
   const CURRENCY = "{{.Currency}}";
@@ -443,7 +446,7 @@ body {
     const lastDay = new Date(y, m + 1, 0).getDate();
     const to   = toDateStr(y, m, lastDay);
     try {
-      const r = await fetch(`/v1/event-types/${SLUG}/slots?from=${from}&to=${to}&tz=${encodeURIComponent(TZ)}`);
+      const r = await fetch(`${SLOTS_URL}?from=${from}&to=${to}&tz=${encodeURIComponent(TZ)}`);
       if (!r.ok) throw new Error(r.status);
       const data = await r.json();
       Object.assign(hostMeta, data.hosts || {});
@@ -623,7 +626,7 @@ body {
     // Fallback (clicked before the month load finished): fetch just this day.
     list.innerHTML = `<p class="hint">${t('loading')}</p>`;
     try {
-      const r = await fetch(`/v1/event-types/${SLUG}/slots?from=${ds}&to=${ds}&tz=${encodeURIComponent(TZ)}`);
+      const r = await fetch(`${SLOTS_URL}?from=${ds}&to=${ds}&tz=${encodeURIComponent(TZ)}`);
       if (!r.ok) throw new Error(r.status);
       const data = await r.json();
       Object.assign(hostMeta, data.hosts || {});
@@ -705,10 +708,12 @@ body {
     btn.disabled = true; btn.textContent = t('confirming'); errEl.textContent = '';
 
     try {
-      const r = await fetch('/v1/bookings', {
+      const r = await fetch(BOOKING_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+        body: JSON.stringify(IS_INVITATION ? {
+          start_at: pickedSlot.start, timezone: TZ, answers, language: LOCALE, hp_extra: form.hp_extra.value,
+        } : {
           event_type_slug: SLUG,
           start_at: pickedSlot.start,
           name: form.name.value.trim(),
