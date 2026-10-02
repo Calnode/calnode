@@ -20,23 +20,26 @@ const (
 )
 
 type eventTypeJSON struct {
-	AllowPhoneCall      bool    `json:"allow_phone_call"`
-	ID                  string  `json:"id"`
-	Slug                string  `json:"slug"`
-	Name                string  `json:"name"`
-	Description         *string `json:"description"`
-	DurationMinutes     int     `json:"duration_minutes"`
-	SlotIntervalMinutes int     `json:"slot_interval_minutes"`
-	LocationType        string  `json:"location_type"`
-	LocationValue       *string `json:"location_value"`
-	RoutingMode         string  `json:"routing_mode"`
-	RRStrategy          string  `json:"rr_strategy"`
-	BufferBeforeMinutes int     `json:"buffer_before_minutes"`
-	BufferAfterMinutes  int     `json:"buffer_after_minutes"`
-	MinNoticeMinutes    int     `json:"min_notice_minutes"`
-	MaxFutureDays       int     `json:"max_future_days"`
-	MaxActiveBookings   int     `json:"max_active_bookings"`
-	IsActive            bool    `json:"is_active"`
+	AllowPhoneCall           bool    `json:"allow_phone_call"`
+	ID                       string  `json:"id"`
+	Slug                     string  `json:"slug"`
+	Name                     string  `json:"name"`
+	Description              *string `json:"description"`
+	DurationMinutes          int     `json:"duration_minutes"`
+	MinDurationMinutes       *int    `json:"min_duration_minutes"`
+	MaxDurationMinutes       *int    `json:"max_duration_minutes"`
+	DurationIncrementMinutes *int    `json:"duration_increment_minutes"`
+	SlotIntervalMinutes      int     `json:"slot_interval_minutes"`
+	LocationType             string  `json:"location_type"`
+	LocationValue            *string `json:"location_value"`
+	RoutingMode              string  `json:"routing_mode"`
+	RRStrategy               string  `json:"rr_strategy"`
+	BufferBeforeMinutes      int     `json:"buffer_before_minutes"`
+	BufferAfterMinutes       int     `json:"buffer_after_minutes"`
+	MinNoticeMinutes         int     `json:"min_notice_minutes"`
+	MaxFutureDays            int     `json:"max_future_days"`
+	MaxActiveBookings        int     `json:"max_active_bookings"`
+	IsActive                 bool    `json:"is_active"`
 	// ShowTakenSlots renders already-booked times greyed out on the booking page
 	// instead of omitting them. Off by default: the slots endpoint is public, so this
 	// makes the host's booked hours legible to anyone with the link (#19).
@@ -106,6 +109,7 @@ func scanEventTypeRow(s rowScanner, trailing ...any) (*eventTypeJSON, error) {
 		&msgConf, &msgCancel, &msgResched, &msgRemind, &msgGreeting,
 		&subjConf, &subjCancel, &subjResched, &subjRemind,
 		&et.PriceCents, &et.Currency, &et.InviteDelivery,
+		&et.MinDurationMinutes, &et.MaxDurationMinutes, &et.DurationIncrementMinutes,
 	}
 	dests = append(dests, trailing...)
 	err := s.Scan(dests...)
@@ -164,7 +168,8 @@ const etColumns = `id, slug, name, description,
 	is_active, is_public, show_taken_slots, created_at,
 	msg_confirmation, msg_cancellation, msg_reschedule, msg_reminder, msg_greeting,
 	subj_confirmation, subj_cancellation, subj_reschedule, subj_reminder,
-	price_cents, currency, invite_delivery`
+	price_cents, currency, invite_delivery,
+	min_duration_minutes, max_duration_minutes, duration_increment_minutes`
 
 // selectETCols fetches a single owner-scoped event type (no `owned` column).
 const selectETCols = "SELECT " + etColumns + " FROM event_types"
@@ -216,22 +221,25 @@ func (h *Handler) CreateEventType(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 32<<10)
 
 	var req struct {
-		Slug                string  `json:"slug"`
-		Name                string  `json:"name"`
-		Description         *string `json:"description"`
-		DurationMinutes     int     `json:"duration_minutes"`
-		SlotIntervalMinutes *int    `json:"slot_interval_minutes"`
-		LocationType        *string `json:"location_type"`
-		LocationValue       *string `json:"location_value"`
-		RoutingMode         *string `json:"routing_mode"`
-		BufferBeforeMinutes *int    `json:"buffer_before_minutes"`
-		BufferAfterMinutes  *int    `json:"buffer_after_minutes"`
-		MinNoticeMinutes    *int    `json:"min_notice_minutes"`
-		MaxFutureDays       *int    `json:"max_future_days"`
-		MaxActiveBookings   *int    `json:"max_active_bookings"`
-		AllowPhoneCall      *bool   `json:"allow_phone_call"`
-		ShowTakenSlots      *bool   `json:"show_taken_slots"`
-		InviteDelivery      *string `json:"invite_delivery"`
+		Slug                     string  `json:"slug"`
+		Name                     string  `json:"name"`
+		Description              *string `json:"description"`
+		DurationMinutes          int     `json:"duration_minutes"`
+		MinDurationMinutes       *int    `json:"min_duration_minutes"`
+		MaxDurationMinutes       *int    `json:"max_duration_minutes"`
+		DurationIncrementMinutes *int    `json:"duration_increment_minutes"`
+		SlotIntervalMinutes      *int    `json:"slot_interval_minutes"`
+		LocationType             *string `json:"location_type"`
+		LocationValue            *string `json:"location_value"`
+		RoutingMode              *string `json:"routing_mode"`
+		BufferBeforeMinutes      *int    `json:"buffer_before_minutes"`
+		BufferAfterMinutes       *int    `json:"buffer_after_minutes"`
+		MinNoticeMinutes         *int    `json:"min_notice_minutes"`
+		MaxFutureDays            *int    `json:"max_future_days"`
+		MaxActiveBookings        *int    `json:"max_active_bookings"`
+		AllowPhoneCall           *bool   `json:"allow_phone_call"`
+		ShowTakenSlots           *bool   `json:"show_taken_slots"`
+		InviteDelivery           *string `json:"invite_delivery"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.writeError(w, http.StatusBadRequest, "invalid JSON")
@@ -247,6 +255,10 @@ func (h *Handler) CreateEventType(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.DurationMinutes <= 0 {
 		h.writeError(w, http.StatusBadRequest, "duration_minutes must be positive")
+		return
+	}
+	if err := (durationPolicy{req.MinDurationMinutes, req.MaxDurationMinutes, req.DurationIncrementMinutes}).validate(req.DurationMinutes); err != nil {
+		h.writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
@@ -335,12 +347,14 @@ func (h *Handler) CreateEventType(w http.ResponseWriter, r *http.Request) {
 		   slot_interval_minutes, location_type, location_value, allow_phone_call,
 		   routing_mode, buffer_before_minutes, buffer_after_minutes,
 		   min_notice_minutes, max_future_days, max_active_bookings, show_taken_slots, invite_delivery,
-		   msg_confirmation, msg_cancellation, msg_reschedule, msg_reminder)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		   msg_confirmation, msg_cancellation, msg_reschedule, msg_reminder,
+		   min_duration_minutes, max_duration_minutes, duration_increment_minutes)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		id, user.ID, req.Slug, req.Name, req.Description,
 		req.DurationMinutes, slotInterval, locType, req.LocationValue, req.AllowPhoneCall != nil && *req.AllowPhoneCall,
 		routingMode, bufBefore, bufAfter, minNotice, maxFuture, maxActive, showTaken, inviteDelivery,
-		defaultMsgConfirmation, defaultMsgCancellation, defaultMsgReschedule, defaultMsgReminder)
+		defaultMsgConfirmation, defaultMsgCancellation, defaultMsgReschedule, defaultMsgReminder,
+		req.MinDurationMinutes, req.MaxDurationMinutes, req.DurationIncrementMinutes)
 	if err != nil {
 		if db.IsUniqueViolation(err) {
 			h.writeError(w, http.StatusConflict, "slug already in use")
@@ -455,38 +469,41 @@ func (h *Handler) PatchEventType(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 32<<10)
 
 	var req struct {
-		Slug                *string `json:"slug"`
-		Name                *string `json:"name"`
-		Description         *string `json:"description"`
-		DurationMinutes     *int    `json:"duration_minutes"`
-		SlotIntervalMinutes *int    `json:"slot_interval_minutes"`
-		LocationType        *string `json:"location_type"`
-		LocationValue       *string `json:"location_value"`
-		RoutingMode         *string `json:"routing_mode"`
-		RRStrategy          *string `json:"rr_strategy"`
-		BufferBeforeMinutes *int    `json:"buffer_before_minutes"`
-		BufferAfterMinutes  *int    `json:"buffer_after_minutes"`
-		MinNoticeMinutes    *int    `json:"min_notice_minutes"`
-		MaxFutureDays       *int    `json:"max_future_days"`
-		MaxActiveBookings   *int    `json:"max_active_bookings"`
-		IsActive            *bool   `json:"is_active"`
-		IsPublic            *bool   `json:"is_public"`
-		AllowPhoneCall      *bool   `json:"allow_phone_call"`
-		ShowTakenSlots      *bool   `json:"show_taken_slots"`
-		InviteDelivery      *string `json:"invite_delivery"`
-		Archived            *bool   `json:"archived"`
-		MsgConfirmation     *string `json:"msg_confirmation"`
-		MsgCancellation     *string `json:"msg_cancellation"`
-		MsgReschedule       *string `json:"msg_reschedule"`
-		MsgReminder         *string `json:"msg_reminder"`
-		MsgGreeting         *string `json:"msg_greeting"`
-		SubjConfirmation    *string `json:"subj_confirmation"`
-		SubjCancellation    *string `json:"subj_cancellation"`
-		SubjReschedule      *string `json:"subj_reschedule"`
-		SubjReminder        *string `json:"subj_reminder"`
-		PriceCents          *int    `json:"price_cents"`
-		Currency            *string `json:"currency"`
-		Reminders           []int   `json:"reminders"` // nil = don't touch; [] = clear all
+		Slug                     *string     `json:"slug"`
+		Name                     *string     `json:"name"`
+		Description              *string     `json:"description"`
+		DurationMinutes          *int        `json:"duration_minutes"`
+		MinDurationMinutes       nullableInt `json:"min_duration_minutes"`
+		MaxDurationMinutes       nullableInt `json:"max_duration_minutes"`
+		DurationIncrementMinutes nullableInt `json:"duration_increment_minutes"`
+		SlotIntervalMinutes      *int        `json:"slot_interval_minutes"`
+		LocationType             *string     `json:"location_type"`
+		LocationValue            *string     `json:"location_value"`
+		RoutingMode              *string     `json:"routing_mode"`
+		RRStrategy               *string     `json:"rr_strategy"`
+		BufferBeforeMinutes      *int        `json:"buffer_before_minutes"`
+		BufferAfterMinutes       *int        `json:"buffer_after_minutes"`
+		MinNoticeMinutes         *int        `json:"min_notice_minutes"`
+		MaxFutureDays            *int        `json:"max_future_days"`
+		MaxActiveBookings        *int        `json:"max_active_bookings"`
+		IsActive                 *bool       `json:"is_active"`
+		IsPublic                 *bool       `json:"is_public"`
+		AllowPhoneCall           *bool       `json:"allow_phone_call"`
+		ShowTakenSlots           *bool       `json:"show_taken_slots"`
+		InviteDelivery           *string     `json:"invite_delivery"`
+		Archived                 *bool       `json:"archived"`
+		MsgConfirmation          *string     `json:"msg_confirmation"`
+		MsgCancellation          *string     `json:"msg_cancellation"`
+		MsgReschedule            *string     `json:"msg_reschedule"`
+		MsgReminder              *string     `json:"msg_reminder"`
+		MsgGreeting              *string     `json:"msg_greeting"`
+		SubjConfirmation         *string     `json:"subj_confirmation"`
+		SubjCancellation         *string     `json:"subj_cancellation"`
+		SubjReschedule           *string     `json:"subj_reschedule"`
+		SubjReminder             *string     `json:"subj_reminder"`
+		PriceCents               *int        `json:"price_cents"`
+		Currency                 *string     `json:"currency"`
+		Reminders                []int       `json:"reminders"` // nil = don't touch; [] = clear all
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.writeError(w, http.StatusBadRequest, "invalid JSON")
@@ -706,9 +723,13 @@ func (h *Handler) PatchEventType(w http.ResponseWriter, r *http.Request) {
 	// Look up the event type ID + current location (needed for reminder upsert, to
 	// verify ownership, and to validate the effective online-meeting location below).
 	var etID, curLocType, curLocVal, curInviteDelivery string
+	var currentDuration int
+	var policy durationPolicy
 	if err := h.db.QueryRowContext(r.Context(),
-		`SELECT id, location_type, COALESCE(location_value, ''), invite_delivery FROM event_types WHERE slug = ? AND user_id = ?`, slug, user.ID).
-		Scan(&etID, &curLocType, &curLocVal, &curInviteDelivery); err != nil {
+		`SELECT id, location_type, COALESCE(location_value, ''), invite_delivery, duration_minutes,
+		 min_duration_minutes, max_duration_minutes, duration_increment_minutes
+		 FROM event_types WHERE slug = ? AND user_id = ?`, slug, user.ID).
+		Scan(&etID, &curLocType, &curLocVal, &curInviteDelivery, &currentDuration, &policy.Min, &policy.Max, &policy.Increment); err != nil {
 		if err == sql.ErrNoRows {
 			h.writeError(w, http.StatusNotFound, "event type not found")
 			return
@@ -716,6 +737,39 @@ func (h *Handler) PatchEventType(w http.ResponseWriter, r *http.Request) {
 		h.logger.ErrorContext(r.Context(), "patch event type: lookup id", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal error")
 		return
+	}
+	if req.DurationMinutes != nil || req.MinDurationMinutes.Present || req.MaxDurationMinutes.Present || req.DurationIncrementMinutes.Present {
+		duration := currentDuration
+		if req.DurationMinutes != nil {
+			duration = *req.DurationMinutes
+		}
+		// Explicit fixed bounds are equivalent to the legacy fixed policy. A
+		// duration-only edit must not leave them pinned to the old default.
+		if req.DurationMinutes != nil && !req.MinDurationMinutes.Present && !req.MaxDurationMinutes.Present && !req.DurationIncrementMinutes.Present &&
+			policy.Min != nil && policy.Max != nil && *policy.Min == *policy.Max {
+			policy = durationPolicy{}
+			set("min_duration_minutes", nil)
+			set("max_duration_minutes", nil)
+			set("duration_increment_minutes", nil)
+		}
+		for _, field := range []struct {
+			name   string
+			value  nullableInt
+			target **int
+		}{
+			{"min_duration_minutes", req.MinDurationMinutes, &policy.Min},
+			{"max_duration_minutes", req.MaxDurationMinutes, &policy.Max},
+			{"duration_increment_minutes", req.DurationIncrementMinutes, &policy.Increment},
+		} {
+			if field.value.Present {
+				*field.target = field.value.Value
+				set(field.name, field.value.Value)
+			}
+		}
+		if err := policy.validate(duration); err != nil {
+			h.writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
 	}
 
 	// Validate the location only when this patch actually CHANGES it, comparing what
@@ -890,6 +944,18 @@ func (h *Handler) DeleteEventType(w http.ResponseWriter, r *http.Request) {
 		`DELETE FROM event_types WHERE slug = ? AND user_id = ?`, slug, user.ID)
 	if err != nil {
 		if db.IsForeignKeyViolation(err) {
+			var hasInvitations bool
+			if lookupErr := h.db.QueryRowContext(r.Context(), `SELECT EXISTS (
+				SELECT 1 FROM scheduling_invitations si JOIN event_types et ON et.id = si.event_type_id
+				WHERE et.slug = ? AND et.user_id = ?)`, slug, user.ID).Scan(&hasInvitations); lookupErr != nil {
+				h.logger.ErrorContext(r.Context(), "delete event type: invitation references", "error", lookupErr)
+				h.writeError(w, http.StatusInternalServerError, "internal error")
+				return
+			}
+			if hasInvitations {
+				h.writeError(w, http.StatusConflict, "this event type has scheduling invitations and can't be deleted; archive it instead")
+				return
+			}
 			h.writeError(w, http.StatusConflict, "this event type has bookings in its history (including cancelled ones) and can't be deleted — deactivate it instead")
 			return
 		}

@@ -26,6 +26,8 @@ var manageTmpl = template.Must(template.Must(template.New("manage").Funcs(templa
 }).Parse(sharedPartialsSrc)).Parse(manageTmplSrc))
 
 type managePageData struct {
+	IsInvitation     bool
+	SlotsURL         string
 	AccentColor      string
 	AccentForeground string
 	Token            string
@@ -110,10 +112,14 @@ func (h *Handler) ManagePage(w http.ResponseWriter, r *http.Request) {
 	}
 	accentColor = accentOrDefault(accentColor)
 
-	if b.LocationType != "" {
+	if b.SchedulingInvitationID != "" {
+		// Empty retained values are intentional, too; never fill them from a
+		// template that may have changed after invitation issuance.
+		locType, locValue = b.LocationType, b.LocationValue
+	} else if b.LocationType != "" {
 		locType = b.LocationType
 	}
-	if b.LocationValue != "" {
+	if b.SchedulingInvitationID == "" && b.LocationValue != "" {
 		locValue = b.LocationValue
 	}
 
@@ -162,6 +168,16 @@ func (h *Handler) ManagePage(w http.ResponseWriter, r *http.Request) {
 		OrganizerTZ:      orgTZ,
 		Status:           b.Status,
 	}
+	if b.SchedulingInvitationID != "" {
+		data.IsInvitation = true
+		data.SlotsURL = "/manage/" + token + "/slots"
+		data.DurationMinutes = int(b.EndAt.Sub(b.StartAt) / time.Minute)
+		data.DurationLabel = durationLabel(data.DurationMinutes, loc)
+		if schedule, err := h.bookingInvitationContext(r.Context(), b); err == nil {
+			data.MaxFutureDays = schedule.Event.MaxFutureDays
+			data.MinNoticeLabel = noticeLabel(schedule.Event.MinNoticeMinutes, loc)
+		}
+	}
 	h.renderManage(w, r, data, loc)
 }
 
@@ -199,6 +215,17 @@ func (h *Handler) renderManage(w http.ResponseWriter, r *http.Request, data mana
 	w.Header().Set("X-Frame-Options", "DENY")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Vary", "Accept-Language, Cookie") // see the same header in book.go's BookPage
+	if data.IsInvitation {
+		data.HeadHTML = ""
+		data.DataLayerEnabled = false
+		data.GTMContainerID = ""
+		data.GA4MeasurementID = ""
+		data.AvatarURL = credentialImage(data.AvatarURL)
+		data.LogoURL = credentialImage(data.LogoURL)
+		data.BannerURL = credentialImage(data.BannerURL)
+		invitationHeaders(w)
+		w.Header().Set("Content-Security-Policy", credentialCSP)
+	}
 	if err := manageTmpl.Execute(w, data); err != nil {
 		h.logger.ErrorContext(r.Context(), "manage page: template", "error", err)
 	}
@@ -246,6 +273,9 @@ func (h *Handler) RescheduleByToken(w http.ResponseWriter, r *http.Request) {
 	previousStart := b.StartAt
 	previousEnd := b.EndAt
 	newEnd := newStart.Add(time.Duration(durMins) * time.Minute)
+	if b.SchedulingInvitationID != "" {
+		newEnd = newStart.Add(b.EndAt.Sub(b.StartAt))
+	}
 
 	if err := h.validateRescheduleTime(r.Context(), b.ID, b.EventTypeID, b.HostID, newStart, newEnd); err != nil {
 		if errors.Is(err, errSlotUnavailable) {
@@ -257,8 +287,8 @@ func (h *Handler) RescheduleByToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	updated, err := h.bookingSvc.Reschedule(r.Context(), b.ID, newStart, newEnd)
-	if errors.Is(err, booking.ErrDoubleBooked) {
+	updated, err := h.rescheduleBooking(r.Context(), b.ID, newStart, newEnd)
+	if errors.Is(err, booking.ErrDoubleBooked) || errors.Is(err, errSlotUnavailable) || errors.Is(err, booking.ErrInvitationUnavailable) {
 		h.writeError(w, http.StatusConflict, "that time slot is no longer available")
 		return
 	}

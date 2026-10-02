@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"net/http"
 	"time"
+
+	"github.com/calnode/calnode/internal/db"
 )
 
 // ListUsers handles GET /v1/users — admin only. Returns all users.
@@ -206,6 +208,10 @@ func (h *Handler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 
 	res, err := h.db.ExecContext(r.Context(), `DELETE FROM users WHERE id = ?`, targetID)
 	if err != nil {
+		if db.IsForeignKeyViolation(err) {
+			h.writeError(w, http.StatusConflict, "this member is referenced by scheduling invitations; archive them instead")
+			return
+		}
 		h.logger.ErrorContext(r.Context(), "delete user: exec", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal error")
 		return

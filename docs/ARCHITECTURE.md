@@ -104,6 +104,10 @@ partial unique index covers) — no TOCTOU between concurrent bookings.
   **not enforced**); `team_id` — vestigial for routing), `event_type_hosts`
   (the host-roles table), `event_type_questions` (intake form),
   `event_type_reminders` (per-ET `hours_before`, UNIQUE).
+- **Scheduling invitations:** `scheduling_invitations`,
+  `scheduling_invitation_hosts`, `scheduling_invitation_tokens` (migration 00071),
+  plus booking correlation and the transactional lifecycle outbox (00072).
+  Separate from account `invite_tokens` and calendar `invite_delivery`; see §8.
 - **Availability:** `availability_rules` (weekly), `availability_overrides` (dated).
 - **Bookings:** `bookings` (primary `host_id`, `external_event_id`, status),
   `booking_hosts` (every attending host + `is_primary` + per-host
@@ -267,7 +271,8 @@ Booking and rescheduling pages and the embed widget group the displayed starts i
 
 - Engine: `internal/slots/generate.go`. Input: `[]HostAvailability` (rules,
   overrides, busy intervals, **Role**), `EventConfig` (duration, interval, buffers,
-  min-notice, max-future, `RoutingMode`), date range, booker tz, injectable `Now`.
+  min-notice, max-future, `RoutingMode`), date range, booker tz, injectable `Now`,
+  and an optional `AllowedWindow` bounding the whole appointment.
 - Computes per-host free windows per UTC day, intersects/subtracts busy, aligns to
   the slot interval, then `pickHosts` decides per-slot which hosts to surface:
   - `collective`: all hosts must be free → return all.
@@ -305,6 +310,62 @@ Booking and rescheduling pages and the embed widget group the displayed starts i
   stored UTC; a morning slot for a +UTC host maps to the previous UTC day. The busy
   fetch window is widened ±1–2 days so it isn't missed (regression-tested in
   `slots_busy_test.go`).
+
+### Scheduling invitations
+
+The accepted direction is [discussion #47](https://github.com/Calnode/calnode/discussions/47)
+and [issue #92](https://github.com/Calnode/calnode/issues/92). Event types provide
+reusable defaults/policies; invitations retain authorized request values; bookings
+retain the selected interval and assigned hosts. The external adapter creates an
+invitation, sends its returned scheduling URL, and receives signed correlated events.
+See [SCHEDULING_INVITATIONS.md](SCHEDULING_INVITATIONS.md) for API examples,
+authorization, snapshot semantics, date boundaries and integration limitations.
+
+- Owner-authenticated create/list/read/cancel APIs use `/v1/scheduling-invitations`.
+  Creation returns an opaque `/s/{token}` URL once. Only external initial delivery
+  is supported; other modes are rejected. Private active event types are eligible,
+  paid event types are not. Tokens are 32 random bytes, with SHA-256-only persistence.
+- Optional event-type min/max/increment policies authorize invitation duration
+  overrides. Defaults remain fixed duration. Partial PATCH validates the complete
+  effective policy; an all-null reset restores fixed duration. Duration-only legacy
+  updates to explicit fixed bounds clear those bounds. Public event-type booking
+  behavior, duplication and existing API conventions are preserved.
+- `schedulingContext` resolves event defaults or invitation snapshots for the same
+  slot engine. Invitations retain duration, interval, buffers, recipient, host
+  roles/routing, location and external reference. `host_id` restricts to one active
+  eligible required host; omission snapshots normal required/rotation/optional
+  routing. Current hours/calendar/bookings stay live; current notice/future limits
+  intersect their snapshots. Archived/disabled sources or required hosts fail closed.
+- Date-only bounds are inclusive local dates, ending at midnight after the final
+  date via calendar arithmetic (DST-safe). Precise RFC3339 bounds are also accepted.
+  The entire appointment fits; buffers apply to busy intervals and may extend beyond
+  the date window. Listing, booking and rescheduling use the same constraints.
+- Public `/v1/schedule/{token}/slots` and `/book` load authoritative values from
+  the invitation. Submission rejects recipient/duration/host/window tampering,
+  rechecks external calendars before opening a database transaction, then runs the
+  shared slot engine again against transaction-local hours/bookings. The existing
+  booking service assigns hosts and atomically inserts the booking, conditionally
+  marks the invitation booked, and consumes the credential. A unique booking FK
+  provides a second single-use invariant (migration 00072).
+- Existing calendar/meeting/email/reminder side effects use the persisted interval
+  after commit. Management uses the existing booking credential, retaining duration,
+  assigned hosts, window and correlation after invitation consumption/expiration.
+  Cancellation never reopens the original invitation; reassignment is rejected.
+- Invitation transitions write a payload snapshot to a transactional outbox. The
+  worker expires eligible active invitations once and drains outbox records into
+  existing signed delivery/retry jobs. Correlated booking events also reach the
+  creator, even when the primary host differs. See §13 for delivery semantics.
+- Credential pages use no-referrer/no-store/noindex, rate limits, log redaction,
+  same-origin resources and a restrictive CSP. Analytics, head injection, assistants,
+  remote images and Markdown embeds are omitted; safe branding/intake components
+  are reused. Public payloads omit integration/ticket metadata.
+
+Verification codes, replacement tokens, draft/edit/activation, initial email
+delivery, payments, ticket adapters/synchronization and retention policy remain
+deferred. Directory-order PR #127 is assumed to land first at 00070. The unmerged
+invitation foundation/lifecycle migrations use 00071/00072. Development uses clean
+databases; databases from the earlier experimental 00070/00071 numbering require
+a separate compatibility upgrade and must not have their Goose history rewritten.
 
 ### Client calendar perf (book.html / manage.html)
 
@@ -786,6 +847,19 @@ as the desired state:
   (`buildData`) at enqueue time, so each subscriber gets its own `data`. New webhooks
   default to all fields ticked (self-hoster unticks what they don't want); a
   delivery-log view (status/HTTP/attempts) is in the admin webhooks page.
+- **Scheduling invitation lifecycle:** `.created`, `.booked`, `.cancelled`, `.expired`
+  events use the existing envelope and signing system. State transitions capture
+  payloads in `scheduling_invitation_events`; the worker drains them atomically into
+  delivery/jobs rows and expires active records conditionally. Related booking
+  events always include invitation/booking/event IDs, duration, intervals, assigned
+  hosts, available location and generic external reference; they also reach the
+  invitation creator's subscriptions. Ordinary booking payloads remain unchanged.
+  New invitation/correlated envelopes have stable event IDs; retries retain stored
+  payloads and delivery IDs. Delivery is at least once and ordering is not guaranteed
+  across asynchronous side effects/outbox/retries. A booked event may precede meeting
+  link creation. Existing booking side-effect enqueueing remains best effort; once
+  enqueued, existing durable jobs/retries handle delivery. Raw scheduling tokens/URLs
+  never enter webhook payloads. Full receiver guidance is in the integration doc.
 
 ---
 

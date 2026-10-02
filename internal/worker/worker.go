@@ -99,6 +99,11 @@ func (w *Worker) Wait() {
 // Poll processes one batch of pending jobs. Exported for testing.
 func (w *Worker) Poll(ctx context.Context) {
 	now := time.Now().UTC().Format(time.RFC3339)
+	if w.svc != nil {
+		if err := w.svc.ProcessSchedulingInvitations(ctx); err != nil {
+			w.logger.Error("worker: invitation lifecycle", "error", err)
+		}
+	}
 
 	// Purge expired manage tokens and sessions to keep tables small.
 	if _, err := w.db.ExecContext(ctx,

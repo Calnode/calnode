@@ -161,10 +161,15 @@ type slotsWanted struct {
 // tool. tzName "" → UTC; fromStr/toStr "" → today / the max-future cap. Returns one
 // of the sentinel errors above on bad input, or a wrapped error on internal failure.
 func (h *Handler) computeSlots(ctx context.Context, slug, tzName, fromStr, toStr string, want slotsWanted) (slotsResult, error) {
-	et, err := h.loadBookableEventType(ctx, slug)
+	schedule, err := h.eventTypeSchedulingContext(ctx, slug)
 	if err != nil {
 		return slotsResult{}, err
 	}
+	return h.computeSlotsForContext(ctx, schedule, tzName, fromStr, toStr, want)
+}
+
+func (h *Handler) computeSlotsForContext(ctx context.Context, schedule schedulingContext, tzName, fromStr, toStr string, want slotsWanted) (slotsResult, error) {
+	et := schedule.Event
 
 	if tzName == "" {
 		tzName = "UTC"
@@ -180,13 +185,10 @@ func (h *Handler) computeSlots(ctx context.Context, slug, tzName, fromStr, toStr
 		return slotsResult{}, errBadDateRange
 	}
 
-	// Resolve the host pool for this event type by routing mode. Round-robin
+	// Select the resolved host pool by routing mode. Round-robin
 	// offers a slot if any rotation host is free; fixed/collective gate on the
-	// required hosts. Archived hosts are already excluded by resolveEventTypeHosts.
-	hosts, err := h.resolveEventTypeHosts(ctx, et.ID)
-	if err != nil {
-		return slotsResult{}, fmt.Errorf("resolve event-type hosts: %w", err)
-	}
+	// required hosts. The scheduling-context resolver has handled archived hosts.
+	hosts := schedule.Hosts
 	// Pool the hosts that gate this event's slots, tagged with the role the engine
 	// needs. Round-robin: required (fixed, always attend) + rotation (pick one).
 	// fixed/collective: the required hosts (all must be free).
@@ -224,7 +226,7 @@ func (h *Handler) computeSlots(ctx context.Context, slug, tzName, fromStr, toStr
 		wg.Add(1)
 		go func(i int, ph poolHost) {
 			defer wg.Done()
-			ha, degraded, err := h.hostAvailability(ctx, ph.id, et.ID, dateFrom, dateTo)
+			ha, degraded, err := h.hostAvailabilityForContext(ctx, ph.id, schedule, dateFrom, dateTo)
 			if err != nil {
 				errsByHost[i] = err
 				return
@@ -246,26 +248,19 @@ func (h *Handler) computeSlots(ctx context.Context, slug, tzName, fromStr, toStr
 	}
 
 	req := slots.Request{
-		Event: slots.EventConfig{
-			DurationMinutes:     et.DurationMinutes,
-			SlotIntervalMinutes: et.SlotIntervalMinutes,
-			BufferBeforeMinutes: et.BufferBeforeMinutes,
-			BufferAfterMinutes:  et.BufferAfterMinutes,
-			MinNoticeMinutes:    et.MinNoticeMinutes,
-			MaxFutureDays:       et.MaxFutureDays,
-			RoutingMode:         et.RoutingMode,
-		},
-		Hosts:    hostAvails,
-		DateFrom: dateFrom,
-		DateTo:   dateTo,
-		BookerTZ: bookerTZ,
-		Now:      now,
+		Event:         et,
+		Hosts:         hostAvails,
+		DateFrom:      dateFrom,
+		DateTo:        dateTo,
+		BookerTZ:      bookerTZ,
+		Now:           now,
+		AllowedWindow: schedule.AllowedWindow,
 	}
 
 	// Taken slots are produced only when the caller asked for them AND this event type
 	// opted in. GenerateWithTaken walks the range a second time with busy ignored, so
 	// it is not free, and it returns exactly the information the default must withhold.
-	showsTaken := want.Taken && et.ShowTakenSlots
+	showsTaken := want.Taken && schedule.ShowTakenSlots
 	result, err := slots.GenerateDetailed(req, slots.Extras{Taken: showsTaken, NoticeGap: want.NoticeGap})
 	if err != nil {
 		return slotsResult{}, fmt.Errorf("slots generate: %w", err)
@@ -370,8 +365,12 @@ func (h *Handler) hostDisplayMap(ctx context.Context, ids []string) map[string]m
 // drift. Returns materialized slices, closing each cursor before opening the next — the
 // MaxOpenConns(1) pool can't hold two open cursors at once (see [[sqlite-single-connection]]).
 func (h *Handler) loadHostSchedule(ctx context.Context, userID, eventTypeID string) (*time.Location, []slots.AvailabilityRule, []slots.AvailabilityOverride, error) {
+	return loadHostScheduleFrom(ctx, h.db, userID, eventTypeID)
+}
+
+func loadHostScheduleFrom(ctx context.Context, source dbQuerier, userID, eventTypeID string) (*time.Location, []slots.AvailabilityRule, []slots.AvailabilityOverride, error) {
 	var hostTZName string
-	if err := h.db.QueryRowContext(ctx,
+	if err := source.QueryRowContext(ctx,
 		`SELECT iana_timezone FROM users WHERE id = ?`, userID).Scan(&hostTZName); err != nil {
 		return nil, nil, nil, err
 	}
@@ -380,7 +379,7 @@ func (h *Handler) loadHostSchedule(ctx context.Context, userID, eventTypeID stri
 		hostLoc = time.UTC
 	}
 
-	ruleRows, err := h.db.QueryContext(ctx, `
+	ruleRows, err := source.QueryContext(ctx, `
 		SELECT day_of_week, start_time, end_time
 		FROM availability_rules
 		WHERE user_id = ? AND (event_type_id = ? OR event_type_id IS NULL)
@@ -403,7 +402,7 @@ func (h *Handler) loadHostSchedule(ctx context.Context, userID, eventTypeID stri
 		return nil, nil, nil, err
 	}
 
-	ovRows, err := h.db.QueryContext(ctx, `
+	ovRows, err := source.QueryContext(ctx, `
 		SELECT date, is_available, COALESCE(start_time,''), COALESCE(end_time,'')
 		FROM availability_overrides WHERE user_id = ?`, userID)
 	if err != nil {
@@ -433,7 +432,19 @@ func (h *Handler) loadHostSchedule(ctx context.Context, userID, eventTypeID stri
 }
 
 func (h *Handler) hostAvailability(ctx context.Context, userID, eventTypeID string, dateFrom, dateTo time.Time) (slots.HostAvailability, bool, error) {
-	hostLoc, rules, overrides, err := h.loadHostSchedule(ctx, userID, eventTypeID)
+	return h.hostAvailabilityForContext(ctx, userID, schedulingContext{EventTypeID: eventTypeID}, dateFrom, dateTo)
+}
+
+// Widen host-local dates for UTC offsets and for busy intervals whose buffers
+// reach into the requested days. Loading overlaps also catches appointments
+// that started before the range and continue into it.
+func schedulingBusyRange(event slots.EventConfig, dateFrom, dateTo time.Time) (time.Time, time.Time) {
+	return dateFrom.Add(-24*time.Hour - time.Duration(event.BufferAfterMinutes)*time.Minute),
+		dateTo.Add(48*time.Hour + time.Duration(event.BufferBeforeMinutes)*time.Minute)
+}
+
+func (h *Handler) hostAvailabilityForContext(ctx context.Context, userID string, schedule schedulingContext, dateFrom, dateTo time.Time) (slots.HostAvailability, bool, error) {
+	hostLoc, rules, overrides, err := h.loadHostSchedule(ctx, userID, schedule.EventTypeID)
 	if err != nil {
 		return slots.HostAvailability{}, false, err
 	}
@@ -444,8 +455,8 @@ func (h *Handler) hostAvailability(ctx context.Context, userID, eventTypeID stri
 	// tight [dateFrom, dateTo] UTC window would miss the booking that blocks it
 	// and the slot would be wrongly offered (then 409 at booking time).
 	// Over-fetching is harmless: the engine only subtracts busy that overlaps.
-	busyFrom := dateFrom.Add(-24 * time.Hour).Format(time.RFC3339)
-	busyTo := dateTo.Add(48 * time.Hour).Format(time.RFC3339)
+	from, to := schedulingBusyRange(schedule.Event, dateFrom, dateTo)
+	busyFrom, busyTo := from.Format(time.RFC3339), to.Format(time.RFC3339)
 	// Count every booking this host attends (primary OR a Group/fixed-host seat) as
 	// busy — join booking_hosts rather than matching bookings.host_id, so a host on
 	// a multi-host call isn't offered an overlapping slot on another event.
@@ -453,8 +464,8 @@ func (h *Handler) hostAvailability(ctx context.Context, userID, eventTypeID stri
 		SELECT b.start_at, b.end_at FROM bookings b
 		JOIN booking_hosts bh ON bh.booking_id = b.id
 		WHERE bh.user_id = ? AND b.status != 'cancelled'
-		  AND b.start_at >= ? AND b.start_at < ?`,
-		userID, busyFrom, busyTo)
+		  AND julianday(b.end_at) > julianday(?) AND julianday(b.start_at) < julianday(?) AND b.id != ?`,
+		userID, busyFrom, busyTo, schedule.ExcludeBookingID)
 	if err != nil {
 		return slots.HostAvailability{}, false, err
 	}
@@ -495,7 +506,7 @@ func (h *Handler) hostAvailability(ctx context.Context, userID, eventTypeID stri
 	// and rejects these slots at commit time).
 	degraded := false
 	if gc := h.getCal(); gc != nil {
-		if gcalBusy, err := gc.FreeBusy(ctx, userID, dateFrom, dateTo.Add(24*time.Hour)); err != nil {
+		if gcalBusy, err := gc.FreeBusy(ctx, userID, from, to); err != nil {
 			h.logger.ErrorContext(ctx, "slots: gcal freebusy", "error", err, "host", userID)
 			degraded = true
 		} else {

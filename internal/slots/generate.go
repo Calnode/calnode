@@ -21,7 +21,7 @@ type HostAvailability struct {
 	Role string
 }
 
-// EventConfig holds the event-type parameters that govern slot generation.
+// EventConfig holds effective scheduling parameters, resolved by the caller.
 type EventConfig struct {
 	DurationMinutes     int
 	SlotIntervalMinutes int
@@ -45,12 +45,13 @@ type Slot struct {
 
 // Request is the complete input to Generate.
 type Request struct {
-	Event    EventConfig
-	Hosts    []HostAvailability
-	DateFrom time.Time      // inclusive; only the UTC date portion is used
-	DateTo   time.Time      // inclusive; only the UTC date portion is used
-	BookerTZ *time.Location // output timezone for slot Start/End; must not be nil
-	Now      time.Time      // injectable clock; use time.Now().UTC() in production
+	Event         EventConfig
+	Hosts         []HostAvailability
+	DateFrom      time.Time      // inclusive; only the UTC date portion is used
+	DateTo        time.Time      // inclusive; only the UTC date portion is used
+	BookerTZ      *time.Location // output timezone for slot Start/End; must not be nil
+	Now           time.Time      // injectable clock; use time.Now().UTC() in production
+	AllowedWindow *Window        // optional server-authorized bounds on the whole appointment
 }
 
 // Generate runs the slot-generation algorithm (§9) and returns bookable slots
@@ -165,6 +166,11 @@ func newParams(req Request) params {
 }
 
 func generate(req Request, want Extras) (Result, error) {
+	if req.AllowedWindow != nil {
+		if err := req.AllowedWindow.Validate(); err != nil {
+			return Result{}, err
+		}
+	}
 	if req.Event.DurationMinutes <= 0 {
 		return Result{}, fmt.Errorf("slots: DurationMinutes must be positive")
 	}
@@ -252,6 +258,9 @@ func hostsByStart(req Request, p params, applyBusy bool, belowNotice map[time.Ti
 				// (epoch-aligned so slots land on :00/:15/:30/:45 etc.).
 				t := alignUp(f.Start, p.interval)
 				for ; !t.Add(p.dur).After(f.End); t = t.Add(p.interval) {
+					if req.AllowedWindow != nil && !req.AllowedWindow.Contains(t, t.Add(p.dur)) {
+						continue
+					}
 					if t.Before(p.minNotice) {
 						// !t.Before(req.Now) is what keeps the attribution honest: a start
 						// in the past would have gone with no notice policy at all, so

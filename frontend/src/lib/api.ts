@@ -28,6 +28,9 @@ export type EventType = {
 	name: string;
 	description?: string;
 	duration_minutes: number;
+	min_duration_minutes: number | null;
+	max_duration_minutes: number | null;
+	duration_increment_minutes: number | null;
 	// How often a booking can START, independent of how long it runs. Defaults to the
 	// duration on create; editable so a 45-minute meeting can still be offered on the hour.
 	slot_interval_minutes: number;
