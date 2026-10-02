@@ -27,7 +27,7 @@ const logoServePath = "/branding/logo"
 const bannerServePath = "/branding/banner"
 
 // brandingSettings is the instance-wide brand identity used in emails and on the
-// public booking/manage pages.
+// public booking/manage/directory pages.
 type brandingSettings struct {
 	BusinessName  string
 	LogoURL       string // served path (relative), e.g. "/branding/logo?v=123"; empty = no logo
@@ -69,7 +69,7 @@ func (h *Handler) loadBranding(ctx context.Context) brandingSettings {
 }
 
 // pageLogoHeight scales the email logo height up ~1.3× for the roomier public
-// booking/manage page headers.
+// booking/manage/directory page headers.
 func pageLogoHeight(emailPx int) int {
 	if emailPx <= 0 {
 		emailPx = 28

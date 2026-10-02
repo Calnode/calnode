@@ -1,8 +1,7 @@
 {{/*
-  Partials SHARED by the book and manage public pages — parsed into BOTH template
-  sets (see book.go / manage_handler.go) so these pieces live in ONE place and the
-  two surfaces can't drift apart:
-    - chrome:     trackingHead, consentBanner, legalFooter (consent/analytics/footer)
+  Partials SHARED by the book, manage and directory public pages — parsed into all
+  three template sets so these pieces live in ONE place:
+    - chrome:     businessHeader, trackingHead, consentBanner, legalFooter
     - structural: calendarGrid  (month nav + the JS-filled day grid)
 
   The embed widget (embed.js) is deliberately NOT included: it's a vanilla-JS web
@@ -13,6 +12,14 @@
   PrivacyURL, TermsURL. calendarGrid needs no data (the grid is filled by
   booking-logic.js at runtime).
 */}}
+
+{{define "businessHeader"}}
+{{if or .LogoURL .BusinessName}}
+<header style="text-align:center;padding:24px 16px 4px;max-width:100%;box-sizing:border-box;">
+  {{if .LogoURL}}<img src="{{.LogoURL}}" alt="{{if .BusinessName}}{{.BusinessName}}{{else}}Business logo{{end}}" style="height:{{.LogoHeight}}px;width:auto;max-width:100%;opacity:{{.LogoOpacity}};display:inline-block;border:0;">{{else}}<span style="font-size:.9375rem;font-weight:600;color:#111827;">{{.BusinessName}}</span>{{end}}
+</header>
+{{end}}
+{{end}}
 
 {{define "trackingHead"}}{{if or .GTMContainerID .GA4MeasurementID}}
 <!-- Analytics (GA4/GTM) is CONSENT-GATED: the Google scripts load only after the visitor accepts

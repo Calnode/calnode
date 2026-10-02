@@ -46,6 +46,8 @@ type directoryPageData struct {
 	GA4MeasurementID string
 	BusinessName     string
 	LogoURL          string
+	LogoHeight       int
+	LogoOpacity      string
 	PrivacyURL       string
 	TermsURL         string
 	DemoMode         bool
@@ -98,10 +100,13 @@ func (h *Handler) renderDirectory(w http.ResponseWriter, r *http.Request, data d
 	data.GA4MeasurementID = track.GA4MeasurementID
 	data.BusinessName = brand.BusinessName
 	data.LogoURL = brand.LogoURL
+	data.LogoHeight = pageLogoHeight(brand.LogoHeight)
+	data.LogoOpacity = opacityCSS(brand.LogoOpacity)
 	data.PrivacyURL = brand.PrivacyURL
 	data.TermsURL = brand.TermsURL
 	data.DemoMode = h.demoMode
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Content-Security-Policy", publicCSP(track))
 	w.Header().Set("Vary", "Accept-Language, Cookie") // see the same header in book.go's BookPage
 	if err := directoryTmpl.Execute(w, data); err != nil {
 		h.logger.ErrorContext(r.Context(), "directory: render", "error", err)
