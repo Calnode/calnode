@@ -469,7 +469,7 @@ func (h *Handler) mcpRescheduleBooking(ctx context.Context, _ *mcp.CallToolReque
 	updated, err := h.rescheduleBooking(ctx, b.ID, newStart, newEnd)
 	if err != nil {
 		switch {
-		case errors.Is(err, booking.ErrDoubleBooked):
+		case errors.Is(err, booking.ErrDoubleBooked), errors.Is(err, errSlotUnavailable), errors.Is(err, booking.ErrInvitationUnavailable):
 			return nil, bookingJSON{}, fmt.Errorf("that time slot is no longer available")
 		case errors.Is(err, booking.ErrAlreadyCancelled):
 			return nil, bookingJSON{}, fmt.Errorf("this booking has been cancelled")
