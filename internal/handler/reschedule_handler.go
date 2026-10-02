@@ -98,7 +98,7 @@ func (h *Handler) RescheduleBooking(w http.ResponseWriter, r *http.Request) {
 	}
 
 	updated, err := h.rescheduleBooking(r.Context(), id, newStart, newEnd)
-	if errors.Is(err, booking.ErrDoubleBooked) {
+	if errors.Is(err, booking.ErrDoubleBooked) || errors.Is(err, errSlotUnavailable) || errors.Is(err, booking.ErrInvitationUnavailable) {
 		h.writeError(w, http.StatusConflict, "that time slot is no longer available")
 		return
 	}
