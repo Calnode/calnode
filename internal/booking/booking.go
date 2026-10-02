@@ -1,17 +1,20 @@
 package booking
 
 import (
+	"context"
+	"database/sql"
 	"errors"
 	"time"
 )
 
 var (
-	ErrDoubleBooked        = errors.New("booking: time slot is no longer available")
-	ErrNotFound            = errors.New("booking: not found")
-	ErrAlreadyCancelled    = errors.New("booking: already cancelled")
-	ErrTokenNotFound       = errors.New("booking: manage token not found or expired")
-	ErrBookingLimitReached = errors.New("booking: active booking limit reached for this invitee")
-	ErrEmailThrottled      = errors.New("booking: too many bookings from this email address")
+	ErrDoubleBooked          = errors.New("booking: time slot is no longer available")
+	ErrNotFound              = errors.New("booking: not found")
+	ErrAlreadyCancelled      = errors.New("booking: already cancelled")
+	ErrTokenNotFound         = errors.New("booking: manage token not found or expired")
+	ErrBookingLimitReached   = errors.New("booking: active booking limit reached for this invitee")
+	ErrEmailThrottled        = errors.New("booking: too many bookings from this email address")
+	ErrInvitationUnavailable = errors.New("booking: invitation is no longer available")
 )
 
 // Who sends a booking's calendar invite to the booker (event_types/bookings.invite_delivery,
@@ -27,20 +30,21 @@ const (
 
 // Booking is a confirmed or cancelled appointment.
 type Booking struct {
-	ID                 string
-	EventTypeID        string
-	HostID             string
-	StartAt            time.Time
-	EndAt              time.Time
-	Status             string
-	CancellationReason string
-	LocationValue      string
-	LocationType       string
-	CreatedAt          time.Time
-	UpdatedAt          time.Time
-	PaymentStatus      string // none | pending | paid | refunded | refunding (refund claimed, Stripe call in flight)
-	AmountPaidCents    int
-	AmountPaidCurrency string
+	SchedulingInvitationID string
+	ID                     string
+	EventTypeID            string
+	HostID                 string
+	StartAt                time.Time
+	EndAt                  time.Time
+	Status                 string
+	CancellationReason     string
+	LocationValue          string
+	LocationType           string
+	CreatedAt              time.Time
+	UpdatedAt              time.Time
+	PaymentStatus          string // none | pending | paid | refunded | refunding (refund claimed, Stripe call in flight)
+	AmountPaidCents        int
+	AmountPaidCurrency     string
 	// ConfirmFailed reports whether the initial confirmation email failed (after
 	// retry). Operator-visible via the booking JSON; see migration 00064.
 	ConfirmFailed bool
@@ -68,6 +72,13 @@ type Answer struct {
 
 // CreateParams is the input to Service.Create.
 type CreateParams struct {
+	SchedulingInvitationID string
+	InvitationTokenHash    string
+	BufferBeforeMinutes    int
+	BufferAfterMinutes     int
+	// ValidateTx rechecks local scheduling inputs immediately before committing.
+	// It must use tx for database reads and must never perform network operations.
+	ValidateTx  func(context.Context, *sql.Tx, *CreateParams) error
 	EventTypeID string
 	// HostIDs are the candidate hosts. For RoutingMode "round_robin" Create picks
 	// ONE free candidate (least-loaded for this event type; the slice order breaks

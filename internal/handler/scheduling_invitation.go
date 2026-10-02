@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/mail"
 	"sort"
@@ -33,7 +34,7 @@ type invitationExternal struct {
 
 // schedulingInvitation is a persisted scheduling snapshot, not a temporary
 // event type. Discussion #47 and issue #92 define the defaults/overrides/result
-// split. Booking redemption and delivery are deliberately later slices.
+// split. Initial delivery is delegated to the authenticated caller.
 type schedulingInvitation struct {
 	ID                   string              `json:"id"`
 	EventTypeID          string              `json:"event_type_id"`
@@ -57,12 +58,18 @@ type schedulingInvitation struct {
 	BookingID            *string             `json:"booking_id,omitempty"`
 	ExpiresAt            time.Time           `json:"expires_at"`
 	CreatedAt            string              `json:"created_at"`
+	UpdatedAt            string              `json:"updated_at"`
+	LocationType         string              `json:"location_type"`
+	LocationValue        string              `json:"location_value"`
 }
 
 // invitationWindow accepts inclusive local dates or precise RFC3339 bounds.
 // Date-only upper bounds advance by a calendar day (not 24 hours), preserving
 // the selected final date even across DST. Stored bounds are always UTC.
 func invitationWindow(from, until, tzName string) (*time.Time, *time.Time, error) {
+	if tzName == "Local" || tzName == "" {
+		return nil, nil, errInvalidTimezone
+	}
 	loc, err := time.LoadLocation(tzName)
 	if err != nil {
 		return nil, nil, errInvalidTimezone
@@ -142,6 +149,7 @@ func (h *Handler) CreateSchedulingInvitation(w http.ResponseWriter, r *http.Requ
 		Recipient            invitationRecipient `json:"recipient"`
 		DurationMinutes      *int                `json:"duration_minutes"`
 		Hosts                *[]EventHost        `json:"hosts"`
+		HostID               string              `json:"host_id"`
 		AvailableFrom        string              `json:"available_from"`
 		AvailableUntil       string              `json:"available_until"`
 		AvailabilityTimezone string              `json:"availability_timezone"`
@@ -149,7 +157,13 @@ func (h *Handler) CreateSchedulingInvitation(w http.ResponseWriter, r *http.Requ
 		External             invitationExternal  `json:"external"`
 		Delivery             string              `json:"delivery"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&req); err != nil {
+		h.writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
 		h.writeError(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
@@ -165,8 +179,8 @@ func (h *Handler) CreateSchedulingInvitation(w http.ResponseWriter, r *http.Requ
 	if req.Delivery == "" {
 		req.Delivery = "external"
 	}
-	if req.Delivery != "external" && req.Delivery != "calnode" {
-		h.writeError(w, http.StatusBadRequest, "delivery must be 'external' or 'calnode'")
+	if req.Delivery != "external" {
+		h.writeError(w, http.StatusBadRequest, "only delivery 'external' is supported")
 		return
 	}
 	if req.AvailabilityTimezone == "" {
@@ -193,6 +207,18 @@ func (h *Handler) CreateSchedulingInvitation(w http.ResponseWriter, r *http.Requ
 	if et == nil || !et.IsActive {
 		h.writeError(w, http.StatusNotFound, "active event type not found")
 		return
+	}
+	if et.PriceCents > 0 {
+		h.writeError(w, http.StatusBadRequest, "paid event types are not supported by scheduling invitations")
+		return
+	}
+	if req.HostID != "" {
+		if req.Hosts != nil {
+			h.writeError(w, http.StatusBadRequest, "supply host_id or hosts, not both")
+			return
+		}
+		fixed := []EventHost{{UserID: req.HostID, Role: "required"}}
+		req.Hosts = &fixed
 	}
 	duration := et.DurationMinutes
 	if req.DurationMinutes != nil {
@@ -262,13 +288,13 @@ func (h *Handler) CreateSchedulingInvitation(w http.ResponseWriter, r *http.Requ
 		duration_minutes, slot_interval_minutes, buffer_before_minutes, buffer_after_minutes,
 		min_notice_minutes, max_future_days, routing_mode, rr_strategy,
 		available_from, available_until, availability_timezone, external_system, external_reference,
-		external_url, delivery, expires_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		external_url, delivery, expires_at, location_type, location_value, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))`,
 		id, et.ID, user.ID, req.Recipient.Name, req.Recipient.Email, duration, et.SlotIntervalMinutes,
 		et.BufferBeforeMinutes, et.BufferAfterMinutes, et.MinNoticeMinutes, et.MaxFutureDays,
 		routing, et.RRStrategy, invitationTimeString(from), invitationTimeString(until),
 		req.AvailabilityTimezone, req.External.System, req.External.Reference, req.External.URL,
-		req.Delivery, req.ExpiresAt.UTC().Format(time.RFC3339Nano))
+		req.Delivery, req.ExpiresAt.UTC().Format(time.RFC3339Nano), et.LocationType, stringOrEmpty(et.LocationValue))
 	if err != nil {
 		h.invitationError(w, r, err)
 		return
@@ -302,13 +328,20 @@ func (h *Handler) CreateSchedulingInvitation(w http.ResponseWriter, r *http.Requ
 		h.invitationError(w, r, err)
 		return
 	}
-	// Returned once; reads never expose the bearer credential. No scheduling URL
-	// is advertised until the public redemption flow enforces all restrictions.
+	// Returned once; reads never expose or reconstruct the bearer credential.
 	w.Header().Set("Cache-Control", "no-store")
 	h.writeJSON(w, http.StatusCreated, struct {
 		*schedulingInvitation
-		Token string `json:"token"`
-	}{inv, token})
+		Token         string `json:"token"`
+		SchedulingURL string `json:"scheduling_url"`
+	}{inv, token, h.publicURL() + "/s/" + token})
+}
+
+func stringOrEmpty(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }
 
 func invitationTimeString(t *time.Time) any {
@@ -344,12 +377,12 @@ func (h *Handler) loadSchedulingInvitation(ctx context.Context, id, creator stri
 		duration_minutes, slot_interval_minutes, buffer_before_minutes, buffer_after_minutes,
 		min_notice_minutes, max_future_days, routing_mode, rr_strategy, available_from, available_until,
 		availability_timezone, external_system, external_reference, external_url, delivery, status,
-		booking_id, expires_at, created_at FROM scheduling_invitations WHERE id = ? AND created_by = ?`, id, creator).
+		booking_id, expires_at, created_at, COALESCE(updated_at, created_at), location_type, location_value FROM scheduling_invitations WHERE id = ? AND created_by = ?`, id, creator).
 		Scan(&inv.ID, &inv.EventTypeID, &inv.CreatedBy, &inv.Recipient.Name, &inv.Recipient.Email,
 			&inv.DurationMinutes, &inv.SlotIntervalMinutes, &inv.BufferBeforeMinutes, &inv.BufferAfterMinutes,
 			&inv.MinNoticeMinutes, &inv.MaxFutureDays, &inv.RoutingMode, &inv.RRStrategy, &from, &until,
 			&inv.AvailabilityTimezone, &inv.External.System, &inv.External.Reference, &inv.External.URL,
-			&inv.Delivery, &inv.Status, &inv.BookingID, &expires, &inv.CreatedAt)
+			&inv.Delivery, &inv.Status, &inv.BookingID, &expires, &inv.CreatedAt, &inv.UpdatedAt, &inv.LocationType, &inv.LocationValue)
 	if err != nil {
 		return nil, err
 	}
@@ -405,11 +438,20 @@ func (h *Handler) invitationSchedulingContext(ctx context.Context, inv *scheduli
 	if err != nil || consumed.Valid || !expires.After(time.Now().UTC()) {
 		return schedulingContext{}, errInvitationUnavailable
 	}
+	return h.invitationEffectiveContext(ctx, inv)
+}
+
+// The retained scheduling constraints remain usable with booking-management
+// credentials after consumption or expiration of the invitation credential.
+func (h *Handler) invitationEffectiveContext(ctx context.Context, inv *schedulingInvitation) (schedulingContext, error) {
+	if inv.DurationMinutes <= 0 || inv.SlotIntervalMinutes <= 0 || inv.Recipient.Email == "" || inv.BufferBeforeMinutes < 0 || inv.BufferAfterMinutes < 0 || inv.MinNoticeMinutes < 0 || inv.MaxFutureDays < 0 {
+		return schedulingContext{}, errInvitationUnavailable
+	}
 	if err := validateInvitationHosts(inv.Hosts, inv.RoutingMode); err != nil {
 		return schedulingContext{}, errInvitationUnavailable
 	}
-	var active int
-	if err := h.db.QueryRowContext(ctx, `SELECT is_active FROM event_types WHERE id = ? AND archived_at IS NULL`, inv.EventTypeID).Scan(&active); err != nil {
+	var active, liveNotice, liveFuture int
+	if err := h.db.QueryRowContext(ctx, `SELECT is_active, min_notice_minutes, max_future_days FROM event_types WHERE id = ? AND archived_at IS NULL`, inv.EventTypeID).Scan(&active, &liveNotice, &liveFuture); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return schedulingContext{}, errInvitationUnavailable
 		}
@@ -417,6 +459,11 @@ func (h *Handler) invitationSchedulingContext(ctx context.Context, inv *scheduli
 	}
 	if active == 0 {
 		return schedulingContext{}, errInvitationUnavailable
+	}
+	notice := max(inv.MinNoticeMinutes, liveNotice)
+	future := inv.MaxFutureDays
+	if liveFuture > 0 && (future == 0 || liveFuture < future) {
+		future = liveFuture
 	}
 	// Do not rejoin event_type_hosts: changing a template must not change a
 	// previously authorized invitation. Required hosts cannot silently disappear.
@@ -437,7 +484,7 @@ func (h *Handler) invitationSchedulingContext(ctx context.Context, inv *scheduli
 	schedule := schedulingContext{EventTypeID: inv.EventTypeID, Hosts: hosts, Event: slots.EventConfig{
 		DurationMinutes: inv.DurationMinutes, SlotIntervalMinutes: inv.SlotIntervalMinutes,
 		BufferBeforeMinutes: inv.BufferBeforeMinutes, BufferAfterMinutes: inv.BufferAfterMinutes,
-		MinNoticeMinutes: inv.MinNoticeMinutes, MaxFutureDays: inv.MaxFutureDays, RoutingMode: inv.RoutingMode,
+		MinNoticeMinutes: notice, MaxFutureDays: future, RoutingMode: inv.RoutingMode,
 	}}
 	if inv.AvailableFrom != nil || inv.AvailableUntil != nil {
 		window := &slots.Window{}
@@ -481,8 +528,8 @@ func (h *Handler) GetSchedulingInvitation(w http.ResponseWriter, r *http.Request
 	h.writeJSON(w, http.StatusOK, inv)
 }
 
-// GetSchedulingInvitationSlots is an authenticated preview. Public token
-// endpoints must wait for the atomic booking/claim flow in a subsequent slice.
+// GetSchedulingInvitationSlots is an owner-authenticated preview of the same
+// effective configuration used by the public invitation endpoints.
 func (h *Handler) GetSchedulingInvitationSlots(w http.ResponseWriter, r *http.Request) {
 	user, _ := userFromContext(r.Context())
 	inv, err := h.loadSchedulingInvitation(r.Context(), r.PathValue("id"), user.ID)
