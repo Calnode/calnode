@@ -37,12 +37,16 @@ func TestInvitationSignedLifecycleAndBookingEvents(t *testing.T) {
 	}))
 	defer server.Close()
 	events := []string{"scheduling_invitation.created", "scheduling_invitation.booked", "scheduling_invitation.cancelled", "scheduling_invitation.expired", "booking.created", "booking.rescheduled", "booking.cancelled"}
-	_, secret, err := svc.Create(ctx, "host-01", server.URL, events)
+	wh, secret, err := svc.Create(ctx, "host-01", server.URL, events)
 	if err != nil {
 		t.Fatal(err)
 	}
 	key, err := hex.DecodeString(secret)
 	if err != nil {
+		t.Fatal(err)
+	}
+	fields := []string{webhook.FieldID}
+	if err := svc.Update(ctx, "host-01", wh.ID, nil, &fields); err != nil {
 		t.Fatal(err)
 	}
 	exec(`INSERT INTO event_types (id,user_id,slug,name,duration_minutes) VALUES ('event','host-01','support','Support',30)`)
