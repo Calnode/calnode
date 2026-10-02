@@ -46,6 +46,8 @@ type directoryPageData struct {
 	GA4MeasurementID string
 	BusinessName     string
 	LogoURL          string
+	LogoHeight       int
+	LogoOpacity      string
 	PrivacyURL       string
 	TermsURL         string
 	DemoMode         bool
@@ -98,6 +100,8 @@ func (h *Handler) renderDirectory(w http.ResponseWriter, r *http.Request, data d
 	data.GA4MeasurementID = track.GA4MeasurementID
 	data.BusinessName = brand.BusinessName
 	data.LogoURL = brand.LogoURL
+	data.LogoHeight = pageLogoHeight(brand.LogoHeight)
+	data.LogoOpacity = opacityCSS(brand.LogoOpacity)
 	data.PrivacyURL = brand.PrivacyURL
 	data.TermsURL = brand.TermsURL
 	data.DemoMode = h.demoMode

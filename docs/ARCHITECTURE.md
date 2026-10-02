@@ -736,7 +736,11 @@ as the desired state:
 - **Branding (`branding_settings.go`, migrations 00029/00050):** instance-wide
   `business_name` + `logo_url` + `banner_url` on the singleton row. Business name is the
   wordmark fallback (defaults to "Calnode") + public-page header; the logo is the email
-  header image + public-page header. `GET/PATCH /v1/settings/branding` (name + opacity
+  header image + public-page header. Booking, manage, person (`/u/{handle}`) and team
+  (`/team/{slug}`) directories share the `businessHeader` partial, using the configured
+  logo height (scaled by `pageLogoHeight`) and opacity, or the business name when no
+  logo is set. Directory avatars remain inside the person/team card.
+  `GET/PATCH /v1/settings/branding` (name + opacity
   settings only); the logo and banner are each an **upload**
   (`POST/DELETE /v1/settings/branding/logo` and `.../banner`, public serve at
   `GET /branding/logo` / `GET /branding/banner`) reusing the avatar pipeline:
