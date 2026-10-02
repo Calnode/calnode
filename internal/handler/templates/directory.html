@@ -7,6 +7,7 @@
 <title>{{.Title}}</title>
 {{template "demoNoindex" .}}
 {{template "trackingHead" .}}
+{{.HeadHTML}}
 <link rel="stylesheet" href="/booking.css?v={{.CSSVersion}}">
 <style>
 body {
@@ -96,5 +97,6 @@ body {
   {{end}}
 </main>
 {{template "legalFooter" .}}
+{{template "consentBanner" .}}
 </body>
 </html>

@@ -881,7 +881,10 @@ Each account can set `booking_accent` in its profile. The default preserves the 
 8. **Public-page CSP is dynamic** — `publicCSP()` (tracking_settings.go) returns the
    strict default and relaxes only when head code-injection is configured (broad
    `https:` or the operator's `tracking_csp_allow`). Don't re-hardcode the CSP on the
-   `book`/`manage` handlers — route it through `publicCSP`.
+   `book`/`manage`/directory handlers — route it through `publicCSP`. Person and
+   team directories render the admin-configured head HTML once, after the shared
+   tracking partial, matching booking/manage pages. Native GA4/GTM tags use the
+   same consent banner on directories, including restoring stored consent.
 9. **`FRAME_ANCESTORS` is the admin SPA's only, and it must stay that way.** Set it
    (space-separated `https://host[:port]` / `'self'`) and the handler under `/admin/`
    sends `Content-Security-Policy: frame-ancestors <list>` so an operator can embed the
