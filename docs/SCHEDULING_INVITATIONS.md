@@ -263,6 +263,8 @@ assume that receiving creation last means an invitation became active again.
 Existing booking-side-effect enqueueing is best effort after commit, as before;
 successful enqueueing uses durable delivery/retry jobs. Failed deliveries remain
 visible in the existing webhook delivery log. Do not infer exactly-once receipt.
+The remaining commit-to-enqueue recovery gap is tracked in
+[the fork's booking-event durability issue](https://github.com/KitKat31337/calnode/issues/4).
 
 Rescheduling/cancellation use the existing booking-management credential, keep
 external correlation and retain duration/assigned hosts. Rescheduling enforces
@@ -303,17 +305,21 @@ testing before deployment.
 
 ## Migration coordination
 
-The base invitation increment already owns `00070_scheduling_invitations.sql`.
-This continuation adds `00071_invitation_booking_lifecycle.sql`; existing
-migration history and development data are preserved. Disposable migration tests
-upgrade populated databases at versions 69 and 70, check backfills/uniqueness,
-and exercise down/re-upgrade without changing a developer database.
-Version 71 backfills the location snapshot of existing invitations from their
-event type once at upgrade; newly issued invitations snapshot it at creation.
+Assume [directory-order PR #127](https://github.com/Calnode/calnode/pull/127)
+lands first and reserves `00070_event_type_display_order.sql`. The unmerged
+invitation migrations are consequently numbered `00071_scheduling_invitations.sql`
+and `00072_invitation_booking_lifecycle.sql`. There are no duplicate versions in
+this branch; directory implementation remains a separate upstream dependency.
 
-At implementation review, upstream main ends at 00069. The unmerged
-[directory-order PR #127](https://github.com/Calnode/calnode/pull/127) also proposes
-00070. There are no duplicate versions in this branch. Before combining the open
-branches, coordinate numbering with that maintainer; for example, the unmerged
-directory migration can use 00072 if this stack lands first. Do not renumber a
-merged/applied migration or rewrite an existing database's Goose history.
+Disposable migration tests upgrade populated databases at versions 69, 70
+(directory ordering), and 71 (invitation foundation), check preservation,
+backfills/uniqueness, and exercise down/re-upgrade. Version 72 backfills existing
+invitations' location snapshot from their event type once at upgrade; newly issued
+invitations snapshot it at creation.
+
+This development line assumes clean databases. Earlier experimental builds used
+invitation versions 00070/00071; their databases are not an upgrade target for
+this renumbered line. Keep those databases with the previous build until a separate
+compatibility upgrade is supplied if their data must be retained. Never rewrite
+their applied Goose history. No existing developer database was reset or modified
+to implement this numbering change.

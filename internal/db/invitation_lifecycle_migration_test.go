@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"testing/fstest"
 
 	"github.com/calnode/calnode/internal/db"
 	"github.com/pressly/goose/v3"
@@ -21,7 +22,7 @@ func TestInvitationLifecycleUpgradeFromPopulatedFoundation(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx := context.Background()
-	if _, err := provider.UpTo(ctx, 70); err != nil {
+	if _, err := provider.UpTo(ctx, 71); err != nil {
 		t.Fatal(err)
 	}
 	for _, statement := range []string{
@@ -63,7 +64,7 @@ func TestInvitationLifecycleUpgradeFromPopulatedFoundation(t *testing.T) {
 	if err := database.QueryRow(`SELECT COUNT(*) FROM scheduling_invitation_events WHERE event='scheduling_invitation.cancelled'`).Scan(&count); err != nil || count != 1 {
 		t.Fatal("transition outbox failed", count, err)
 	}
-	if _, err := provider.DownTo(ctx, 70); err != nil {
+	if _, err := provider.DownTo(ctx, 71); err != nil {
 		t.Fatal("down", err)
 	}
 	if _, err := provider.Up(ctx); err != nil {
@@ -71,5 +72,48 @@ func TestInvitationLifecycleUpgradeFromPopulatedFoundation(t *testing.T) {
 	}
 	if err := database.QueryRow(`SELECT COUNT(*) FROM pragma_foreign_key_check`).Scan(&count); err != nil || count != 0 {
 		t.Fatal("foreign key violations", count, err)
+	}
+}
+
+func TestInvitationUpgradeAfterDirectoryOrderMigration(t *testing.T) {
+	database, err := db.Open(filepath.Join(t.TempDir(), "directory.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	// Model the upstream dependency without adding its unrelated implementation
+	// to this branch. The database really has its version 70 migration applied.
+	source := fstest.MapFS{}
+	entries, err := os.ReadDir("migrations")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		content, err := os.ReadFile(filepath.Join("migrations", entry.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		source[entry.Name()] = &fstest.MapFile{Data: content}
+	}
+	source["00070_event_type_display_order.sql"] = &fstest.MapFile{Data: []byte("-- +goose Up\nALTER TABLE event_types ADD COLUMN display_order INTEGER NOT NULL DEFAULT 0;\n-- +goose Down\n")}
+	provider, err := goose.NewProvider(goose.DialectSQLite3, database, source, goose.WithDisableGlobalRegistry(true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := provider.UpTo(t.Context(), 70); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(`INSERT INTO users (id,email,name) VALUES ('owner','owner@example.com','Owner'); INSERT INTO event_types (id,user_id,slug,name,duration_minutes,display_order) VALUES ('event','owner','support','Support',30,7)`); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Migrate(database); err != nil {
+		t.Fatal(err)
+	}
+	var order, version int
+	if err := database.QueryRow(`SELECT display_order FROM event_types WHERE id='event'`).Scan(&order); err != nil || order != 7 {
+		t.Fatalf("directory order changed: %d %v", order, err)
+	}
+	if err := database.QueryRow(`SELECT MAX(version_id) FROM goose_db_version WHERE is_applied=1`).Scan(&version); err != nil || version != 72 {
+		t.Fatalf("upgrade version: %d %v", version, err)
 	}
 }
