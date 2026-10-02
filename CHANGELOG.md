@@ -12,6 +12,15 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
 ## [Unreleased]
 
 ### Added
+- **Externally delivered scheduling invitations** ([#92](https://github.com/Calnode/calnode/issues/92)).
+  Event owners can issue a customer-specific, expiring, single-use scheduling URL
+  through authenticated APIs, with permitted duration overrides, an eligible fixed
+  host and a date window. The booking and management pages enforce retained
+  constraints; signed lifecycle and booking webhooks carry external ticket
+  references. Duration policies are configurable in the event-type editor.
+  Initial delivery stays with the caller; verification codes, replacement tokens,
+  payments and the ticket-system adapter remain deferred. See
+  [the integration walkthrough](docs/SCHEDULING_INVITATIONS.md).
 - **Calendar invites can come from Calnode instead of the host's calendar.** A new
   per-event-type setting, *Calendar invite → Sent by*. The default is unchanged: the host's
   connected calendar invites the booker, from the host's own address. Choose *Calnode* and
