@@ -469,41 +469,41 @@ func (h *Handler) PatchEventType(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 32<<10)
 
 	var req struct {
-		Slug                     *string `json:"slug"`
-		Name                     *string `json:"name"`
-		Description              *string `json:"description"`
-		DurationMinutes          *int    `json:"duration_minutes"`
-		MinDurationMinutes       *int    `json:"min_duration_minutes"`
-		MaxDurationMinutes       *int    `json:"max_duration_minutes"`
-		DurationIncrementMinutes *int    `json:"duration_increment_minutes"`
-		SlotIntervalMinutes      *int    `json:"slot_interval_minutes"`
-		LocationType             *string `json:"location_type"`
-		LocationValue            *string `json:"location_value"`
-		RoutingMode              *string `json:"routing_mode"`
-		RRStrategy               *string `json:"rr_strategy"`
-		BufferBeforeMinutes      *int    `json:"buffer_before_minutes"`
-		BufferAfterMinutes       *int    `json:"buffer_after_minutes"`
-		MinNoticeMinutes         *int    `json:"min_notice_minutes"`
-		MaxFutureDays            *int    `json:"max_future_days"`
-		MaxActiveBookings        *int    `json:"max_active_bookings"`
-		IsActive                 *bool   `json:"is_active"`
-		IsPublic                 *bool   `json:"is_public"`
-		AllowPhoneCall           *bool   `json:"allow_phone_call"`
-		ShowTakenSlots           *bool   `json:"show_taken_slots"`
-		InviteDelivery           *string `json:"invite_delivery"`
-		Archived                 *bool   `json:"archived"`
-		MsgConfirmation          *string `json:"msg_confirmation"`
-		MsgCancellation          *string `json:"msg_cancellation"`
-		MsgReschedule            *string `json:"msg_reschedule"`
-		MsgReminder              *string `json:"msg_reminder"`
-		MsgGreeting              *string `json:"msg_greeting"`
-		SubjConfirmation         *string `json:"subj_confirmation"`
-		SubjCancellation         *string `json:"subj_cancellation"`
-		SubjReschedule           *string `json:"subj_reschedule"`
-		SubjReminder             *string `json:"subj_reminder"`
-		PriceCents               *int    `json:"price_cents"`
-		Currency                 *string `json:"currency"`
-		Reminders                []int   `json:"reminders"` // nil = don't touch; [] = clear all
+		Slug                     *string     `json:"slug"`
+		Name                     *string     `json:"name"`
+		Description              *string     `json:"description"`
+		DurationMinutes          *int        `json:"duration_minutes"`
+		MinDurationMinutes       nullableInt `json:"min_duration_minutes"`
+		MaxDurationMinutes       nullableInt `json:"max_duration_minutes"`
+		DurationIncrementMinutes nullableInt `json:"duration_increment_minutes"`
+		SlotIntervalMinutes      *int        `json:"slot_interval_minutes"`
+		LocationType             *string     `json:"location_type"`
+		LocationValue            *string     `json:"location_value"`
+		RoutingMode              *string     `json:"routing_mode"`
+		RRStrategy               *string     `json:"rr_strategy"`
+		BufferBeforeMinutes      *int        `json:"buffer_before_minutes"`
+		BufferAfterMinutes       *int        `json:"buffer_after_minutes"`
+		MinNoticeMinutes         *int        `json:"min_notice_minutes"`
+		MaxFutureDays            *int        `json:"max_future_days"`
+		MaxActiveBookings        *int        `json:"max_active_bookings"`
+		IsActive                 *bool       `json:"is_active"`
+		IsPublic                 *bool       `json:"is_public"`
+		AllowPhoneCall           *bool       `json:"allow_phone_call"`
+		ShowTakenSlots           *bool       `json:"show_taken_slots"`
+		InviteDelivery           *string     `json:"invite_delivery"`
+		Archived                 *bool       `json:"archived"`
+		MsgConfirmation          *string     `json:"msg_confirmation"`
+		MsgCancellation          *string     `json:"msg_cancellation"`
+		MsgReschedule            *string     `json:"msg_reschedule"`
+		MsgReminder              *string     `json:"msg_reminder"`
+		MsgGreeting              *string     `json:"msg_greeting"`
+		SubjConfirmation         *string     `json:"subj_confirmation"`
+		SubjCancellation         *string     `json:"subj_cancellation"`
+		SubjReschedule           *string     `json:"subj_reschedule"`
+		SubjReminder             *string     `json:"subj_reminder"`
+		PriceCents               *int        `json:"price_cents"`
+		Currency                 *string     `json:"currency"`
+		Reminders                []int       `json:"reminders"` // nil = don't touch; [] = clear all
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.writeError(w, http.StatusBadRequest, "invalid JSON")
@@ -738,23 +738,32 @@ func (h *Handler) PatchEventType(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	if req.DurationMinutes != nil || req.MinDurationMinutes != nil || req.MaxDurationMinutes != nil || req.DurationIncrementMinutes != nil {
+	if req.DurationMinutes != nil || req.MinDurationMinutes.Present || req.MaxDurationMinutes.Present || req.DurationIncrementMinutes.Present {
 		duration := currentDuration
 		if req.DurationMinutes != nil {
 			duration = *req.DurationMinutes
 		}
+		// Explicit fixed bounds are equivalent to the legacy fixed policy. A
+		// duration-only edit must not leave them pinned to the old default.
+		if req.DurationMinutes != nil && !req.MinDurationMinutes.Present && !req.MaxDurationMinutes.Present && !req.DurationIncrementMinutes.Present &&
+			policy.Min != nil && policy.Max != nil && *policy.Min == *policy.Max {
+			policy = durationPolicy{}
+			set("min_duration_minutes", nil)
+			set("max_duration_minutes", nil)
+			set("duration_increment_minutes", nil)
+		}
 		for _, field := range []struct {
 			name   string
-			value  *int
+			value  nullableInt
 			target **int
 		}{
 			{"min_duration_minutes", req.MinDurationMinutes, &policy.Min},
 			{"max_duration_minutes", req.MaxDurationMinutes, &policy.Max},
 			{"duration_increment_minutes", req.DurationIncrementMinutes, &policy.Increment},
 		} {
-			if field.value != nil {
-				*field.target = field.value
-				set(field.name, *field.value)
+			if field.value.Present {
+				*field.target = field.value.Value
+				set(field.name, field.value.Value)
 			}
 		}
 		if err := policy.validate(duration); err != nil {
