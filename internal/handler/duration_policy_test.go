@@ -32,4 +32,9 @@ func TestInvitationDurationPolicyCreateAndPatch(t *testing.T) {
 	slug, _ := seedEventTypeHTTP(t, h, key)
 	mustStatus(t, patchInvitationEvent(t, h, slug, key, `{"duration_minutes":45}`), http.StatusOK, "legacy default change")
 	mustStatus(t, patchInvitationEvent(t, h, slug, key, `{"min_duration_minutes":15}`), http.StatusBadRequest, "incomplete range")
+	mustStatus(t, patchInvitationEvent(t, h, "range-valid", key, `{"min_duration_minutes":null}`), http.StatusBadRequest, "partial reset")
+	mustStatus(t, patchInvitationEvent(t, h, "range-valid", key, `{"min_duration_minutes":null,"max_duration_minutes":null,"duration_increment_minutes":null}`), http.StatusOK, "reset range")
+	mustStatus(t, patchInvitationEvent(t, h, "range-valid", key, `{"duration_minutes":31}`), http.StatusOK, "reset is fixed")
+	mustStatus(t, patchInvitationEvent(t, h, slug, key, `{"min_duration_minutes":45,"max_duration_minutes":45,"duration_increment_minutes":1}`), http.StatusOK, "explicit fixed bounds")
+	mustStatus(t, patchInvitationEvent(t, h, slug, key, `{"duration_minutes":60}`), http.StatusOK, "fixed bounds follow legacy edit")
 }

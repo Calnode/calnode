@@ -1,6 +1,20 @@
 package handler
 
-import "fmt"
+import (
+	"encoding/json"
+	"fmt"
+)
+
+// nullableInt distinguishes omission (keep) from explicit null (reset).
+type nullableInt struct {
+	Present bool
+	Value   *int
+}
+
+func (n *nullableInt) UnmarshalJSON(data []byte) error {
+	n.Present = true
+	return json.Unmarshal(data, &n.Value)
+}
 
 // durationPolicy applies only to staff-issued invitations. Ordinary bookings
 // continue to use the event type's default duration.
