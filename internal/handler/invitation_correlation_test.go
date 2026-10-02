@@ -35,7 +35,7 @@ func TestInvitationWorkflowSnapshotsCalendarManagementAndCorrelation(t *testing.
 	calendarCheckExec(t, db, `INSERT INTO users (id,email,name,iana_timezone) VALUES ('selected','selected@example.com','Selected Host','UTC')`)
 	seedInvitationHours(t, db, "selected", day, "09:00", "12:00")
 	mustStatus(t, putHosts(t, h, slug, key, fmt.Sprintf(`{"hosts":[{"user_id":%q,"role":"rotation"},{"user_id":"selected","role":"rotation"}]}`, owner)), 200, "hosts")
-	mustStatus(t, patchInvitationEvent(t, h, slug, key, `{"routing_mode":"round_robin","min_duration_minutes":15,"max_duration_minutes":120,"duration_increment_minutes":15,"is_public":false}`), 200, "template")
+	mustStatus(t, patchInvitationEvent(t, h, slug, key, `{"routing_mode":"round_robin","min_duration_minutes":15,"max_duration_minutes":120,"duration_increment_minutes":15,"is_public":false,"location_type":"in_person","location_value":""}`), 200, "template")
 	calendarCheckExec(t, db, `INSERT INTO event_type_questions (id,event_type_id,label,type,required) VALUES ('intake',?,'Reason','text',1)`, etID)
 	body := invitationBody(slug)
 	body["duration_minutes"] = 60
@@ -70,7 +70,7 @@ func TestInvitationWorkflowSnapshotsCalendarManagementAndCorrelation(t *testing.
 	waitInvitationConfirmation(t, db, id)
 	select {
 	case event := <-p.events:
-		if event.Start != day.Add(10*time.Hour) || event.End != day.Add(11*time.Hour) || event.OrganizerEmail != "customer@example.com" {
+		if event.Start != day.Add(10*time.Hour) || event.End != day.Add(11*time.Hour) || event.OrganizerEmail != "customer@example.com" || event.Location != "" {
 			t.Fatalf("calendar interval/recipient: %+v", event)
 		}
 	case <-time.After(time.Second):
@@ -105,6 +105,9 @@ func TestInvitationWorkflowSnapshotsCalendarManagementAndCorrelation(t *testing.
 	mustStatus(t, rec, 200, "manage page")
 	if !strings.Contains(rec.Body.String(), "1 hour") || !strings.Contains(rec.Body.String(), "/manage/"+manage+"/slots") {
 		t.Fatal("manage page did not retain effective duration/slots")
+	}
+	if strings.Contains(rec.Body.String(), "Changed room") {
+		t.Fatal("empty authorized location was replaced by a changed event-type value")
 	}
 	rec = invitationPublic(h, h.GetManageInvitationSlots, "GET", manage, "/slots?from="+day.Format("2006-01-02")+"&to="+day.Format("2006-01-02")+"&tz=UTC", "")
 	mustStatus(t, rec, 200, "manage slots")
