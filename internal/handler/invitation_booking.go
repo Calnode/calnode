@@ -140,7 +140,8 @@ func recheckSchedulingContext(ctx context.Context, source dbQuerier, schedule sc
 			return nil, err
 		}
 		ha := slots.HostAvailability{HostID: host.UserID, Role: host.Role, Location: loc, Rules: rules, Overrides: overrides}
-		rows, err := source.QueryContext(ctx, `SELECT b.start_at,b.end_at FROM bookings b JOIN booking_hosts bh ON bh.booking_id=b.id WHERE bh.user_id=? AND b.status!='cancelled' AND b.id!=? AND julianday(b.end_at)>julianday(?) AND julianday(b.start_at)<julianday(?)`, host.UserID, schedule.ExcludeBookingID, day.AddDate(0, 0, -2).Format(time.RFC3339), day.AddDate(0, 0, 3).Format(time.RFC3339))
+		busyFrom, busyTo := schedulingBusyRange(schedule.Event, day.AddDate(0, 0, -1), day.AddDate(0, 0, 1))
+		rows, err := source.QueryContext(ctx, `SELECT b.start_at,b.end_at FROM bookings b JOIN booking_hosts bh ON bh.booking_id=b.id WHERE bh.user_id=? AND b.status!='cancelled' AND b.id!=? AND julianday(b.end_at)>julianday(?) AND julianday(b.start_at)<julianday(?)`, host.UserID, schedule.ExcludeBookingID, busyFrom.Format(time.RFC3339), busyTo.Format(time.RFC3339))
 		if err != nil {
 			return nil, err
 		}
@@ -266,7 +267,32 @@ func (h *Handler) CreateInvitationBooking(w http.ResponseWriter, r *http.Request
 		h.invitationBookingError(w, err)
 		return
 	}
-	p := booking.CreateParams{EventTypeID: inv.EventTypeID, HostIDs: candidates, RequiredHosts: required, OptionalHosts: optional, RoutingMode: inv.RoutingMode, RRStrategy: inv.RRStrategy, StartAt: req.StartAt.UTC(), EndAt: end, LocationType: inv.LocationType, LocationValue: inv.LocationValue, InviteDelivery: delivery, MaxActivePerInvitee: cap, MaxBookingsPerHour: maxBookingsPerEmailPerHour, Organizer: booking.Attendee{Name: inv.Recipient.Name, Email: inv.Recipient.Email, IANATimezone: req.Timezone, Locale: loc.Code}, Answers: answers, SchedulingInvitationID: inv.ID, InvitationTokenHash: invitationTokenHash(r.PathValue("token")), BufferBeforeMinutes: inv.BufferBeforeMinutes, BufferAfterMinutes: inv.BufferAfterMinutes}
+	p := booking.CreateParams{
+		EventTypeID:         inv.EventTypeID,
+		HostIDs:             candidates,
+		RequiredHosts:       required,
+		OptionalHosts:       optional,
+		RoutingMode:         inv.RoutingMode,
+		RRStrategy:          inv.RRStrategy,
+		StartAt:             req.StartAt.UTC(),
+		EndAt:               end,
+		LocationType:        inv.LocationType,
+		LocationValue:       inv.LocationValue,
+		InviteDelivery:      delivery,
+		MaxActivePerInvitee: cap,
+		MaxBookingsPerHour:  maxBookingsPerEmailPerHour,
+		Organizer: booking.Attendee{
+			Name:         inv.Recipient.Name,
+			Email:        inv.Recipient.Email,
+			IANATimezone: req.Timezone,
+			Locale:       loc.Code,
+		},
+		Answers:                answers,
+		SchedulingInvitationID: inv.ID,
+		InvitationTokenHash:    invitationTokenHash(r.PathValue("token")),
+		BufferBeforeMinutes:    inv.BufferBeforeMinutes,
+		BufferAfterMinutes:     inv.BufferAfterMinutes,
+	}
 	p.ValidateTx = func(ctx context.Context, tx *sql.Tx, p *booking.CreateParams) error {
 		free, err := recheckSchedulingContext(ctx, tx, schedule, p.StartAt)
 		if err != nil {
