@@ -371,7 +371,8 @@ func buildData(bd enrichedBooking, fields []string) map[string]any {
 func (s *Service) Enqueue(ctx context.Context, event string, p BookingPayload) error {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, events, fields FROM webhooks
-		WHERE user_id = ? AND is_active = 1`, p.HostID)
+		WHERE is_active = 1 AND (user_id = ? OR user_id = (
+		SELECT i.created_by FROM scheduling_invitations i JOIN bookings b ON b.scheduling_invitation_id=i.id WHERE b.id=?))`, p.HostID, p.ID)
 	if err != nil {
 		return fmt.Errorf("webhook: list for enqueue: %w", err)
 	}
@@ -416,7 +417,12 @@ func (s *Service) Enqueue(ctx context.Context, event string, p BookingPayload) e
 
 	// Gather all available data once; each webhook gets its own field-filtered copy.
 	bd := s.enrich(ctx, p)
+	correlation, err := s.bookingInvitationCorrelation(ctx, s.db, p.ID)
+	if err != nil {
+		return err
+	}
 	createdAt := time.Now().UTC().Format(time.RFC3339)
+	eventID := uid.New()
 
 	// booking_id is a nullable FK; use NULL when empty so callers without a real
 	// bookings row don't violate the constraint.
@@ -437,30 +443,33 @@ func (s *Service) Enqueue(ctx context.Context, event string, p BookingPayload) e
 		if len(fieldset) == 0 {
 			fieldset = defaultFields
 		}
+		data := buildData(bd, fieldset)
+		for key, value := range correlation {
+			data[key] = value
+		}
+		if correlation != nil {
+			if p.StartAt != "" {
+				data["start_at"] = p.StartAt
+			}
+			if p.EndAt != "" {
+				data["end_at"] = p.EndAt
+			}
+		}
 		envelope := map[string]any{
 			"event":      event,
 			"created_at": createdAt,
-			"data":       buildData(bd, fieldset),
+			"data":       data,
+		}
+		if correlation != nil {
+			envelope["id"] = eventID
 		}
 		payloadBytes, err := json.Marshal(envelope)
 		if err != nil {
 			return fmt.Errorf("webhook: marshal payload: %w", err)
 		}
 
-		deliveryID := uid.New()
-		jobID := uid.New()
-		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO webhook_deliveries (id, webhook_id, booking_id, event, payload, status)
-			VALUES (?, ?, ?, ?, ?, 'pending')`,
-			deliveryID, wh.id, bookingIDArg, event, string(payloadBytes)); err != nil {
-			return fmt.Errorf("webhook: insert delivery: %w", err)
-		}
-		jobPayload, _ := json.Marshal(map[string]string{"webhook_delivery_id": deliveryID})
-		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO jobs (id, type, payload, run_at)
-			VALUES (?, 'webhook.deliver', ?, ?)`,
-			jobID, string(jobPayload), now); err != nil {
-			return fmt.Errorf("webhook: insert job: %w", err)
+		if err := insertDelivery(ctx, tx, wh.id, bookingIDArg, event, payloadBytes, now); err != nil {
+			return err
 		}
 	}
 	return tx.Commit()
