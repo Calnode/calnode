@@ -112,10 +112,14 @@ func (h *Handler) ManagePage(w http.ResponseWriter, r *http.Request) {
 	}
 	accentColor = accentOrDefault(accentColor)
 
-	if b.LocationType != "" {
+	if b.SchedulingInvitationID != "" {
+		// Empty retained values are intentional, too; never fill them from a
+		// template that may have changed after invitation issuance.
+		locType, locValue = b.LocationType, b.LocationValue
+	} else if b.LocationType != "" {
 		locType = b.LocationType
 	}
-	if b.LocationValue != "" {
+	if b.SchedulingInvitationID == "" && b.LocationValue != "" {
 		locValue = b.LocationValue
 	}
 
