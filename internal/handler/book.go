@@ -44,6 +44,11 @@ type bookQuestion struct {
 }
 
 type bookPageData struct {
+	IsInvitation     bool
+	RecipientName    string
+	RecipientEmail   string
+	SlotsURL         string
+	BookingURL       string
 	PhoneChoice      bool
 	AccentColor      string
 	AccentForeground string
