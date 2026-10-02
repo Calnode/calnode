@@ -277,6 +277,8 @@ func TestSchedulingInvitationRejectsInvalidCreation(t *testing.T) {
 		{"timezone", "availability_timezone", "Not/AZone"},
 		{"malformed bound", "available_from", "tomorrow"},
 		{"delivery", "delivery", "smtp"},
+		{"fixed host outside scope", "host_id", "missing"},
+		{"local timezone alias", "availability_timezone", "Local"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			body := invitationBody(slug)
