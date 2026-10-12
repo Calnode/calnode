@@ -57,7 +57,7 @@ RUN wget -qO- \
 # alpine (not scratch) — needed for the shell entrypoint and Litestream.
 # No --platform pin here: inherits the build host's native architecture,
 # matching whatever TARGETARCH the binary above was actually compiled for.
-FROM alpine:3.21
+FROM alpine:3.24
 
 RUN apk add --no-cache ca-certificates tzdata
 
