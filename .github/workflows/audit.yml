@@ -22,7 +22,7 @@ jobs:
       security-events: write
       id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
@@ -46,7 +46,7 @@ jobs:
     name: SBOM (syft)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: anchore/sbom-action@v0
         with:
@@ -59,7 +59,7 @@ jobs:
     name: Deterministic claims guard
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # gitleaks needs full history
 
