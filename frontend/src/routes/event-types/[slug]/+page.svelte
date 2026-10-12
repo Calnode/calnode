@@ -68,6 +68,7 @@
 	const isOnlineMeeting = (t: string) => t === 'google_meet' || t === 'teams';
 
 	let form = $state({
+		display_order: 0,
 		name: '', slug: '', description: '', duration_minutes: 30, slot_interval_minutes: 30,
 		is_active: true, is_public: true, show_taken_slots: false,
 		invite_delivery: 'calendar' as EventType['invite_delivery'],
@@ -283,6 +284,7 @@
 			et = await api.get<EventType>(`/v1/event-types/${slug}`);
 			allowPhoneCall = et.allow_phone_call;
 			form = {
+				display_order: et.display_order,
 				name: et.name,
 				slug: et.slug,
 				description: et.description ?? '',
@@ -326,6 +328,7 @@
 	}
 
 	async function saveET() {
+		if (!Number.isSafeInteger(form.display_order)) { toast.error('Directory order must be a whole number.'); return; }
 		if (!form.name.trim()) { toast.error('Name is required.'); return; }
 		if (form.duration_minutes < 5) { toast.error('Duration must be at least 5 minutes.'); return; }
 		// Matches the API, which only requires a positive value. A stricter floor here would
@@ -342,6 +345,7 @@
 		etSaving = true;
 		try {
 			const updated = await api.patch<EventType>(`/v1/event-types/${slug}`, {
+				display_order: form.display_order,
 				slug: form.slug.trim(),
 				name: form.name.trim(),
 				description: form.description.trim() || null,
@@ -587,6 +591,11 @@
 			<div class="space-y-1.5">
 				<Label for="et-name">Name</Label>
 				<Input id="et-name" bind:value={form.name} />
+			</div>
+			<div class="space-y-1.5">
+				<Label for="et-display-order">Directory order</Label>
+				<Input id="et-display-order" type="number" step="1" bind:value={form.display_order} />
+				<p class="text-xs text-muted-foreground">Lower numbers appear first on public person and team pages. Equal numbers sort by name. Applies wherever this event is listed.</p>
 			</div>
 			<div class="space-y-1.5 col-span-2">
 				<Label for="et-slug">Booking link</Label>

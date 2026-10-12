@@ -22,6 +22,8 @@ export type User = {
 };
 
 export type EventType = {
+	/** Lower first on public person/team pages; ties sort by name, then slug. */
+	display_order: number;
 	allow_phone_call: boolean;
 	id: string;
 	slug: string;

@@ -24,6 +24,7 @@ type eventTypeJSON struct {
 	ID                  string  `json:"id"`
 	Slug                string  `json:"slug"`
 	Name                string  `json:"name"`
+	DisplayOrder        int     `json:"display_order"` // lower first on public directories; ties sort by name, then slug
 	Description         *string `json:"description"`
 	DurationMinutes     int     `json:"duration_minutes"`
 	SlotIntervalMinutes int     `json:"slot_interval_minutes"`
@@ -105,7 +106,7 @@ func scanEventTypeRow(s rowScanner, trailing ...any) (*eventTypeJSON, error) {
 		&isActive, &isPublic, &showTaken, &et.CreatedAt,
 		&msgConf, &msgCancel, &msgResched, &msgRemind, &msgGreeting,
 		&subjConf, &subjCancel, &subjResched, &subjRemind,
-		&et.PriceCents, &et.Currency, &et.InviteDelivery,
+		&et.PriceCents, &et.Currency, &et.InviteDelivery, &et.DisplayOrder,
 	}
 	dests = append(dests, trailing...)
 	err := s.Scan(dests...)
@@ -164,7 +165,7 @@ const etColumns = `id, slug, name, description,
 	is_active, is_public, show_taken_slots, created_at,
 	msg_confirmation, msg_cancellation, msg_reschedule, msg_reminder, msg_greeting,
 	subj_confirmation, subj_cancellation, subj_reschedule, subj_reminder,
-	price_cents, currency, invite_delivery`
+	price_cents, currency, invite_delivery, display_order`
 
 // selectETCols fetches a single owner-scoped event type (no `owned` column).
 const selectETCols = "SELECT " + etColumns + " FROM event_types"
@@ -218,6 +219,7 @@ func (h *Handler) CreateEventType(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Slug                string  `json:"slug"`
 		Name                string  `json:"name"`
+		DisplayOrder        int     `json:"display_order"`
 		Description         *string `json:"description"`
 		DurationMinutes     int     `json:"duration_minutes"`
 		SlotIntervalMinutes *int    `json:"slot_interval_minutes"`
@@ -335,12 +337,12 @@ func (h *Handler) CreateEventType(w http.ResponseWriter, r *http.Request) {
 		   slot_interval_minutes, location_type, location_value, allow_phone_call,
 		   routing_mode, buffer_before_minutes, buffer_after_minutes,
 		   min_notice_minutes, max_future_days, max_active_bookings, show_taken_slots, invite_delivery,
-		   msg_confirmation, msg_cancellation, msg_reschedule, msg_reminder)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		   msg_confirmation, msg_cancellation, msg_reschedule, msg_reminder, display_order)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		id, user.ID, req.Slug, req.Name, req.Description,
 		req.DurationMinutes, slotInterval, locType, req.LocationValue, req.AllowPhoneCall != nil && *req.AllowPhoneCall,
 		routingMode, bufBefore, bufAfter, minNotice, maxFuture, maxActive, showTaken, inviteDelivery,
-		defaultMsgConfirmation, defaultMsgCancellation, defaultMsgReschedule, defaultMsgReminder)
+		defaultMsgConfirmation, defaultMsgCancellation, defaultMsgReschedule, defaultMsgReminder, req.DisplayOrder)
 	if err != nil {
 		if db.IsUniqueViolation(err) {
 			h.writeError(w, http.StatusConflict, "slug already in use")
@@ -457,6 +459,7 @@ func (h *Handler) PatchEventType(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Slug                *string `json:"slug"`
 		Name                *string `json:"name"`
+		DisplayOrder        *int    `json:"display_order"`
 		Description         *string `json:"description"`
 		DurationMinutes     *int    `json:"duration_minutes"`
 		SlotIntervalMinutes *int    `json:"slot_interval_minutes"`
@@ -523,6 +526,9 @@ func (h *Handler) PatchEventType(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Description != nil {
 		set("description", *req.Description)
+	}
+	if req.DisplayOrder != nil {
+		set("display_order", *req.DisplayOrder)
 	}
 	if req.DurationMinutes != nil {
 		if *req.DurationMinutes <= 0 {

@@ -58,7 +58,7 @@ func (h *Handler) directoryItems(ctx context.Context, loc *i18n.Locale, where st
 	rows, err := h.db.QueryContext(ctx, `
 		SELECT slug, name, duration_minutes, location_type, COALESCE(location_value,''),
 		       price_cents, currency
-		FROM event_types et WHERE `+where+` ORDER BY name`, args...) // #nosec G202 -- where is one of two literals at the call sites; every value is bound via args...
+		FROM event_types et WHERE `+where+` ORDER BY et.display_order, et.name, et.slug`, args...) // #nosec G202 -- where is one of two literals at the call sites; every value is bound via args...
 	if err != nil {
 		return nil, err
 	}
