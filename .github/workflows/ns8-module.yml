@@ -24,7 +24,7 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Validate action scripts and schemas
         working-directory: packaging/ns8
@@ -42,7 +42,7 @@ jobs:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # Mirror the app tagging in docker-publish.yml: release tags pin both
       # images to the same version, branches track the moving app tags.
