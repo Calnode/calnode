@@ -11,8 +11,9 @@
 #  2. write the container env file state/calnode.env (BASE_URL follows
 #     the hostname; the encryption key is generated once and preserved
 #     across reconfigures, since losing it locks the SQLite data key)
-#  3. register a host-based Traefik route (TLS is handled by the cluster)
-#  4. pull the Calnode image so a first install works offline of updates
+#  3. ensure the app image is present (tolerating a registry outage when
+#     the image is already local)
+#  4. register a host-based Traefik route (TLS is handled by the cluster)
 #
 import json
 import os
