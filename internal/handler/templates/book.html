@@ -268,7 +268,7 @@ body {
 
   const SLUG     = "{{.Slug}}";
   const IS_INVITATION = {{.IsInvitation}};
-  const SLOTS_URL = {{if .SlotsURL}}{{.SlotsURL}}{{else}}`/v1/event-types/${SLUG}/slots`{{end}};
+  const SLOTS_URL = {{if .SlotsURL}}"{{.SlotsURL}}"{{else}}`/v1/event-types/${SLUG}/slots`{{end}};
   const BOOKING_URL = {{if .BookingURL}}{{.BookingURL}}{{else}}'/v1/bookings'{{end}};
   const MAX_DAYS = {{.MaxFutureDays}};
   const PRICE_CENTS = {{.PriceCents}};

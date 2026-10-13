@@ -103,7 +103,7 @@ func TestInvitationWorkflowSnapshotsCalendarManagementAndCorrelation(t *testing.
 	}
 	rec = invitationPublic(h, h.ManagePage, "GET", manage, "", "")
 	mustStatus(t, rec, 200, "manage page")
-	if !strings.Contains(rec.Body.String(), "1 hour") || !strings.Contains(rec.Body.String(), "/manage/"+manage+"/slots") {
+	if !strings.Contains(rec.Body.String(), "1 hour") || !strings.Contains(strings.ReplaceAll(rec.Body.String(), `\/`, `/`), "/manage/"+manage+"/slots") {
 		t.Fatal("manage page did not retain effective duration/slots")
 	}
 	if strings.Contains(rec.Body.String(), "Changed room") {

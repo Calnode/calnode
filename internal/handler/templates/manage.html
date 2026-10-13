@@ -259,7 +259,7 @@ body {
 
   const TOKEN       = {{.Token}};
   const SLUG        = {{.EventTypeSlug}};
-  const SLOTS_URL = {{if .SlotsURL}}{{.SlotsURL}}{{else}}`/v1/event-types/${SLUG}/slots`{{end}};
+  const SLOTS_URL = {{if .SlotsURL}}"{{.SlotsURL}}"{{else}}`/v1/event-types/${SLUG}/slots`{{end}};
   const MAX_DAYS    = {{.MaxFutureDays}};
   const CURRENT_ISO = {{.CurrentStartISO}};
   const ORG_TZ      = {{.OrganizerTZ}};
