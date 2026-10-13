@@ -1,0 +1,21 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "create-module input",
+    "$id": "http://schema.nethserver.org/calnode/create-module-input.json",
+    "description": "Create calnode instance. Volumes and images arrive from the module labels; the cluster framework provisions the volume, pre-pulls the images and writes the *_IMAGE environment entries. No module script needed.",
+    "type": "object",
+    "properties": {
+        "images": {
+            "type": "array",
+            "items": {
+                "type": "string"
+            },
+            "uniqueItems": true
+        },
+        "volumes": {
+            "type": "object",
+            "description": "Optional mapping of application volume names to filesystem mount points."
+        }
+    },
+    "additionalProperties": false
+}

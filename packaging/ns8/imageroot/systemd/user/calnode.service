@@ -13,6 +13,10 @@
 # users and settings are lost. TLS is terminated by the cluster Traefik
 # instance, so the container only listens on 127.0.0.1.
 #
+# The app image reference comes from ${CALNODE_IMAGE}, which the cluster
+# writes into the module environment at install time from the
+# org.nethserver.images label. The label is the single source of truth.
+#
 [Unit]
 Description=calnode server
 After=network-online.target
@@ -33,7 +37,7 @@ ExecStart=/usr/bin/podman run \
     --publish=127.0.0.1:${TCP_PORT}:3000 \
     --volume=calnode-data:/data \
     --env-file=calnode.env \
-    __CALNODE_APP_IMAGE__
+    ${CALNODE_IMAGE}
 # 45s grace: the app allows up to 30s HTTP drain plus worker shutdown, so the
 # default 10s would SIGKILL updates mid-request. Data stays safe either way
 # (jobs are crash-recoverable), this is about clean connection draining.

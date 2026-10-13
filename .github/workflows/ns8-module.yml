@@ -33,7 +33,13 @@ jobs:
           python3 -c "import json, glob; [json.load(open(f)) for f in glob.glob('imageroot/actions/*/*.json') + glob.glob('ui/public/*.json') + ['ui/public/i18n/en/translation.json']]"
           bash -n imageroot/actions/configure-module/80start_services
           bash -n build-images.sh
-          grep -rn '__CALNODE_APP_IMAGE__' imageroot/systemd/user/calnode.service
+          # No build-time placeholders may remain: the unit and configure read
+          # the app ref from ${CALNODE_IMAGE} at install time.
+          ! grep -rn '__CALNODE_APP_IMAGE__' imageroot/
+          # Action scripts must be committed executable: the agent silently
+          # skips non-executable files, and fileMode=false checkouts do not
+          # record chmod, so assert the indexed modes, not just the worktree.
+          git ls-files -s -- imageroot/actions | awk '$1=="100644" && $4 !~ /validate-(input|output)\.json$/ {print "not executable in index:", $4; bad=1} END{exit bad}'
 
   build:
     needs: validate
