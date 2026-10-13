@@ -234,6 +234,7 @@ func (h *Handler) renderManage(w http.ResponseWriter, r *http.Request, data mana
 // RescheduleByToken moves a booking to a new time authenticated by a manage token.
 // POST /manage/{token}/reschedule  body: {"start_at":"<RFC3339>"}
 func (h *Handler) RescheduleByToken(w http.ResponseWriter, r *http.Request) {
+	loc := h.resolveLocale(r)
 	token := r.PathValue("token")
 	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
 
@@ -241,23 +242,23 @@ func (h *Handler) RescheduleByToken(w http.ResponseWriter, r *http.Request) {
 		StartAt string `json:"start_at"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.StartAt == "" {
-		h.writeError(w, http.StatusBadRequest, "start_at is required")
+		h.writeError(w, http.StatusBadRequest, loc.T("err_start_required"))
 		return
 	}
 	newStart, err := time.Parse(time.RFC3339, req.StartAt)
 	if err != nil {
-		h.writeError(w, http.StatusBadRequest, "start_at must be RFC3339")
+		h.writeError(w, http.StatusBadRequest, loc.T("err_start_format"))
 		return
 	}
 
 	b, err := h.bookingSvc.ValidateManageToken(r.Context(), token)
 	if errors.Is(err, booking.ErrTokenNotFound) {
-		h.writeError(w, http.StatusNotFound, "manage link not found or expired")
+		h.writeError(w, http.StatusNotFound, loc.T("err_manage_link_expired"))
 		return
 	}
 	if err != nil {
 		h.logger.ErrorContext(r.Context(), "reschedule: validate token", "error", err)
-		h.writeError(w, http.StatusInternalServerError, "internal error")
+		h.writeError(w, http.StatusInternalServerError, loc.T("err_internal"))
 		return
 	}
 
@@ -266,7 +267,7 @@ func (h *Handler) RescheduleByToken(w http.ResponseWriter, r *http.Request) {
 		`SELECT duration_minutes FROM event_types WHERE id = ?`, b.EventTypeID).
 		Scan(&durMins); err != nil {
 		h.logger.ErrorContext(r.Context(), "reschedule: load duration", "error", err)
-		h.writeError(w, http.StatusInternalServerError, "internal error")
+		h.writeError(w, http.StatusInternalServerError, loc.T("err_internal"))
 		return
 	}
 
@@ -279,30 +280,30 @@ func (h *Handler) RescheduleByToken(w http.ResponseWriter, r *http.Request) {
 
 	if err := h.validateRescheduleTime(r.Context(), b.ID, b.EventTypeID, b.HostID, newStart, newEnd); err != nil {
 		if errors.Is(err, errSlotUnavailable) {
-			h.writeError(w, http.StatusConflict, "that time slot is no longer available")
+			h.writeError(w, http.StatusConflict, loc.T("slot_no_longer_available_error"))
 			return
 		}
 		h.logger.ErrorContext(r.Context(), "reschedule: validate time", "error", err)
-		h.writeError(w, http.StatusInternalServerError, "internal error")
+		h.writeError(w, http.StatusInternalServerError, loc.T("err_internal"))
 		return
 	}
 
 	updated, err := h.rescheduleBooking(r.Context(), b.ID, newStart, newEnd)
 	if errors.Is(err, booking.ErrDoubleBooked) || errors.Is(err, errSlotUnavailable) || errors.Is(err, booking.ErrInvitationUnavailable) {
-		h.writeError(w, http.StatusConflict, "that time slot is no longer available")
+		h.writeError(w, http.StatusConflict, loc.T("slot_no_longer_available_error"))
 		return
 	}
 	if errors.Is(err, booking.ErrAlreadyCancelled) {
-		h.writeError(w, http.StatusConflict, "this booking has been cancelled")
+		h.writeError(w, http.StatusConflict, loc.T("err_invitation_booking_cancelled"))
 		return
 	}
 	if errors.Is(err, booking.ErrNotFound) {
-		h.writeError(w, http.StatusNotFound, "booking not found")
+		h.writeError(w, http.StatusNotFound, loc.T("err_booking_not_found"))
 		return
 	}
 	if err != nil {
 		h.logger.ErrorContext(r.Context(), "reschedule: update", "error", err)
-		h.writeError(w, http.StatusInternalServerError, "internal error")
+		h.writeError(w, http.StatusInternalServerError, loc.T("err_internal"))
 		return
 	}
 
@@ -395,6 +396,7 @@ func (h *Handler) rescheduleSideEffects(bCopy booking.Booking, capturedEtID stri
 // CancelByToken cancels a booking authenticated by a manage token.
 // POST /manage/{token}/cancel  body: {"reason":"<optional>"}
 func (h *Handler) CancelByToken(w http.ResponseWriter, r *http.Request) {
+	loc := h.resolveLocale(r)
 	token := r.PathValue("token")
 	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
 
@@ -405,16 +407,16 @@ func (h *Handler) CancelByToken(w http.ResponseWriter, r *http.Request) {
 
 	b, err := h.bookingSvc.CancelByToken(r.Context(), token, req.Reason)
 	if errors.Is(err, booking.ErrTokenNotFound) {
-		h.writeError(w, http.StatusNotFound, "manage link not found or expired")
+		h.writeError(w, http.StatusNotFound, loc.T("err_manage_link_expired"))
 		return
 	}
 	if errors.Is(err, booking.ErrAlreadyCancelled) {
-		h.writeError(w, http.StatusConflict, "this booking is already cancelled")
+		h.writeError(w, http.StatusConflict, loc.T("already_cancelled_error"))
 		return
 	}
 	if err != nil {
 		h.logger.ErrorContext(r.Context(), "cancel by token", "error", err)
-		h.writeError(w, http.StatusInternalServerError, "internal error")
+		h.writeError(w, http.StatusInternalServerError, loc.T("err_internal"))
 		return
 	}
 

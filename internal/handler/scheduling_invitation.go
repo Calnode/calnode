@@ -142,6 +142,8 @@ func invitationRouting(hosts []EventHost) (string, error) {
 // event-type editing, issuance is owner-scoped. Private active templates are
 // allowed: authenticated staff authorize the snapshot, not a public booker.
 func (h *Handler) CreateSchedulingInvitation(w http.ResponseWriter, r *http.Request) {
+	// Resolve before BeginTx: branding uses the single SQLite connection.
+	loc := h.resolveLocale(r)
 	user, _ := userFromContext(r.Context())
 	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
 	var req struct {
@@ -224,7 +226,7 @@ func (h *Handler) CreateSchedulingInvitation(w http.ResponseWriter, r *http.Requ
 	if req.DurationMinutes != nil {
 		duration = *req.DurationMinutes
 	}
-	if err := (durationPolicy{et.MinDurationMinutes, et.MaxDurationMinutes, et.DurationIncrementMinutes}).allows(duration, et.DurationMinutes); err != nil {
+	if err := (durationPolicy{et.MinDurationMinutes, et.MaxDurationMinutes, et.DurationIncrementMinutes}).allows(duration, et.DurationMinutes, loc); err != nil {
 		h.writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}

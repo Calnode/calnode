@@ -47,51 +47,54 @@ func invitationHeaders(w http.ResponseWriter) {
 	w.Header().Set("X-Frame-Options", "DENY")
 }
 
-func invitationState(inv *schedulingInvitation) string {
+func invitationState(inv *schedulingInvitation, loc *i18n.Locale) string {
 	if inv.Status == "booked" {
-		return "This invitation has already been booked. Use the booking-management link in your confirmation."
+		return loc.T("invitation_booked")
 	}
 	if inv.Status == "cancelled" {
-		return "This invitation has been cancelled."
+		return loc.T("invitation_cancelled")
 	}
 	if inv.Status == "expired" || !inv.ExpiresAt.After(time.Now()) {
-		return "This invitation has expired."
+		return loc.T("invitation_expired")
 	}
-	return "This invitation is currently unavailable. Contact the sender."
+	return loc.T("invitation_unavailable")
 }
 
 func (h *Handler) GetPublicInvitationSlots(w http.ResponseWriter, r *http.Request) {
+	loc := h.resolveLocale(r)
 	invitationHeaders(w)
 	inv, err := h.invitationByToken(r.Context(), r.PathValue("token"))
 	if err != nil {
-		h.writeError(w, 404, "Invalid invitation link.")
+		h.writeError(w, 404, loc.T("err_invitation_link"))
 		return
 	}
 	schedule, err := h.invitationSchedulingContext(r.Context(), inv)
 	if err != nil {
-		h.writeError(w, 410, invitationState(inv))
+		h.writeError(w, 410, invitationState(inv, loc))
 		return
 	}
-	h.writeInvitationSlots(w, r, schedule)
+	h.writeInvitationSlots(w, r, schedule, loc)
 }
 
-func (h *Handler) writeInvitationSlots(w http.ResponseWriter, r *http.Request, schedule schedulingContext) {
+func (h *Handler) writeInvitationSlots(w http.ResponseWriter, r *http.Request, schedule schedulingContext, loc *i18n.Locale) {
 	// Calendar clients ask for a month at a time. Bound past ranges too: the
 	// shared event-type parser only caps the upper bound, which would otherwise
 	// allow a bearer to request a walk starting centuries before today.
 	if value := r.URL.Query().Get("from"); value != "" {
 		from, err := time.Parse("2006-01-02", value)
 		if err != nil || from.Before(time.Now().UTC().Truncate(24*time.Hour).AddDate(0, 0, -31)) {
-			h.writeError(w, 400, "from must be a calendar date within the last 31 days or in the future")
+			h.writeError(w, 400, loc.T("err_invitation_from"))
 			return
 		}
 	}
 	res, err := h.computeSlotsForContext(r.Context(), schedule, r.URL.Query().Get("tz"), r.URL.Query().Get("from"), r.URL.Query().Get("to"), slotsWanted{NoticeGap: true})
 	if err != nil {
-		if errors.Is(err, errInvalidTimezone) || errors.Is(err, errBadDateRange) {
-			h.writeError(w, 400, err.Error())
+		if errors.Is(err, errInvalidTimezone) {
+			h.writeError(w, 400, loc.T("err_invalid_timezone"))
+		} else if errors.Is(err, errBadDateRange) {
+			h.writeError(w, 400, loc.T("err_invitation_date_range"))
 		} else {
-			h.writeError(w, 503, "Availability could not be checked. Try again shortly.")
+			h.writeError(w, 503, loc.T("err_invitation_availability"))
 		}
 		return
 	}
@@ -193,15 +196,16 @@ func recheckSchedulingContext(ctx context.Context, source dbQuerier, schedule sc
 }
 
 func (h *Handler) CreateInvitationBooking(w http.ResponseWriter, r *http.Request) {
+	loc := h.resolveLocale(r)
 	invitationHeaders(w)
 	inv, err := h.invitationByToken(r.Context(), r.PathValue("token"))
 	if err != nil {
-		h.writeError(w, 404, "Invalid invitation link.")
+		h.writeError(w, 404, loc.T("err_invitation_link"))
 		return
 	}
 	schedule, err := h.invitationSchedulingContext(r.Context(), inv)
 	if err != nil {
-		h.writeError(w, 410, invitationState(inv))
+		h.writeError(w, 410, invitationState(inv, loc))
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
@@ -217,28 +221,31 @@ func (h *Handler) CreateInvitationBooking(w http.ResponseWriter, r *http.Request
 	}
 	dec := json.NewDecoder(r.Body)
 	dec.DisallowUnknownFields()
-	if err := dec.Decode(&req); err != nil || req.StartAt.IsZero() {
-		h.writeError(w, 400, "Submit start_at, timezone and intake answers only.")
+	if err := dec.Decode(&req); err != nil {
+		h.writeError(w, 400, loc.T("err_invitation_submission"))
+		return
+	}
+	if chosen := i18n.Get(req.Language); chosen != nil {
+		loc = chosen
+	}
+	if req.StartAt.IsZero() {
+		h.writeError(w, 400, loc.T("err_invitation_submission"))
 		return
 	}
 	if err := dec.Decode(&struct{}{}); err != io.EOF {
-		h.writeError(w, 400, "invalid JSON")
+		h.writeError(w, 400, loc.T("err_invalid_json"))
 		return
 	}
 	if req.Honeypot != "" {
-		h.writeError(w, 400, "invalid request")
+		h.writeError(w, 400, loc.T("err_invalid_request"))
 		return
 	}
 	if req.Timezone == "" {
 		req.Timezone = "UTC"
 	}
 	if _, err := time.LoadLocation(req.Timezone); err != nil {
-		h.writeError(w, 400, "invalid timezone")
+		h.writeError(w, 400, loc.T("err_invalid_timezone"))
 		return
-	}
-	loc := h.resolveLocale(r)
-	if chosen := i18n.Get(req.Language); chosen != nil {
-		loc = chosen
 	}
 	rawAnswers := make([]booking.Answer, 0, len(req.Answers))
 	for _, answer := range req.Answers {
@@ -252,19 +259,19 @@ func (h *Handler) CreateInvitationBooking(w http.ResponseWriter, r *http.Request
 	var name, slug, delivery string
 	var cap int
 	if err := h.db.QueryRowContext(r.Context(), `SELECT name,slug,invite_delivery,max_active_bookings FROM event_types WHERE id=?`, inv.EventTypeID).Scan(&name, &slug, &delivery, &cap); err != nil {
-		h.writeError(w, 410, "Invitation unavailable.")
+		h.writeError(w, 410, loc.T("err_invitation_unavailable"))
 		return
 	}
 	candidates, required, optional := resolveBookingHostPool(schedule.Hosts, schedule.Event.RoutingMode)
 	end := req.StartAt.UTC().Add(time.Duration(inv.DurationMinutes) * time.Minute)
 	if _, err := recheckSchedulingContext(r.Context(), h.db, schedule, req.StartAt.UTC()); err != nil {
-		h.invitationBookingError(w, err)
+		h.invitationBookingError(w, err, loc)
 		return
 	}
 	et := &bookableEventType{ID: inv.EventTypeID, RoutingMode: inv.RoutingMode, BufferBeforeMinutes: inv.BufferBeforeMinutes, BufferAfterMinutes: inv.BufferAfterMinutes}
 	candidates, optional, err = h.calendarFreeHosts(r.Context(), et, candidates, required, optional, req.StartAt.UTC(), end)
 	if err != nil {
-		h.invitationBookingError(w, err)
+		h.invitationBookingError(w, err, loc)
 		return
 	}
 	p := booking.CreateParams{
@@ -304,24 +311,24 @@ func (h *Handler) CreateInvitationBooking(w http.ResponseWriter, r *http.Request
 	}
 	b, err := h.bookingSvc.Create(r.Context(), p)
 	if err != nil {
-		h.invitationBookingError(w, err)
+		h.invitationBookingError(w, err, loc)
 		return
 	}
 	go h.dispatchBookingConfirmation(b, bookingConfirmationInput{EventTypeName: name, EventTypeSlug: slug, LocationType: inv.LocationType, OrganizerName: inv.Recipient.Name, OrganizerEmail: inv.Recipient.Email, OrganizerTimezone: req.Timezone, OrganizerLocale: loc.Code}) // #nosec G118 -- existing best-effort booking side effects use their own context
 	h.writeJSON(w, 201, map[string]any{"id": b.ID, "start_at": b.StartAt, "end_at": b.EndAt, "status": b.Status})
 }
 
-func (h *Handler) invitationBookingError(w http.ResponseWriter, err error) {
+func (h *Handler) invitationBookingError(w http.ResponseWriter, err error, loc *i18n.Locale) {
 	switch {
 	case errors.Is(err, booking.ErrInvitationUnavailable):
-		h.writeError(w, 410, "This invitation is no longer available.")
+		h.writeError(w, 410, loc.T("err_invitation_consumed"))
 	case errors.Is(err, errSlotUnavailable), errors.Is(err, booking.ErrDoubleBooked), errors.Is(err, errNoHostAvailable):
-		h.writeError(w, 409, "This slot is no longer available. Choose another time.")
+		h.writeError(w, 409, loc.T("err_invitation_slot"))
 	case errors.Is(err, booking.ErrEmailThrottled):
-		h.writeError(w, 429, "Too many bookings. Try again later.")
+		h.writeError(w, 429, loc.T("err_email_throttled"))
 	case errors.Is(err, booking.ErrBookingLimitReached):
-		h.writeError(w, 409, "The active booking limit has been reached.")
+		h.writeError(w, 409, loc.T("err_booking_limit"))
 	default:
-		h.writeError(w, 503, "Booking could not be completed. Try again shortly.")
+		h.writeError(w, 503, loc.T("err_invitation_booking"))
 	}
 }

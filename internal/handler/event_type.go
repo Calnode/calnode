@@ -256,10 +256,10 @@ func (h *Handler) CreateEventType(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.DurationMinutes <= 0 {
-		h.writeError(w, http.StatusBadRequest, "duration_minutes must be positive")
+		h.writeError(w, http.StatusBadRequest, h.resolveLocale(r).T("err_duration_positive"))
 		return
 	}
-	if err := (durationPolicy{req.MinDurationMinutes, req.MaxDurationMinutes, req.DurationIncrementMinutes}).validate(req.DurationMinutes); err != nil {
+	if err := (durationPolicy{req.MinDurationMinutes, req.MaxDurationMinutes, req.DurationIncrementMinutes}).validate(req.DurationMinutes, h.resolveLocale(r)); err != nil {
 		h.writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -549,7 +549,7 @@ func (h *Handler) PatchEventType(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.DurationMinutes != nil {
 		if *req.DurationMinutes <= 0 {
-			h.writeError(w, http.StatusBadRequest, "duration_minutes must be positive")
+			h.writeError(w, http.StatusBadRequest, h.resolveLocale(r).T("err_duration_positive"))
 			return
 		}
 		set("duration_minutes", *req.DurationMinutes)
@@ -773,7 +773,7 @@ func (h *Handler) PatchEventType(w http.ResponseWriter, r *http.Request) {
 				set(field.name, field.value.Value)
 			}
 		}
-		if err := policy.validate(duration); err != nil {
+		if err := policy.validate(duration, h.resolveLocale(r)); err != nil {
 			h.writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}

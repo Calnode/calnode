@@ -87,24 +87,25 @@ func (h *Handler) rescheduleBooking(ctx context.Context, id string, start, end t
 }
 
 func (h *Handler) GetManageInvitationSlots(w http.ResponseWriter, r *http.Request) {
+	loc := h.resolveLocale(r)
 	invitationHeaders(w)
 	b, err := h.bookingSvc.ValidateManageToken(r.Context(), r.PathValue("token"))
 	if err != nil {
-		h.writeError(w, 404, "Invalid booking-management link.")
+		h.writeError(w, 404, loc.T("err_invitation_manage_link"))
 		return
 	}
 	if b.Status == "cancelled" {
-		h.writeError(w, 410, "This booking has been cancelled.")
+		h.writeError(w, 410, loc.T("err_invitation_booking_cancelled"))
 		return
 	}
 	if b.SchedulingInvitationID == "" {
-		h.writeError(w, 404, "Invitation booking not found.")
+		h.writeError(w, 404, loc.T("err_invitation_booking_not_found"))
 		return
 	}
 	schedule, err := h.bookingInvitationContext(r.Context(), b)
 	if err != nil {
-		h.writeError(w, 410, "Rescheduling is currently unavailable. Contact the host.")
+		h.writeError(w, 410, loc.T("err_invitation_reschedule"))
 		return
 	}
-	h.writeInvitationSlots(w, r, schedule)
+	h.writeInvitationSlots(w, r, schedule, loc)
 }

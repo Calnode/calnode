@@ -2,7 +2,9 @@ package handler
 
 import (
 	"encoding/json"
-	"fmt"
+	"errors"
+
+	"github.com/calnode/calnode/internal/i18n"
 )
 
 // nullableInt distinguishes omission (keep) from explicit null (reset).
@@ -24,26 +26,26 @@ type durationPolicy struct {
 	Increment *int
 }
 
-func (p durationPolicy) validate(duration int) error {
+func (p durationPolicy) validate(duration int, loc *i18n.Locale) error {
 	if p.Min == nil && p.Max == nil && p.Increment == nil {
 		return nil // unconfigured event types are fixed-duration
 	}
 	if p.Min == nil || p.Max == nil || p.Increment == nil || *p.Min <= 0 ||
 		*p.Max < *p.Min || *p.Increment <= 0 {
-		return fmt.Errorf("duration limits require positive min/max/increment with max >= min")
+		return errors.New(loc.T("err_duration_policy_limits"))
 	}
 	if duration < *p.Min || duration > *p.Max || (duration-*p.Min)%*p.Increment != 0 {
-		return fmt.Errorf("duration_minutes must fit the event type's duration range and increment")
+		return errors.New(loc.T("err_duration_policy_range"))
 	}
 	return nil
 }
 
-func (p durationPolicy) allows(duration, defaultDuration int) error {
+func (p durationPolicy) allows(duration, defaultDuration int, loc *i18n.Locale) error {
 	if duration <= 0 {
-		return fmt.Errorf("duration_minutes must be positive")
+		return errors.New(loc.T("err_duration_positive"))
 	}
 	if p.Min == nil && p.Max == nil && p.Increment == nil && duration != defaultDuration {
-		return fmt.Errorf("this event type has a fixed duration")
+		return errors.New(loc.T("err_duration_fixed"))
 	}
-	return p.validate(duration)
+	return p.validate(duration, loc)
 }
