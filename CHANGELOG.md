@@ -17,10 +17,21 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
   through authenticated APIs, with permitted duration overrides, an eligible fixed
   host and a date window. The booking and management pages enforce retained
   constraints; signed lifecycle and booking webhooks carry external ticket
-  references. Duration policies are configurable in the event-type editor.
+  references. Duration policies are configurable in the event-type editor;
+  unchanged duration-only PATCH requests preserve explicit fixed bounds.
+  Invitation terminal pages, booking/management errors and duration feedback
+  use every shipped public locale. Initial invitation delivery is external-only
+  in both the API and schema.
   Initial delivery stays with the caller; verification codes, replacement tokens,
   payments and the ticket-system adapter remain deferred. See
   [the integration walkthrough](docs/SCHEDULING_INVITATIONS.md).
+- **Member deletion retains scheduling invitation references.**
+  `DELETE /v1/users/{id}` returns HTTP 409 for invitation creators, retained
+  hosts of any role, and owners of referenced source event types. Draft, active
+  and terminal invitations all keep these references for authorized constraints,
+  booking management and correlation history. Archive the member instead,
+  subject to existing role and upcoming-booking guards; cancelling an invitation
+  does not make its referenced users deletable.
 - **Calendar invites can come from Calnode instead of the host's calendar.** A new
   per-event-type setting, *Calendar invite → Sent by*. The default is unchanged: the host's
   connected calendar invites the booker, from the host's own address. Choose *Calnode* and

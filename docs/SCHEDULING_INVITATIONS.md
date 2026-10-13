@@ -66,6 +66,10 @@ existing host-role model and booking assignment service.
    }
    ```
 
+   Omitted or empty `delivery` defaults to `external`. The API rejects other
+   values, and the invitation schema also permits only `external`. This field is
+   separate from the event type’s calendar `invite_delivery` setting.
+
    The 201 response contains the invitation snapshot, `id`, `status: active`,
    and `scheduling_url: https://calnode.example.com/s/<opaque-token>`.
    The foundation's `token` response field is retained for compatibility.
@@ -141,8 +145,11 @@ All-null policy fields mean fixed duration, including every pre-existing event
 type. PATCH omission preserves existing values; a partial numeric PATCH is
 validated against the full effective policy. Reset by explicitly sending all
 three fields as null. A partial null reset is rejected. A duration-only update
-to an explicit fixed policy (`min == max`) clears those bounds, preserving the
-legacy client's ability to change its fixed default without stale limits.
+to an explicit fixed policy (`min == max`) clears those bounds only when the
+duration actually changes, preserving the legacy client's ability to change its
+fixed default without stale limits. An unchanged duration-only PATCH or omission
+of the duration preserves the explicit policy. Explicit policy fields are applied
+and validated normally, including the all-null reset.
 Duration-only updates to a configured range must satisfy that range. Duplication
 copies the policy. Turning the editor's range control off sends the all-null reset.
 Slot interval stays distinct from appointment duration.
@@ -182,6 +189,17 @@ Archived rotation/optional candidates are excluded before initial assignment;
 an unavailable selected host never falls back to another pool. Foreign keys
 preserve the source event type/users and existing delete endpoints advise
 archiving when invitations reference them.
+
+`DELETE /v1/users/{id}` now returns **409 Conflict** when the user is an invitation
+creator (`created_by`), any retained host (`scheduling_invitation_hosts.user_id`,
+regardless of required/rotation/optional role), or owner of a source event type
+that deletion would cascade to. The invitation’s `event_type_id` prevents that
+event type from being removed. These references preserve authorized constraints,
+booking management, audit history and webhook correlation. Draft and active
+invitations, as well as terminal booked/cancelled/expired invitations, all block
+hard deletion; cancelling an invitation does not release its references.
+`POST /v1/users/{id}/archive` remains the supported offboarding alternative,
+subject to existing role and upcoming-booking guards. Retention/purging is deferred.
 
 ## Lifecycle events and signed booking correlation
 
@@ -287,8 +305,14 @@ and 20 submissions per IP per minute). Credential pages/API responses use
 Invitation and related management pages omit analytics, arbitrary injected head
 scripts, assistants, Markdown embeds and remote images. Same-origin branding and
 legal links remain, with a restrictive CSP. Intake/current UI components and
-normal booking localization are reused; new invitation terminal/error messages
-are currently English. No polished invitation-management dashboard is included.
+normal booking localization are reused. Invitation terminal pages, booking and
+management errors, and duration-policy feedback are translated in every shipped
+locale. Public requests use `?lang=`, the language cookie, `Accept-Language`, and
+the configured fallback in the usual order. Valid page language overrides persist
+on terminal pages too. Booking submission `language` selects feedback after
+decoding and the attendee locale for later confirmation/reminder messages.
+Translations share the repository’s unreviewed-draft status until native review.
+No polished invitation-management dashboard is included.
 
 Deferred: verification codes, token replacement, draft/edit/activation flows,
 initial invitation emails, payments, Zammad adapter, ticket synchronization,
@@ -305,11 +329,13 @@ testing before deployment.
 
 ## Migration coordination
 
-Assume [directory-order PR #127](https://github.com/Calnode/calnode/pull/127)
-lands first and reserves `00070_event_type_display_order.sql`. The unmerged
+The merged [directory-order PR #127](https://github.com/Calnode/calnode/pull/127)
+adds `00070_event_type_display_order.sql`. This branch is rebased onto upstream
+main with that real migration intact. The unmerged
 invitation migrations are consequently numbered `00071_scheduling_invitations.sql`
 and `00072_invitation_booking_lifecycle.sql`. There are no duplicate versions in
-this branch; directory implementation remains a separate upstream dependency.
+this branch. Disposable tests use the real directory migration, retain version
+70 during invitation rollback, and check that its display order survives re-upgrade.
 
 Disposable migration tests upgrade populated databases at versions 69, 70
 (directory ordering), and 71 (invitation foundation), check preservation,

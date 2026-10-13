@@ -225,6 +225,17 @@ the platform/recovery secret doesn't expose secrets.
   credential material behind.
   Archiving is blocked while the member has upcoming (primary-host) bookings; a
   resolve-meetings flow makes the admin reassign/cancel each first.
+- **Hard deletion with invitation references returns HTTP 409**
+  (`DELETE /v1/users/{id}`, `users.go: DeleteUser`). An invitation’s `created_by`,
+  any retained `scheduling_invitation_hosts.user_id` (required, rotation or optional),
+  or ownership of its source event type blocks deletion. In the last case, deleting
+  the user would cascade to an event type still referenced by
+  `scheduling_invitations.event_type_id`. These foreign keys preserve the authorized
+  snapshot, booking management, audit history and webhook correlation. There is no
+  status exemption: draft, active, booked, cancelled and expired invitations all
+  retain their references. Use `POST /v1/users/{id}/archive`, subject to the existing
+  role and upcoming-booking guards, to offboard a referenced member while keeping
+  those records valid. Invitation retention/purging is deferred.
 
 ---
 
@@ -336,7 +347,8 @@ authorization, snapshot semantics, date boundaries and integration limitations.
 - Optional event-type min/max/increment policies authorize invitation duration
   overrides. Defaults remain fixed duration. Partial PATCH validates the complete
   effective policy; an all-null reset restores fixed duration. Duration-only legacy
-  updates to explicit fixed bounds clear those bounds. Public event-type booking
+  updates clear explicit fixed bounds only when the duration actually changes;
+  unchanged or omitted durations preserve them. Public event-type booking
   behavior, duplication and existing API conventions are preserved.
 - `schedulingContext` resolves event defaults or invitation snapshots for the same
   slot engine. Invitations retain duration, interval, buffers, recipient, host
@@ -366,11 +378,15 @@ authorization, snapshot semantics, date boundaries and integration limitations.
 - Credential pages use no-referrer/no-store/noindex, rate limits, log redaction,
   same-origin resources and a restrictive CSP. Analytics, head injection, assistants,
   remote images and Markdown embeds are omitted; safe branding/intake components
-  are reused. Public payloads omit integration/ticket metadata.
+  are reused. Public payloads omit integration/ticket metadata. Terminal pages and
+  invitation booking/management errors use the public locale resolver and locale
+  tables; valid `?lang=` choices are persisted even on terminal pages. Booking
+  submissions may supply `language`, which also determines the retained attendee
+  locale for confirmations/reminders. Duration-policy feedback is localized.
 
 Verification codes, replacement tokens, draft/edit/activation, initial email
 delivery, payments, ticket adapters/synchronization and retention policy remain
-deferred. Directory-order PR #127 is assumed to land first at 00070. The unmerged
+deferred. The merged directory-order PR #127 owns 00070. The unmerged
 invitation foundation/lifecycle migrations use 00071/00072. Development uses clean
 databases; databases from the earlier experimental 00070/00071 numbering require
 a separate compatibility upgrade and must not have their Goose history rewritten.
