@@ -750,8 +750,9 @@ func (h *Handler) PatchEventType(w http.ResponseWriter, r *http.Request) {
 			duration = *req.DurationMinutes
 		}
 		// Explicit fixed bounds are equivalent to the legacy fixed policy. A
-		// duration-only edit must not leave them pinned to the old default.
-		if req.DurationMinutes != nil && !req.MinDurationMinutes.Present && !req.MaxDurationMinutes.Present && !req.DurationIncrementMinutes.Present &&
+		// change of duration must not leave them pinned to the old default. A
+		// no-op PATCH preserves the owner's explicitly configured policy.
+		if duration != currentDuration && !req.MinDurationMinutes.Present && !req.MaxDurationMinutes.Present && !req.DurationIncrementMinutes.Present &&
 			policy.Min != nil && policy.Max != nil && *policy.Min == *policy.Max {
 			policy = durationPolicy{}
 			set("min_duration_minutes", nil)
