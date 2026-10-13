@@ -246,5 +246,6 @@ at an unconditional `"zoom"`.
 - The NS8 module is a thin wrapper around the published app image, built by
   `.github/workflows/ns8-module.yml` with the same tag scheme as
   `docker-publish.yml`. Release tags pin module and app to the same version.
-- The committed systemd unit keeps a `__CALNODE_APP_IMAGE__` placeholder;
-  `packaging/ns8/build-images.sh` stamps the real app ref at build time.
+- The app image ref lives in the `org.nethserver.images` label; at install
+  the cluster exposes it as `${CALNODE_IMAGE}` and the unit + configure read
+  it from there. Never hardcode an app tag in `packaging/ns8/`.

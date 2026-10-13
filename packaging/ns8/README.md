@@ -81,11 +81,14 @@ into the `calnode-data` volume, then pass its key explicitly, e.g.
 not expose the key field; cluster backup/restore never needs it (the key
 travels inside the backed-up module state).
 
-UNTESTED: no live NS8 node was reachable while writing this, so install,
-configure, update, backup and restore steps above are documented from the
-NS8 module layout but have not been run against a real cluster. The
-automated test suite in `tests/` covers install, configure, HTTP check and
-removal once a node is available.
+Live-tested 2026-10-13 on a single-node Rocky 9 cluster against the
+0.10.1-pinned build: install, configure, host-based route (root 302,
+`/admin/` 200 through Traefik), SQLite on the `calnode-data` volume,
+encryption key byte-identical across reconfigures, and `remove-module
+--no-preserve` with automatic route cleanup. Still untested live: cluster
+backup/restore (no backup destination was available on the test node) and
+the automated `tests/` robot suite, which covers install, configure, HTTP
+check and removal once a node is available.
 
 ## Uninstall
 
@@ -108,7 +111,7 @@ the same CI as the app. The root workflow `.github/workflows/ns8-module.yml`
 builds the module image on every PR (no push) and publishes on branch and
 tag pushes, mirroring the app tags in `docker-publish.yml`:
 
-- push to `main` pushes module `:edge` and `:latest`, running app `:edge`
+- push to `main` pushes module `:edge`, running app `:edge`
 - push to `dev` pushes module `:dev`, running app `:dev`
 - push a `vX.Y.Z` tag pushes module `:X.Y.Z`, `:X.Y` and `:latest`, running
   app `:X.Y.Z`, so a module release always runs the matching app release
@@ -121,13 +124,16 @@ bash build-images.sh
 
 It prints the `buildah push` commands for your registry. Override the app
 reference per build with e.g. `APP_IMAGE=ghcr.io/calnode/calnode:1.2.3
-IMAGETAGS="1.2.3 latest" PUSH=1 bash build-images.sh`. The systemd unit in
-the tree keeps a `__CALNODE_APP_IMAGE__` placeholder that the script stamps
-at build time, so the committed files never name an app tag.
+IMAGETAGS="1.2.3 latest" PUSH=1 bash build-images.sh`. `APP_IMAGE` only sets
+the `org.nethserver.images` label: at install the cluster writes that same
+reference into the module environment as `CALNODE_IMAGE`, which is what the
+systemd unit and configure-module actually run. The label is the single
+source of truth; nothing is stamped at build time.
 
 Running the test suite needs an NS8 test cluster; see the
 [NS8 testing docs](https://github.com/NethServer/ns8-github-actions/blob/v1/README.md#running-tests-locally).
-UNTESTED here: no test cluster was available.
+From this directory: `run-ns8-tests <NODE_ADDR> ghcr.io/calnode/ns8-calnode:latest`.
+Not yet run in CI: no test cluster is wired up.
 
 ## UI translation
 

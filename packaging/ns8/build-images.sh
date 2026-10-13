@@ -12,7 +12,11 @@
 #   APP_IMAGE  Calnode app image the module runs, default
 #              ghcr.io/calnode/calnode:latest. Release CI passes the app
 #              tag matching the release, so module 1.2.3 always runs app
-#              1.2.3 and the two can never drift apart.
+#              1.2.3 and the two can never drift apart. APP_IMAGE is only
+#              used for the org.nethserver.images label: the systemd unit
+#              reads the exact reference from ${CALNODE_IMAGE}, which the
+#              cluster writes into the module environment at install time
+#              from that same label. One source of truth, no stamping.
 #   IMAGETAGS  space-separated module tags to push, default "latest"
 #   PUSH=1     push after building. Default 0 prints the push commands.
 #
@@ -36,22 +40,9 @@ reponame="ns8-calnode"
 app_image="${APP_IMAGE:-ghcr.io/calnode/calnode:latest}"
 read -r -a imagetags <<< "${IMAGETAGS:-latest}"
 
-# Stage imageroot with the app image reference stamped in, so the committed
-# tree keeps a placeholder and releases pin the exact app tag. Both the
-# systemd unit and configure-module's warm-pull default are stamped.
-stage=$(mktemp -d)
-trap 'rm -rf "${stage}"' EXIT
-cp -r imageroot "${stage}/imageroot"
-sed -i "s#__CALNODE_APP_IMAGE__#${app_image}#g" \
-    "${stage}/imageroot/systemd/user/calnode.service" \
-    "${stage}/imageroot/actions/configure-module/20configure"
-if grep -q "__CALNODE_APP_IMAGE__" -r "${stage}/imageroot"; then
-    echo "App image placeholder was not fully substituted." >&2
-    exit 1
-fi
-
-# Create a new empty container image
+# Add imageroot directory to the container image
 container=$(buildah from scratch)
+buildah add "${container}" imageroot /imageroot
 
 # Reuse existing nodebuilder-ns8-calnode container, to speed up builds
 if ! buildah containers --format "{{.ContainerName}}" | grep -q nodebuilder-ns8-calnode; then
@@ -66,8 +57,7 @@ buildah run \
     nodebuilder-ns8-calnode \
     sh -c "corepack enable && yarn install && yarn build"
 
-# Add the staged imageroot directory to the container image
-buildah add "${container}" "${stage}/imageroot" /imageroot
+# Add the UI files to the container image
 buildah add "${container}" ui/dist /ui
 # Setup the entrypoint, ask to reserve one TCP port with the label and set a rootless container
 buildah config --entrypoint=/ \
