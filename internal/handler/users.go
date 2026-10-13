@@ -206,7 +206,34 @@ func (h *Handler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res, err := h.db.ExecContext(r.Context(), `DELETE FROM users WHERE id = ?`, targetID)
+	// Check before cascading through owned event types/bookings. SQLite can
+	// report a cascade's foreign-key failure as SQLITE_CONSTRAINT_TRIGGER rather
+	// than SQLITE_CONSTRAINT_FOREIGNKEY, so the delete-error fallback alone does
+	// not reliably produce the promised 409. Keep the check and delete atomic.
+	tx, err := h.db.BeginTx(r.Context(), nil)
+	if err != nil {
+		h.logger.ErrorContext(r.Context(), "delete user: begin tx", "error", err)
+		h.writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	defer tx.Rollback() //nolint:errcheck
+	var referenced bool
+	if err := tx.QueryRowContext(r.Context(), `SELECT EXISTS (
+		SELECT 1 FROM scheduling_invitations i
+		JOIN event_types et ON et.id = i.event_type_id
+		WHERE i.created_by = ? OR et.user_id = ? OR EXISTS (
+			SELECT 1 FROM scheduling_invitation_hosts ih
+			WHERE ih.invitation_id = i.id AND ih.user_id = ?))`,
+		targetID, targetID, targetID).Scan(&referenced); err != nil {
+		h.logger.ErrorContext(r.Context(), "delete user: invitation references", "error", err)
+		h.writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	if referenced {
+		h.writeError(w, http.StatusConflict, "this member is referenced by scheduling invitations; archive them instead")
+		return
+	}
+	res, err := tx.ExecContext(r.Context(), `DELETE FROM users WHERE id = ?`, targetID)
 	if err != nil {
 		if db.IsForeignKeyViolation(err) {
 			h.writeError(w, http.StatusConflict, "this member is referenced by scheduling invitations; archive them instead")
@@ -218,6 +245,11 @@ func (h *Handler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
 		h.writeError(w, http.StatusNotFound, "user not found")
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		h.logger.ErrorContext(r.Context(), "delete user: commit", "error", err)
+		h.writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 	h.writeJSON(w, http.StatusOK, map[string]any{"ok": true})
