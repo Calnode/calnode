@@ -70,9 +70,15 @@ func TestSchedulingInvitationMigrationExistingDatabase(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	var delivery string
+	if err := database.QueryRow(`SELECT delivery FROM scheduling_invitations WHERE id='invitation'`).Scan(&delivery); err != nil || delivery != "external" {
+		t.Fatalf("default delivery=%q err=%v", delivery, err)
+	}
 	for _, statement := range []string{
 		`UPDATE event_types SET min_duration_minutes = 15 WHERE id = 'event'`,
 		`UPDATE scheduling_invitations SET duration_minutes = 0 WHERE id = 'invitation'`,
+		`UPDATE scheduling_invitations SET delivery = 'calnode' WHERE id = 'invitation'`,
+		`UPDATE scheduling_invitations SET delivery = 'smtp' WHERE id = 'invitation'`,
 		`UPDATE scheduling_invitations SET status = 'booked' WHERE id = 'invitation'`,
 		`UPDATE scheduling_invitation_hosts SET role = 'bogus' WHERE invitation_id = 'invitation'`,
 		`DELETE FROM users WHERE id = 'owner'`,

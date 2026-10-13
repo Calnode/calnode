@@ -1,5 +1,5 @@
 -- +goose Up
--- Directory-order PR #127 is expected to land first at version 00070.
+-- Follows the merged directory-order migration at version 00070.
 -- Discussion #47 / issue #92: event types remain reusable defaults; invitations
 -- snapshot authorized scheduling values. NULL duration limits preserve the
 -- existing fixed-duration policy, including when the default duration changes.
@@ -35,7 +35,7 @@ CREATE TABLE scheduling_invitations (
     external_system TEXT NOT NULL DEFAULT '',
     external_reference TEXT NOT NULL DEFAULT '',
     external_url TEXT NOT NULL DEFAULT '',
-    delivery TEXT NOT NULL DEFAULT 'external' CHECK (delivery IN ('external', 'calnode')),
+    delivery TEXT NOT NULL DEFAULT 'external' CHECK (delivery = 'external'),
     status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('draft', 'active', 'booked', 'cancelled', 'expired')),
     booking_id TEXT UNIQUE REFERENCES bookings(id),
     expires_at TEXT NOT NULL,

@@ -55,6 +55,13 @@ func TestInvitationAPILifecycleAndOwnership(t *testing.T) {
 	body = invitationBody(slug)
 	rec, inv := createInvitation(t, h, key, body)
 	created := mustJSON(t, rec, 201, "create")
+	if created["delivery"] != "external" {
+		t.Fatalf("default delivery=%v", created["delivery"])
+	}
+	var delivery string
+	if err := db.QueryRow(`SELECT delivery FROM scheduling_invitations WHERE id=?`, inv.ID).Scan(&delivery); err != nil || delivery != "external" {
+		t.Fatalf("persisted delivery=%q err=%v", delivery, err)
+	}
 	if !strings.HasSuffix(mustString(t, created, "scheduling_url", "create"), "/s/"+inv.Token) {
 		t.Fatal("missing scheduling URL")
 	}
