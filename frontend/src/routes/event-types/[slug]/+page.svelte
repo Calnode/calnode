@@ -631,7 +631,10 @@
 				<p class="text-xs text-muted-foreground">How long the meeting runs.</p>
 			</div>
 			<div class="col-span-2 space-y-2">
-				<label class="flex items-center gap-2 text-sm"><input type="checkbox" bind:checked={durationRangeEnabled} /> Allow staff to choose invitation durations</label>
+				<div class="flex items-center gap-2">
+					<Checkbox id="invitation-duration-range" bind:checked={durationRangeEnabled} />
+					<Label for="invitation-duration-range" class="cursor-pointer font-normal">Allow staff to choose invitation durations</Label>
+				</div>
 				<p class="text-xs text-muted-foreground">Public bookings use the default duration. Invitation durations advance from the minimum by the increment.</p>
 				{#if durationRangeEnabled}
 					<div class="grid grid-cols-3 gap-3">
