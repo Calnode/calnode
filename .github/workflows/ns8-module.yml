@@ -37,6 +37,16 @@ jobs:
           bash -n imageroot/actions/configure-module/80start_services
           bash -n build-images.sh
           bash -n push-manifest.sh
+          # Every buildah subcommand the scripts invoke must be a real one.
+          # A typo like "buildah image exists" (there is no singular form)
+          # only surfaces after a full two-arch build, minutes into a publish.
+          # This runner has buildah preinstalled, so check it here instead.
+          for sub in $(grep -ohE 'buildah [a-z]+' build-images.sh push-manifest.sh | awk '{print $2}' | sort -u); do
+            if ! buildah "$sub" --help >/dev/null 2>&1; then
+              echo "::error::buildah has no subcommand '$sub' used by the build scripts"
+              exit 1
+            fi
+          done
           # No build-time placeholders may remain: the unit and configure read
           # the app ref from ${CALNODE_IMAGE} at install time.
           ! grep -rn '__CALNODE_APP_IMAGE__' imageroot/
