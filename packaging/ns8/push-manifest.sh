@@ -18,6 +18,9 @@
 #   REPOBASE       module image namespace, default ghcr.io/calnode
 #   TARGETARCHES   space-separated arches to assemble, required
 #   IMAGETAGS      space-separated tags to publish, default "latest"
+#   PUSH_DESTINATION  push target override, default docker://<tag>. Set to an
+#                     oci: path to exercise the whole script with no registry,
+#                     which is what the CI selftest does.
 #
 # Example:
 #   TARGETARCHES="amd64 arm64" IMAGETAGS="1.2.3 1.2 latest" bash push-manifest.sh
@@ -48,15 +51,23 @@ done
 for imagetag in "${imagetags[@]}"; do
     manifest="${repobase}/${reponame}:${imagetag}"
     # Drop any stale manifest so a retry cannot inherit old entries.
-    buildah manifest rm --all "${manifest}" 2>/dev/null || true
+    buildah manifest rm "${manifest}" 2>/dev/null || true
     buildah manifest create "${manifest}"
     for arch in "${arches[@]}"; do
-        buildah manifest add \
-            "${manifest}" \
-            "${repobase}/${reponame}:build-${arch}" \
-            "docker.io/calnode/ns8-calnode:${imagetag}-${arch}"
+        # Exactly two arguments: buildah 5.x takes only the list and the
+        # image, with no instance-name argument.
+        buildah manifest add "${manifest}" "${repobase}/${reponame}:build-${arch}"
     done
-    buildah manifest push --all "${manifest}" "docker://${manifest}"
+    # Refuse to publish a partial manifest. If any arch silently failed to
+    # join the list, an arm64 node would get an image it cannot run.
+    count=$(buildah manifest inspect "${manifest}" | grep -c '"architecture"')
+    if [ "$count" -ne "${#arches[@]}" ]; then
+        echo "Refusing to publish ${manifest}: it holds ${count} arches," \
+             "expected ${#arches[*]}" >&2
+        buildah manifest rm "${manifest}" 2>/dev/null || true
+        exit 1
+    fi
+    buildah manifest push --all "${manifest}" "${PUSH_DESTINATION:-docker://${manifest}}"
     buildah manifest rm "${manifest}"
     echo "Published ${manifest} (${arches[*]})"
 done
