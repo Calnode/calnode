@@ -30,12 +30,19 @@ Key facts:
 On the cluster leader, as root:
 
 ```
-add-module ghcr.io/calnode/ns8-calnode:latest 1
+add-module ghcr.io/calnode/ns8-calnode:edge 1
 ```
 
 Replace `calnode` with the actual registry namespace if you built your own
 image (see Development). The command prints the instance name, usually
 `ns8-calnode1`.
+
+> **Use `:edge`, not `:latest`.** This module has not had a release tag yet, so
+> `:latest` still points at the first build, which predates the fixes for a
+> missing `create-module` action, non-executable action scripts and an
+> invalid schema pattern. That build fails at `add-module`. `:latest` becomes
+> usable at the next module release, at which point a pinned version tag
+> (`ghcr.io/calnode/ns8-calnode:0.10.2`, say) is the better thing to install.
 
 Then configure it with your public hostname:
 
@@ -116,8 +123,9 @@ tag pushes, mirroring the app tags in `docker-publish.yml`:
 - push a `vX.Y.Z` tag pushes module `:X.Y.Z`, `:X.Y` and `:latest`, running
   app `:X.Y.Z`, so a module release always runs the matching app release
 
-Because `:latest` only moves on a release tag, use `:edge` to try the newest
-module on a test cluster.
+Because `:latest` only moves on a release tag, and no module release has been
+cut yet, `:latest` is currently unusable (see Install). Use `:edge` until the
+first module release lands.
 
 Every published module tag is a **multi-arch** manifest (amd64 + arm64). NS8
 runs modules as rootless containers on the node, so a single-arch image would
@@ -142,7 +150,7 @@ source of truth; nothing is stamped at build time.
 
 Running the test suite needs an NS8 test cluster; see the
 [NS8 testing docs](https://github.com/NethServer/ns8-github-actions/blob/v1/README.md#running-tests-locally).
-From this directory: `run-ns8-tests <NODE_ADDR> ghcr.io/calnode/ns8-calnode:latest`.
+From this directory: `run-ns8-tests <NODE_ADDR> ghcr.io/calnode/ns8-calnode:edge`.
 Not yet run in CI: no test cluster is wired up.
 
 ## UI translation
