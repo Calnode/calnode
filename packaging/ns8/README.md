@@ -116,16 +116,26 @@ tag pushes, mirroring the app tags in `docker-publish.yml`:
 - push a `vX.Y.Z` tag pushes module `:X.Y.Z`, `:X.Y` and `:latest`, running
   app `:X.Y.Z`, so a module release always runs the matching app release
 
+Because `:latest` only moves on a release tag, use `:edge` to try the newest
+module on a test cluster.
+
+Every published module tag is a **multi-arch** manifest (amd64 + arm64). NS8
+runs modules as rootless containers on the node, so a single-arch image would
+install on amd64 and fail on arm64. CI builds each arch to a private
+`:build-<arch>` tag and only then assembles the public tags, so an interrupted
+release cannot publish a single-arch image under a version tag.
+
 To build locally on a machine with podman and buildah, from this directory:
 
 ```
-bash build-images.sh
+PUSH=1 TARGETARCH=amd64 bash build-images.sh
+PUSH=1 TARGETARCH=arm64 bash build-images.sh
+TARGETARCHES="amd64 arm64" IMAGETAGS="latest" bash push-manifest.sh
 ```
 
-It prints the `buildah push` commands for your registry. Override the app
-reference per build with e.g. `APP_IMAGE=ghcr.io/calnode/calnode:1.2.3
-IMAGETAGS="1.2.3 latest" PUSH=1 bash build-images.sh`. `APP_IMAGE` only sets
-the `org.nethserver.images` label: at install the cluster writes that same
+Override the app reference per build with e.g. `APP_IMAGE=ghcr.io/calnode/calnode:1.2.3
+IMAGETAGS="1.2.3 1.2 latest"`. `APP_IMAGE` only sets the
+`org.nethserver.images` label: at install the cluster writes that same
 reference into the module environment as `CALNODE_IMAGE`, which is what the
 systemd unit and configure-module actually run. The label is the single
 source of truth; nothing is stamped at build time.
