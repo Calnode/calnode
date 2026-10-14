@@ -76,12 +76,24 @@ Each backup of the instance contains:
 - the `calnode-data` volume (the SQLite database file, the whole app state)
 - the module state, including `calnode.env` with `CALNODE_ENCRYPTION_KEY`
 
-This only works because the module ships `imageroot/etc/state-include.conf`
-listing `volumes/calnode-data`. NS8 passes only the volumes a module declares
-there to restic; a module with named volumes and no such file is backed up
-successfully while silently omitting the data. Measured on a live cluster:
-without it a backup of a populated instance contained 2 files and 476 bytes;
-with it, 7 files and 2.1 MB.
+This only works because the module ships `imageroot/etc/state-include.conf`.
+NS8 hands that file to restic as `--files-from`, so it backs up **only** the
+paths listed there: a module with named volumes and no such file is backed up
+successfully while silently omitting the data, and a module that lists only its
+volume silently omits the encryption key. Both lines are required:
+
+- `volumes/calnode-data` - the SQLite database, the whole app state
+- `state/calnode.env` - holds `CALNODE_ENCRYPTION_KEY`; without it a restored
+  database cannot be decrypted, and the app fails to start with
+  "keyvault: failed to unwrap DEK"
+
+Measured on a live cluster, same instance, same data:
+
+| state-include.conf | files | size |
+|---|---|---|
+| absent | 2 | 476 bytes (no database) |
+| volume only | 7 | 2.16 MB (database, no key) |
+| volume + `state/calnode.env` | 8 | 2.16 MB |
 
 Restore to the same or a replacement node from the cluster admin backup
 section, then re-run `configure-module` with the same hostname if the route
@@ -99,10 +111,11 @@ Live-tested 2026-10-13/14 on a single-node Rocky 9 cluster against the
 `:edge` build: install, configure, host-based route (root 302, `/admin/` 200
 through Traefik), SQLite on the `calnode-data` volume, encryption key
 byte-identical across reconfigures, `remove-module --no-preserve` with
-automatic route cleanup, and a cluster backup that captures the database
-once `etc/state-include.conf` is present. Still untested live: a full
-destroy-and-restore cycle (the backup capture is verified, the restore leg
-is not), and the automated `tests/` robot suite, which needs a test cluster.
+automatic route cleanup, and a full cluster backup → destroy → restore cycle:
+after restoring, the app served 200, logged "keyvault: DEK unwrapped from
+keystore", the encryption-key fingerprint was unchanged, and an event type
+created before the backup was still there. Still untested live: the
+automated `tests/` robot suite, which needs a test cluster.
 
 ## Uninstall
 
