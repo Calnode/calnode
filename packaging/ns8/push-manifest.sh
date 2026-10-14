@@ -36,7 +36,9 @@ if [ "${#arches[@]}" -eq 0 ]; then
 fi
 
 for arch in "${arches[@]}"; do
-    if ! buildah image exists "${repobase}/${reponame}:build-${arch}"; then
+    # `images -q` prints the image ID when the tag is present and prints
+    # nothing when it is absent. There is no singular "image exists" form.
+    if [ -z "$(buildah images -q "${repobase}/${reponame}:build-${arch}")" ]; then
         echo "Missing local image for ${arch}. Run build-images.sh with" \
              "TARGETARCH=${arch} PUSH=1 first." >&2
         exit 1
