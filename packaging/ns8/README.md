@@ -76,6 +76,13 @@ Each backup of the instance contains:
 - the `calnode-data` volume (the SQLite database file, the whole app state)
 - the module state, including `calnode.env` with `CALNODE_ENCRYPTION_KEY`
 
+This only works because the module ships `imageroot/etc/state-include.conf`
+listing `volumes/calnode-data`. NS8 passes only the volumes a module declares
+there to restic; a module with named volumes and no such file is backed up
+successfully while silently omitting the data. Measured on a live cluster:
+without it a backup of a populated instance contained 2 files and 476 bytes;
+with it, 7 files and 2.1 MB.
+
 Restore to the same or a replacement node from the cluster admin backup
 section, then re-run `configure-module` with the same hostname if the route
 needs recreating. Keep at least one tested backup: the encryption key and
@@ -88,14 +95,14 @@ into the `calnode-data` volume, then pass its key explicitly, e.g.
 not expose the key field; cluster backup/restore never needs it (the key
 travels inside the backed-up module state).
 
-Live-tested 2026-10-13 on a single-node Rocky 9 cluster against the
-0.10.1-pinned build: install, configure, host-based route (root 302,
-`/admin/` 200 through Traefik), SQLite on the `calnode-data` volume,
-encryption key byte-identical across reconfigures, and `remove-module
---no-preserve` with automatic route cleanup. Still untested live: cluster
-backup/restore (no backup destination was available on the test node) and
-the automated `tests/` robot suite, which covers install, configure, HTTP
-check and removal once a node is available.
+Live-tested 2026-10-13/14 on a single-node Rocky 9 cluster against the
+`:edge` build: install, configure, host-based route (root 302, `/admin/` 200
+through Traefik), SQLite on the `calnode-data` volume, encryption key
+byte-identical across reconfigures, `remove-module --no-preserve` with
+automatic route cleanup, and a cluster backup that captures the database
+once `etc/state-include.conf` is present. Still untested live: a full
+destroy-and-restore cycle (the backup capture is verified, the restore leg
+is not), and the automated `tests/` robot suite, which needs a test cluster.
 
 ## Uninstall
 
