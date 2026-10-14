@@ -47,26 +47,6 @@ jobs:
               exit 1
             fi
           done
-
-      # Run the real push-manifest.sh end to end against a scratch storage and
-      # an oci: destination, so no registry and no credentials are needed. PR
-      # builds push nothing, which means the manifest step is skipped on PRs and
-      # a green run says nothing about it. Both earlier publish failures (a bad
-      # subcommand, then a bad argument count) lived in this step and only
-      # surfaced on a release push, so exercise it here instead.
-      # push-manifest.sh refuses to publish a list that is missing an arch, so a
-      # clean exit is the assertion.
-      - name: Selftest the multi-arch manifest assembly
-        run: |
-          set -euo pipefail
-          tmp=$(mktemp -d)
-          buildah from --name ocr-selftest-amd64 --arch amd64 scratch >/dev/null
-          buildah commit ocr-selftest-amd64 ocr-selftest/ns8-calnode:build-amd64 >/dev/null
-          buildah from --name ocr-selftest-arm64 --arch arm64 scratch >/dev/null
-          buildah commit ocr-selftest-arm64 ocr-selftest/ns8-calnode:build-arm64 >/dev/null
-          REPOBASE=ocr-selftest TARGETARCHES="amd64 arm64" IMAGETAGS=selftest \
-            PUSH_DESTINATION="oci:${tmp}/out" bash packaging/ns8/push-manifest.sh
-          echo "manifest selftest OK"
           # No build-time placeholders may remain: the unit and configure read
           # the app ref from ${CALNODE_IMAGE} at install time.
           ! grep -rn '__CALNODE_APP_IMAGE__' imageroot/
@@ -81,6 +61,26 @@ jobs:
             exit 1
           fi
           echo "$scripts" | awk '$1!="100755" {print "not executable in index:", $4; bad=1} END{exit bad}'
+
+      # Run the real push-manifest.sh end to end against a scratch storage and
+      # an oci: destination, so no registry and no credentials are needed. PR
+      # builds push nothing, which means the manifest step is skipped on PRs and
+      # a green run says nothing about it. Both earlier publish failures (a bad
+      # subcommand, then a bad argument count) lived in that step and only
+      # surfaced on a release push, so exercise it here instead.
+      # push-manifest.sh refuses to publish a list that is missing an arch, so a
+      # clean exit is the assertion.
+      - name: Selftest the multi-arch manifest assembly
+        run: |
+          set -euo pipefail
+          tmp=$(mktemp -d)
+          buildah from --name ocr-selftest-amd64 --arch amd64 scratch >/dev/null
+          buildah commit ocr-selftest-amd64 ocr-selftest/ns8-calnode:build-amd64 >/dev/null
+          buildah from --name ocr-selftest-arm64 --arch arm64 scratch >/dev/null
+          buildah commit ocr-selftest-arm64 ocr-selftest/ns8-calnode:build-arm64 >/dev/null
+          REPOBASE=ocr-selftest TARGETARCHES="amd64 arm64" IMAGETAGS=selftest \
+            PUSH_DESTINATION="oci:${tmp}/out" bash packaging/ns8/push-manifest.sh
+          echo "manifest selftest OK"
 
   build:
     needs: validate
