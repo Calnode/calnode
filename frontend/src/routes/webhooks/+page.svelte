@@ -19,6 +19,10 @@
 		'booking.cancelled',
 		'booking.rescheduled',
 		'booking.rsvp',
+		'scheduling_invitation.created',
+		'scheduling_invitation.booked',
+		'scheduling_invitation.cancelled',
+		'scheduling_invitation.expired',
 		'recording.completed',
 		'transcript.ready',
 		'notes.ready'
@@ -208,6 +212,7 @@
 
 		<div class="mb-4 space-y-3">
 			<p class="text-sm font-medium">Data to send <span class="font-normal text-muted-foreground">— untick anything you don't want delivered</span></p>
+			<p class="text-xs text-muted-foreground">Invitation events and invitation-related booking events always include their authorized duration, assigned hosts and external reference for correlation.</p>
 			{#each fieldGroups as grp}
 				<div class="space-y-1.5">
 					<p class="text-xs font-semibold uppercase tracking-wide text-muted-foreground">

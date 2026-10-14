@@ -276,6 +276,10 @@
 	let testError   = $state<Partial<Record<MsgKey, string>>>({});
 
 	let allowPhoneCall = $state(false);
+	let durationRangeEnabled = $state(false);
+	let minDuration = $state(15);
+	let maxDuration = $state(120);
+	let durationIncrement = $state(15);
 	const slug = $page.params.slug;
 
 	async function loadET() {
@@ -283,6 +287,10 @@
 		try {
 			et = await api.get<EventType>(`/v1/event-types/${slug}`);
 			allowPhoneCall = et.allow_phone_call;
+			durationRangeEnabled = et.min_duration_minutes != null;
+			minDuration = et.min_duration_minutes ?? et.duration_minutes;
+			maxDuration = et.max_duration_minutes ?? et.duration_minutes;
+			durationIncrement = et.duration_increment_minutes ?? 15;
 			form = {
 				display_order: et.display_order,
 				name: et.name,
@@ -330,6 +338,11 @@
 	async function saveET() {
 		if (!Number.isSafeInteger(form.display_order)) { toast.error('Directory order must be a whole number.'); return; }
 		if (!form.name.trim()) { toast.error('Name is required.'); return; }
+		if (durationRangeEnabled && (![minDuration, maxDuration, durationIncrement, form.duration_minutes].every(v => Number.isSafeInteger(v) && v > 0) ||
+			minDuration > maxDuration || form.duration_minutes < minDuration || form.duration_minutes > maxDuration ||
+			(form.duration_minutes - minDuration) % durationIncrement !== 0)) {
+			toast.error('Duration must fit the invitation range and increment, measured from the minimum.'); return;
+		}
 		if (form.duration_minutes < 5) { toast.error('Duration must be at least 5 minutes.'); return; }
 		// Matches the API, which only requires a positive value. A stricter floor here would
 		// make an event type configured below it via the API unsaveable from the editor -
@@ -350,6 +363,9 @@
 				name: form.name.trim(),
 				description: form.description.trim() || null,
 				duration_minutes: Number(form.duration_minutes),
+				min_duration_minutes: durationRangeEnabled ? minDuration : null,
+				max_duration_minutes: durationRangeEnabled ? maxDuration : null,
+				duration_increment_minutes: durationRangeEnabled ? durationIncrement : null,
 				slot_interval_minutes: Number(form.slot_interval_minutes),
 				is_active: form.is_active,
 				is_public: form.is_public,
@@ -613,6 +629,20 @@
 				<Label for="et-dur">Duration (minutes)</Label>
 				<Input id="et-dur" type="number" min="5" step="5" bind:value={form.duration_minutes} />
 				<p class="text-xs text-muted-foreground">How long the meeting runs.</p>
+			</div>
+			<div class="col-span-2 space-y-2">
+				<div class="flex items-center gap-2">
+					<Checkbox id="invitation-duration-range" bind:checked={durationRangeEnabled} />
+					<Label for="invitation-duration-range" class="cursor-pointer font-normal">Allow staff to choose invitation durations</Label>
+				</div>
+				<p class="text-xs text-muted-foreground">Public bookings use the default duration. Invitation durations advance from the minimum by the increment.</p>
+				{#if durationRangeEnabled}
+					<div class="grid grid-cols-3 gap-3">
+						<div><Label for="et-min-duration">Minimum (minutes)</Label><Input id="et-min-duration" type="number" min="1" step="1" bind:value={minDuration} /></div>
+						<div><Label for="et-max-duration">Maximum (minutes)</Label><Input id="et-max-duration" type="number" min="1" step="1" bind:value={maxDuration} /></div>
+						<div><Label for="et-duration-increment">Increment (minutes)</Label><Input id="et-duration-increment" type="number" min="1" step="1" bind:value={durationIncrement} /></div>
+					</div>
+				{/if}
 			</div>
 			<div class="space-y-1.5">
 				<Label for="et-slot">Slot interval (minutes)</Label>

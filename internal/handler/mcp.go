@@ -455,6 +455,9 @@ func (h *Handler) mcpRescheduleBooking(ctx context.Context, _ *mcp.CallToolReque
 		return nil, bookingJSON{}, fmt.Errorf("load duration: %w", err)
 	}
 	newEnd := newStart.Add(time.Duration(durMins) * time.Minute)
+	if b.SchedulingInvitationID != "" {
+		newEnd = newStart.Add(b.EndAt.Sub(b.StartAt))
+	}
 	if err := h.validateRescheduleTime(ctx, b.ID, b.EventTypeID, b.HostID, newStart, newEnd); err != nil {
 		if errors.Is(err, errSlotUnavailable) {
 			return nil, bookingJSON{}, fmt.Errorf("that time slot is no longer available")
@@ -463,10 +466,10 @@ func (h *Handler) mcpRescheduleBooking(ctx context.Context, _ *mcp.CallToolReque
 	}
 
 	previousStart, previousEnd := b.StartAt, b.EndAt
-	updated, err := h.bookingSvc.Reschedule(ctx, b.ID, newStart, newEnd)
+	updated, err := h.rescheduleBooking(ctx, b.ID, newStart, newEnd)
 	if err != nil {
 		switch {
-		case errors.Is(err, booking.ErrDoubleBooked):
+		case errors.Is(err, booking.ErrDoubleBooked), errors.Is(err, errSlotUnavailable), errors.Is(err, booking.ErrInvitationUnavailable):
 			return nil, bookingJSON{}, fmt.Errorf("that time slot is no longer available")
 		case errors.Is(err, booking.ErrAlreadyCancelled):
 			return nil, bookingJSON{}, fmt.Errorf("this booking has been cancelled")
