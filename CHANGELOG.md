@@ -26,6 +26,15 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
   key. Each invite gets a private reply address, and an answer only counts when Resend
   verified it came from that booking's booker.
 
+### Security
+- **Go toolchain 1.26.9, and the Docker image builds with Go 1.27.2.** Both close 12
+  published Go standard-library vulnerabilities that `govulncheck` reports as reachable
+  from Calnode: GO-2026-6599 and GO-2026-6600 (`html/template`); GO-2026-6603,
+  GO-2026-6610, GO-2026-6611, GO-2026-6612 and GO-2026-6617 (HTTP/2 in `net/http`);
+  GO-2026-6605, GO-2026-6609 and GO-2026-6613 (`net/http`); GO-2026-6607 (`crypto/tls`);
+  and GO-2026-6608 (`net/textproto`). `go.mod` moves from `toolchain go1.26.6` and the
+  builder image from `golang:1.27.1-alpine`. No code or dependency change.
+
 ## [0.10.1] - 2026-09-29
 
 ### Added
