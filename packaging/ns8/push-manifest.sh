@@ -55,7 +55,7 @@ for imagetag in "${imagetags[@]}"; do
     for arch in "${arches[@]}"; do
         # Read each architecture from the REGISTRY, not from local
         # containers-storage. Reading locally is what broke the v0.11.0 release:
-        # buildah ran with two graph roots merged into a single store, so the
+        # buildah(1) there had two graph roots merged into a single store, so the
         # local image record existed while the manifest blob it pointed at did
         # not, and the add failed with
         #
