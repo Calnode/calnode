@@ -114,8 +114,11 @@ byte-identical across reconfigures, `remove-module --no-preserve` with
 automatic route cleanup, and a full cluster backup → destroy → restore cycle:
 after restoring, the app served 200, logged "keyvault: DEK unwrapped from
 keystore", the encryption-key fingerprint was unchanged, and an event type
-created before the backup was still there. Still untested live: the
-automated `tests/` robot suite, which needs a test cluster.
+created before the backup was still there.
+
+The `tests/` robot suite is wired up and dry-run clean (5/5, Robot 7.5), but it
+has still never been executed against a live cluster. Every live check above
+was done by hand. See [Testing](#testing).
 
 ## Uninstall
 
@@ -168,10 +171,38 @@ reference into the module environment as `CALNODE_IMAGE`, which is what the
 systemd unit and configure-module actually run. The label is the single
 source of truth; nothing is stamped at build time.
 
-Running the test suite needs an NS8 test cluster; see the
-[NS8 testing docs](https://github.com/NethServer/ns8-github-actions/blob/v1/README.md#running-tests-locally).
-From this directory: `run-ns8-tests <NODE_ADDR> ghcr.io/calnode/ns8-calnode:edge`.
-Not yet run in CI: no test cluster is wired up.
+## Testing
+
+The suite in `tests/` is Robot Framework. It installs the module on a real NS8
+cluster, configures it, checks the route responds, screenshots the settings UI
+and removes the module again:
+
+| file | what it does |
+|---|---|
+| `10__calnode.robot` | install, configure, route responds |
+| `15__ui.robot` | screenshots of the Status and Settings pages, tagged `ui` |
+| `20__remove.robot` | removal |
+
+Locally, against a cluster you already have (see the
+[NS8 testing docs](https://github.com/NethServer/ns8-github-actions/blob/v1/README.md#running-tests-locally)):
+
+```
+run-ns8-tests <NODE_ADDR> ghcr.io/calnode/ns8-calnode:edge
+```
+
+`NODE_ADDR` must be reachable by SSH as root, using the key at `~/.ssh/id_ecdsa`
+or wherever `SSH_KEYFILE` points. Add `RUN_UI_TESTS=true` to include the `ui`
+tests; without it they are skipped and the runner uses a lighter image.
+
+In CI, `.github/workflows/test-module.yml` does the same thing and provisions
+the cluster on DigitalOcean. It is manual-only for now because it needs a
+`do_token` repository secret this repo does not have yet. It also deliberately
+does not use the stock `test-module.yml@v1`, which derives the image under test
+from the repository name and would resolve it to `ghcr.io/calnode/calnode:latest`
+instead of `ghcr.io/calnode/ns8-calnode:edge`; the workflow header explains the
+full reasoning.
+
+Output lands in `tests/outputs/` and is git-ignored.
 
 ## UI translation
 
