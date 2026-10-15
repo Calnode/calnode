@@ -70,7 +70,7 @@ jobs:
       # surfaced on a release push, so exercise it here instead.
       # push-manifest.sh refuses to publish a list that is missing an arch, so a
       # clean exit is the assertion.
-      - name: Selftest the multi-arch manifest assembly
+      - name: Selftest the multi-arch manifest assembly (hermetic)
         run: |
           set -euo pipefail
           tmp=$(mktemp -d)
@@ -78,9 +78,45 @@ jobs:
           buildah commit ocr-selftest-amd64 ocr-selftest/ns8-calnode:build-amd64 >/dev/null
           buildah from --name ocr-selftest-arm64 --arch arm64 scratch >/dev/null
           buildah commit ocr-selftest-arm64 ocr-selftest/ns8-calnode:build-arm64 >/dev/null
-          REPOBASE=ocr-selftest TARGETARCHES="amd64 arm64" IMAGETAGS=selftest \
-            PUSH_DESTINATION="oci:${tmp}/out" bash packaging/ns8/push-manifest.sh
-          echo "manifest selftest OK"
+          # SOURCE_PREFIX is empty so this reads from local containers-storage,
+          # which is the only way to exercise the script with no registry.
+          REPOBASE=ocr-selftest SOURCE_PREFIX="" TARGETARCHES="amd64 arm64" \
+            IMAGETAGS=selftest PUSH_DESTINATION="oci:${tmp}/out" \
+            bash packaging/ns8/push-manifest.sh
+          echo "hermetic manifest selftest OK"
+
+      # The hermetic test above reads local storage, so it cannot catch the
+      # failure that actually broke the v0.11.0 release: buildah running with
+      # two graph roots merged into one store, where the local image record
+      # existed but its manifest blob did not, and
+      #   buildah manifest add <list> <local ref>
+      # failed with "reading manifest for instance ...: file does not exist".
+      #
+      # A release now reads each architecture from the registry instead, so this
+      # test does too: it assembles from the real published :build-<arch> tags
+      # and pushes the result to a local oci: path, so it needs no credentials
+      # and publishes nothing. If these tags are missing, that is itself the
+      # signal worth failing on.
+      - name: Selftest the manifest assembly against the registry
+        run: |
+          set -euo pipefail
+          tmp=$(mktemp -d)
+          REPOBASE=ghcr.io/calnode TARGETARCHES="amd64 arm64" \
+            IMAGETAGS=selftest-registry PUSH_DESTINATION="oci:${tmp}/out" \
+            bash packaging/ns8/push-manifest.sh
+          # Prove the assembled list really carries both arches rather than
+          # trusting the exit code alone. buildah writes a plain OCI layout, so
+          # read its index.json directly.
+          count=$(jq '[.manifests[]
+                     | select(.platform.architecture != null
+                              and .platform.architecture != "unknown")]
+                    | length' "${tmp}/out/index.json")
+          if [ "$count" -ne 2 ]; then
+            echo "::error::assembled index holds ${count} arches, expected 2"
+            cat "${tmp}/out/index.json"
+            exit 1
+          fi
+          echo "registry-backed manifest selftest OK (${count} arches)"
 
   build:
     needs: validate
