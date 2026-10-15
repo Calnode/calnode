@@ -116,9 +116,10 @@ after restoring, the app served 200, logged "keyvault: DEK unwrapped from
 keystore", the encryption-key fingerprint was unchanged, and an event type
 created before the backup was still there.
 
-The `tests/` robot suite is wired up and dry-run clean (5/5, Robot 7.5), but it
-has still never been executed against a live cluster. Every live check above
-was done by hand. See [Testing](#testing).
+The `tests/` robot suite has now been run against a live cluster: 4/4 without
+the browser and 5/5 with `RUN_UI_TESTS=true`, on a single-node NS8 built from
+`ns8-core@ns8-stable` on Rocky 9.8. Running it is what turned up the
+route-registration race described in [Testing](#testing).
 
 ## Uninstall
 
