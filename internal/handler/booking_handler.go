@@ -409,6 +409,42 @@ func (h *Handler) validateRescheduleTime(ctx context.Context, bookingID, eventTy
 	return h.validateBookingTime(ctx, &et, "fixed", hostIDs, nil, newStart, newEnd)
 }
 
+// filterAvailableHosts narrows a candidate pool to the hosts actually free
+// within their own configured availability for [startAt, endAt).
+//
+// Why this exists separately from validateBookingTime (#146): that function
+// answers "does this slot exist at all?", which for round-robin means only that
+// AT LEAST ONE candidate is within hours — deliberately, because it mirrors
+// slots.pickHosts, and the public /slots listing must still offer a day where
+// some host is free. It does NOT answer "who gets assigned?", and the
+// assignment happens later inside booking.Service.Create by rotation strategy.
+// Handing Create the unfiltered pool therefore let it pick a host who had
+// declared themselves unavailable, booking them on the available host's slots.
+//
+// calendarFreeHosts does not close this gap: it filters on external calendar
+// BUSY, and returns the pool untouched when no calendar provider is connected —
+// the common self-hosted case, where overrides are the only availability signal.
+//
+// Pure DB reads (no external calls), so this is cheap on the hot path. For
+// non-round-robin modes validateBookingTime has already required every
+// candidate to be available, making this a no-op that preserves behaviour.
+func (h *Handler) filterAvailableHosts(ctx context.Context, et *bookableEventType, candidates []string, startAt, endAt time.Time) ([]string, error) {
+	available := make([]string, 0, len(candidates))
+	for _, hostID := range candidates {
+		ok, err := h.hostAvailableAt(ctx, hostID, et.ID, startAt, endAt)
+		if err != nil {
+			return nil, fmt.Errorf("check host availability: %w", err)
+		}
+		if ok {
+			available = append(available, hostID)
+		}
+	}
+	if len(available) == 0 {
+		return nil, errSlotUnavailable
+	}
+	return available, nil
+}
+
 // hostAvailableAt reports whether [startAt, endAt) falls entirely within one of
 // userID's configured availability windows (weekly rules, or a date override) for
 // eventTypeID, per internal/slots' own per-date resolution (slots.ResolveDayWindows).
@@ -551,6 +587,9 @@ func (h *Handler) createBookingForSlug(ctx context.Context, slug string, startAt
 		return nil, errNoHostAvailable
 	}
 	if err := h.validateBookingTime(ctx, et, et.RoutingMode, candidates, required, startAt.UTC(), endAt); err != nil {
+		return nil, err
+	}
+	if candidates, err = h.filterAvailableHosts(ctx, et, candidates, startAt.UTC(), endAt); err != nil {
 		return nil, err
 	}
 	candidates, optional, err = h.calendarFreeHosts(ctx, et, candidates, required, optional, startAt.UTC(), endAt)
@@ -871,6 +910,10 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.validateBookingTime(r.Context(), et, et.RoutingMode, candidates, required, startAt.UTC(), endAt); err != nil {
+		h.writeError(w, http.StatusConflict, "this slot is no longer available")
+		return
+	}
+	if candidates, err = h.filterAvailableHosts(r.Context(), et, candidates, startAt.UTC(), endAt); err != nil {
 		h.writeError(w, http.StatusConflict, "this slot is no longer available")
 		return
 	}
