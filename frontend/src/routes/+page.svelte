@@ -30,7 +30,13 @@
 			calendarConnected = cal.connected;
 			hasAvailability = (rules.items?.length ?? 0) > 0;
 			hasEventType = (events.items?.length ?? 0) > 0;
-			eventLinks = (events.items ?? []).filter((e) => e.slug).map((e) => ({ slug: e.slug, name: e.name }));
+			// Only bookable events belong in "Your booking links": an archived or
+			// deactivated event type still answers its /book/ URL but is not being
+			// offered, so advertising it here reads as live and invites bookings the
+			// host has switched off.
+			eventLinks = (events.items ?? [])
+				.filter((e) => e.slug && e.is_active && !e.archived)
+				.map((e) => ({ slug: e.slug, name: e.name }));
 		} finally {
 			loading = false;
 		}

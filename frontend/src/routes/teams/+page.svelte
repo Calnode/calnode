@@ -203,7 +203,11 @@
 						{:else}
 							<div class="flex items-center gap-2">
 								<p class="font-medium">{team.name}</p>
-								<Badge variant="outline" class="font-mono text-xs">{team.slug}</Badge>
+								<Badge variant="outline" class="font-mono text-xs">
+									<a href={`/team/${team.slug}`} target="_blank" rel="noopener noreferrer" class="hover:underline">
+										{team.slug}
+									</a>
+								</Badge>
 							</div>
 							<p class="mt-0.5 text-xs text-muted-foreground">{team.member_count} member{team.member_count === 1 ? '' : 's'}</p>
 						{/if}

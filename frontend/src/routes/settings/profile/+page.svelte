@@ -85,6 +85,12 @@
 		avatarUrl = user.avatar_url ?? '';
 	}, 'Could not load profile'));
 
+	// Mirrors the normalisation the API applies, so the link we show is the URL that
+	// actually resolves — a handle with spaces or punctuation is rewritten server-side.
+	const handleSlug = $derived(
+		handle.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+	);
+
 	function cancelCrop() {
 		cropOpen = false;
 		cropSrc = '';
@@ -202,7 +208,21 @@
 				<div class="space-y-1.5">
 					<Label for="handle">Booking handle</Label>
 					<Input id="handle" type="text" bind:value={handle} placeholder="e.g. wynne" />
-					<p class="text-xs text-muted-foreground">Your public booking page{handle.trim() ? `: /u/${handle.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')}` : ''}. Leave blank for no page.</p>
+					{#if handleSlug}
+						<p class="text-xs text-muted-foreground">
+							Your public booking page:
+							<a
+								href={`/u/${handleSlug}`}
+								target="_blank"
+								rel="noopener noreferrer"
+								class="font-mono text-primary hover:underline"
+							>
+								/u/{handleSlug}
+							</a>
+						</p>
+					{:else}
+						<p class="text-xs text-muted-foreground">Leave blank for no page.</p>
+					{/if}
 				</div>
 				<div class="space-y-1.5">
 					<Label class="text-muted-foreground">Email</Label>
