@@ -11,7 +11,16 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-10-15
+
 ### Added
+- **Directory pages can list event types in a deliberate order.** Set *Display order* on
+  an event type and the public directory sorts by it, so the meeting you want booked first
+  is the one a visitor sees first. Event types with no order set keep their existing
+  position.
+- **Directory pages can carry your business branding.** A logo, business name, accent
+  colour and description, set once in Settings, now head your public directory, so the page
+  a visitor lands on looks like your site rather than a Calnode default.
 - **Calendar invites can come from Calnode instead of the host's calendar.** A new
   per-event-type setting, *Calendar invite → Sent by*. The default is unchanged: the host's
   connected calendar invites the booker, from the host's own address. Choose *Calnode* and
