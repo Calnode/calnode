@@ -125,7 +125,7 @@ func BuildHandler(ctx context.Context, cfg *config.Config, db *sql.DB, logger *s
 	} else {
 		h.SetWebhookSvc(whs)
 		// Pass live so the worker picks up SMTP changes automatically.
-		wrk := worker.New(db, whs, logger, worker.WithMailer(live))
+		wrk := worker.New(db, whs, logger, worker.WithMailer(live), worker.WithReminderCheck(h.ReminderAllowed))
 		// Notetaker jobs live in the handler package (they need LLM/S3/encKey).
 		wrk.RegisterHandler("notetaker.transcribe", h.JobNotetakerTranscribe)
 		wrk.RegisterHandler("notetaker.summarize", h.JobNotetakerSummarize)

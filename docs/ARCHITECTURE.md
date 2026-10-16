@@ -773,6 +773,31 @@ as the desired state:
 
 ---
 
+### Reminders after external Google Calendar cancellation
+
+Before sending a reminder, the worker checks the primary host's recorded calendar
+and event ID. Google `status=cancelled` suppresses that job even when the local
+booking remains confirmed. An active event permits delivery; lookup failures
+(including unavailable credentials, 404/410, rate limits and malformed responses)
+use the job's normal retry policy and never authorize sending. After retries are
+exhausted the job is failed. The lookup has a 10-second deadline, and local booking
+status is checked again afterwards to catch cancellation during the request.
+
+This is a reminder guard, not inbound booking synchronization: it does not change
+booking status, free the slot, refund a payment or send cancellation notifications.
+Secondary hosts' calendar copies do not decide cancellation. Bookings without a
+recorded primary-host event and providers without cancellation-read support retain
+the existing reminder behavior. Only Google currently implements this check.
+Saving or clearing Google credentials replaces only the Google provider using a
+fresh calendar-service snapshot; Microsoft/CalDAV registrations and an existing
+non-Google primary provider survive without a restart. In-flight operations keep
+the previous snapshot. Clearing Google credentials still leaves Google reminders
+unverifiable, so they follow the same retry/failure policy rather than sending
+without a cancellation check.
+
+The recorded calendar rescues destination changes within an account; changing to
+another account can still make the event inaccessible and fail its reminder job.
+
 ## 13. Webhooks & background worker
 
 - `internal/worker`: polls the `jobs` table **every 5s** (batch ≤10). Job types:
