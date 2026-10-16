@@ -25,13 +25,29 @@ Usage:
     --expect-app-tag T assert every label names exactly this app tag, so the
                        module release and the app release are the same version
 
-There is deliberately NO option to override the app repository. The app image a
-module runs is whatever its org.nethserver.images label names, so the label is
-the only authoritative source and it is also what a fork needs: a module built
-under someone else's namespace names their app image, and deriving from the
-label handles that with no configuration. An override here would be worse than
-useless, because it would let a pair check be asserted against an app repository
-the module does not actually reference, hiding a mislabelled module.
+There is deliberately no option to override the app repository, and the reason
+is narrower than "an override is always wrong".
+
+The app image a module runs is whatever its org.nethserver.images label names,
+so the label is the only authoritative source. Deriving from it also needs no
+configuration for a fork: a module built under another namespace names their app
+image, and reading the label handles that on its own.
+
+So an override used as a SUBSTITUTE for the label is a footgun. It would assert
+the pair against an app repository the module does not actually reference, which
+hides a mislabelled module instead of catching it. That is the same hole
+--expect-app-tag exists to close, one level up.
+
+An override used as an ASSERTION instead would be strictly stronger, not weaker,
+and is a real future need. Today --expect-app-tag catches a wrong app TAG, but a
+module labelled `ghcr.io/someoneelse/calnode:0.11.1` still passes as long as that
+image exists and is multi-arch. A `--expect-app-repo` would fail unless the label
+names exactly the repository AND tag this release publishes, which is what a fork
+publishing under its own namespace wants and cannot express from the label alone.
+
+We do not need it until someone maintains such a fork. Until then, adding it as a
+substitute would be the bug; adding it as an assertion would be the fix. The
+distinction to preserve is which of the two it is, not whether to have it.
 
 Exit status is 0 only if every tag passes every applicable check.
 
@@ -72,12 +88,28 @@ class Fail(Exception):
     """A check failed in a way worth reporting verbatim."""
 
 
+def normalize_repo(repo):
+    """Registry repository paths are case-sensitive and must be lowercase.
+
+    ghcr's TOKEN endpoint wants a lowercase scope and answers HTTP 400
+    otherwise. Its MANIFEST endpoint is stricter: an uppercase path is simply a
+    repository that does not exist, so it answers HTTP 404 while the lowercase
+    path of the very same image resolves.
+
+    That combination is what made this invisible. The owner arrives from GitHub
+    as `github.repository_owner` verbatim, which is `Calnode` for this repo, so
+    ns8-module.yml passes `ghcr.io/Calnode/ns8-calnode`. Lowercasing inside
+    token() alone fixed the scope request and left the fetch 404ing, so the
+    release looked fixed while every push to main and dev stayed red.
+
+    Normalise at the single point where a registry path becomes a URL, so every
+    caller is covered and neither endpoint can be missed again.
+    """
+    return repo.lower()
+
+
 def token(repo):
-    # ghcr's token endpoint requires the repository path LOWERCASE and answers
-    # HTTP 400 otherwise. The owner arrives from GitHub as `github.repository_owner`
-    # verbatim, which is `Calnode` for this repo, so normalise here rather than
-    # trusting every caller to remember: a case slip here fails a correct release.
-    repo = repo.lower()
+    repo = normalize_repo(repo)
     if repo not in _tokens:
         url = f"{REGISTRY}/token?scope=repository:{repo}:pull&service=ghcr.io"
         with urllib.request.urlopen(url, timeout=30) as f:
@@ -87,6 +119,7 @@ def token(repo):
 
 def get(repo, reference):
     """GET a manifest, returning (body, mediaType)."""
+    repo = normalize_repo(repo)
     req = urllib.request.Request(
         f"{REGISTRY}/v2/{repo}/manifests/{reference}",
         headers={"Authorization": f"Bearer {token(repo)}", "Accept": ACCEPT},
@@ -96,6 +129,7 @@ def get(repo, reference):
 
 
 def get_blob(repo, digest):
+    repo = normalize_repo(repo)
     req = urllib.request.Request(
         f"{REGISTRY}/v2/{repo}/blobs/{digest}",
         headers={"Authorization": f"Bearer {token(repo)}"},
