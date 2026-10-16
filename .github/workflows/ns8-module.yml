@@ -105,12 +105,28 @@ jobs:
             IMAGETAGS=selftest-registry PUSH_DESTINATION="oci:${tmp}/out" \
             bash packaging/ns8/push-manifest.sh
           # Prove the assembled list really carries both arches rather than
-          # trusting the exit code alone. buildah writes a plain OCI layout, so
-          # read its index.json directly.
-          count=$(jq '[.manifests[]
-                     | select(.platform.architecture != null
-                              and .platform.architecture != "unknown")]
+          # trusting the exit code alone. buildah writes a plain OCI layout,
+          # but it stores the assembled list as a single entry in index.json
+          # whose own mediaType is an image index, with the per-arch manifests
+          # inside that referenced blob. So look there when the top level holds
+          # no platform entries of its own.
+          count=$(jq '[.manifests[]?
+                       | select(.platform.architecture != null
+                                and .platform.architecture != "unknown")]
                     | length' "${tmp}/out/index.json")
+          if [ "$count" -eq 0 ]; then
+            top=$(jq -r '.manifests[0].digest' "${tmp}/out/index.json")
+            inner="${tmp}/out/blobs/sha256/${top#sha256:}"
+            if [ ! -f "$inner" ]; then
+              echo "::error::no index entry with platforms and no referenced blob at $inner"
+              cat "${tmp}/out/index.json"
+              exit 1
+            fi
+            count=$(jq '[.manifests[]?
+                         | select(.platform.architecture != null
+                                  and .platform.architecture != "unknown")]
+                      | length' "$inner")
+          fi
           if [ "$count" -ne 2 ]; then
             echo "::error::assembled index holds ${count} arches, expected 2"
             cat "${tmp}/out/index.json"
