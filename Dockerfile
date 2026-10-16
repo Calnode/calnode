@@ -53,6 +53,11 @@ RUN wget -qO- \
     "https://github.com/benbjohnson/litestream/releases/download/v${LITESTREAM_VERSION}/litestream-v${LITESTREAM_VERSION}-linux-${TARGETARCH}.tar.gz" \
     | tar -xz -C /usr/local/bin litestream
 
+# Export the same executable as the container, including its embedded frontend.
+FROM scratch AS standalone
+COPY --from=builder /build/calnode /calnode
+COPY LICENSE /LICENSE
+
 # ── Runtime stage ─────────────────────────────────────────────────────────────
 # alpine (not scratch) — needed for the shell entrypoint and Litestream.
 # No --platform pin here: inherits the build host's native architecture,
