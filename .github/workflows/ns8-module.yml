@@ -33,6 +33,7 @@ jobs:
         working-directory: packaging/ns8
         run: |
           python3 -m py_compile imageroot/actions/configure-module/20configure imageroot/actions/get-configuration/20read
+          python3 -m py_compile assert-multiarc.py
           python3 -c "import json, glob; [json.load(open(f)) for f in glob.glob('imageroot/actions/*/*.json') + glob.glob('ui/public/*.json') + ['ui/public/i18n/en/translation.json']]"
           bash -n imageroot/actions/configure-module/80start_services
           bash -n build-images.sh
@@ -61,6 +62,27 @@ jobs:
             exit 1
           fi
           echo "$scripts" | awk '$1!="100755" {print "not executable in index:", $4; bad=1} END{exit bad}'
+
+          # state-include.conf is handed to restic as --files-from, so restic
+          # backs up ONLY the paths listed in it. Dropping a line is a silent
+          # data-loss failure: the backup job still reports success while
+          # quietly omitting that data. Neither line is discoverable from the
+          # image, so assert the file instead of trusting it to stay correct.
+          #   volumes/calnode-data  the SQLite database, the whole app state
+          #   state/calnode.env     holds CALNODE_ENCRYPTION_KEY; without it a
+          #                         restored database cannot be decrypted and
+          #                         the app refuses to start with
+          #                         "keyvault: failed to unwrap DEK"
+          inc=imageroot/etc/state-include.conf
+          test -f "$inc" || { echo "::error::$inc is missing"; exit 1; }
+          for required in volumes/calnode-data state/calnode.env; do
+            if ! grep -qx "$required" "$inc"; then
+              echo "::error::$inc no longer lists '$required'. restic receives this file as --files-from, so omitting a path silently drops that data from every backup while still reporting success."
+              cat "$inc"
+              exit 1
+            fi
+          done
+          echo "state-include.conf lists both the volume and the encryption key"
 
       # Run the real push-manifest.sh end to end against a scratch storage and
       # an oci: destination, so no registry and no credentials are needed. PR
@@ -221,3 +243,17 @@ jobs:
           TARGETARCHES: "amd64 arm64"
           IMAGETAGS: ${{ steps.tags.outputs.module_tags }}
         run: bash push-manifest.sh
+
+      # The gate that would have caught the amd64-only :latest. It inspects what
+      # actually landed in the registry rather than local storage, so a broken
+      # publish cannot pass by looking healthy from the runner. Needs no extra
+      # secrets: the module repository is public and the token is anonymous.
+      # Runs for branch pushes too, because :edge and :dev are published tags
+      # and deserve exactly the same guarantee as a version tag.
+      - name: Assert the published tags are multi-arch
+        if: github.event_name != 'pull_request'
+        working-directory: packaging/ns8
+        env:
+          MODULE_REPO: ghcr.io/${{ github.repository_owner }}/ns8-calnode
+          IMAGETAGS: ${{ steps.tags.outputs.module_tags }}
+        run: python3 assert-multiarc.py "$MODULE_REPO" $IMAGETAGS
