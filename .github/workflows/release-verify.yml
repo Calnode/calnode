@@ -1,0 +1,129 @@
+name: Verify module release
+
+# The paired check that a module release cannot live without.
+#
+# ns8-module.yml and docker-publish.yml are both triggered by the same tag push
+# and run CONCURRENTLY. That means the module workflow cannot verify that the app
+# image exists: on a fresh release the app image is frequently not published yet,
+# and checking there races the app publish. It is not a timing bug that a longer
+# retry can fix. An app build can lag by however long it takes, and that grows,
+# so a longer retry drifts toward never failing a genuinely absent app image,
+# while a short one fails releases whose app image was merely slow.
+#
+# So the pair check lives here instead. This workflow is triggered by the
+# COMPLETION of both publish workflows, and the job runs only when both of them
+# concluded successfully for the same commit. There is no sleep, no retry budget
+# and no polling loop deciding whether to wait: the two completion events are the
+# dependency. Whichever workflow finishes last triggers the run that does the
+# work, so a slow app publish simply means the job runs later, not that it fails.
+#
+# Consequence worth knowing: once both have succeeded, an app tag that is still
+# absent is genuinely wrong rather than late, so assert-multiarc.py --pair fails
+# on it promptly instead of waiting.
+
+on:
+  workflow_run:
+    workflows: ['NS8 module publish', 'Docker publish']
+    types: [completed]
+
+permissions:
+  actions: read      # read the sibling workflow's conclusion for this commit
+  contents: read      # resolve which tag, if any, points at this commit
+
+concurrency:
+  group: verify-release-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify module and app tags agree
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Wait for both publish workflows to finish
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+          TRIGGERING: ${{ github.event.workflow_run.name }}
+          # Both publish workflows must have concluded for this commit. The one
+          # that triggered this run has already reported; the other may still be
+          # running, in which case its own completion will trigger us again.
+          SIBLING: ${{ github.event.workflow_run.name == 'NS8 module publish' && 'Docker publish' || 'NS8 module publish' }}
+        run: |
+          set -euo pipefail
+          echo "triggering workflow: $TRIGGERING (conclusion ${{ github.event.workflow_run.conclusion }})"
+          echo "waiting for sibling: $SIBLING"
+
+          if [ "${{ github.event.workflow_run.conclusion }}" != "success" ]; then
+            echo "::notice::the triggering workflow did not succeed; nothing to verify."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "outcome=not-verified" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          status=$(gh api "repos/${{ github.repository }}/actions/workflows/$SIBLING/runs" \
+            --jq "[.workflow_runs[] | select(.head_sha == \"$SHA\")] | first | .status // \"absent\"")
+          conclusion=$(gh api "repos/${{ github.repository }}/actions/workflows/$SIBLING/runs" \
+            --jq "[.workflow_runs[] | select(.head_sha == \"$SHA\")] | first | .conclusion // \"absent\"")
+
+          echo "sibling status=$status conclusion=$conclusion"
+          if [ "$status" != "completed" ]; then
+            echo "::notice::$SIBLING has not finished for this commit (status=$status)." \
+                 "Its completion will trigger this workflow again. Not a failure."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "outcome=waiting-for-sibling" >> "$GITHUB_OUTPUT"
+          elif [ "$conclusion" != "success" ]; then
+            echo "::error::$SIBLING concluded '$conclusion' for this commit, so this is not a clean release."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "outcome=blocked" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+            echo "outcome=verify" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Resolve the released tag
+        if: steps.gate.outputs.ready == 'true'
+        id: tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          # workflow_run does not carry the ref, so find the tag that points at
+          # this commit. A plain branch push has no such tag and skips, which is
+          # how this stays out of the way of ordinary commits.
+          tag=$(gh api "repos/${{ github.repository }}/tags" --paginate \
+            --jq "map(select(.commit.sha == \"$SHA\")) | map(.name) | map(select(test(\"^v[0-9]+\\\\.[0-9]+\\\\.[0-9]+$\"))) | first // empty" \
+            | head -1 | tr -d '\r')
+          if [ -z "$tag" ]; then
+            echo "::notice::no release tag points at $SHA; not a tag release, skipping."
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=true" >> "$GITHUB_OUTPUT"
+            echo "name=$tag" >> "$GITHUB_OUTPUT"
+            echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Assert the module and app tags form a matched multi-arch pair
+        if: steps.gate.outputs.ready == 'true' && steps.tag.outputs.found == 'true'
+        working-directory: packaging/ns8
+        env:
+          MODULE_REPO: ghcr.io/${{ github.repository_owner }}/ns8-calnode
+        run: |
+          # Same version tag plus its major.minor alias, plus :latest. The module
+          # publishes exactly these three, so all three must resolve to the same
+          # release and carry the same app reference.
+          #
+          # No app repository is passed: the app image is taken from each
+          # module's org.nethserver.images label, which is the only authoritative
+          # source for what a module actually runs.
+          version="${{ steps.tag.outputs.version }}"
+          major_minor="${version%.*}"
+          python3 assert-multiarc.py \
+            --pair \
+            --expect-app-tag "$version" \
+            "$MODULE_REPO" \
+            "$version" "$major_minor" latest
