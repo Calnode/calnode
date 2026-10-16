@@ -112,16 +112,18 @@ jobs:
         working-directory: packaging/ns8
         env:
           MODULE_REPO: ghcr.io/${{ github.repository_owner }}/ns8-calnode
-          APP_REPO: calnode/calnode
         run: |
           # Same version tag plus its major.minor alias, plus :latest. The module
           # publishes exactly these three, so all three must resolve to the same
           # release and carry the same app reference.
+          #
+          # No app repository is passed: the app image is taken from each
+          # module's org.nethserver.images label, which is the only authoritative
+          # source for what a module actually runs.
           version="${{ steps.tag.outputs.version }}"
           major_minor="${version%.*}"
           python3 assert-multiarc.py \
             --pair \
             --expect-app-tag "$version" \
-            --app-repo "$APP_REPO" \
             "$MODULE_REPO" \
             "$version" "$major_minor" latest

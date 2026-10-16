@@ -19,13 +19,19 @@ Two modes, because two things have very different lifetimes:
       belongs in release-verify.yml, which runs after both have completed.
 
 Usage:
-    assert-multiarc.py [--pair] [--expect-app-tag TAG] [--app-repo REPO]
-                       <module-repo> <tag> [<tag>...]
+    assert-multiarc.py [--pair] [--expect-app-tag TAG] <module-repo> <tag> [<tag>...]
 
     --pair             resolve and check the app image named by each label
     --expect-app-tag T assert every label names exactly this app tag, so the
                        module release and the app release are the same version
-    --app-repo R       app repository (default calnode/calnode)
+
+There is deliberately NO option to override the app repository. The app image a
+module runs is whatever its org.nethserver.images label names, so the label is
+the only authoritative source and it is also what a fork needs: a module built
+under someone else's namespace names their app image, and deriving from the
+label handles that with no configuration. An override here would be worse than
+useless, because it would let a pair check be asserted against an app repository
+the module does not actually reference, hiding a mislabelled module.
 
 Exit status is 0 only if every tag passes every applicable check.
 
@@ -59,7 +65,6 @@ ACCEPT = ", ".join(INDEX_TYPES | {
 ATTEMPTS = 4
 RETRY_SECONDS = 10
 
-DEFAULT_APP_REPO = os.environ.get("APP_REPO", "calnode/calnode")
 _tokens = {}
 
 
@@ -222,8 +227,6 @@ def main(argv=None):
                    help="also resolve the app image named by each label")
     p.add_argument("--expect-app-tag", default=None,
                    help="assert every label names exactly this app tag")
-    p.add_argument("--app-repo", default=DEFAULT_APP_REPO,
-                   help="app image repository (default %(default)s)")
     p.add_argument("--required-arches",
                    default=os.environ.get("REQUIRED_ARCHES", "amd64 arm64"))
     args = p.parse_args(argv)
