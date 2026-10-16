@@ -250,6 +250,13 @@ jobs:
       # secrets: the module repository is public and the token is anonymous.
       # Runs for branch pushes too, because :edge and :dev are published tags
       # and deserve exactly the same guarantee as a version tag.
+      #
+      # Deliberately module-only: it does NOT resolve the app image named by
+      # org.nethserver.images. This workflow and docker-publish.yml are triggered
+      # by the same tag push and run concurrently, so on a fresh release the app
+      # image is often not published yet and resolving it here races the app
+      # publish. That check lives in release-verify.yml, which runs once both
+      # publish workflows have completed.
       - name: Assert the published tags are multi-arch
         if: github.event_name != 'pull_request'
         working-directory: packaging/ns8

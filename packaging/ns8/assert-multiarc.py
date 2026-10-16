@@ -1,40 +1,46 @@
 #!/usr/bin/env python3
 """Assert that published NS8 module tags are genuinely multi-arch and coherent.
 
-This is the release gate. It exists because a release once published an
-amd64-only image as `:latest`, which installs on amd64 and hard-fails on arm64,
-and nothing noticed: the publish step succeeded, and no check looked at what had
-actually landed in the registry.
+Two modes, because two things have very different lifetimes:
 
-Run it after `push-manifest.sh`. Usage:
+  module-only (default)
+      Checks the module image itself: that the tag is an image index, that every
+      required architecture is present, that each architecture's config really
+      declares it, and that it carries a well-formed `org.nethserver.images`
+      label. These are intrinsic properties of what the module workflow just
+      published, so this is safe to run there.
 
-    assert-multiarc.py <module-repo> <tag> [<tag>...]
+  --pair
+      Additionally resolves the app image named by each label and asserts it
+      exists, is multi-arch, and contains each architecture. This must NOT run
+      in the module workflow: `ns8-module.yml` and `docker-publish.yml` are
+      triggered by the same tag push and run CONCURRENTLY, so on a fresh release
+      the app image does not exist yet and the check races the app publish. It
+      belongs in release-verify.yml, which runs after both have completed.
 
-Exit status is 0 only if every tag passes every check for every required
-architecture.
+Usage:
+    assert-multiarc.py [--pair] [--expect-app-tag TAG] [--app-repo REPO]
+                       <module-repo> <tag> [<tag>...]
 
-For each required architecture this verifies:
+    --pair             resolve and check the app image named by each label
+    --expect-app-tag T assert every label names exactly this app tag, so the
+                       module release and the app release are the same version
+    --app-repo R       app repository (default calnode/calnode)
 
-  1. the tag resolves to an image index / manifest list, not a single manifest.
-     A single manifest means an arm64 node cannot pull the tag at all.
-  2. the index contains that architecture.
-  3. that architecture's image config really declares that architecture, so an
-     entry cannot be mislabelled inside the list.
-  4. that config carries an `org.nethserver.images` label. NS8 reads it at
-     install time to learn which app image to run, so a missing label produces a
-     module that installs and then does nothing.
-  5. the app image the label names is itself multi-arch and contains that same
-     architecture, so the module cannot point at an app image its own node
-     cannot run.
+Exit status is 0 only if every tag passes every applicable check.
 
-Defaults assume the public repository; override with MODULE_REPO /
-REQUIRED_ARCHES.
+Why the distinction between a slow app image and a missing one is not a guess:
+in --pair mode both publish workflows have already finished, so an app tag that
+is still absent is genuinely wrong, not merely late. The retry here only absorbs
+registry read-after-write propagation, it is bounded, and it then fails.
 """
+import argparse
 import json
 import os
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 REGISTRY = "https://ghcr.io"
@@ -47,14 +53,13 @@ ACCEPT = ", ".join(INDEX_TYPES | {
     "application/vnd.docker.distribution.manifest.v2+json",
 })
 
-# A push and an immediate read can race on the registry side. Retry briefly so a
-# release is not failed by propagation latency, but fail rather than wait long
-# enough to hide a real problem.
+# Read-after-write propagation only. Deliberately short: in --pair mode the app
+# publish has already finished, so anything still missing after this is a real
+# fault rather than a race, and must fail rather than wait.
 ATTEMPTS = 4
 RETRY_SECONDS = 10
 
-_module_repo = os.environ.get("MODULE_REPO", "calnode/ns8-calnode")
-_required = os.environ.get("REQUIRED_ARCHES", "amd64 arm64").split()
+DEFAULT_APP_REPO = os.environ.get("APP_REPO", "calnode/calnode")
 _tokens = {}
 
 
@@ -110,7 +115,7 @@ def arches(body):
 
 
 def fetch_with_retry(repo, reference, what):
-    """Tolerate a short propagation delay after a push, then give up loudly."""
+    """Absorb registry propagation, then fail loudly and quickly."""
     last = None
     for attempt in range(1, ATTEMPTS + 1):
         try:
@@ -123,7 +128,8 @@ def fetch_with_retry(repo, reference, what):
     raise Fail(f"cannot fetch {what}: HTTP {last.code}")
 
 
-def check_tag(repo, tag, arch_names):
+def app_refs_for(repo, tag, arch_names):
+    """Check the module image and return the app refs its labels name."""
     print(f"\n=== {repo}:{tag}  (require {arch_names})")
     body, ctype = fetch_with_retry(repo, tag, f"{repo}:{tag}")
     mtype = body.get("mediaType") or ctype
@@ -136,6 +142,7 @@ def check_tag(repo, tag, arch_names):
     have = arches(body)
     print(f"  ok    image index, arches present: {sorted(a for _, a in have)}")
 
+    found = {}
     for arch in arch_names:
         if ("linux", arch) not in have:
             raise Fail(f"index is missing linux/{arch}")
@@ -159,48 +166,90 @@ def check_tag(repo, tag, arch_names):
         app_ref = labels.get("org.nethserver.images")
         if not app_ref:
             raise Fail(f"linux/{arch} has no org.nethserver.images label")
-        print(f"  ok    linux/{arch} org.nethserver.images = {app_ref}")
-
         app_repo, app_tag = split_ref(app_ref)
-        abody, actype = fetch_with_retry(app_repo, app_tag, f"app image {app_ref}")
-        amtype = abody.get("mediaType") or actype
-        if amtype not in INDEX_TYPES:
-            raise Fail(f"app image {app_ref} is single-arch ({amtype})")
+        if not app_tag:
+            raise Fail(f"linux/{arch} label org.nethserver.images={app_ref} has no tag")
+        print(f"  ok    linux/{arch} org.nethserver.images = {app_ref}")
+        found[arch] = (app_repo, app_tag)
+
+    # Every architecture must agree on the app image, or different nodes would
+    # get different applications from the same module tag.
+    distinct = set(found.values())
+    if len(distinct) > 1:
+        raise Fail(f"architectures disagree on the app image: {sorted(distinct)}")
+    return found
+
+
+def check_app_image(app_repo, app_tag, arch_names, what):
+    abody, actype = fetch_with_retry(app_repo, app_tag, what)
+    amtype = abody.get("mediaType") or actype
+    if amtype not in INDEX_TYPES:
+        raise Fail(f"{what} is single-arch ({amtype}); an arm64 node cannot run it")
+    for arch in arch_names:
         if ("linux", arch) not in arches(abody):
-            raise Fail(f"app image {app_ref} does not contain linux/{arch}")
-        print(f"  ok    app image {app_ref} is multi-arch and contains linux/{arch}")
+            raise Fail(f"{what} does not contain linux/{arch}")
+    print(f"  ok    {what} is multi-arch and contains {sorted(arch_names)}")
 
 
-def main(argv):
-    repo = argv[1] if len(argv) > 1 else _module_repo
-    tags = argv[2:]
-    if not tags:
-        print(__doc__)
-        return 2
+def check_tag(repo, tag, arch_names, pair, expect_app_tag):
+    found = app_refs_for(repo, tag, arch_names)
+    if not pair:
+        print("  --    not checking the app image (module-only mode)")
+        return
 
+    for app_repo, app_tag in sorted(set(found.values())):
+        if expect_app_tag and app_tag != expect_app_tag:
+            raise Fail(
+                f"label points at app tag '{app_tag}' but this release publishes "
+                f"app tag '{expect_app_tag}'; the module and the app would be "
+                "different versions"
+            )
+        check_app_image(
+            app_repo,
+            app_tag,
+            arch_names,
+            f"app image {app_repo}:{app_tag}",
+        )
+    if expect_app_tag:
+        print(f"  ok    module {tag} and app {expect_app_tag} are the same release")
+
+
+def main(argv=None):
+    p = argparse.ArgumentParser(add_help=True, description=__doc__)
+    p.add_argument("repo", help="module image repository, e.g. calnode/ns8-calnode")
+    p.add_argument("tags", nargs="+", help="published module tags to check")
+    p.add_argument("--pair", action="store_true",
+                   help="also resolve the app image named by each label")
+    p.add_argument("--expect-app-tag", default=None,
+                   help="assert every label names exactly this app tag")
+    p.add_argument("--app-repo", default=DEFAULT_APP_REPO,
+                   help="app image repository (default %(default)s)")
+    p.add_argument("--required-arches",
+                   default=os.environ.get("REQUIRED_ARCHES", "amd64 arm64"))
+    args = p.parse_args(argv)
+
+    arch_names = args.required_arches.split()
     failures = []
-    for tag in tags:
+    for tag in args.tags:
         try:
-            check_tag(repo, tag, _required)
+            check_tag(args.repo, tag, arch_names, args.pair, args.expect_app_tag)
         except Fail as exc:
             print(f"  FAIL  {exc}")
-            failures.append(f"{repo}:{tag}: {exc}")
+            failures.append(f"{args.repo}:{tag}: {exc}")
         except Exception as exc:  # noqa: BLE001 - report, never mask
             print(f"  ERROR {type(exc).__name__}: {exc}")
-            failures.append(f"{repo}:{tag}: {type(exc).__name__}: {exc}")
+            failures.append(f"{args.repo}:{tag}: {type(exc).__name__}: {exc}")
 
     print("\n" + "=" * 62)
     for f in failures:
         print(f"  FAIL  {f}")
     if failures:
-        print(
-            f"\n{len(failures)} of {len(tags)} published tag(s) are not usable. "
-            "Refusing to call this release good."
-        )
+        print(f"\n{len(failures)} of {len(args.tags)} tag(s) are not usable.")
         return 1
-    print(f"  PASS  all {len(tags)} published tag(s) are multi-arch and coherent")
+    mode = "multi-arch and coherent" if args.pair else "multi-arch with coherent labels"
+    print(f"  PASS  all {len(args.tags)} tag(s) are {mode}")
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv))
+    sys.exit(main())
