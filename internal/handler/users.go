@@ -22,7 +22,7 @@ func (h *Handler) ListUsers(w http.ResponseWriter, r *http.Request) {
 	}
 	rows, err := h.db.QueryContext(r.Context(), `
 		SELECT u.id, u.email, u.name, u.iana_timezone, u.is_admin, u.is_owner, u.email_login,
-		       COALESCE(u.provider,''), COALESCE(u.avatar_url,''), u.created_at,
+		       COALESCE(u.provider,''), COALESCE(u.avatar_url,''), COALESCE(u.handle,''), u.created_at,
 		       u.archived_at, COALESCE(u.archived_by,''), COALESCE(ab.name,'')
 		FROM users u LEFT JOIN users ab ON ab.id = u.archived_by
 		`+where+` ORDER BY u.created_at ASC`)
@@ -41,6 +41,7 @@ func (h *Handler) ListUsers(w http.ResponseWriter, r *http.Request) {
 		ID             string    `json:"id"`
 		Email          string    `json:"email"`
 		Name           string    `json:"name"`
+		Handle         string    `json:"handle,omitempty"`
 		Timezone       string    `json:"timezone"`
 		IsAdmin        bool      `json:"is_admin"`
 		IsOwner        bool      `json:"is_owner"`
@@ -62,7 +63,7 @@ func (h *Handler) ListUsers(w http.ResponseWriter, r *http.Request) {
 		var isAdmin, isOwner, emailLogin int
 		var archivedAt sql.NullString
 		if err := rows.Scan(&u.ID, &u.Email, &u.Name, &u.Timezone, &isAdmin, &isOwner, &emailLogin,
-			&u.Provider, &u.AvatarURL, &u.CreatedAt, &archivedAt, &u.ArchivedBy, &u.ArchivedByName); err != nil {
+			&u.Provider, &u.AvatarURL, &u.Handle, &u.CreatedAt, &archivedAt, &u.ArchivedBy, &u.ArchivedByName); err != nil {
 			continue
 		}
 		u.IsAdmin = isAdmin != 0
@@ -83,6 +84,15 @@ func (h *Handler) ListUsers(w http.ResponseWriter, r *http.Request) {
 	}
 	for i := range out {
 		byID[out[i].ID] = &out[i]
+	}
+	// Close before the next query: the pool is a single connection, and an open
+	// cursor holds it (exhausted is not closed) — querying while rows is open
+	// deadlocks.
+	rows.Close() // #nosec G104 -- rows already fully consumed above; nothing actionable on close error
+	if err := rows.Err(); err != nil {
+		h.logger.ErrorContext(r.Context(), "list users: rows", "error", err)
+		h.writeError(w, http.StatusInternalServerError, "internal error")
+		return
 	}
 
 	// Attach each member's teams (the Members↔Teams cross-reference).
@@ -153,12 +163,17 @@ func (h *Handler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 
 	// Block removal while the user still hosts upcoming bookings, so attendees
 	// are never silently orphaned. They must be reassigned or cancelled first.
+	// Group/round-robin seats live in booking_hosts, not bookings.host_id, so a
+	// member check covers both — otherwise a non-primary attendee passes the
+	// guard and the delete either FK-aborts or silently drops their seat.
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	var upcoming int
 	if err := h.db.QueryRowContext(r.Context(), `
-		SELECT COUNT(*) FROM bookings
-		WHERE host_id = ? AND status != 'cancelled' AND end_at > ?`,
-		targetID, now).Scan(&upcoming); err != nil {
+		SELECT COUNT(DISTINCT b.id) FROM bookings b
+		LEFT JOIN booking_hosts bh ON bh.booking_id = b.id
+		WHERE (b.host_id = ? OR bh.user_id = ?)
+		  AND b.status != 'cancelled' AND b.end_at > ?`,
+		targetID, targetID, now).Scan(&upcoming); err != nil {
 		h.logger.ErrorContext(r.Context(), "delete user: count bookings", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -166,6 +181,26 @@ func (h *Handler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 	if upcoming > 0 {
 		h.writeError(w, http.StatusConflict,
 			"this member still has upcoming bookings; reassign or cancel them before removing the member")
+		return
+	}
+
+	// Past and cancelled bookings still reference their primary host
+	// (bookings.host_id has no ON DELETE action, deliberately: deleting a user
+	// must not cascade-delete booking history out from under other attendees).
+	// Non-primary seats and MCP tokens cascade away via migration 00063, so only
+	// primary-host rows block here. Reassigning a booking moves its host_id and
+	// clears this guard.
+	var historical int
+	if err := h.db.QueryRowContext(r.Context(), `
+		SELECT COUNT(*) FROM bookings WHERE host_id = ?`,
+		targetID).Scan(&historical); err != nil {
+		h.logger.ErrorContext(r.Context(), "delete user: count hosted bookings", "error", err)
+		h.writeError(w, http.StatusInternalServerError, "internal error")
+		return
+	}
+	if historical > 0 {
+		h.writeError(w, http.StatusConflict,
+			"this member still hosts past bookings; reassign them before removing the member")
 		return
 	}
 

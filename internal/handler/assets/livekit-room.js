@@ -26,6 +26,7 @@
       $(s).classList.toggle('hidden', s !== id);
     });
     if (id !== 'lk-room') $('lk-rec-banner').classList.add('hidden'); // the banner only belongs in-room
+    $('lk-host-banner').classList.add('hidden');
   }
   function fail(msg) {
     if (msg) $('lk-error-msg').textContent = msg;
@@ -35,6 +36,22 @@
     var el = $('lk-status');
     if (!msg) { el.classList.add('hidden'); return; }
     el.textContent = msg; el.classList.remove('hidden');
+  }
+  // Name of whoever currently holds the host badge (not me), or ''.
+  function currentHostName() {
+    if (!room || !room.localParticipant) return '';
+    var me = room.localParticipant.identity;
+    var all = Array.from(room.remoteParticipants.values());
+    for (var i = 0; i < all.length; i++) {
+      if (all[i] && all[i].identity !== me && all[i].metadata === 'host') {
+        return all[i].name || all[i].identity;
+      }
+    }
+    return '';
+  }
+  function showHostBanner(msg) {
+    $('lk-host-banner-msg').textContent = msg;
+    $('lk-host-banner').classList.remove('hidden');
   }
   function initial(name) { return (name || '?').trim().charAt(0).toUpperCase() || '?'; }
 
@@ -98,6 +115,11 @@
 
   function initPrejoin() {
     if (!roomToken) { fail('This meeting link is missing its access token.'); return; }
+    // Host link (#101): warn before they share it. The role is display-only here;
+    // the server re-verifies on /token, so a forged role buys nothing.
+    if (RoomLogic.roleFromToken(roomToken) === 'host') {
+      $('lk-hostlink-note').classList.remove('hidden');
+    }
     syncToggle($('lk-pre-cam'), camOn, 'Camera');
     syncToggle($('lk-pre-mic'), micOn, 'Mic');
     $('lk-pre-cam').onclick = function () { camOn = !camOn; syncToggle($('lk-pre-cam'), camOn, 'Camera'); startPreview(); };
@@ -459,8 +481,15 @@
         // Reflect the host badge for whoever this is (newly-promoted host, or a demoted one).
         setHostBadge(participant.identity, m === 'host');
         if (participant.identity === room.localParticipant.identity) {
+          var wasHost = isHost;
           isHost = RoomLogic.nextIsHost(isHost, m); // see room-logic.js (tested)
           applyRoomMeta(); // refresh record + screen buttons + host menu for the new status
+          // Demoted by a shared host link (#101): say who took over instead of
+          // silently dropping the controls. Reclaim visibility comes from the
+          // refreshed UI state (owner keeps it).
+          var note = RoomLogic.demoteNotice(wasHost, isHost, currentHostName(),
+            !$('lk-hm-reclaim').classList.contains('hidden'));
+          if (note) showHostBanner(note);
         }
       })
       .on(RE.Disconnected, function () { closeLeaveModal(); showOnly('lk-left'); });
@@ -517,6 +546,7 @@
     paintChatBadge();
     $('lk-chat-btn').onclick = function () { setChat(!chatOpen); };
     $('lk-chat-close').onclick = function () { setChat(false); };
+    $('lk-host-banner-x').onclick = function () { $('lk-host-banner').classList.add('hidden'); };
     $('lk-chat-form').onsubmit = function (e) { e.preventDefault(); var inp = $('lk-chat-input'); sendChat(inp.value); inp.value = ''; };
     $('lk-leave').onclick = leaveOrPrompt;
     $('lk-end-all').onclick = endForAll;

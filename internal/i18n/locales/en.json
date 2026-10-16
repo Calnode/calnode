@@ -163,5 +163,17 @@
   "assistant_iteration_cap": "Let's keep it simple — please pick a time from the calendar below.",
   "assistant_status_slots": "Checking availability…",
   "assistant_status_book": "Booking…",
-  "assistant_status_working": "Working…"
+  "assistant_status_working": "Working…",
+  "time_period": "Time of day",
+  "time_morning": "Morning",
+  "time_afternoon": "Afternoon",
+  "time_evening": "Evening",
+  "phone_call_number": "Phone number (optional, for a phone call)",
+  "calendar_degraded_notice": "Some calendar information couldn't be loaded, so availability may be incomplete.",
+
+  "directory_book": "Book",
+  "directory_empty": "Nothing bookable here right now.",
+  "directory_members": "Team members",
+  "directory_person_subtitle": "Book time with %s",
+  "directory_team_subtitle": "Book time with the %s team"
 }

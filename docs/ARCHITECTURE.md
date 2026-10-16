@@ -69,6 +69,14 @@ app you must `pnpm build` in `frontend/` **and** rebuild/restart the Go binary
 
 ## 4. Persistence (SQLite) — and the single-connection rule
 
+Public person (`/u/{handle}`) and team (`/team/{slug}`) directories list public,
+active event types by `display_order` ascending, then name and unique slug for
+deterministic ties. The integer defaults to 0, preserving alphabetical order for
+existing types. Owners can set it through event-type create/PATCH or the event
+editor's Directory order field; negative values put an event ahead of the default
+group. It applies wherever the event is listed and is retained on duplication.
+It does not affect the admin event-type list or team member roster ordering.
+
 - `internal/db`: opens SQLite with **`SetMaxOpenConns(1)`** + `SetMaxIdleConns(1)`,
   **WAL** journal mode, `busy_timeout=5000`. One writer connection by design.
 - Migrations: **goose** SQL files in `internal/db/migrations/` (00001→00029). Run
@@ -186,6 +194,24 @@ the platform/recovery secret doesn't expose secrets.
   Owner-gated actions: grant/revoke admin, transfer ownership. Admins can cancel
   any booking, see all bookings, manage teams/members. Safe-removal + archive
   guards prevent orphaning.
+- **Sign out everywhere** (`POST /v1/auth/sessions/revoke-all`, `session.go`). With no
+  body it drops all of the caller's sessions **except the one that made the request** —
+  "sign out my other devices", as distinct from `POST /v1/auth/logout`, which ends the
+  current one. (An API-key caller has no current session, so for them every session
+  goes.) With `{"user_id": "..."}` it is an offboarding tool, gated on the same tiers as
+  `roles.go`: an admin may revoke a member, only the owner may revoke another admin, and
+  the owner's sessions are reachable only by the owner. The actor's tier is checked
+  *before* the target is loaded, so the 404 cannot be used to enumerate user ids.
+  ⛔ It also deletes the target's rows in **`oauth_access_tokens`**, cutting off any MCP
+  connector (§19) — those authenticate with a bearer token, not the session cookie, so
+  revoking sessions alone would leave an agent holding the authority just withdrawn.
+  Both deletes run in one transaction, so "revoked" is never half-true.
+  This endpoint signs someone out; it does not offboard them. Offboarding is archive
+  (next bullet), which ends MCP access on its own: the OAuth bearer check and the
+  refresh grant both refuse an archived member. API keys
+  (`cno_`) are deliberately left alone here, which is safe only because an archived
+  member's keys are already refused (the key path in `auth.go`), so an offboarded
+  member's keys stop working through archive, not through this endpoint.
 - **Offboarding = archive** (`users.archived_at`), never hard-delete — preserves
   bookings, event-type ownership, team links. Archived ⇒ no login, hidden from
   lists, skipped in routing/slots, event types deactivated. Reversible (restore).
@@ -199,6 +225,8 @@ the platform/recovery secret doesn't expose secrets.
 ---
 
 ## 7. Routing — the host-roles model
+
+An administrator who owns an event can transfer it to an active required host with `POST /v1/event-types/{slug}/transfer`. The request supplies `expected_owner_id` and `new_owner_id`. Upcoming bookings prevent transfer. The event ID, slug, and historical booking hosts are preserved. Event-specific availability rules move to the new owner; global availability and calendar connections do not.
 
 An event type owns a **host list** (`event_type_hosts`): each row = (user, role,
 priority), role ∈ **required | rotation | optional**. The editor authors these
@@ -242,6 +270,8 @@ members.
 ---
 
 ## 8. Slot generation
+
+Booking and rescheduling pages and the embed widget group the displayed starts into morning (before 12:00), afternoon (12:00–16:59), and evening (17:00 onward), in the selected timezone. Only groups with slots are shown. The time grid has no nested scrolling region. Taken slots remain disabled when the event opts to display them.
 
 - Engine: `internal/slots/generate.go`. Input: `[]HostAvailability` (rules,
   overrides, busy intervals, **Role**), `EventConfig` (duration, interval, buffers,
@@ -377,6 +407,10 @@ them - the most common "why can't I see those times".
 
 ## 9. Booking lifecycle
 
+New public and assistant bookings recheck selected external calendars before committing. This uses the same buffer orientation and own-event subtraction as the slots page and checks each required host; round-robin routing filters busy candidates and busy optional guests are omitted. A failed provider check rejects the request with HTTP 503 and a retry message; a busy slot returns HTTP 409. Assistant and MCP bookings keep the same distinction. The external check and database write cannot share a transaction. Rescheduling still uses the existing validation path.
+
+Google Meet and Teams event types can opt into `allow_phone_call`. Their booking page and widget then accept an optional `phone` value. A valid number selects a telephone appointment; leaving it empty preserves video. The booking stores its own location type so management pages, calendar retries, and paid confirmation do not generate a video link for a telephone appointment. Event duplication preserves the setting.
+
 `internal/booking/service.go` (transactions) + `internal/handler/booking_handler.go`
 (HTTP + async side effects).
 
@@ -449,6 +483,10 @@ committed booking) — which is why the reconciler (§11) exists.
 
 ## 10. Calendar integration (provider abstraction)
 
+The connected-provider lookup prefers the destination connection. A conflict-only connection must not select the provider used when deciding how to generate a meeting link.
+Availability checks return an error if any selected conflict calendar cannot be checked. Partial provider responses and unreadable busy periods are not treated as free time. An unavailable calendar can therefore temporarily prevent booking; reconnect it or deselect it from conflict checks to restore availability.
+Bookings also check pending local bookings owned by other accounts that use the same selected conflict calendar. This check runs inside the booking transaction, before asynchronous calendar creation can finish. Calendar identity currently includes the provider, account email, and calendar ID.
+
 Calnode talks to calendars through a **provider abstraction**, not a single vendor:
 
 - **`internal/calendar`** defines the `Provider` interface (Name, InvitesGuests,
@@ -516,6 +554,41 @@ CalDAV without iTIP scheduling (RFC 6638) does **not** auto-invite, so a future 
 provider would want the `.ics` — the rule is "no destination whose provider
 auto-delivers invites," not "no Google."
 
+**Who sends the invite: `invite_delivery` (migration 00068).** Per event type, copied onto
+each booking at creation. `calendar` (default) is everything above: the booker is a guest
+on each host's event and the provider invites them, from the host's own address.
+`calnode` writes the hosts' events **without guests** (`calendarInvitee` returns "", which
+every provider reads as "no attendee", so nobody is emailed from a host's account) and
+always attaches Calnode's `.ics` to the booker's emails, with `ORGANIZER` set to the
+instance sender from Settings → Email (`applyInviteDelivery`, `BookingData.HideHostInInvite`).
+No sender address means no `ORGANIZER` line, never a fallback to the host. Host copies keep
+the host as organizer and, for a `calnode` booking, leave the booker out entirely and go out as
+`METHOD:PUBLISH` (`applyHostInvite`, `ICSWithoutAttendee`), so no host calendar holds them as
+a guest it could re-invite. Reschedule, cancel, reassign and the reconciler read the mode from
+the **booking**, not the event type, so a booking is always updated through the channel
+its invite went out on. Switching an event type to `calnode` requires email to be set up
+(validated on change).
+
+**RSVPs to Calnode-sent invites (migration 00069, `rsvp_inbound.go`).** A booker's
+Yes/No/Maybe is an iTIP `REPLY` their mail client emails to the invite's `ORGANIZER`. Each
+booking's organizer address is fixed at its first send (`bookings.invite_organizer`,
+`bookingInviteOrganizer`), because clients match later updates by UID *and* organizer. With
+RSVP tracking set up (Settings → Email: an address on a Resend receiving domain, the
+webhook signing secret, and a **full-access** Resend API key) that address is private per
+booking, `rsvp+<128-bit token>@domain`. `POST /v1/settings/email/rsvp-webhook`
+(`mailer.EnsureResendInboundWebhook`) creates or reuses the Resend webhook and stores its
+secret; the page falls back to manual steps when it cannot. Resend posts `email.received`
+to `POST /v1/email/inbound/resend`; the handler verifies the Svix signature
+(`mailer.VerifyResendWebhook`), routes by recipient to a confirmed, upcoming booking,
+fetches the message with Resend's own SPF/DKIM/DMARC verdicts (`mailer.FetchReceived`),
+and records the answer on `booking_attendees.rsvp_status` only if Resend verified the From
+domain (DKIM or DMARC pass), the From is the booker, the UID is the booking's, and the
+`REPLY` answers for the booker. The body is sender-written, so its `ATTENDEE` line is never
+trusted on its own. A changed answer fires `booking.rsvp`. It answers 200 to anything it
+will not act on and 5xx only when the fetch failed, so Resend retries exactly what a retry
+can fix. Hosts' calendar events are not updated with the answer: no provider has an "edit
+event" write op yet.
+
 **Adding another provider (Apple/iCloud, CalDAV):** implement `calendar.Provider`,
 register it in `internal/server`, set `InvitesGuests()` correctly (drives the `.ics`
 gate above), and extend `providerMintsPlatform`/`CanAutoGenerate` if it offers a
@@ -547,8 +620,25 @@ from the current destination.
 otherwise changing the destination orphans every existing booking: the provider 404s, the
 booking cancels in Calnode, and the meeting stays on the host's calendar with nothing
 surfaced. Empty means "resolve the old way", correct for bookings that predate the column.
-Known limit: this rescues a change of calendar *within* an account, not a move to a
-different account, which would need the account recorded too.
+Known limit (Google, Microsoft): this rescues a change of calendar *within* an account, not
+a move to a different account, which would need the account recorded too.
+
+CalDAV does not have that limit, because its event id is the event's absolute URL and so
+already names the server. `Service.UpdateEvent`/`CancelEvent` route an id the CalDAV
+provider recognizes (`calendar.EventRecognizer`) to it whatever the destination is now, and
+it authenticates as the connected account that holds the event (`caldav.eventConn`), never
+as the destination: the account whose bound or saved calendar is the recorded calendar id,
+else whose calendar URL contains the event URL (same scheme, host and port, path under it;
+most specific wins). No match, or a tie, sends nothing and returns an error. This is a
+credential boundary, not a routing nicety: accounts can live on different servers, and the
+destination's app password sent to an older event's URL goes to someone else's server.
+
+That refusal matches `calendar.ErrEventUnreachable`, and the reconciler treats it as final:
+it logs one warning, clears `needs_sync` (reschedule) or the event id (cancel, logged
+redacted since it is the only record), and does not retry. Retrying cannot help, because it
+re-reads the same connections and refuses the same way, and the cancellation sweep has no
+date bound, so it would repeat forever. Any other error, such as a server that is down or
+refuses the stored password, stays retryable.
 
 ---
 
@@ -598,6 +688,13 @@ as the desired state:
   genuinely broken SMTP config. Explicit credentials state intent. `GET /v1/settings/email`
   returns the live `transport`, and the admin UI badges it, so filled-in SMTP fields are
   never mistaken for SMTP delivery.
+- **SMTP authentication:** after the configured TLS handshake, if any, `smtp.go`
+  reads the server's advertised AUTH mechanisms. It uses PLAIN when
+  available, otherwise LOGIN if offered (as with some Microsoft 365 servers).
+  LOGIN refuses to send credentials without TLS; if neither mechanism is offered,
+  sending fails with an unsupported-authentication error. Authentication failures
+  omit the server's full response from logs to avoid exposing credential details.
+- **TCP relay:** `EMAIL_SMTP_CONNECT_HOST` / `EMAIL_SMTP_CONNECT_PORT` are loaded by `internal/config` and passed through `SMTPConfig` / `BuildMailer` at boot and settings reload. They change only the dial address; TLS and authentication keep the original SMTP host. Active overrides are logged.
 - **The dial must stay bounded.** `defaultSMTPTimeout` once applied only via
   `conn.SetDeadline`, which runs *after* the dial returns, leaving the dial itself bounded
   by the OS SYN-retry limit (~2 min). Against a packet-dropping host that stalls the job
@@ -647,7 +744,11 @@ as the desired state:
 - **Branding (`branding_settings.go`, migrations 00029/00050):** instance-wide
   `business_name` + `logo_url` + `banner_url` on the singleton row. Business name is the
   wordmark fallback (defaults to "Calnode") + public-page header; the logo is the email
-  header image + public-page header. `GET/PATCH /v1/settings/branding` (name + opacity
+  header image + public-page header. Booking, manage, person (`/u/{handle}`) and team
+  (`/team/{slug}`) directories share the `businessHeader` partial, using the configured
+  logo height (scaled by `pageLogoHeight`) and opacity, or the business name when no
+  logo is set. Directory avatars remain inside the person/team card.
+  `GET/PATCH /v1/settings/branding` (name + opacity
   settings only); the logo and banner are each an **upload**
   (`POST/DELETE /v1/settings/branding/logo` and `.../banner`, public serve at
   `GET /branding/logo` / `GET /branding/banner`) reusing the avatar pipeline:
@@ -712,6 +813,8 @@ as the desired state:
 ---
 
 ## 15. Frontend toolchain & conventions
+
+Each account can set `booking_accent` in its profile. The default preserves the dark booking controls. Booking pages, management pages, and the embed widget use the event owner's color, with a contrasting text color chosen by luminance. The profile API accepts only six-digit hex colors.
 
 - Svelte 5, SvelteKit 2 (adapter-static SPA), Vite 8 (Rolldown), Tailwind v4
   (`@tailwindcss/vite`), shadcn-svelte (nova style) + bits-ui, tailwind-variants 3,
@@ -786,7 +889,10 @@ as the desired state:
 8. **Public-page CSP is dynamic** — `publicCSP()` (tracking_settings.go) returns the
    strict default and relaxes only when head code-injection is configured (broad
    `https:` or the operator's `tracking_csp_allow`). Don't re-hardcode the CSP on the
-   `book`/`manage` handlers — route it through `publicCSP`.
+   `book`/`manage`/directory handlers — route it through `publicCSP`. Person and
+   team directories render the admin-configured head HTML once, after the shared
+   tracking partial, matching booking/manage pages. Native GA4/GTM tags use the
+   same consent banner on directories, including restoring stored consent.
 9. **`FRAME_ANCESTORS` is the admin SPA's only, and it must stay that way.** Set it
    (space-separated `https://host[:port]` / `'self'`) and the handler under `/admin/`
    sends `Content-Security-Policy: frame-ancestors <list>` so an operator can embed the
@@ -837,7 +943,7 @@ as the desired state:
   patching. The **public** booking surfaces are unaffected and are verified on mobile;
   this is admin-only. Deferred 2026-08-22, not a regression.
 - **LiveKit room is not translated** - the booking surfaces, emails and calendar invites
-  ship in 8 languages (§23), but the in-browser meeting UI is ~45 hardcoded English
+  ship in 9 languages (§23), but the in-browser meeting UI is ~45 hardcoded English
   strings. It has its own vanilla-JS asset pipeline and shares no string plumbing with
   the Go templates, so it needs a small runtime `t()` of its own. Separate work, not hard.
 - **Plural rules are 2-form only** (§23) - shipping Polish, Russian or Arabic correctly
@@ -1079,7 +1185,18 @@ LLM summary) — the next build; consent-gated (§8.11/§15 of the PRD).
 
 ## 23. Languages (i18n)
 
-Calnode ships **8 locales**: `en` (source) · `es` · `fr` · `de` · `it` · `pt` · `nl` · `sv`.
+Calnode ships **9 locales**: `en` (source) · `es` · `fr` · `fr-CA` · `de` · `it` · `pt` · `nl` · `sv`.
+
+`fr-CA` is the first **regional** locale, and it is a separate file rather than a fallback
+because the differences are real: `courriel` not `e-mail`, `reporter`/`report` not
+`reprogrammer`/`reprogrammation`, `renseignements personnels` never `données personnelles`
+(the Quebec statutory term), no space before `!` `?` `;` where France puts one, and CLDR
+itself disagrees on one abbreviation — `month_short_jul` is `juill.` in fr-CA and `juil.` in
+fr, which is exactly what `TestDateTablesMatchCLDR` exists to catch. Both keep the 24-hour
+clock and the day-month `date_format`. Currency and percent take a non-breaking space before
+`$` and `%` in Canadian French; no key carries either today, so the rule is recorded here
+rather than applied. A visitor sending `fr-FR` or plain `fr` is unaffected — the matcher
+picks the exact tag first (pinned in `TestResolve`).
 
 ### What is translated, and what is not
 

@@ -156,5 +156,17 @@
   "assistant_iteration_cap": "Laten we het simpel houden: kies een tijd in de agenda hieronder.",
   "assistant_status_slots": "Beschikbaarheid controleren…",
   "assistant_status_book": "Boeken…",
-  "assistant_status_working": "Bezig…"
+  "assistant_status_working": "Bezig…",
+  "time_period": "Dagdeel",
+  "time_morning": "Ochtend",
+  "time_afternoon": "Middag",
+  "time_evening": "Avond",
+  "phone_call_number": "Telefoonnummer (optioneel, voor een telefoongesprek)",
+  "calendar_degraded_notice": "Sommige agendagegevens konden niet worden geladen, dus de beschikbaarheid is mogelijk onvolledig.",
+
+  "directory_book": "Boeken",
+  "directory_empty": "Er is momenteel niets te boeken.",
+  "directory_members": "Teamleden",
+  "directory_person_subtitle": "Boek tijd met %s",
+  "directory_team_subtitle": "Boek tijd met het %s-team"
 }

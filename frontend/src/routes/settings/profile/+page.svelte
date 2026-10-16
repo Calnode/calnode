@@ -18,11 +18,13 @@
 	let user = $state<User | null>(null);
 	const loadingFlag = createAsyncFlag(true);
 	const savingFlag = createAsyncFlag();
+	let handle = $state('');
 	const uploadingFlag = createAsyncFlag();
 	let avatarUrl = $state('');
 	let fileInput = $state<HTMLInputElement | undefined>(undefined);
 
 	let name = $state('');
+	let booking_accent = $state('#111827');
 	let timezone = $state('UTC');
 	let time_format = $state<'12h' | '24h'>('12h');
 	let week_start = $state(1);
@@ -74,12 +76,20 @@
 	onMount(() => loadingFlag.run(async () => {
 		user = await api.get<User>('/v1/users/me');
 		name = user.name ?? '';
+		handle = user.handle ?? '';
+		booking_accent = user.booking_accent;
 		timezone = user.timezone;
 		time_format = user.time_format ?? '12h';
 		week_start = user.week_start ?? 1;
 		date_format = user.date_format ?? 'dmy';
 		avatarUrl = user.avatar_url ?? '';
 	}, 'Could not load profile'));
+
+	// Mirrors the normalisation the API applies, so the link we show is the URL that
+	// actually resolves — a handle with spaces or punctuation is rewritten server-side.
+	const handleSlug = $derived(
+		handle.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+	);
 
 	function cancelCrop() {
 		cropOpen = false;
@@ -122,7 +132,7 @@
 	async function save() {
 		await savingFlag.run(async () => {
 			const updated = await api.patch<User>('/v1/users/me', {
-				name, timezone, time_format, week_start, date_format,
+				name, timezone, time_format, week_start, date_format, booking_accent, handle,
 			});
 			currentUser.set(updated);
 			prefs.set(prefsFromUser(updated));
@@ -182,10 +192,37 @@
 					</div>
 				</div>
 
+				<div class="space-y-2">
+					<Label for="booking-accent">Booking accent color</Label>
+					<div class="flex items-center gap-3">
+						<input id="booking-accent" type="color" bind:value={booking_accent} class="h-10 w-14 cursor-pointer rounded border p-1" />
+						<span class="text-sm text-muted-foreground">{booking_accent}</span>
+					</div>
+					<p class="text-xs text-muted-foreground">Used on your booking pages.</p>
+				</div>
 				<div class="space-y-1.5">
 					<Label for="name">Name</Label>
 					<Input id="name" type="text" bind:value={name} placeholder="Your name" />
 					<p class="text-xs text-muted-foreground">Your personal name, shown as the meeting host. Your business brand (logo, business name) is set separately in Settings → Branding.</p>
+				</div>
+				<div class="space-y-1.5">
+					<Label for="handle">Booking handle</Label>
+					<Input id="handle" type="text" bind:value={handle} placeholder="e.g. wynne" />
+					{#if handleSlug}
+						<p class="text-xs text-muted-foreground">
+							Your public booking page:
+							<a
+								href={`/u/${handleSlug}`}
+								target="_blank"
+								rel="noopener noreferrer"
+								class="font-mono text-primary hover:underline"
+							>
+								/u/{handleSlug}
+							</a>
+						</p>
+					{:else}
+						<p class="text-xs text-muted-foreground">Leave blank for no page.</p>
+					{/if}
 				</div>
 				<div class="space-y-1.5">
 					<Label class="text-muted-foreground">Email</Label>

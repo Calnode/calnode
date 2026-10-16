@@ -49,6 +49,7 @@ func BuildHandler(ctx context.Context, cfg *config.Config, db *sql.DB, logger *s
 	}
 	h.SetDataDir(dataDir)
 	h.SetEncKey(cfg.EncryptionKey)
+	h.SetSMTPConnectAddress(cfg.SMTPConnectHost, cfg.SMTPConnectPort)
 	h.SetDemoMode(cfg.DemoMode)
 	h.SetDemoResetInterval(cfg.DemoResetInterval)
 
@@ -96,16 +97,17 @@ func BuildHandler(ctx context.Context, cfg *config.Config, db *sql.DB, logger *s
 	case dbSMTP != nil:
 		// BuildMailer, not NewSMTP directly, so boot and the settings-save path pick the
 		// transport by the same rule. A Resend API key here means HTTPS delivery.
-		m, transport := handler.BuildMailer(*dbSMTP)
+		m, transport := h.BuildMailer(*dbSMTP)
 		live.Swap(m)
 		logger.Info("mailer: configured from database",
 			"transport", string(transport), "host", dbSMTP.Host, "port", dbSMTP.Port)
 
 	case cfg.SMTPHost != "":
-		live.Swap(mailer.NewSMTP(
-			cfg.SMTPHost, cfg.SMTPPort, cfg.SMTPUser, cfg.SMTPPass,
-			cfg.SMTPTLS, cfg.SMTPStartTLS, cfg.EmailFrom, cfg.EmailFromName,
-		))
+		m, _ := h.BuildMailer(handler.SMTPConfig{
+			Host: cfg.SMTPHost, Port: cfg.SMTPPort, User: cfg.SMTPUser, Pass: cfg.SMTPPass,
+			TLS: cfg.SMTPTLS, StartTLS: cfg.SMTPStartTLS, From: cfg.EmailFrom, FromName: cfg.EmailFromName,
+		})
+		live.Swap(m)
 		logger.Info("mailer: configured from environment", "host", cfg.SMTPHost, "port", cfg.SMTPPort)
 		// Seed env-var settings into DB so they appear in the UI on first boot.
 		seedSMTPToDB(db, cfg, encKey, logger)
@@ -289,6 +291,9 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	mux.HandleFunc("GET /v1/auth/microsoft/login", authRL(h.LoginMicrosoft))
 	mux.HandleFunc("GET /v1/auth/microsoft/callback", authRL(h.CallbackMicrosoft))
 	mux.HandleFunc("POST /v1/auth/logout", h.Logout)
+	// Sign out everywhere. Own sessions for anyone; someone else's for an admin, which
+	// is the offboarding half. Also cuts that user's MCP OAuth tokens.
+	mux.HandleFunc("POST /v1/auth/sessions/revoke-all", h.RequireAuth(h.RevokeAllSessions))
 
 	// MCP server (Model Context Protocol) — Streamable HTTP transport for remote
 	// agents. One server instance reused across requests. Guarded by a bearer token:
@@ -360,6 +365,7 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	mux.HandleFunc("GET /v1/settings/email", h.RequireAuth(h.GetEmailSettings))
 	mux.HandleFunc("PATCH /v1/settings/email", settingsRL(h.RequireAuth(h.PatchEmailSettings)))
 	mux.HandleFunc("POST /v1/settings/email/test", settingsRL(h.RequireAuth(h.TestEmailConnection)))
+	mux.HandleFunc("POST /v1/settings/email/rsvp-webhook", settingsRL(h.RequireAuth(h.SetupRSVPWebhook)))
 	mux.HandleFunc("GET /v1/settings/google", h.RequireAuth(h.GetGoogleSettings))
 	mux.HandleFunc("PATCH /v1/settings/google", settingsRL(h.RequireAuth(h.PatchGoogleSettings)))
 	mux.HandleFunc("GET /v1/settings/zoom", h.RequireAuth(h.GetZoomSettings))
@@ -394,6 +400,7 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	mux.HandleFunc("PATCH /v1/event-types/{slug}", h.RequireAuth(h.PatchEventType))
 	mux.HandleFunc("DELETE /v1/event-types/{slug}", h.RequireAuth(h.DeleteEventType))
 	mux.HandleFunc("POST /v1/event-types/{slug}/duplicate", h.RequireAuth(h.DuplicateEventType))
+	mux.HandleFunc("POST /v1/event-types/{slug}/transfer", h.RequireAuth(h.TransferEventType))
 	mux.HandleFunc("GET /v1/event-types/{slug}/hosts", h.RequireAuth(h.ListEventTypeHosts))
 	mux.HandleFunc("PUT /v1/event-types/{slug}/hosts", h.RequireAuth(h.SetEventTypeHosts))
 	testEmailRL := RateLimit(10, time.Minute)
@@ -445,7 +452,7 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	// a non-simple request, so the OPTIONS preflight is handled too.
 	mux.HandleFunc("POST /v1/bookings", cors(bookingRL(h.CreateBooking)))
 	mux.HandleFunc("OPTIONS /v1/bookings", cors(func(http.ResponseWriter, *http.Request) {}))
-	mux.HandleFunc("GET /v1/bookings/{id}", h.GetBooking)
+	mux.HandleFunc("GET /v1/bookings/{id}", bookingRL(h.GetBooking))
 	mux.HandleFunc("GET /v1/bookings", h.RequireAuth(h.ListBookings))
 	mux.HandleFunc("POST /v1/bookings/{id}/cancel", h.RequireAuth(h.CancelBooking))
 	mux.HandleFunc("PATCH /v1/bookings/{id}/reschedule", h.RequireAuth(h.RescheduleBooking))
@@ -456,6 +463,8 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	mux.HandleFunc("GET /embed.js", h.EmbedJS)
 	mux.HandleFunc("GET /booking.css", h.BookingCSS)
 	mux.HandleFunc("GET /book/{slug}", h.BookPage)
+	mux.HandleFunc("GET /u/{handle}", h.PersonPage)
+	mux.HandleFunc("GET /team/{slug}", h.TeamPage)
 
 	// Built-in LiveKit video room (public): the page, its vendored assets, and the token
 	// exchange. The signed room token in the join URL is the capability — no auth.
@@ -509,6 +518,9 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	// Stripe payment webhook — public, authenticated by the signing secret (no session
 	// cookie, so the CSRF check doesn't apply). Must receive the raw body.
 	mux.HandleFunc("POST /v1/stripe/webhook", h.StripeWebhook)
+	// Resend inbound email (email.received): RSVPs to Calnode-sent invites. Public,
+	// authenticated by the webhook signature.
+	mux.HandleFunc("POST /v1/email/inbound/resend", h.InboundEmailResend)
 
 	// API keys
 	mux.HandleFunc("GET /v1/api-keys", h.RequireAuth(h.ListAPIKeys))
@@ -561,7 +573,7 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 		logger.Info("trusting forwarded headers from proxies", "cidrs", cfg.TrustedProxyCIDRs)
 	}
 
-	return TrustClientIP(trustedProxies)(RequestID(Logging(logger, SameOriginCheck(mux)))), drain
+	return TrustClientIP(trustedProxies)(RequestID(Logging(logger, Recover(logger, SameOriginCheck(mux))))), drain
 }
 
 // seedSMTPToDB writes env-var SMTP settings into the DB on first boot so they

@@ -2,12 +2,15 @@ package handler
 
 import (
 	"crypto/rand"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
+	"github.com/calnode/calnode/internal/db"
 	"github.com/calnode/calnode/internal/uid"
 )
 
@@ -104,17 +107,25 @@ func (h *Handler) Setup(w http.ResponseWriter, r *http.Request) {
 // GetMe handles GET /v1/users/me.
 func (h *Handler) GetMe(w http.ResponseWriter, r *http.Request) {
 	user, _ := userFromContext(r.Context())
+	var accent string
+	var handleOut sql.NullString
+	if err := h.db.QueryRowContext(r.Context(), `SELECT booking_accent, handle FROM users WHERE id = ?`, user.ID).Scan(&accent, &handleOut); err != nil {
+		h.writeError(w, http.StatusInternalServerError, "could not load profile")
+		return
+	}
 	out := map[string]any{
-		"id":          user.ID,
-		"email":       user.Email,
-		"name":        user.Name,
-		"timezone":    user.IANATZ,
-		"time_format": user.TimeFormat,
-		"week_start":  user.WeekStart,
-		"date_format": user.DateFormat,
-		"is_admin":    user.IsAdmin,
-		"is_owner":    user.IsOwner,
-		"role":        user.Role(),
+		"booking_accent": accent,
+		"handle":         handleOut.String,
+		"id":             user.ID,
+		"email":          user.Email,
+		"name":           user.Name,
+		"timezone":       user.IANATZ,
+		"time_format":    user.TimeFormat,
+		"week_start":     user.WeekStart,
+		"date_format":    user.DateFormat,
+		"is_admin":       user.IsAdmin,
+		"is_owner":       user.IsOwner,
+		"role":           user.Role(),
 		// Notification preferences
 		"notify_confirmation":    user.NotifyConfirmation,
 		"notify_cancellation":    user.NotifyCancellation,
@@ -137,6 +148,8 @@ func (h *Handler) PatchMe(w http.ResponseWriter, r *http.Request) {
 
 	var req struct {
 		Name                 *string `json:"name"`
+		Handle               *string `json:"handle"`
+		BookingAccent        *string `json:"booking_accent"`
 		Timezone             *string `json:"timezone"`
 		TimeFormat           *string `json:"time_format"`
 		WeekStart            *int    `json:"week_start"`
@@ -154,6 +167,19 @@ func (h *Handler) PatchMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var accent string
+	var handle sql.NullString
+	if err := h.db.QueryRowContext(r.Context(), `SELECT booking_accent, handle FROM users WHERE id = ?`, user.ID).Scan(&accent, &handle); err != nil {
+		h.writeError(w, http.StatusInternalServerError, "could not load profile")
+		return
+	}
+	if req.BookingAccent != nil {
+		if !regexp.MustCompile(`^#[0-9a-fA-F]{6}$`).MatchString(*req.BookingAccent) {
+			h.writeError(w, http.StatusBadRequest, "booking_accent must be a six-digit hex color")
+			return
+		}
+		accent = strings.ToLower(*req.BookingAccent)
+	}
 	current := struct {
 		Name                 string
 		Timezone             string
@@ -184,6 +210,36 @@ func (h *Handler) PatchMe(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		current.Name = name
+	}
+	// Public booking handle for /u/{handle}. Normalised like team slugs; empty
+	// clears it (no page). Lives under /u/ so no reserved-word list is needed.
+	if req.Handle != nil {
+		trimmed := strings.TrimSpace(*req.Handle)
+		if trimmed == "" {
+			handle = sql.NullString{}
+		} else {
+			slug := slugify(trimmed)
+			if slug == "" {
+				h.writeError(w, http.StatusBadRequest, "handle must contain letters or numbers")
+				return
+			}
+			if len(slug) > 50 {
+				h.writeError(w, http.StatusBadRequest, "handle is too long (max 50 characters)")
+				return
+			}
+			var taken int
+			if err := h.db.QueryRowContext(r.Context(),
+				`SELECT COUNT(*) FROM users WHERE handle = ? AND id != ?`, slug, user.ID).Scan(&taken); err != nil {
+				h.logger.ErrorContext(r.Context(), "patch me: handle check", "error", err)
+				h.writeError(w, http.StatusInternalServerError, "internal error")
+				return
+			}
+			if taken > 0 {
+				h.writeError(w, http.StatusConflict, "handle is already in use")
+				return
+			}
+			handle = sql.NullString{String: slug, Valid: true}
+		}
 	}
 	if req.Timezone != nil {
 		if _, err := time.LoadLocation(*req.Timezone); err != nil {
@@ -246,32 +302,40 @@ func (h *Handler) PatchMe(w http.ResponseWriter, r *http.Request) {
 
 	if _, err := h.db.ExecContext(r.Context(), `
 		UPDATE users SET
-			name = ?, iana_timezone = ?, time_format = ?, week_start = ?, date_format = ?,
+			booking_accent = ?, handle = ?, name = ?, iana_timezone = ?, time_format = ?, week_start = ?, date_format = ?,
 			notify_confirmation = ?, notify_cancellation = ?, notify_reschedule = ?, notify_reminder = ?,
 			notify_host_booking = ?, notify_host_cancel = ?, notify_host_reschedule = ?
 		WHERE id = ?`,
-		current.Name, current.Timezone, current.TimeFormat, current.WeekStart, current.DateFormat,
+		accent, handle, current.Name, current.Timezone, current.TimeFormat, current.WeekStart, current.DateFormat,
 		boolToInt(current.NotifyConfirmation), boolToInt(current.NotifyCancellation),
 		boolToInt(current.NotifyReschedule), boolToInt(current.NotifyReminder),
 		boolToInt(current.NotifyHostBooking), boolToInt(current.NotifyHostCancel),
 		boolToInt(current.NotifyHostReschedule),
 		user.ID); err != nil {
+		if db.IsUniqueViolation(err) {
+			// Check-then-set race on the handle (or a legacy duplicate): the
+			// index is the backstop so two users can never share a page.
+			h.writeError(w, http.StatusConflict, "handle is already in use")
+			return
+		}
 		h.logger.ErrorContext(r.Context(), "patch me", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
 
 	out := map[string]any{
-		"id":          user.ID,
-		"email":       user.Email,
-		"name":        current.Name,
-		"timezone":    current.Timezone,
-		"time_format": current.TimeFormat,
-		"week_start":  current.WeekStart,
-		"date_format": current.DateFormat,
-		"is_admin":    user.IsAdmin,
-		"is_owner":    user.IsOwner,
-		"role":        user.Role(),
+		"booking_accent": accent,
+		"handle":         handle.String,
+		"id":             user.ID,
+		"email":          user.Email,
+		"name":           current.Name,
+		"timezone":       current.Timezone,
+		"time_format":    current.TimeFormat,
+		"week_start":     current.WeekStart,
+		"date_format":    current.DateFormat,
+		"is_admin":       user.IsAdmin,
+		"is_owner":       user.IsOwner,
+		"role":           user.Role(),
 		// Notification preferences
 		"notify_confirmation":    current.NotifyConfirmation,
 		"notify_cancellation":    current.NotifyCancellation,

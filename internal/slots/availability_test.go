@@ -221,6 +221,47 @@ func TestResolveDay_overrideCustomHours(t *testing.T) {
 	}
 }
 
+func TestResolveDay_multipleCustomBlocks(t *testing.T) {
+	loc := time.UTC
+	date := utcDate(2026, 6, 15)
+	rules := []AvailabilityRule{
+		{DayOfWeek: time.Monday, StartTime: "09:00", EndTime: "17:00"},
+	}
+	overrides := []AvailabilityOverride{
+		{Date: date, IsAvailable: true, StartTime: "09:00", EndTime: "12:00"},
+		{Date: date, IsAvailable: true, StartTime: "13:00", EndTime: "17:00"},
+	}
+	windows, err := resolveDay(loc, date, rules, overrides)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(windows) != 2 {
+		t.Fatalf("expected 2 windows (split day); got %v", windows)
+	}
+	if h1, h2 := windows[0].Start.Hour(), windows[1].Start.Hour(); h1 != 9 || h2 != 13 {
+		t.Errorf("window starts = %d,%d; want 9,13", h1, h2)
+	}
+}
+
+func TestResolveDay_blockWinsOverCustoms(t *testing.T) {
+	loc := time.UTC
+	date := utcDate(2026, 6, 15)
+	rules := []AvailabilityRule{
+		{DayOfWeek: time.Monday, StartTime: "09:00", EndTime: "17:00"},
+	}
+	overrides := []AvailabilityOverride{
+		{Date: date, IsAvailable: true, StartTime: "09:00", EndTime: "12:00"},
+		{Date: date, IsAvailable: false},
+	}
+	windows, err := resolveDay(loc, date, rules, overrides)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(windows) != 0 {
+		t.Errorf("expected blocked day; got %v", windows)
+	}
+}
+
 func TestResolveDay_overrideDoesNotMatchOtherDate(t *testing.T) {
 	loc := time.UTC
 	date := utcDate(2026, 6, 15) // Monday

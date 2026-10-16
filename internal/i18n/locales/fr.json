@@ -156,5 +156,17 @@
   "assistant_iteration_cap": "Simplifions les choses : choisissez un créneau dans le calendrier ci-dessous.",
   "assistant_status_slots": "Vérification des disponibilités…",
   "assistant_status_book": "Réservation…",
-  "assistant_status_working": "En cours…"
+  "assistant_status_working": "En cours…",
+  "time_period": "Moment de la journée",
+  "time_morning": "Matin",
+  "time_afternoon": "Après-midi",
+  "time_evening": "Soir",
+  "phone_call_number": "Téléphone (facultatif, pour un appel)",
+  "calendar_degraded_notice": "Certaines informations d'agenda n'ont pas pu être chargées, les disponibilités peuvent donc être incomplètes.",
+
+  "directory_book": "Réserver",
+  "directory_empty": "Rien à réserver pour le moment.",
+  "directory_members": "Membres de l'équipe",
+  "directory_person_subtitle": "Réservez du temps avec %s",
+  "directory_team_subtitle": "Réservez du temps avec l'équipe %s"
 }

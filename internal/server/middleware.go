@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"time"
@@ -46,12 +47,49 @@ func Logging(logger *slog.Logger, next http.Handler) http.Handler {
 		reqID, _ := r.Context().Value(requestIDKey).(string)
 		logger.InfoContext(r.Context(), "request",
 			"method", r.Method,
-			"path", r.URL.Path,
+			"path", redactTokenPaths(r.URL.Path),
 			"status", rw.status,
 			"duration_ms", time.Since(start).Milliseconds(),
 			"remote_addr", r.RemoteAddr,
 			"request_id", reqID,
 		)
+	})
+}
+
+// redactTokenPaths replaces bearer credentials carried in URL paths before they
+// reach the logs: manage tokens (/manage/{token}), room join URLs (/room/...),
+// and invite tokens (/invites/{token}) would otherwise land verbatim in stdout
+// and any log drain. Query strings are never logged here (only Path is).
+func redactTokenPaths(path string) string {
+	for _, prefix := range []string{"/manage/", "/room/", "/invites/"} {
+		if strings.HasPrefix(path, prefix) {
+			return prefix + "[redacted]"
+		}
+	}
+	return path
+}
+
+// Recover converts a panicking handler into a structured 500 instead of a
+// dropped connection: it logs the stack with the request id and writes a
+// generic error (never the panic value, which may contain request data).
+func Recover(logger *slog.Logger, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			if v := recover(); v != nil {
+				reqID, _ := r.Context().Value(requestIDKey).(string)
+				logger.ErrorContext(r.Context(), "request panic recovered",
+					"request_id", reqID,
+					"method", r.Method,
+					"path", redactTokenPaths(r.URL.Path),
+					"panic", fmt.Sprintf("%v", v),
+					"stack", string(debug.Stack()),
+				)
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusInternalServerError)
+				fmt.Fprint(w, `{"error":"internal error"}`)
+			}
+		}()
+		next.ServeHTTP(w, r)
 	})
 }
 

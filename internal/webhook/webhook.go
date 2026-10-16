@@ -55,6 +55,7 @@ const (
 	FieldPaymentStatus   = "payment_status"
 	FieldAmountPaid      = "amount_paid_cents"
 	FieldCurrency        = "amount_paid_currency"
+	FieldRSVPStatus      = "rsvp_status"
 )
 
 // AllFields is every selectable field, in payload order. Used to validate config
@@ -65,7 +66,7 @@ var AllFields = []string{
 	FieldEventTypeSlug, FieldEventTypeName,
 	FieldHostID, FieldHostName, FieldHostEmail,
 	FieldAttendeeName, FieldAttendeeEmail, FieldAttendeeTZ, FieldAnswers,
-	FieldPaymentStatus, FieldAmountPaid, FieldCurrency,
+	FieldPaymentStatus, FieldAmountPaid, FieldCurrency, FieldRSVPStatus,
 }
 
 // defaultFields reproduces the original payload (no PII, no answers) so a webhook with no
@@ -75,7 +76,7 @@ var defaultFields = []string{
 	FieldID, FieldEventTypeSlug, FieldHostID, FieldStartAt, FieldEndAt,
 	FieldStatus, FieldLocation, FieldCancelReason, FieldCreatedAt,
 	FieldPreviousStartAt, FieldPreviousEndAt,
-	FieldPaymentStatus, FieldAmountPaid, FieldCurrency,
+	FieldPaymentStatus, FieldAmountPaid, FieldCurrency, FieldRSVPStatus,
 }
 
 var validField = func() map[string]bool {
@@ -125,6 +126,9 @@ type BookingPayload struct {
 	PaymentStatus      string `json:"payment_status,omitempty"`
 	AmountPaidCents    int    `json:"amount_paid_cents,omitempty"`
 	AmountPaidCurrency string `json:"amount_paid_currency,omitempty"`
+	// RSVPStatus is the booker's answer to a Calnode-sent invite (accepted, declined,
+	// tentative); set on booking.rsvp only.
+	RSVPStatus string `json:"rsvp_status,omitempty"`
 }
 
 type Service struct {
@@ -346,6 +350,7 @@ func buildData(bd enrichedBooking, fields []string) map[string]any {
 		FieldPreviousEndAt:   bd.core.PreviousEndAt,
 		FieldPaymentStatus:   bd.core.PaymentStatus,
 		FieldCurrency:        bd.core.AmountPaidCurrency,
+		FieldRSVPStatus:      bd.core.RSVPStatus,
 	}
 	out := make(map[string]any, len(fields))
 	for _, f := range fields {

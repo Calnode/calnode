@@ -4,9 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"encoding/base64"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -223,9 +225,197 @@ func TestCancelEvent_alreadyGoneIsOK(t *testing.T) {
 	}
 }
 
+// fakeGraphCalendars serves GET /me/calendars the way Graph does: with $select, each
+// calendar carries only the selected properties. A fake that returned every property
+// regardless could never notice a decoded property missing from the request's $select.
+// onSelect, when non-nil, receives the raw $select value.
+func fakeGraphCalendars(t *testing.T, cals []map[string]any, onSelect func(string)) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || !strings.HasSuffix(r.URL.Path, "/me/calendars") {
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+		sel := r.URL.Query().Get("$select")
+		if onSelect != nil {
+			onSelect(sel)
+		}
+		value := cals
+		if sel != "" {
+			value = make([]map[string]any, 0, len(cals))
+			for _, cal := range cals {
+				picked := map[string]any{}
+				for _, prop := range strings.Split(sel, ",") {
+					if v, ok := cal[prop]; ok {
+						picked[prop] = v
+					}
+				}
+				value = append(value, picked)
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"value": value})
+	}))
+}
+
+// graphCalendars are two calendars as Graph describes them: the user's own default, and
+// one shared with them read-only (canEdit false).
+var graphCalendars = []map[string]any{
+	{
+		"id": "cal-own", "name": "Calendar", "isDefaultCalendar": true, "canEdit": true,
+		"canShare": true, "color": "auto",
+		"owner": map[string]any{"name": "Alex", "address": "alex@example.com"},
+	},
+	{
+		"id": "cal-shared", "name": "Team rota", "isDefaultCalendar": false, "canEdit": false,
+		"canShare": false, "color": "lightBlue",
+		"owner": map[string]any{"name": "Sam", "address": "sam@example.com"},
+	},
+}
+
+func TestListCalendars_writableFollowsCanEdit(t *testing.T) {
+	c := newTestClient(t)
+	connect(t, c, "u1")
+
+	srv := fakeGraphCalendars(t, graphCalendars, nil)
+	defer srv.Close()
+	c.apiBase = srv.URL
+
+	got, err := c.ListCalendars(context.Background(), "u1", "")
+	if err != nil {
+		t.Fatalf("ListCalendars: %v", err)
+	}
+	want := []calendar.CalendarInfo{
+		{ID: "cal-own", Name: "Calendar", Primary: true, Writable: true},
+		{ID: "cal-shared", Name: "Team rota", Primary: false, Writable: false},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("ListCalendars =\n  %+v\nwant\n  %+v", got, want)
+	}
+}
+
+// decodedJSONNames lists the JSON property names a struct decodes. For a Graph response
+// item that is the set of properties its request has to $select.
+func decodedJSONNames(t *testing.T, typ reflect.Type) []string {
+	t.Helper()
+	if typ.Kind() != reflect.Struct {
+		t.Fatalf("decodedJSONNames(%s): want a struct", typ)
+	}
+	var names []string
+	for i := 0; i < typ.NumField(); i++ {
+		f := typ.Field(i)
+		if f.Anonymous {
+			// encoding/json promotes an embedded struct's fields; not needed yet, so refuse
+			// rather than under-report.
+			t.Fatalf("decodedJSONNames(%s): embedded field %s is not handled", typ, f.Name)
+		}
+		if !f.IsExported() {
+			continue
+		}
+		name, _, _ := strings.Cut(f.Tag.Get("json"), ",")
+		if name == "-" {
+			continue
+		}
+		if name == "" {
+			name = f.Name
+		}
+		names = append(names, name)
+	}
+	return names
+}
+
+// Graph omits any property the request does not $select, and an absent bool decodes as
+// false without error. So every property the response item decodes must be selected, or
+// it silently reads as its zero value in production while a lenient fake hides it.
+func TestListCalendars_selectNamesEveryDecodedProperty(t *testing.T) {
+	c := newTestClient(t)
+	connect(t, c, "u1")
+
+	var gotSelect string
+	srv := fakeGraphCalendars(t, graphCalendars, func(s string) { gotSelect = s })
+	defer srv.Close()
+	c.apiBase = srv.URL
+
+	if _, err := c.ListCalendars(context.Background(), "u1", ""); err != nil {
+		t.Fatalf("ListCalendars: %v", err)
+	}
+	if gotSelect == "" {
+		return // no $select: Graph returns the default properties, which is not this bug
+	}
+	selected := map[string]bool{}
+	for _, prop := range strings.Split(gotSelect, ",") {
+		selected[prop] = true
+	}
+	value, ok := reflect.TypeOf(msCalListResp{}).FieldByName("Value")
+	if !ok {
+		t.Fatal("msCalListResp has no Value field")
+	}
+	for _, name := range decodedJSONNames(t, value.Type.Elem()) {
+		if !selected[name] {
+			t.Errorf("$select=%q omits %q, which msCalListResp decodes; Graph will not return it", gotSelect, name)
+		}
+	}
+}
+
+func TestListCalendars_followsNextLink(t *testing.T) {
+	c := newTestClient(t)
+	connect(t, c, "u1")
+
+	var calls []string
+	var srv *httptest.Server
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls = append(calls, r.URL.String())
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Query().Get("$skiptoken") == "" {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"value":           []map[string]any{graphCalendars[0]},
+				"@odata.nextLink": srv.URL + "/me/calendars?$skiptoken=page2",
+			})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"value": []map[string]any{graphCalendars[1]},
+		})
+	}))
+	defer srv.Close()
+	c.apiBase = srv.URL
+
+	got, err := c.ListCalendars(context.Background(), "u1", "")
+	if err != nil {
+		t.Fatalf("ListCalendars: %v", err)
+	}
+	want := []calendar.CalendarInfo{
+		{ID: "cal-own", Name: "Calendar", Primary: true, Writable: true},
+		{ID: "cal-shared", Name: "Team rota", Primary: false, Writable: false},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("ListCalendars =\n  %+v\nwant\n  %+v", got, want)
+	}
+	if len(calls) != 2 {
+		t.Errorf("expected 2 page fetches, got %d: %v", len(calls), calls)
+	}
+}
+
 func mkIDToken(tid string) string {
 	payload := base64.RawURLEncoding.EncodeToString([]byte(`{"tid":"` + tid + `"}`))
 	return "header." + payload + ".sig"
+}
+
+func mkIDTokenClaims(claims map[string]string) string {
+	parts := make([]string, 0, len(claims)*2)
+	for k, v := range claims {
+		part, _ := json.Marshal(v)
+		parts = append(parts, `"`+k+`":`+string(part))
+	}
+	payload := base64.RawURLEncoding.EncodeToString([]byte(`{` + strings.Join(parts, ",") + `}`))
+	return "header." + payload + ".sig"
+}
+
+func idToken(t *testing.T, raw string) *oauth2.Token {
+	t.Helper()
+	if raw == "" {
+		return &oauth2.Token{}
+	}
+	return (&oauth2.Token{}).WithExtra(map[string]any{"id_token": raw})
 }
 
 func TestAccountKindFromIDToken(t *testing.T) {
@@ -246,6 +436,76 @@ func TestAccountKindFromIDToken(t *testing.T) {
 		if got := accountKindFromIDToken(tok); got != tc.want {
 			t.Errorf("%s: accountKindFromIDToken=%q; want %q", tc.name, got, tc.want)
 		}
+	}
+}
+
+func TestAccountIdentityFromIDToken(t *testing.T) {
+	cases := []struct {
+		name   string
+		claims map[string]string
+		raw    string
+		want   string
+	}{
+		{"preferred_username wins", map[string]string{"preferred_username": "a@x.com", "email": "b@x.com"}, "", "a@x.com"},
+		{"email fallback", map[string]string{"email": "b@x.com"}, "", "b@x.com"},
+		{"tid:oid fallback", map[string]string{"tid": "t1", "oid": "o1"}, "", "t1:o1"},
+		{"oid without tid is nothing", map[string]string{"oid": "o1"}, "", ""},
+		{"no id_token", nil, "", ""},
+		{"malformed", nil, "not-a-jwt", ""},
+	}
+	for _, tc := range cases {
+		var tok *oauth2.Token
+		if tc.raw != "" {
+			tok = idToken(t, tc.raw)
+		} else if tc.claims != nil {
+			tok = idToken(t, mkIDTokenClaims(tc.claims))
+		} else {
+			tok = idToken(t, "")
+		}
+		if got := accountIdentityFromIDToken(tok); got != tc.want {
+			t.Errorf("%s: accountIdentityFromIDToken=%q; want %q", tc.name, got, tc.want)
+		}
+	}
+}
+
+func TestExchangeScopesRequestIdentity(t *testing.T) {
+	c := newTestClient(t)
+	var scopes []string
+	for _, s := range c.config.Scopes {
+		scopes = append(scopes, s)
+	}
+	for _, want := range []string{"openid", "profile", "email", "offline_access"} {
+		found := false
+		for _, s := range scopes {
+			if s == want {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("scopes=%v; want %q (account identification, #99)", scopes, want)
+		}
+	}
+}
+
+// TestSaveToken_distinctFallbackIdentitiesCoexist is the #99 regression: two accounts
+// whose tenants send no email claims must not collapse onto each other.
+func TestSaveToken_distinctFallbackIdentitiesCoexist(t *testing.T) {
+	c := newTestClient(t)
+	ctx := context.Background()
+	seedUser(t, c.db, "u1")
+	tok := &oauth2.Token{AccessToken: "a", RefreshToken: "r", Expiry: time.Now().Add(time.Hour)}
+	if err := c.saveToken(ctx, "u1", "primary", "t1:o1", "work", tok); err != nil {
+		t.Fatalf("save first: %v", err)
+	}
+	if err := c.saveToken(ctx, "u1", "primary", "t1:o2", "work", tok); err != nil {
+		t.Fatalf("save second: %v", err)
+	}
+	var n int
+	if err := c.db.QueryRow(`SELECT COUNT(*) FROM calendar_connections WHERE user_id = 'u1'`).Scan(&n); err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if n != 2 {
+		t.Errorf("connections = %d; want 2 (no replacement)", n)
 	}
 }
 

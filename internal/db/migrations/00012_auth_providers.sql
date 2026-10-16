@@ -26,6 +26,9 @@ DROP INDEX IF EXISTS idx_invite_tokens_email;
 DROP TABLE IF EXISTS invite_tokens;
 
 -- SQLite requires a table rebuild to drop columns.
+-- WARNING: the Down rebuild below selects a fixed column subset — running it
+-- after any later migration will silently drop every column added since. It is
+-- only safe immediately at version 00012, never as a general rollback.
 CREATE TABLE users_new AS
     SELECT id, email, name, iana_timezone, avatar_url, is_admin, created_at,
            time_format, week_start, date_format,

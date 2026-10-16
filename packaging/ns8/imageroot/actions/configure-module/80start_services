@@ -1,0 +1,10 @@
+#!/bin/bash
+
+#
+# Copyright (C) 2023 Nethesis S.r.l.
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+
+# If the control reaches this step, the service can be enabled and started
+
+systemctl --user enable --now calnode.service

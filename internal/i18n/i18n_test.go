@@ -37,6 +37,13 @@ func TestResolve(t *testing.T) {
 		{"exact es", "es", "", "es"},
 		{"exact en", "en-US,en;q=0.9", "", "en"},
 		{"regional subtag falls back to primary", "es-MX,es;q=0.9", "", "es"},
+		// fr-CA is shipped as its own file, so a Canadian browser gets Canadian French
+		// rather than the France copy — and a French browser is unaffected by its
+		// existence, which is the half that would break silently.
+		{"Canadian French resolves to its own locale", "fr-CA,fr;q=0.9", "", "fr-CA"},
+		{"European French is unaffected by fr-CA", "fr-FR,fr;q=0.9", "", "fr"},
+		{"plain fr is unaffected by fr-CA", "fr", "", "fr"},
+		{"fr-CA can be selected by the ?lang override", "en", "fr-CA", "fr-CA"},
 		{"unsupported language falls back to English", "ja-JP,ja;q=0.9", "", "en"},
 		{"empty header falls back to English", "", "", "en"},
 		{"garbage header falls back to English", "not a real header ;;;", "", "en"},

@@ -6,8 +6,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/calnode/calnode/internal/mailer"
@@ -17,14 +19,16 @@ import (
 // SMTPConfig holds decrypted email settings loaded from the DB.
 // Used by server.go to build the initial mailer on startup.
 type SMTPConfig struct {
-	Host     string
-	Port     string
-	User     string
-	Pass     string
-	TLS      bool
-	StartTLS bool
-	From     string
-	FromName string
+	ConnectHost string
+	ConnectPort string
+	Host        string
+	Port        string
+	User        string
+	Pass        string
+	TLS         bool
+	StartTLS    bool
+	From        string
+	FromName    string
 
 	// ResendAPIKey, when set, switches delivery to Resend's HTTPS API instead of SMTP.
 	ResendAPIKey string
@@ -39,6 +43,28 @@ const (
 	TransportResend EmailTransport = "resend_api"
 	TransportSMTP   EmailTransport = "smtp"
 )
+
+func (h *Handler) SetSMTPConnectAddress(host, port string) {
+	h.smtpConnectHost = host
+	h.smtpConnectPort = port
+}
+
+func (h *Handler) BuildMailer(cfg SMTPConfig) (mailer.Mailer, EmailTransport) {
+	cfg.ConnectHost = h.smtpConnectHost
+	cfg.ConnectPort = h.smtpConnectPort
+	m, transport := BuildMailer(cfg)
+	if transport == TransportSMTP && (cfg.ConnectHost != "" || cfg.ConnectPort != "") {
+		host, port := cfg.ConnectHost, cfg.ConnectPort
+		if host == "" {
+			host = cfg.Host
+		}
+		if port == "" {
+			port = cfg.Port
+		}
+		h.logger.Info("mailer: SMTP relay active", "connect_address", net.JoinHostPort(host, port), "smtp_host", cfg.Host)
+	}
+	return m, transport
+}
 
 // BuildMailer picks the delivery transport for a config, and is the single place that
 // decision is made - both boot and the settings-save path call it, so they cannot drift.
@@ -57,7 +83,7 @@ func BuildMailer(cfg SMTPConfig) (mailer.Mailer, EmailTransport) {
 	case cfg.ResendAPIKey != "":
 		return mailer.NewResend(cfg.ResendAPIKey, cfg.From, cfg.FromName), TransportResend
 	case cfg.Host != "":
-		return mailer.NewSMTP(cfg.Host, cfg.Port, cfg.User, cfg.Pass,
+		return mailer.NewSMTP(cfg.Host, cfg.Port, cfg.ConnectHost, cfg.ConnectPort, cfg.User, cfg.Pass,
 			cfg.TLS, cfg.StartTLS, cfg.From, cfg.FromName), TransportSMTP
 	default:
 		return &mailer.Noop{}, TransportNone
@@ -114,14 +140,15 @@ func (h *Handler) GetEmailSettings(w http.ResponseWriter, r *http.Request) {
 	if _, ok := h.requireAdmin(w, r); !ok {
 		return
 	}
-	var host, port, user, passEnc, from, fromName, resendEnc string
+	var host, port, user, passEnc, from, fromName, resendEnc, rsvpAddr, webhookSecretEnc string
 	var smtpTLS, startTLS int
 	err := h.db.QueryRowContext(r.Context(), `
 		SELECT smtp_host, smtp_port, smtp_user, smtp_pass_enc,
 		       smtp_tls, smtp_starttls, email_from, email_from_name,
-		       resend_api_key_enc
+		       resend_api_key_enc, rsvp_address, resend_webhook_secret_enc
 		FROM server_settings WHERE id = 1`).
-		Scan(&host, &port, &user, &passEnc, &smtpTLS, &startTLS, &from, &fromName, &resendEnc)
+		Scan(&host, &port, &user, &passEnc, &smtpTLS, &startTLS, &from, &fromName, &resendEnc,
+			&rsvpAddr, &webhookSecretEnc)
 	if err != nil && err != sql.ErrNoRows {
 		h.logger.ErrorContext(r.Context(), "email settings: query", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal error")
@@ -142,6 +169,12 @@ func (h *Handler) GetEmailSettings(w http.ResponseWriter, r *http.Request) {
 		"resend_api_key_set": resendEnc != "",
 		"transport":          string(transport),
 		"enabled":            h.isEmailEnabled(),
+		// RSVP tracking for Calnode-sent invites (Resend inbound). Active only with all
+		// three of the address, the webhook secret and a Resend API key.
+		"rsvp_address":              rsvpAddr,
+		"resend_webhook_secret_set": webhookSecretEnc != "",
+		"rsvp_tracking":             rsvpAddr != "" && webhookSecretEnc != "" && resendEnc != "",
+		"rsvp_webhook_url":          h.rsvpWebhookURL(),
 	})
 }
 
@@ -154,11 +187,15 @@ type emailSecret int
 const (
 	secretSMTPPass emailSecret = iota
 	secretResendAPIKey
+	secretResendWebhook
 )
 
 func (s emailSecret) String() string {
-	if s == secretResendAPIKey {
+	switch s {
+	case secretResendAPIKey:
 		return "resend_api_key_enc"
+	case secretResendWebhook:
+		return "resend_webhook_secret_enc"
 	}
 	return "smtp_pass_enc"
 }
@@ -186,6 +223,8 @@ func (h *Handler) storeEmailSecret(ctx context.Context, db execer, which emailSe
 	switch which {
 	case secretResendAPIKey:
 		q = `UPDATE server_settings SET resend_api_key_enc = ?, updated_at = datetime('now') WHERE id = 1`
+	case secretResendWebhook:
+		q = `UPDATE server_settings SET resend_webhook_secret_enc = ?, updated_at = datetime('now') WHERE id = 1`
 	case secretSMTPPass:
 		q = `UPDATE server_settings SET smtp_pass_enc = ?, updated_at = datetime('now') WHERE id = 1`
 	default:
@@ -223,6 +262,9 @@ func (h *Handler) PatchEmailSettings(w http.ResponseWriter, r *http.Request) {
 		// Optional; omit to keep the existing key, send "" explicitly to clear it and
 		// fall back to SMTP.
 		ResendAPIKey *string `json:"resend_api_key"`
+		// RSVP tracking (Resend inbound). Pointers for the same keep/clear distinction.
+		RSVPAddress         *string `json:"rsvp_address"`
+		ResendWebhookSecret *string `json:"resend_webhook_secret"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.writeError(w, http.StatusBadRequest, "invalid JSON")
@@ -239,6 +281,22 @@ func (h *Handler) PatchEmailSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.EmailFromName == "" {
 		req.EmailFromName = "Calnode"
+	}
+	if req.RSVPAddress != nil {
+		*req.RSVPAddress = strings.TrimSpace(*req.RSVPAddress)
+		if *req.RSVPAddress != "" && !validRSVPAddress(*req.RSVPAddress) {
+			h.writeError(w, http.StatusBadRequest,
+				"rsvp_address must be a plain address like rsvp@reply.example.com, without a +tag")
+			return
+		}
+	}
+	if req.ResendWebhookSecret != nil {
+		*req.ResendWebhookSecret = strings.TrimSpace(*req.ResendWebhookSecret)
+		if *req.ResendWebhookSecret != "" && !strings.HasPrefix(*req.ResendWebhookSecret, "whsec_") {
+			h.writeError(w, http.StatusBadRequest,
+				"resend_webhook_secret must be the webhook's signing secret, starting with whsec_")
+			return
+		}
 	}
 
 	boolToInt := func(b bool) int {
@@ -291,6 +349,22 @@ func (h *Handler) PatchEmailSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if req.RSVPAddress != nil {
+		if _, err := tx.ExecContext(r.Context(),
+			`UPDATE server_settings SET rsvp_address = ?, updated_at = datetime('now') WHERE id = 1`,
+			*req.RSVPAddress); err != nil {
+			h.logger.ErrorContext(r.Context(), "email settings: rsvp address", "error", err)
+			h.writeError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+	}
+	if req.ResendWebhookSecret != nil {
+		if err := h.storeEmailSecret(r.Context(), tx, secretResendWebhook, *req.ResendWebhookSecret); err != nil {
+			h.logger.ErrorContext(r.Context(), "email settings: resend webhook secret", "error", err)
+			h.writeError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+	}
 
 	if err := tx.Commit(); err != nil {
 		h.logger.ErrorContext(r.Context(), "email settings: commit", "error", err)
@@ -311,7 +385,7 @@ func (h *Handler) PatchEmailSettings(w http.ResponseWriter, r *http.Request) {
 		if cfg == nil {
 			h.live.Swap(&mailer.Noop{})
 		} else {
-			m, transport := BuildMailer(*cfg)
+			m, transport := h.BuildMailer(*cfg)
 			h.live.Swap(m)
 			h.logger.InfoContext(r.Context(), "mailer: reconfigured", "transport", string(transport))
 		}

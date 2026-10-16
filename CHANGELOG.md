@@ -11,7 +11,243 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
 
 ## [Unreleased]
 
+## [0.11.1] - 2026-10-16
+
 ### Fixed
+- **Deleting an event type with bookings in its history explains itself.** Calnode
+  refuses to delete an event type that has bookings, including cancelled ones, so the
+  booking history stays intact — but it answered with a generic "internal error" instead
+  of saying so. SQLite reports a constraint declared `ON DELETE RESTRICT` under a
+  different code than the default, and Calnode only recognised the default, so every
+  delete that hit this guard fell through to a server error. You now get the actionable
+  message, and "deactivate it instead" is what it says to do.
+- **Round-robin booking no longer picks a host who is unavailable** (#146). A rotation
+  booking could assign a host who cannot take the slot; such a host is now skipped.
+- **The dashboard stops advertising events you have switched off.** "Your booking links"
+  listed archived and deactivated event types. They still answer their booking URL, so the
+  list read as live and invited bookings for meetings you had turned off.
+- **NS8 module images publish for both architectures.** The release step assembled the
+  multi-arch manifest from the runner's local container storage, which on the release
+  runner did not contain the images it had just built, so no module release has ever
+  published a correct multi-arch image. Arches are now read from the registry, where the
+  build already put them. Releases are additionally gated on what actually reached the
+  registry — architecture, the `org.nethserver.images` label, and that the app image the
+  label names is itself multi-arch — so an amd64-only publish fails the build instead of
+  shipping quietly.
+
+### Changed
+- **NS8 install docs state what `:latest` really is.** The NethServer module's `:latest`,
+  `:0.10` and `:0.10.1` are one amd64-only build: fine on amd64 nodes, and it fails on
+  arm64 (a Pi 5, for example). That release predates multi-arch publishing, so each
+  architecture was pushed straight onto the public tags. `:edge` is correct on both. The
+  docs also say plainly that arm64 has only been exercised under CPU emulation, not on
+  real hardware.
+
+## [0.11.0] - 2026-10-15
+
+### Added
+- **Directory pages can list event types in a deliberate order.** Set *Directory order* on
+  an event type and public person and team pages sort by it, so the meeting you want booked
+  first is the one a visitor sees first. Lower numbers come first, equal numbers sort by
+  name, and an event with no order set keeps its existing position.
+- **Public pages and emails can carry your business branding.** Set once under Settings →
+  Branding: a business name, a logo, a banner, and your Privacy and Terms URLs. Both images
+  have an opacity control, and the logo's height is set for email (public pages scale it
+  up). Applied to the directory, booking and manage pages, and to emails.
+- **Calendar invites can come from Calnode instead of the host's calendar.** A new
+  per-event-type setting, *Calendar invite → Sent by*. The default is unchanged: the host's
+  connected calendar invites the booker, from the host's own address. Choose *Calnode* and
+  the booker's invite comes from your workspace's email sender (Settings → Email) instead,
+  so no host's personal address reaches them, and a team can book under one name. Hosts
+  still get the meeting, with its Meet/Teams link, on their own calendar. Needs email set
+  up. Existing bookings keep the way they were invited.
+- **RSVP tracking for invites Calnode sends.** With Resend receiving set up (Settings →
+  Email → RSVP tracking), a booker's Yes / No / Maybe is read from their calendar reply,
+  shown on the booking, and sent as a new `booking.rsvp` webhook event. Calnode sets up the
+  Resend webhook itself (manual steps as a fallback) and needs a full-access Resend API
+  key. Each invite gets a private reply address, and an answer only counts when Resend
+  verified it came from that booking's booker.
+
+### Security
+- **Go toolchain 1.26.9, and the Docker image builds with Go 1.27.2.** Both close 12
+  published Go standard-library vulnerabilities that `govulncheck` reports as reachable
+  from Calnode: GO-2026-6599 and GO-2026-6600 (`html/template`); GO-2026-6603,
+  GO-2026-6610, GO-2026-6611, GO-2026-6612 and GO-2026-6617 (HTTP/2 in `net/http`);
+  GO-2026-6605, GO-2026-6609 and GO-2026-6613 (`net/http`); GO-2026-6607 (`crypto/tls`);
+  and GO-2026-6608 (`net/textproto`). `go.mod` moves from `toolchain go1.26.6` and the
+  builder image from `golang:1.27.1-alpine`. No code or dependency change.
+
+## [0.10.1] - 2026-09-29
+
+### Added
+- **NethServer 8 module (`packaging/ns8`).** Calnode ships as a one-click NS8
+  app: host-based Traefik route with cluster TLS, SQLite on a persistent
+  volume, generated encryption key preserved across reconfigures, and release
+  tags that pin module and app to the same version. Preview-grade: installed
+  and configured paths are covered by robot tests but no live node has run
+  one end to end yet — see `packaging/ns8/README.md`.
+
+### Fixed
+- **Public booking lookup is now rate-limited.** `GET /v1/bookings/{id}` needs no
+  auth by design (it carries no PII), but it was the one public route outside
+  any rate limiter — an enumeration free-for-all. It shares the manage-token
+  bucket now.
+- **CalDAV connect failures no longer distinguish error classes.** Refused vs
+  timeout vs TLS vs auth failures were surfaced verbatim to the member form, a
+  usable LAN-scan oracle. The form returns one generic message and logs the
+  detail server-side; timing side-channels are accepted as residual.
+- **CalDAV no longer sends Basic credentials on cross-origin redirects.** A
+  redirect to another origin now drops the Authorization header instead of
+  forwarding the app password to a server the user never configured.
+- **A short `GOOGLE_CLIENT_ID` no longer panics at boot.** The startup log
+  sliced the first 20 characters unconditionally; unset-or-short values
+  crashed the process instead of logging the usual "not configured" warning.
+- **Video room explains host takeover instead of silently dropping controls.**
+  Sharing the host link lets anyone take over as host, and the demoted side
+  just lost its controls with no explanation. Host-link holders are now warned
+  pre-join not to share it, and a demotion names who took over with a reclaim
+  hint for owners.
+
+## [0.10.0] - 2026-09-27
+
+### Security
+- **Moving or cancelling a CalDAV booking no longer sends another account's app password
+  to the server holding the event.** A host can connect several CalDAV accounts, and
+  rescheduling or cancelling authenticated as whichever account was the destination at
+  the time, not the one the event was written to. After a host moved their destination
+  from an account on one server to an account on another, every reschedule or cancel of
+  an older booking sent the new account's username and app password to the old account's
+  server. A server that refused them left the calendar unchanged and the reconciler
+  retried, sending them again every sweep for a cancelled booking and until the end time
+  for a moved one. A server that answered 404 instead was taken at its word: the event
+  counted as already gone and stayed where it was.
+
+  Update and cancel now authenticate as the account that holds the event, found from what
+  the booking stored: the calendar recorded at creation, or failing that the connected
+  calendar whose URL contains the event's URL (same scheme, host and port). If no single
+  account can be established, nothing is sent, and the reconciler logs one warning and stops
+  retrying that event rather than refusing it again every sweep; the event stays where it
+  is. Hosts who moved a
+  CalDAV destination between accounts on different servers should consider rotating the
+  app password of the account they moved to.
+- **A booker's email address is validated where it enters, and is never written into an
+  email header unparsed.** The `To:` header was the one header field assembled from
+  caller-supplied input with no encoder in front of it: `buildRaw` parsed each recipient
+  with `net/mail` and, when that failed, appended the raw string anyway, so a CR/LF inside
+  an address would have ended the `To:` line and started a header of the sender's
+  choosing. Subject and the `From` display name already go through `mime.QEncoding`
+  (which renders CR/LF as `=0D`/`=0A`) and attachment filenames through `%q`.
+
+  Not exploitable as shipped: `Send` issues `c.Rcpt(to)` before `DATA`, and `net/smtp`
+  runs `validateLine` inside `Rcpt`, refusing any CR or LF - so a CRLF-bearing address
+  aborted the exchange at `RCPT TO` and never reached the body. That protection is
+  incidental, lives one call away in the standard library, and covers only this
+  transport. `buildRaw` now refuses an unparsed address (and an empty recipient list)
+  outright, returning `mailer.ErrInvalidRecipient` before anything is dialed; the
+  rejected value is kept out of the error, which is logged.
+
+  The public booking paths validate at intake rather than relying on the mailer: the REST
+  handler (`POST /v1/bookings`) answers 400 "email must be a valid email address", and
+  the shared core behind the conversational assistant's `book` tool and the MCP
+  `create_booking` tool checks the address before it persists anything. Both store the
+  parsed bare address, so a pasted `Bob <bob@example.com>` is recorded as
+  `bob@example.com` - a small deliberate behaviour change, matching what the hourly
+  throttle, the per-invitee cap and the `To:` header already assume they hold.
+### Added
+- **Sign out everywhere.** `POST /v1/auth/sessions/revoke-all` ends every session you
+  have except the one you asked from, so losing a laptop no longer means waiting out a
+  30-day cookie. Pass `{"user_id": "..."}` and an admin can do the same for someone
+  else: an admin may revoke a member, only the owner may revoke another admin, and the
+  owner's own sessions can only be ended by the owner.
+
+  It also revokes that person's MCP OAuth tokens, which is the part that makes it an
+  offboarding tool rather than a convenience. A connected agent authenticates with a
+  bearer token and not the session cookie, so ending the sessions alone would have left
+  it holding exactly the access that was just withdrawn.
+- **Canadian French (`fr-CA`) on the booker-facing surfaces.** A visitor whose browser asks
+  for `fr-CA` now gets Canadian French rather than the France copy; `fr` and `fr-FR` are
+  unaffected. It is the first regional locale, and a separate file rather than a fallback
+  because the differences are real: `courriel` rather than `e-mail`, `reporter`/`report`
+  rather than `reprogrammer`, `renseignements personnels` (the Quebec statutory term) rather
+  than `données personnelles`, no space before `!` `?` `;` where France puts one, and CLDR
+  itself spells July `juill.` here against `juil.` in France.
+
+  ⚠️ **The wording is an unreviewed draft**, like every non-English locale in this
+  repository: the structure is verified by the same three guards (same keys, printf-verb
+  parity, date tables cross-checked against CLDR), but no native Canadian French speaker has
+  read the copy. Corrections are welcome and easy to merge — see CONTRIBUTING.
+
+- **`FRAME_ANCESTORS`: embed the admin UI in your own console.** Space-separated origins
+  (`https://console.example.com 'self'`); when set, `/admin/` sends
+  `Content-Security-Policy: frame-ancestors <list>`. The public booking pages are
+  untouched and still deny framing outright — this is about the console, not the pages
+  that take card details.
+
+  Two deliberate refusals. An entry that is not `https://host[:port]` or `'self'` stops
+  the app booting rather than being ignored, because a browser drops a source list it
+  cannot parse, which would leave the admin UI *more* embeddable than the setting being
+  unset. And no `X-Frame-Options` is sent beside it: that header has no allow-list form,
+  so the only value it could carry is `SAMEORIGIN`, which browsers honour instead of the
+  CSP and would break the embedding this exists for.
+
+- **Per-person and team booking pages.** A handle set in profile settings buys
+  `/u/{handle}`: every public, active event type the person owns or hosts, with
+  duration, location and price per type. Teams get `/team/{slug}` with their types
+  plus a member roster linking to each member's page. Archived users 404, and handles
+  are slugified, unique, and cleared by blanking the field. Answers
+  [#94](https://github.com/Calnode/calnode/issues/94).
+- **Custom-hours date overrides take several blocks.** A date override used to hold a
+  single window while weekly rules take as many as you like, so a split day (open
+  morning and afternoon around a mid-day appointment) had no honest expression. Dates
+  now hold any number of custom blocks; a blocking override replaces the customs on
+  its date, an exact duplicate still 409s, and the list flags blocks that overlap
+  and merge. Answers
+  [#95](https://github.com/Calnode/calnode/issues/95).
+- **SMTP through a separate relay address.** Some providers require the SMTP session
+  to open against a relay host distinct from the mail domain: the relay address is
+  now configured explicitly instead of derived. Thanks
+  [@marijnbent](https://github.com/marijnbent) ([#65](https://github.com/Calnode/calnode/pull/65)).
+
+### Fixed
+- **SMTP email works with servers that offer AUTH LOGIN but not AUTH PLAIN.**
+  Calnode previously used PLAIN for every authenticated SMTP connection, which
+  failed against servers such as Microsoft 365 that advertise `LOGIN XOAUTH2`
+  after STARTTLS. It now prefers PLAIN when offered and uses LOGIN otherwise.
+  LOGIN requires TLS, and servers offering neither supported method return a
+  clear error.
+- **Rescheduling on the manage page works again.** Its slot list called an `esc()`
+  helper that only ever existed on the booking page, so any day with availability
+  threw before rendering and could not be rescheduled. The helper is now defined
+  on both surfaces.
+- **Removing a member no longer 500s on booking history, and no longer leaves
+  their MCP tokens valid.** `booking_hosts.user_id` had no `ON DELETE` action;
+  both it and the token tables now cascade. The upcoming-booking guard covers
+  group seats too, and primary-host history (past or present) blocks with a 409
+  naming reassignment instead of failing in SQL.
+- **Cancelling a paid booking cannot double-refund.** The refund row is claimed
+  with a conditional update before Stripe is called, the call carries an
+  idempotency key, and a Stripe failure reverts the claim so a later cancel
+  retries instead of silently keeping the money.
+- **A lost confirmation email is retried once and then flagged, not just logged.**
+  Confirmation sends get one retry; a final failure sets `confirm_failed` on the
+  booking, surfaced on the booking JSON for follow-up.
+- **The slots response says when its busy data is incomplete.** A provider outage
+  used to read as free time while booking stayed fail-closed, offering slots that
+  could not be sold. Slots now carry `degraded: true`, and all three booking
+  surfaces show a warning.
+- **Rescheduling or cancelling after a destination change acts on the provider that
+  holds the event.** The booking stored which calendar its event was written to but
+  not which provider wrote it, so a destination move handed old event ids to a
+  provider that never issued them: silent orphans one way, endless reconciler
+  retries the other. Each host event now stamps its provider at creation; updates
+  and cancels prefer the stamp, then id recognition (CalDAV URLs), then the current
+  destination for pre-stamp rows. Answers
+  [#58](https://github.com/Calnode/calnode/issues/58).
+- **The calendar picker no longer drops calendars past the first page.** Microsoft
+  requested `$top=100` calendars once and Google `maxResults=250` once, so anything
+  beyond silently vanished: unreachable for conflict checks and unchoosable as the
+  destination. Both listings now follow `@odata.nextLink` / `nextPageToken` to the
+  end. Answers [#59](https://github.com/Calnode/calnode/issues/59).
 - **The Zoom setup text no longer promises that an unpublished app works for "your own
   team".** Zoom only lets users inside the Zoom account that owns an unpublished app
   authorize it, so a member with their own Zoom account was refused on a Zoom error page
@@ -19,6 +255,44 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
   section with Zoom's three ways around it (same account, beta sharing, publishing) and
   the link-only fallback that needs no Zoom app. Answers
   [#35](https://github.com/Calnode/calnode/issues/35).
+
+- **A CalDAV event is moved or deleted even after the destination moves to Google or
+  Microsoft.** The event was handed to the new destination's provider, which could not
+  find an id it never issued, so the event stayed on the CalDAV calendar at its old time,
+  or after its booking was cancelled. A CalDAV event id is the event's URL, which is now
+  enough to route it back to the CalDAV provider whatever the destination is.
+- **Microsoft calendars can be chosen as the one bookings are written into.** Since 0.5.0
+  the calendar picker marked every Microsoft calendar "(read-only)" and disabled its Book
+  option. The calendar list read Graph's `canEdit` but left it out of `$select`, so Graph
+  never returned it and every calendar decoded as not writable. It is now requested, and a
+  test fails if that request omits any property the response decodes.
+- **Cancellations name who cancelled.** The bookings page sent a hardcoded "cancelled by
+  admin" reason that the server stored verbatim, so a member cancelling their own booking
+  emailed as an admin cancel. The server now composes "Cancelled by {name}" from the
+  authenticated caller and ignores the client string; booker manage-link and system
+  cancels keep their own reasons. Answers
+  [#90](https://github.com/Calnode/calnode/issues/90).
+- **The dashboard lists every booking link instead of crowning one.** With several event
+  types it showed a single "Your booking link" pointing at whichever came first. One
+  event type keeps the single-link box; several render a per-type list with names, copy
+  buttons, and the profile page link once a handle is set. Answers
+  [#93](https://github.com/Calnode/calnode/issues/93).
+- **A rescheduled LiveKit meeting gets fresh join links.** Room names are stable but the
+  signed URLs expire past the meeting end, so rescheduling past the original date left
+  every stored link dead. Reschedule now re-mints both links on the same room with an
+  expiry past the new end before the emails go out. Answers
+  [#98](https://github.com/Calnode/calnode/issues/98).
+- **A second Microsoft account no longer replaces the first.** Entra tenants omit the
+  `preferred_username`/`email` claims by default, so the account identifier came back
+  empty and saving the new connection deleted the old one. Calnode now requests the
+  `profile` and `email` scopes, falls back to the stable `tid:oid` pair, and refuses the
+  connection with an actionable error rather than storing an empty dedup key. Answers
+  [#99](https://github.com/Calnode/calnode/issues/99).
+- **External calendars are rechecked before a booking is created.** Availability was
+  computed, then the booking was written without re-reading the providers, so an event
+  landing in the gap double-booked. Creation now rechecks and fails closed with
+  provider failures distinguished. Thanks
+  [@marijnbent](https://github.com/marijnbent) ([#66](https://github.com/Calnode/calnode/pull/66)).
 
 ## [0.9.0] - 2026-09-10
 
@@ -49,19 +323,6 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
   something. A start that is simply in the past, one a booking took away, and one no host
   pool could satisfy are all excluded, so the explanation never appears attached to the
   wrong cause. Three new/changed keys in all eight locales.
-
-- **`FRAME_ANCESTORS`: embed the admin UI in your own console.** Space-separated origins
-  (`https://console.example.com 'self'`); when set, `/admin/` sends
-  `Content-Security-Policy: frame-ancestors <list>`. The public booking pages are
-  untouched and still deny framing outright — this is about the console, not the pages
-  that take card details.
-
-  Two deliberate refusals. An entry that is not `https://host[:port]` or `'self'` stops
-  the app booting rather than being ignored, because a browser drops a source list it
-  cannot parse, which would leave the admin UI *more* embeddable than the setting being
-  unset. And no `X-Frame-Options` is sent beside it: that header has no allow-list form,
-  so the only value it could carry is `SAMEORIGIN`, which browsers honour instead of the
-  CSP and would break the embedding this exists for.
 
 ### Fixed
 - **Constraint violations are recognised by SQLite's error code rather than by its

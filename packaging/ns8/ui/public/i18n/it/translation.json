@@ -1,0 +1,57 @@
+{
+    "common": {
+        "required": "Obbligatorio",
+        "processing": "In elaborazione…",
+        "work_in_progress": "In lavorazione"
+    },
+    "status": {
+        "node": "Nodo",
+        "services": "Servizio | Servizi",
+        "no_volumes": "Nessun volume",
+        "title": "Stato",
+        "name": "Nome",
+        "size": "Dimensione",
+        "created": "Creato",
+        "no_services": "Nessun servizio",
+        "no_images": "Nessuna immagine",
+        "app_images": "Immagine app|Immagini app",
+        "app_instance": "Istanza app",
+        "app_volumes": "Volume app|Volumi app",
+        "installation_node": "Nodo di installazione",
+        "mount": "Percorso di mount"
+    },
+    "settings": {
+        "save": "Salva",
+        "title": "Impostazioni",
+        "configure_instance": "Configura {instance}",
+        "test_field": "Campo di test"
+    },
+    "error": {
+        "error": "Errore",
+        "404": "Risorsa non trovata",
+        "validation_error": "Errore di validazione",
+        "network_error": "Errore di rete",
+        "cannot_retrieve_installed_modules": "Impossibile elencare moduli installati",
+        "cannot_retrieve_module_info": "Impossibile recuperare info modulo",
+        "network_timeout": "Timeout di rete",
+        "generic_error": "Qualcosa è andato storto",
+        "401": "Autenticazione non valida",
+        "403": "Operazione non autorizzata"
+    },
+    "action": {
+        "configure-module": "Configura modulo",
+        "get-configuration": "Visualizza configurazione",
+        "get-status": "Visualizza stato",
+        "get-module-info": "Visualizza info modulo",
+        "get-name": "Visualizza nome",
+        "list-backup-repositories": "Elenca repository di backup",
+        "list-backups": "Elenca backup",
+        "list-installed-modules": "Elenca moduli installati"
+    },
+    "task": {
+        "cannot_create_task": "Impossibile eseguire il task {action}"
+    },
+    "about": {
+        "title": "Informazioni"
+    }
+}

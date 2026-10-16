@@ -2,6 +2,7 @@ package mailer
 
 import (
 	"context"
+	"errors"
 	"net/url"
 	"strings"
 	"sync"
@@ -244,6 +245,17 @@ func smtpForTest() *SMTP {
 	return &SMTP{from: "noreply@example.com", fromName: "Calnode"}
 }
 
+// mustBuildRaw builds msg and fails the test if the recipients are refused — for the
+// cases below, which are about header encoding rather than recipient validation.
+func mustBuildRaw(t *testing.T, s *SMTP, msg Message) []byte {
+	t.Helper()
+	raw, err := s.buildRaw(msg)
+	if err != nil {
+		t.Fatalf("buildRaw: %v", err)
+	}
+	return raw
+}
+
 func TestBuildRaw_subjectInjectionPrevented(t *testing.T) {
 	s := smtpForTest()
 	msg := Message{
@@ -251,7 +263,7 @@ func TestBuildRaw_subjectInjectionPrevented(t *testing.T) {
 		Subject: "Evil\r\nBcc: attacker@evil.com",
 		Text:    "body",
 	}
-	raw := string(s.buildRaw(msg))
+	raw := string(mustBuildRaw(t, s, msg))
 
 	if strings.Contains(raw, "Bcc: attacker@evil.com") {
 		t.Error("header injection: injected Bcc header found in raw message")
@@ -273,7 +285,7 @@ func TestBuildRaw_nonASCIISubjectEncoded(t *testing.T) {
 		Subject: "Réunion d'équipe",
 		Text:    "body",
 	}
-	raw := string(s.buildRaw(msg))
+	raw := string(mustBuildRaw(t, s, msg))
 
 	// The raw Subject: line must not contain bare UTF-8 bytes (> 0x7E).
 	for _, line := range strings.Split(raw, "\r\n") {
@@ -298,7 +310,7 @@ func TestBuildRaw_pureASCIISubjectNotEncoded(t *testing.T) {
 		Subject: "Booking confirmed: 30-min call",
 		Text:    "body",
 	}
-	raw := string(s.buildRaw(msg))
+	raw := string(mustBuildRaw(t, s, msg))
 
 	for _, line := range strings.Split(raw, "\r\n") {
 		if strings.HasPrefix(line, "Subject:") {
@@ -313,12 +325,69 @@ func TestBuildRaw_pureASCIISubjectNotEncoded(t *testing.T) {
 func TestBuildRaw_fromNameFormatted(t *testing.T) {
 	s := smtpForTest()
 	msg := Message{To: []string{"x@example.com"}, Subject: "Hi", Text: "body"}
-	raw := string(s.buildRaw(msg))
+	raw := string(mustBuildRaw(t, s, msg))
 
 	if !strings.Contains(raw, "Calnode") {
 		t.Error("From: header missing sender name")
 	}
 	if !strings.Contains(raw, "noreply@example.com") {
 		t.Error("From: header missing sender address")
+	}
+}
+
+// TestBuildRaw_recipientAddresses covers the To: header, which is the one header field
+// assembled from caller-supplied input without an encoder in front of it. Subject and the
+// From display name go through mime.QEncoding and attachment filenames through %q; a
+// recipient that mail.ParseAddress refuses used to be appended verbatim, so a CR/LF inside
+// it would have ended the To: line and started a header of the sender's choosing.
+func TestBuildRaw_recipientAddresses(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		to   []string
+		// want is the expected To: header line. Empty means buildRaw must refuse.
+		want string
+	}{
+		{"plain address", []string{"bob@example.com"}, "To: <bob@example.com>"},
+		{"display name is normalised into the header", []string{"Bob <bob@example.com>"}, `To: "Bob" <bob@example.com>`},
+		{"two recipients", []string{"bob@example.com", "eve@example.com"}, "To: <bob@example.com>, <eve@example.com>"},
+		{"CRLF in the address", []string{"a@b.example\r\nBcc: attacker@example.com"}, ""},
+		{"not an address at all", []string{"not-an-address"}, ""},
+		{"no recipient", nil, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			raw, err := smtpForTest().buildRaw(Message{To: tc.to, Subject: "Hi", Text: "body"})
+
+			if tc.want == "" {
+				if err == nil {
+					t.Fatalf("buildRaw accepted %q; want a refusal", tc.to)
+				}
+				if !errors.Is(err, ErrInvalidRecipient) {
+					t.Errorf("error = %v; want it to wrap ErrInvalidRecipient", err)
+				}
+				if raw != nil {
+					t.Errorf("buildRaw returned %d bytes alongside its error; want none", len(raw))
+				}
+				// The offending value is attacker-controlled and this error is logged,
+				// so it must not carry the raw bytes back out.
+				if strings.Contains(err.Error(), "attacker@example.com") {
+					t.Errorf("error %q quotes the rejected address back", err)
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("buildRaw(%q): %v", tc.to, err)
+			}
+			var got string
+			for _, line := range strings.Split(string(raw), "\r\n") {
+				if strings.HasPrefix(line, "To:") {
+					got = line
+					break
+				}
+			}
+			if got != tc.want {
+				t.Errorf("To: header = %q; want %q", got, tc.want)
+			}
+		})
 	}
 }

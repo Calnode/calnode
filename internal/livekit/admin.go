@@ -219,6 +219,8 @@ func (c *Client) VerifyWebhook(authToken string, body []byte) error {
 	}
 	var claims struct {
 		Sha256 string `json:"sha256"`
+		Exp    int64  `json:"exp"`
+		Iat    int64  `json:"iat"`
 	}
 	raw, err := base64.RawURLEncoding.DecodeString(parts[1])
 	if err != nil || json.Unmarshal(raw, &claims) != nil {
@@ -227,6 +229,22 @@ func (c *Client) VerifyWebhook(authToken string, body []byte) error {
 	sum := sha256.Sum256(body)
 	if claims.Sha256 != base64.StdEncoding.EncodeToString(sum[:]) {
 		return errors.New("livekit: webhook body hash mismatch")
+	}
+	// Replay protection: a captured body + header verifies forever without an
+	// age check. LiveKit signs webhook tokens with a short expiry; enforce it
+	// (with the same ±5 min skew tolerance used for Stripe webhooks). Tokens
+	// without timestamps predate this check and are rejected — re-delivery
+	// mints a fresh token.
+	now := time.Now().Unix()
+	const skew = 5 * 60
+	if claims.Exp == 0 || claims.Iat == 0 {
+		return errors.New("livekit: webhook token has no expiry")
+	}
+	if now > claims.Exp+skew {
+		return errors.New("livekit: webhook token expired")
+	}
+	if claims.Iat > now+skew {
+		return errors.New("livekit: webhook token issued in the future")
 	}
 	return nil
 }

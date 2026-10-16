@@ -1,0 +1,57 @@
+{
+    "error": {
+        "403": "العملية غير مصرح بها",
+        "401": "مصادقة غير صالحة",
+        "generic_error": "حدث خطأ",
+        "error": "خطأ",
+        "network_timeout": "انتهت مهلة الخادم",
+        "404": "لم يتم العثور على المصدر",
+        "network_error": "خطا في الاتصال",
+        "validation_error": "خطئ في التحقق",
+        "cannot_retrieve_module_info": "لا يمكن استرداد معلومات الـ module",
+        "cannot_retrieve_installed_modules": "لا يمكن استرداد الـ moduls المثبتة"
+    },
+    "common": {
+        "required": "مطلوب",
+        "work_in_progress": "جاري المعالجة",
+        "processing": "جاري المعالجة"
+    },
+    "about": {
+        "title": "معلومات"
+    },
+    "action": {
+        "list-backup-repositories": "قائمة مستودعات النسخ الاحتياطي",
+        "list-backups": "قائمة النسخ الاحتياطية",
+        "get-status": "معلومات الحالة",
+        "get-configuration": "احصل على التهيئة",
+        "configure-module": "تهيئة الـmodule",
+        "get-module-info": "احصل على معلومات الـ module",
+        "get-name": "احصل على إسم",
+        "list-installed-modules": "قائمة الـ modules المثبتة"
+    },
+    "task": {
+        "cannot_create_task": "لا يمكن إنشاء المهمة {action}"
+    },
+    "settings": {
+        "title": "إعدادات",
+        "save": "حفظ",
+        "configure_instance": "تهيئة {instance}",
+        "test_field": "حقل اختبار"
+    },
+    "status": {
+        "title": "الحالة",
+        "app_instance": "تطبيق instance",
+        "services": "الخدمة | الخدمات",
+        "app_images": "صورة التطبيق | صور التطبيق",
+        "app_volumes": "حجم التطبيق | احجام التطبيق",
+        "mount": "تحميل (تلقيم)",
+        "no_services": "لا خدمات",
+        "installation_node": "تثبيت Node",
+        "node": "Node",
+        "name": "الاسم",
+        "size": "الحجم",
+        "created": "تم الانشاء",
+        "no_images": "لا يوجد صور",
+        "no_volumes": "لايوجد احجام"
+    }
+}

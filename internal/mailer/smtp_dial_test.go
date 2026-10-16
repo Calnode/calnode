@@ -43,7 +43,7 @@ func TestSend_unreachableHostFailsPromptly(t *testing.T) {
 	defaultSMTPTimeout = 500 * time.Millisecond
 	t.Cleanup(func() { defaultSMTPTimeout = orig })
 
-	s := NewSMTP("203.0.113.1", "587", "user", "pass", false, true, "from@example.com", "From")
+	s := NewSMTP("203.0.113.1", "587", "", "", "user", "pass", false, true, "from@example.com", "From")
 
 	done := make(chan error, 1)
 	start := time.Now()

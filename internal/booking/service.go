@@ -134,13 +134,36 @@ func (s *Service) Create(ctx context.Context, p CreateParams) (*Booking, error) 
 		}
 	}
 
+	// Hourly per-email throttle, inside the transaction for the same reason:
+	// two simultaneous submissions must not both read below the cap and both
+	// insert. Counts cancelled bookings too, bounding book/cancel/rebook churn.
+	if p.MaxBookingsPerHour > 0 {
+		var recent int
+		if err := tx.QueryRowContext(ctx, `
+			SELECT COUNT(*) FROM bookings b
+			JOIN booking_attendees a ON a.booking_id = b.id AND a.is_organizer = 1
+			WHERE a.email = ? COLLATE NOCASE AND b.created_at > ?`,
+			p.Organizer.Email, time.Now().UTC().Add(-time.Hour).Format(time.RFC3339Nano)).Scan(&recent); err != nil {
+			return nil, fmt.Errorf("booking: hourly throttle check: %w", err)
+		}
+		if recent >= p.MaxBookingsPerHour {
+			return nil, ErrEmailThrottled
+		}
+	}
+
 	bookingID := uid.New()
+	inviteDelivery := p.InviteDelivery
+	if inviteDelivery == "" {
+		inviteDelivery = InviteByCalendar
+	}
 
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO bookings
-		  (id, event_type_id, host_id, start_at, end_at, status, location_value, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, 'confirmed', ?, ?, ?)`,
-		bookingID, p.EventTypeID, chosenHost, startStr, endStr, p.LocationValue, now, now)
+		  (id, event_type_id, host_id, start_at, end_at, status, location_value, location_type,
+		   invite_delivery, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, 'confirmed', ?, ?, ?, ?, ?)`,
+		bookingID, p.EventTypeID, chosenHost, startStr, endStr, p.LocationValue, p.LocationType,
+		inviteDelivery, now, now)
 	if err != nil {
 		if db.IsUniqueViolation(err) {
 			return nil, ErrDoubleBooked
@@ -194,16 +217,26 @@ func (s *Service) Create(ctx context.Context, p CreateParams) (*Booking, error) 
 
 	nowT, _ := time.Parse(time.RFC3339Nano, now)
 	return &Booking{
-		ID:            bookingID,
-		EventTypeID:   p.EventTypeID,
-		HostID:        chosenHost,
-		StartAt:       p.StartAt.UTC(),
-		EndAt:         p.EndAt.UTC(),
-		Status:        "confirmed",
-		LocationValue: p.LocationValue,
-		CreatedAt:     nowT,
-		UpdatedAt:     nowT,
+		ID:             bookingID,
+		EventTypeID:    p.EventTypeID,
+		HostID:         chosenHost,
+		StartAt:        p.StartAt.UTC(),
+		EndAt:          p.EndAt.UTC(),
+		Status:         "confirmed",
+		LocationValue:  p.LocationValue,
+		LocationType:   p.LocationType,
+		InviteDelivery: inviteDelivery,
+		CreatedAt:      nowT,
+		UpdatedAt:      nowT,
 	}, nil
+}
+
+// clearNeedsSync drops reschedule-drift flags when a booking is cancelled: the
+// reschedule reconciler only sweeps confirmed bookings, so without this a flag
+// set before the cancel would sit forever — never cleared, never acted on.
+func (s *Service) clearNeedsSync(ctx context.Context, bookingID string) {
+	_, _ = s.db.ExecContext(ctx,
+		`UPDATE booking_hosts SET needs_sync = 0 WHERE booking_id = ?`, bookingID)
 }
 
 // Cancel marks a booking as cancelled. hostID must match the booking's host_id
@@ -235,6 +268,7 @@ func (s *Service) Cancel(ctx context.Context, hostID, id, reason string) error {
 		}
 		return ErrAlreadyCancelled
 	}
+	s.clearNeedsSync(ctx, id)
 	return nil
 }
 
@@ -262,6 +296,7 @@ func (s *Service) CancelByID(ctx context.Context, id, reason string) error {
 		}
 		return ErrAlreadyCancelled
 	}
+	s.clearNeedsSync(ctx, id)
 	return nil
 }
 
@@ -271,7 +306,8 @@ func (s *Service) CancelByID(ctx context.Context, id, reason string) error {
 const bookingColumns = `id, event_type_id, host_id, start_at, end_at, status,
 	       COALESCE(cancellation_reason, ''), COALESCE(location_value, ''),
 	       created_at, updated_at,
-	       payment_status, amount_paid_cents, amount_paid_currency`
+	       payment_status, amount_paid_cents, amount_paid_currency, location_type,
+	       confirm_failed, invite_delivery`
 
 // hostBusy reports whether hostID has any non-cancelled booking overlapping
 // [start, end) — the double-booking invariant every write path (Create, Reschedule,
@@ -285,9 +321,17 @@ func hostBusy(ctx context.Context, tx *sql.Tx, hostID, start, end, excludeBookin
 	err := tx.QueryRowContext(ctx, `
 		SELECT COUNT(*) FROM bookings b
 		JOIN booking_hosts bh ON bh.booking_id = b.id
-		WHERE bh.user_id = ? AND b.status != 'cancelled' AND b.id != ?
+		WHERE (bh.user_id = ? OR EXISTS (
+            SELECT 1 FROM connection_calendars checked
+            JOIN connection_calendars destination
+              ON destination.provider = checked.provider
+             AND destination.account_email = checked.account_email
+             AND destination.calendar_id = checked.calendar_id
+            WHERE checked.user_id = ? AND checked.check_conflicts = 1
+              AND destination.user_id = bh.user_id AND destination.is_destination = 1
+        )) AND b.status != 'cancelled' AND b.id != ?
 		  AND b.start_at < ? AND b.end_at > ?`,
-		hostID, excludeBookingID, end, start).Scan(&n)
+		hostID, hostID, excludeBookingID, end, start).Scan(&n)
 	return n > 0, err
 }
 
@@ -397,10 +441,11 @@ func leastLoadedHost(ctx context.Context, tx *sql.Tx, eventTypeID string, candid
 		args = append(args, c)
 	}
 	rows, err := tx.QueryContext(ctx,
-		`SELECT host_id, COUNT(*) FROM bookings
-		WHERE event_type_id = ? AND status != 'cancelled' AND end_at > ?
-		  AND host_id IN (`+strings.Join(ph, ",")+`)
-		GROUP BY host_id`, args...) // #nosec G202 -- ph is a fixed slice of literal "?" placeholders (one per candidate above); every value is bound via args..., never concatenated into the SQL text
+		`SELECT bh.user_id, COUNT(DISTINCT b.id) FROM bookings b
+		JOIN booking_hosts bh ON bh.booking_id = b.id
+		WHERE b.event_type_id = ? AND b.status != 'cancelled' AND b.end_at > ?
+		  AND bh.user_id IN (`+strings.Join(ph, ",")+`)
+		GROUP BY bh.user_id`, args...) // #nosec G202 -- ph is a fixed slice of literal "?" placeholders (one per candidate above); every value is bound via args..., never concatenated into the SQL text
 	if err != nil {
 		return "", fmt.Errorf("booking: load host loads: %w", err)
 	}
@@ -585,6 +630,7 @@ func (s *Service) CancelByToken(ctx context.Context, rawToken, reason string) (*
 	if t, err := time.Parse(time.RFC3339Nano, now); err == nil {
 		b.UpdatedAt = t
 	}
+	s.clearNeedsSync(ctx, b.ID)
 	return b, nil
 }
 
@@ -622,13 +668,15 @@ type scanner interface {
 func scanBooking(s scanner) (*Booking, error) {
 	var b Booking
 	var startStr, endStr, createdStr, updatedStr string
+	var confirmFailed int
 
 	err := s.Scan(
 		&b.ID, &b.EventTypeID, &b.HostID,
 		&startStr, &endStr, &b.Status,
 		&b.CancellationReason, &b.LocationValue,
 		&createdStr, &updatedStr,
-		&b.PaymentStatus, &b.AmountPaidCents, &b.AmountPaidCurrency,
+		&b.PaymentStatus, &b.AmountPaidCents, &b.AmountPaidCurrency, &b.LocationType,
+		&confirmFailed, &b.InviteDelivery,
 	)
 	if err == sql.ErrNoRows {
 		return nil, ErrNotFound
@@ -650,5 +698,6 @@ func scanBooking(s scanner) (*Booking, error) {
 	if b.UpdatedAt, parseErr = time.Parse(time.RFC3339Nano, updatedStr); parseErr != nil {
 		return nil, fmt.Errorf("booking: parse updated_at %q: %w", updatedStr, parseErr)
 	}
+	b.ConfirmFailed = confirmFailed != 0
 	return &b, nil
 }

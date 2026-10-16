@@ -1,0 +1,31 @@
+#!/usr/bin/env python3
+
+#
+# Copyright (C) 2023 Nethesis S.r.l.
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+
+import json
+import os
+import sys
+
+CONFIG_FILE = os.path.join(os.getcwd(), "config.json")
+
+config = {"host": "", "lets_encrypt": True, "http2https": True, "configured": False}
+
+try:
+    with open(CONFIG_FILE, "r", encoding="utf-8") as handle:
+        stored = json.load(handle)
+        if isinstance(stored, dict):
+            if stored.get("host"):
+                config["host"] = stored["host"]
+                config["configured"] = True
+            if isinstance(stored.get("lets_encrypt"), bool):
+                config["lets_encrypt"] = stored["lets_encrypt"]
+            if isinstance(stored.get("http2https"), bool):
+                config["http2https"] = stored["http2https"]
+except (FileNotFoundError, ValueError):
+    pass
+
+# The encryption key is never returned here: it stays in state/calnode.env.
+json.dump(config, fp=sys.stdout)

@@ -33,11 +33,25 @@ type BookingData struct {
 	CustomNote         string // optional host-configured note appended to the email body
 	SubjectOverride    string // optional per-event-type custom subject; falls back to the default when empty
 	// AttachICS attaches an iCalendar invite to the attendee's email — set by the
-	// handler only when the host has no Google destination calendar (so Google
-	// isn't already inviting the attendee, which would duplicate). ICSSequence must
-	// be non-decreasing across a booking's confirm→reschedule→cancel lifecycle.
+	// handler when the host has no Google destination calendar (so Google isn't already
+	// inviting the attendee, which would duplicate), or when the booking's invites are
+	// sent by Calnode (see HideHostInInvite). ICSSequence must be non-decreasing across
+	// a booking's confirm→reschedule→cancel lifecycle.
 	AttachICS   bool
 	ICSSequence int
+	// HideHostInInvite makes the instance's sender identity (InviteOrganizerName /
+	// InviteOrganizerEmail) the .ics ORGANIZER instead of the host, so the booker's
+	// calendar never carries a host's personal address. Set on attendee sends of bookings
+	// whose invites Calnode delivers; host copies clear it. With no organizer address the
+	// ORGANIZER line is omitted rather than falling back to the host.
+	HideHostInInvite     bool
+	InviteOrganizerName  string
+	InviteOrganizerEmail string
+	// ICSWithoutAttendee leaves the booker out of the .ics and sends it as PUBLISH: a
+	// host's own copy of a Calnode-invited booking. The host's calendar client must never
+	// hold the booker as a guest, or editing the entry there could re-invite them from the
+	// host's personal account - the very thing Calnode-sent invites avoid.
+	ICSWithoutAttendee bool
 	// Branding — instance-wide, threaded in by the handler. BrandName is the
 	// wordmark/footer name (falls back to "Calnode" when empty); LogoURL is an
 	// optional absolute https image shown in the HTML email header.

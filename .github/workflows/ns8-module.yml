@@ -1,0 +1,271 @@
+name: NS8 module publish
+
+# Builds the ns8-calnode module image from packaging/ns8. The module is a thin
+# wrapper: this image carries configuration scripts and the settings UI, while
+# the Calnode app itself is pulled from its own registry at install time.
+#   * PR                → validate + build only. Nothing is pushed.
+#   * push to dev       → push `:dev`, running app `:dev`.
+#   * push to main      → push `:edge`, running app `:edge` (`:latest` stays
+#                         pinned to releases, mirroring docker-publish.yml).
+#   * push a `vX.Y.Z` tag → push `:X.Y.Z`, `:X.Y` and `:latest`, running app
+#                         `:X.Y.Z`. Module and app tags move together, so a
+#                         module release can never point at the wrong app.
+on:
+  push:
+    branches: [main, dev]
+    tags: ['v*.*.*']
+  pull_request:
+
+concurrency:
+  group: ns8-module-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Validate action scripts and schemas
+        working-directory: packaging/ns8
+        run: |
+          python3 -m py_compile imageroot/actions/configure-module/20configure imageroot/actions/get-configuration/20read
+          python3 -m py_compile assert-multiarc.py
+          python3 -m py_compile test_assert_multiarc.py
+          # Offline tests, so a broken invariant fails on every push rather than
+          # waiting for a release to notice. The registry round-trip tests in the
+          # same file are opt-in and skipped unless NS8_REGISTRY_TESTS=1.
+          python3 -m unittest discover -s . -p 'test_*.py'
+          python3 -c "import json, glob; [json.load(open(f)) for f in glob.glob('imageroot/actions/*/*.json') + glob.glob('ui/public/*.json') + ['ui/public/i18n/en/translation.json']]"
+          bash -n imageroot/actions/configure-module/80start_services
+          bash -n build-images.sh
+          bash -n push-manifest.sh
+          # Every buildah subcommand the scripts invoke must be a real one.
+          # A typo like "buildah image exists" (there is no singular form)
+          # only surfaces after a full two-arch build, minutes into a publish.
+          # This runner has buildah preinstalled, so check it here instead.
+          for sub in $(grep -ohE 'buildah [a-z]+' build-images.sh push-manifest.sh | awk '{print $2}' | sort -u); do
+            if ! buildah "$sub" --help >/dev/null 2>&1; then
+              echo "::error::buildah has no subcommand '$sub' used by the build scripts"
+              exit 1
+            fi
+          done
+          # No build-time placeholders may remain: the unit and configure read
+          # the app ref from ${CALNODE_IMAGE} at install time.
+          ! grep -rn '__CALNODE_APP_IMAGE__' imageroot/
+          # Action scripts must be committed executable: the agent silently
+          # skips non-executable files, and fileMode=false checkouts do not
+          # record chmod, so assert the indexed modes, not just the worktree.
+          # The non-empty assertion matters: the awk below exits 0 on empty
+          # input, so a pathspec that stops matching would pass vacuously.
+          scripts=$(git ls-files -s -- imageroot/actions | grep -v 'validate-.*\.json$')
+          if [ -z "$scripts" ]; then
+            echo "::error::no action scripts matched, the exec-bit check below would pass vacuously"
+            exit 1
+          fi
+          echo "$scripts" | awk '$1!="100755" {print "not executable in index:", $4; bad=1} END{exit bad}'
+
+          # state-include.conf is handed to restic as --files-from, so restic
+          # backs up ONLY the paths listed in it. Dropping a line is a silent
+          # data-loss failure: the backup job still reports success while
+          # quietly omitting that data. Neither line is discoverable from the
+          # image, so assert the file instead of trusting it to stay correct.
+          #   volumes/calnode-data  the SQLite database, the whole app state
+          #   state/calnode.env     holds CALNODE_ENCRYPTION_KEY; without it a
+          #                         restored database cannot be decrypted and
+          #                         the app refuses to start with
+          #                         "keyvault: failed to unwrap DEK"
+          inc=imageroot/etc/state-include.conf
+          test -f "$inc" || { echo "::error::$inc is missing"; exit 1; }
+          for required in volumes/calnode-data state/calnode.env; do
+            if ! grep -qx "$required" "$inc"; then
+              echo "::error::$inc no longer lists '$required'. restic receives this file as --files-from, so omitting a path silently drops that data from every backup while still reporting success."
+              cat "$inc"
+              exit 1
+            fi
+          done
+          echo "state-include.conf lists both the volume and the encryption key"
+
+      # Run the real push-manifest.sh end to end against a scratch storage and
+      # an oci: destination, so no registry and no credentials are needed. PR
+      # builds push nothing, which means the manifest step is skipped on PRs and
+      # a green run says nothing about it. Both earlier publish failures (a bad
+      # subcommand, then a bad argument count) lived in that step and only
+      # surfaced on a release push, so exercise it here instead.
+      # push-manifest.sh refuses to publish a list that is missing an arch, so a
+      # clean exit is the assertion.
+      - name: Selftest the multi-arch manifest assembly (hermetic)
+        run: |
+          set -euo pipefail
+          tmp=$(mktemp -d)
+          buildah from --name ocr-selftest-amd64 --arch amd64 scratch >/dev/null
+          buildah commit ocr-selftest-amd64 ocr-selftest/ns8-calnode:build-amd64 >/dev/null
+          buildah from --name ocr-selftest-arm64 --arch arm64 scratch >/dev/null
+          buildah commit ocr-selftest-arm64 ocr-selftest/ns8-calnode:build-arm64 >/dev/null
+          # SOURCE_PREFIX is empty so this reads from local containers-storage,
+          # which is the only way to exercise the script with no registry.
+          REPOBASE=ocr-selftest SOURCE_PREFIX="" TARGETARCHES="amd64 arm64" \
+            IMAGETAGS=selftest PUSH_DESTINATION="oci:${tmp}/out" \
+            bash packaging/ns8/push-manifest.sh
+          echo "hermetic manifest selftest OK"
+
+      # The hermetic test above reads local storage, so it cannot catch the
+      # failure that actually broke the v0.11.0 release: buildah running with
+      # two graph roots merged into one store, where the local image record
+      # existed but its manifest blob did not, and
+      #   buildah manifest add <list> <local ref>
+      # failed with "reading manifest for instance ...: file does not exist".
+      #
+      # A release now reads each architecture from the registry instead, so this
+      # test does too: it assembles from the real published :build-<arch> tags
+      # and pushes the result to a local oci: path, so it needs no credentials
+      # and publishes nothing. If these tags are missing, that is itself the
+      # signal worth failing on.
+      - name: Selftest the manifest assembly against the registry
+        run: |
+          set -euo pipefail
+          tmp=$(mktemp -d)
+          REPOBASE=ghcr.io/calnode TARGETARCHES="amd64 arm64" \
+            IMAGETAGS=selftest-registry PUSH_DESTINATION="oci:${tmp}/out" \
+            bash packaging/ns8/push-manifest.sh
+          # Prove the assembled list really carries both arches rather than
+          # trusting the exit code alone. buildah writes a plain OCI layout,
+          # but it stores the assembled list as a single entry in index.json
+          # whose own mediaType is an image index, with the per-arch manifests
+          # inside that referenced blob. So look there when the top level holds
+          # no platform entries of its own.
+          count=$(jq '[.manifests[]?
+                       | select(.platform.architecture != null
+                                and .platform.architecture != "unknown")]
+                    | length' "${tmp}/out/index.json")
+          if [ "$count" -eq 0 ]; then
+            top=$(jq -r '.manifests[0].digest' "${tmp}/out/index.json")
+            inner="${tmp}/out/blobs/sha256/${top#sha256:}"
+            if [ ! -f "$inner" ]; then
+              echo "::error::no index entry with platforms and no referenced blob at $inner"
+              cat "${tmp}/out/index.json"
+              exit 1
+            fi
+            count=$(jq '[.manifests[]?
+                         | select(.platform.architecture != null
+                                  and .platform.architecture != "unknown")]
+                      | length' "$inner")
+          fi
+          if [ "$count" -ne 2 ]; then
+            echo "::error::assembled index holds ${count} arches, expected 2"
+            cat "${tmp}/out/index.json"
+            exit 1
+          fi
+          echo "registry-backed manifest selftest OK (${count} arches)"
+
+  build:
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+
+      # Required to build the arm64 variant of the module image on an amd64
+      # runner. Without it the module image would be amd64-only and podman
+      # could not run it on an arm64 NS8 node.
+      - uses: docker/setup-qemu-action@v4
+        with:
+          platforms: all
+
+      # The UI build is the slow part; cache the dependency tree the way the
+      # upstream NS8 publish workflow does, so branch and PR runs do not
+      # re-download the whole Vue/Carbon tree every time.
+      - uses: actions/cache@v4
+        with:
+          path: packaging/ns8/ui/node_modules
+          key: "yarn-${{ hashFiles('packaging/ns8/ui/yarn.lock') }}"
+
+      # Mirror the app tagging in docker-publish.yml: release tags pin both
+      # images to the same version, branches track the moving app tags.
+      - name: Resolve tags
+        id: tags
+        env:
+          REF: ${{ github.ref }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          if [[ "${REF}" == refs/tags/v* ]]; then
+            version="${REF_NAME#v}"
+            echo "module_tags=${version} ${version%.*} latest" >> "$GITHUB_OUTPUT"
+            echo "app_image=ghcr.io/calnode/calnode:${version}" >> "$GITHUB_OUTPUT"
+          elif [[ "${REF}" == refs/heads/main ]]; then
+            echo "module_tags=edge" >> "$GITHUB_OUTPUT"
+            echo "app_image=ghcr.io/calnode/calnode:edge" >> "$GITHUB_OUTPUT"
+          elif [[ "${REF}" == refs/heads/dev ]]; then
+            echo "module_tags=dev" >> "$GITHUB_OUTPUT"
+            echo "app_image=ghcr.io/calnode/calnode:dev" >> "$GITHUB_OUTPUT"
+          else
+            echo "module_tags=build" >> "$GITHUB_OUTPUT"
+            echo "app_image=ghcr.io/calnode/calnode:edge" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # buildah is preinstalled on the ubuntu runners, same as the upstream
+      # NS8 publish workflow assumes.
+      - name: Build each architecture
+        working-directory: packaging/ns8
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          ACTOR: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOBASE: ghcr.io/${{ github.repository_owner }}
+          APP_IMAGE: ${{ steps.tags.outputs.app_image }}
+          IMAGETAGS: ${{ steps.tags.outputs.module_tags }}
+        run: |
+          push=0
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            push=1
+            buildah login -u "$ACTOR" --password-stdin ghcr.io <<<"$GHCR_TOKEN"
+          fi
+          # PUSH=1 publishes only the per-arch :build-<arch> tags. The public
+          # tags are assembled from them by the manifest step below.
+          for arch in amd64 arm64; do
+            PUSH="$push" TARGETARCH="$arch" bash build-images.sh
+          done
+
+      - name: Assemble and push the multi-arch manifest
+        if: github.event_name != 'pull_request'
+        working-directory: packaging/ns8
+        env:
+          REPOBASE: ghcr.io/${{ github.repository_owner }}
+          TARGETARCHES: "amd64 arm64"
+          IMAGETAGS: ${{ steps.tags.outputs.module_tags }}
+        run: bash push-manifest.sh
+
+      # The gate that would have caught the amd64-only :latest. It inspects what
+      # actually landed in the registry rather than local storage, so a broken
+      # publish cannot pass by looking healthy from the runner. Needs no extra
+      # secrets: the module repository is public and the token is anonymous.
+      # Runs for branch pushes too, because :edge and :dev are published tags
+      # and deserve exactly the same guarantee as a version tag.
+      #
+      # Deliberately module-only: it does NOT resolve the app image named by
+      # org.nethserver.images. This workflow and docker-publish.yml are triggered
+      # by the same tag push and run concurrently, so on a fresh release the app
+      # image is often not published yet and resolving it here races the app
+      # publish. That check lives in release-verify.yml, which runs once both
+      # publish workflows have completed.
+      - name: Assert the published tags are multi-arch
+        if: github.event_name != 'pull_request'
+        working-directory: packaging/ns8
+        env:
+          MODULE_REPO: ghcr.io/${{ github.repository_owner }}/ns8-calnode
+          IMAGETAGS: ${{ steps.tags.outputs.module_tags }}
+        run: python3 assert-multiarc.py "$MODULE_REPO" $IMAGETAGS

@@ -156,5 +156,17 @@
   "assistant_iteration_cap": "Semplifichiamo: scelga un orario dal calendario qui sotto.",
   "assistant_status_slots": "Verifica della disponibilità…",
   "assistant_status_book": "Prenotazione in corso…",
-  "assistant_status_working": "Elaborazione…"
+  "assistant_status_working": "Elaborazione…",
+  "time_period": "Momento della giornata",
+  "time_morning": "Mattina",
+  "time_afternoon": "Pomeriggio",
+  "time_evening": "Sera",
+  "phone_call_number": "Telefono (facoltativo, per una chiamata)",
+  "calendar_degraded_notice": "Non è stato possibile caricare alcune informazioni del calendario, quindi la disponibilità potrebbe essere incompleta.",
+
+  "directory_book": "Prenota",
+  "directory_empty": "Niente da prenotare al momento.",
+  "directory_members": "Membri del team",
+  "directory_person_subtitle": "Prenota del tempo con %s",
+  "directory_team_subtitle": "Prenota del tempo con il team %s"
 }

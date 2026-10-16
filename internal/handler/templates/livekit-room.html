@@ -127,6 +127,12 @@
     .rec-dot { width:9px; height:9px; border-radius:50%; background:#fff; animation:recpulse 1.4s infinite; }
     @keyframes recpulse { 0%,100% { opacity:1; } 50% { opacity:.3; } }
     .ctrl.recording { background:var(--danger); color:#fff; }
+    /* Host-takeover notice (a demote with an explanation, not a silent control loss) */
+    .host-banner { background:#1f2937; }
+    .host-banner button { background:none; border:0; color:#fff; font-size:1rem; line-height:1; cursor:pointer; padding:0 0 0 4px; }
+    /* Prejoin host-link warning */
+    .hostlink-note { margin:12px 0 0; padding:10px 12px; border-radius:10px; font-size:.85rem;
+      background:rgba(245,158,11,.12); border:1px solid rgba(245,158,11,.45); }
 
     /* Host controls menu (gear popover above the bar) */
     .hm-wrap { position:relative; display:inline-flex; }
@@ -167,6 +173,7 @@
         <label for="lk-name">Your name</label>
         <input id="lk-name" type="text" maxlength="60" placeholder="Enter your name" autocomplete="name">
       </div>
+      <p id="lk-hostlink-note" class="hostlink-note hidden">You're joining with the <strong>host link</strong> — keep it to yourself. Guests join with the link in their invite; anyone opening this one takes over as host.</p>
       <button id="lk-join" class="join-btn">Join meeting</button>
     </section>
 
@@ -224,6 +231,7 @@
 
     <div id="lk-status" class="hidden"></div>
     <div id="lk-rec-banner" class="rec-banner hidden"><span class="rec-dot"></span>Recording</div>
+    <div id="lk-host-banner" class="rec-banner host-banner hidden"><span id="lk-host-banner-msg"></span><button id="lk-host-banner-x" aria-label="Dismiss">&times;</button></div>
 
     <!-- Recording consent — notice + consent-or-leave (shown to attendees when recording starts) -->
     <div id="lk-consent-modal" class="modal-overlay hidden">

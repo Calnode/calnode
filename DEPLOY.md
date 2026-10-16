@@ -30,6 +30,7 @@ This guide covers a generic Docker deploy and a step-by-step **Railway** deploy
 | `DATABASE_URL` | no | `sqlite://./data/calnode.db` | Point at the persistent volume, e.g. `sqlite:///data/calnode.db`. |
 | `PORT` | no | `3000` | The app listens on `$PORT`. Many platforms inject their own (Railway injects `8080`) — let them. |
 | `EMAIL_SMTP_HOST` / `_PORT` / `_USER` / `_PASS` | no¹ | — / `587` | SMTP. Can also be set later in Settings → Email (DB-stored, encrypted). |
+| `EMAIL_SMTP_CONNECT_HOST` / `EMAIL_SMTP_CONNECT_PORT` | no | SMTP host / port | TCP relay address, loaded at startup. Applies to environment and database SMTP settings; TLS and authentication still use the SMTP host. |
 | `EMAIL_SMTP_TLS` / `_STARTTLS` | no | `false` | `STARTTLS` for 587, implicit `TLS` for 465. |
 | `EMAIL_FROM_ADDRESS` / `EMAIL_FROM_NAME` | no | `bookings@localhost` / `Calnode` | The From identity. |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | no | — | Google sign-in + calendar. Can also be set in Settings → Google OAuth. |
@@ -125,6 +126,32 @@ Which path is actually in use is shown as a badge at the top of Settings → Ema
 API key takes precedence over the SMTP fields; clearing it ("Remove key") switches back.
 
 > Email settings are stored **per instance** in that instance's DB — staging/prod/local each need their own.
+
+### RSVP tracking (optional, Resend only)
+
+For event types whose calendar invite is **sent by Calnode** (event type → Calendar invite),
+Calnode can record whether the booker accepted, declined or said maybe. The answer shows on
+the booking and fires a `booking.rsvp` webhook.
+
+It needs a **Full access** Resend API key (Settings → Email): Calnode uses it to set up the
+webhook and to read the replies. A sending-only key can do neither.
+
+1. In Resend → Domains, enable **receiving** on a subdomain, e.g. `reply.yourdomain` (one MX
+   record). Use a subdomain: the MX record would take over your main domain's mail.
+2. Settings → Email → RSVP tracking: enter an address on that subdomain (e.g.
+   `rsvp@reply.yourdomain`) and save.
+3. Calnode then creates the `email.received` webhook in your Resend account and stores its
+   signing secret (or reuses the webhook if one already points at this instance). It needs
+   the instance to be reachable at a public `https://` `BASE_URL`.
+
+If automatic setup fails, the page says why and shows the manual steps: in Resend → Webhooks,
+add `https://<your-domain>/v1/email/inbound/resend` for `email.received`, then paste its
+signing secret (`whsec_…`) into the RSVP tracking section.
+
+Each invite is organized by its own private variant of that address, so no mailbox has to
+exist. An answer only counts when Resend verified the sender (DKIM or DMARC pass) and the
+sender is that booking's booker. Bookings made before you switch it on keep the organizer
+they were invited with.
 
 ---
 
@@ -354,3 +381,7 @@ first event type + availability.
 | Email `550 domain not verified` | From address domain isn't verified with your email provider. |
 | Logo broken in email when testing locally | Gmail's image proxy can't reach `localhost` — only loads from a public URL. |
 | Litestream `InvalidAccessKeyId` / 403, log shows `endpoint=""` | `LITESTREAM_ENDPOINT` unset (or the running build predates the endpoint/region config) → Litestream defaults to AWS. Set the **account** endpoint (no bucket) + `region=auto` for R2, and redeploy so the config is live. |
+
+### SMTP through a TCP relay
+
+Set `EMAIL_SMTP_CONNECT_HOST` and `EMAIL_SMTP_CONNECT_PORT` to dial a TCP relay instead of the configured SMTP address. Each unset value falls back to the SMTP host or port. The original SMTP host remains the TLS server name and authentication identity; certificate verification stays enabled. These overrides are loaded at startup and apply to both environment and database SMTP settings, including settings reloads and test emails. Restart after changing the relay environment variables. An active relay is logged when the SMTP mailer is configured. The relay must forward the SMTP connection without terminating TLS.

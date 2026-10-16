@@ -207,7 +207,7 @@
 		const id = pendingCancelId;
 		if (!id) return;
 		try {
-			await api.post(`/v1/bookings/${id}/cancel`, { reason: 'cancelled by admin' });
+			await api.post(`/v1/bookings/${id}/cancel`, {});
 			await load();
 		} catch (e: any) {
 			error = e.message;
@@ -442,6 +442,13 @@
 									<Badge variant="secondary" class="text-muted-foreground">refunded</Badge>
 								{:else if b.payment_status === 'pending'}
 									<Badge class="border-amber-200 bg-amber-50 text-amber-700">unpaid</Badge>
+								{/if}
+								{#if b.status === 'confirmed' && b.rsvp_status === 'accepted'}
+									<Badge class="border-green-200 bg-green-50 text-green-700">guest accepted</Badge>
+								{:else if b.status === 'confirmed' && b.rsvp_status === 'tentative'}
+									<Badge class="border-amber-200 bg-amber-50 text-amber-700">guest maybe</Badge>
+								{:else if b.status === 'confirmed' && b.rsvp_status === 'declined'}
+									<Badge class="border-transparent bg-destructive/10 text-destructive">guest declined</Badge>
 								{/if}
 							</div>
 						</td>

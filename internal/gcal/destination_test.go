@@ -142,3 +142,48 @@ func TestUpdateEvent_usesTheStoredCalendar(t *testing.T) {
 		t.Errorf("patched %q, want the calendar the event lives in", *path)
 	}
 }
+
+// TestListCalendars_followsNextPageToken is the fix for issue #59: accounts
+// subscribed to more than maxResults calendars lost everything past page one.
+func TestListCalendars_followsNextPageToken(t *testing.T) {
+	var tokens []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		tokens = append(tokens, r.URL.Query().Get("pageToken"))
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Query().Get("pageToken") == "" {
+			_, _ = w.Write([]byte(`{"items":[
+				{"id":"a@example.com","summary":"A","primary":true,"accessRole":"owner"},
+				{"id":"gone@example.com","summary":"Gone","deleted":true,"accessRole":"owner"}
+			],"nextPageToken":"page2"}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"items":[
+			{"id":"b@example.com","summary":"B","accessRole":"reader"}
+		]}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	c := newTestClient(t)
+	c.apiBase = srv.URL
+	saveDestinationConnection(t, c, "user-1", "primary")
+
+	got, err := c.ListCalendars(context.Background(), "user-1", "")
+	if err != nil {
+		t.Fatalf("ListCalendars: %v", err)
+	}
+	want := []calendar.CalendarInfo{
+		{ID: "a@example.com", Name: "A", Primary: true, Writable: true},
+		{ID: "b@example.com", Name: "B", Primary: false, Writable: false},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("ListCalendars returned %d calendars, want %d: %+v", len(got), len(want), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("ListCalendars[%d] = %+v, want %+v", i, got[i], want[i])
+		}
+	}
+	if len(tokens) != 2 || tokens[0] != "" || tokens[1] != "page2" {
+		t.Errorf("pageToken sequence = %v, want [\"\" page2]", tokens)
+	}
+}

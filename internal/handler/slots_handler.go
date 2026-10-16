@@ -39,6 +39,12 @@ type slotsResult struct {
 	// to decide whether to explain a thin or empty day, and it says nothing about which
 	// times or which host - see slots.Result.NoticeGap.
 	MinNoticeDates []string
+	// Degraded reports that at least one host's external calendar could not be
+	// checked, so the busy data behind these slots is incomplete. Booking stays
+	// fail-closed (the recheck rejects), but the slots themselves are fail-open —
+	// without this flag the page would offer times it cannot sell. Surfaces
+	// render t('calendar_degraded_notice') when set.
+	Degraded bool
 }
 
 // Sentinel errors from computeSlots, so non-HTTP callers (the MCP tools) can map
@@ -79,6 +85,13 @@ func (h *Handler) GetSlots(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	body := map[string]any{"slots": res.Slots, "hosts": res.Hosts}
+	// Present only when an external calendar check failed mid-computation: the
+	// slots may include times a busy calendar would have removed. Surfaces show
+	// a warning; absent means fully checked (same absent-vs-empty convention as
+	// `taken` and `min_notice` above).
+	if res.Degraded {
+		body["degraded"] = true
+	}
 	// Absent rather than empty when the event type has not opted in, so a client can
 	// tell "this event type does not show taken times" from "none are taken today".
 	if res.ShowsTaken {
@@ -205,18 +218,20 @@ func (h *Handler) computeSlots(ctx context.Context, slug, tzName, fromStr, toStr
 	// serialize on the single-connection pool (fast) — only the network overlaps.
 	hostAvails := make([]slots.HostAvailability, len(pool))
 	errsByHost := make([]error, len(pool))
+	degradedByHost := make([]bool, len(pool))
 	var wg sync.WaitGroup
 	for i, ph := range pool {
 		wg.Add(1)
 		go func(i int, ph poolHost) {
 			defer wg.Done()
-			ha, err := h.hostAvailability(ctx, ph.id, et.ID, dateFrom, dateTo)
+			ha, degraded, err := h.hostAvailability(ctx, ph.id, et.ID, dateFrom, dateTo)
 			if err != nil {
 				errsByHost[i] = err
 				return
 			}
 			ha.Role = ph.role
 			hostAvails[i] = ha
+			degradedByHost[i] = degraded
 		}(i, ph)
 	}
 	wg.Wait()
@@ -224,6 +239,10 @@ func (h *Handler) computeSlots(ctx context.Context, slug, tzName, fromStr, toStr
 		if err != nil {
 			return slotsResult{}, fmt.Errorf("load host availability (host %s): %w", pool[i].id, err)
 		}
+	}
+	degraded := false
+	for _, d := range degradedByHost {
+		degraded = degraded || d
 	}
 
 	req := slots.Request{
@@ -264,6 +283,7 @@ func (h *Handler) computeSlots(ctx context.Context, slug, tzName, fromStr, toStr
 		Taken:      toSlotJSON(result.Taken),
 		Hosts:      h.hostDisplayMap(ctx, poolIDs),
 		ShowsTaken: showsTaken,
+		Degraded:   degraded,
 	}
 	if want.NoticeGap {
 		res.MinNoticeMinutes = et.MinNoticeMinutes
@@ -412,10 +432,10 @@ func (h *Handler) loadHostSchedule(ctx context.Context, userID, eventTypeID stri
 	return hostLoc, rules, overrides, nil
 }
 
-func (h *Handler) hostAvailability(ctx context.Context, userID, eventTypeID string, dateFrom, dateTo time.Time) (slots.HostAvailability, error) {
+func (h *Handler) hostAvailability(ctx context.Context, userID, eventTypeID string, dateFrom, dateTo time.Time) (slots.HostAvailability, bool, error) {
 	hostLoc, rules, overrides, err := h.loadHostSchedule(ctx, userID, eventTypeID)
 	if err != nil {
-		return slots.HostAvailability{}, err
+		return slots.HostAvailability{}, false, err
 	}
 
 	// Widen the busy window by a day on each side. Slots are generated for
@@ -436,14 +456,14 @@ func (h *Handler) hostAvailability(ctx context.Context, userID, eventTypeID stri
 		  AND b.start_at >= ? AND b.start_at < ?`,
 		userID, busyFrom, busyTo)
 	if err != nil {
-		return slots.HostAvailability{}, err
+		return slots.HostAvailability{}, false, err
 	}
 	defer busyRows.Close()
 	var busy []slots.Interval
 	for busyRows.Next() {
 		var startStr, endStr string
 		if err := busyRows.Scan(&startStr, &endStr); err != nil {
-			return slots.HostAvailability{}, err
+			return slots.HostAvailability{}, false, err
 		}
 		s, err1 := time.Parse(time.RFC3339Nano, startStr)
 		e, err2 := time.Parse(time.RFC3339Nano, endStr)
@@ -453,7 +473,7 @@ func (h *Handler) hostAvailability(ctx context.Context, userID, eventTypeID stri
 		busy = append(busy, slots.Interval{Start: s, End: e})
 	}
 	if err := busyRows.Err(); err != nil {
-		return slots.HostAvailability{}, err
+		return slots.HostAvailability{}, false, err
 	}
 
 	// Calnode's own events on this host's calendar also show up in Google free/busy,
@@ -464,45 +484,52 @@ func (h *Handler) hostAvailability(ctx context.Context, userID, eventTypeID stri
 	// only while we believe a Google event still exists (it's cleared on a successful
 	// cancel, inline or via the reconciler), so this targets exactly our own events.
 	// Materialise fully before the free/busy call (single-connection pool).
-	var ownEvents []slots.Interval
-	ownRows, err := h.db.QueryContext(ctx, `
-		SELECT b.start_at, b.end_at FROM bookings b
-		JOIN booking_hosts bh ON bh.booking_id = b.id
-		WHERE bh.user_id = ? AND COALESCE(bh.external_event_id, '') != ''
-		  AND b.start_at >= ? AND b.start_at < ?`,
-		userID, busyFrom, busyTo)
+	ownEvents, err := h.ownCalendarEvents(ctx, userID, busyFrom, busyTo)
 	if err != nil {
-		return slots.HostAvailability{}, err
-	}
-	for ownRows.Next() {
-		var startStr, endStr string
-		if err := ownRows.Scan(&startStr, &endStr); err != nil {
-			ownRows.Close() // #nosec G104 -- already returning the scan error; nothing more actionable
-			return slots.HostAvailability{}, err
-		}
-		s, err1 := time.Parse(time.RFC3339Nano, startStr)
-		e, err2 := time.Parse(time.RFC3339Nano, endStr)
-		if err1 != nil || err2 != nil {
-			continue
-		}
-		ownEvents = append(ownEvents, slots.Interval{Start: s, End: e})
-	}
-	ownRows.Close() // #nosec G104 -- rows already fully consumed above; nothing actionable on close error
-	if err := ownRows.Err(); err != nil {
-		return slots.HostAvailability{}, err
+		return slots.HostAvailability{}, false, err
 	}
 
 	// Merge Google Calendar free/busy (check_conflicts connections only), minus our
-	// own events. Non-fatal.
+	// own events. A provider outage must not silently read as free time: mark the
+	// computation degraded so surfaces can warn (booking itself stays fail-closed
+	// and rejects these slots at commit time).
+	degraded := false
 	if gc := h.getCal(); gc != nil {
 		if gcalBusy, err := gc.FreeBusy(ctx, userID, dateFrom, dateTo.Add(24*time.Hour)); err != nil {
 			h.logger.ErrorContext(ctx, "slots: gcal freebusy", "error", err, "host", userID)
+			degraded = true
 		} else {
 			busy = append(busy, slots.SubtractIntervals(gcalBusy, ownEvents)...)
 		}
 	}
 
-	return slots.HostAvailability{HostID: userID, Location: hostLoc, Rules: rules, Overrides: overrides, Busy: busy}, nil
+	return slots.HostAvailability{HostID: userID, Location: hostLoc, Rules: rules, Overrides: overrides, Busy: busy}, degraded, nil
+}
+
+func (h *Handler) ownCalendarEvents(ctx context.Context, userID, from, to string) ([]slots.Interval, error) {
+	rows, err := h.db.QueryContext(ctx, `
+		SELECT b.start_at, b.end_at FROM bookings b
+		JOIN booking_hosts bh ON bh.booking_id = b.id
+		WHERE bh.user_id = ? AND COALESCE(bh.external_event_id, '') != ''
+		  AND b.start_at < ? AND b.end_at > ?`, userID, to, from)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var events []slots.Interval
+	for rows.Next() {
+		var startStr, endStr string
+		if err := rows.Scan(&startStr, &endStr); err != nil {
+			return nil, err
+		}
+		start, startErr := time.Parse(time.RFC3339Nano, startStr)
+		end, endErr := time.Parse(time.RFC3339Nano, endStr)
+		if startErr != nil || endErr != nil {
+			continue
+		}
+		events = append(events, slots.Interval{Start: start, End: end})
+	}
+	return events, rows.Err()
 }
 
 // parseDateRangeStr resolves from/to date strings (either may be "") to UTC-midnight times.

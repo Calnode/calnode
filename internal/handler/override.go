@@ -84,6 +84,22 @@ func (h *Handler) CreateAvailabilityOverride(w http.ResponseWriter, r *http.Requ
 			h.writeError(w, http.StatusBadRequest, "start_time must be before end_time")
 			return
 		}
+		// A blocked date stays blocked until the block is removed: custom hours on a
+		// blocked date would silently do nothing (blocking wins at resolve time), so
+		// refuse with a message that says what to do instead.
+		var blockReason string
+		err := h.db.QueryRowContext(r.Context(),
+			`SELECT reason FROM availability_overrides WHERE user_id = ? AND date = ? AND is_available = 0`,
+			user.ID, req.Date).Scan(&blockReason)
+		if err != nil && err != sql.ErrNoRows {
+			h.logger.ErrorContext(r.Context(), "override custom: check block", "error", err)
+			h.writeError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		if err == nil {
+			h.writeError(w, http.StatusConflict, "date is blocked ("+blockReason+"); remove the block first")
+			return
+		}
 	} else {
 		req.StartTime = nil
 		req.EndTime = nil
@@ -91,7 +107,9 @@ func (h *Handler) CreateAvailabilityOverride(w http.ResponseWriter, r *http.Requ
 
 	// Date-range block: expand [date … end_date] into one blocked row per date, tied
 	// by a shared group_id so the UI shows/deletes them as a single "out of office"
-	// span. Slot generation is unchanged (it reads the per-date rows).
+	// span. A range block replaces everything on those dates (custom blocks included);
+	// slot generation reads the per-date rows. Custom hours cannot span dates — add
+	// one block per date instead (#95).
 	if req.EndDate != nil && *req.EndDate != "" {
 		if isCustom {
 			h.writeError(w, http.StatusBadRequest, "a date range is only for 'day_off' or 'out_of_office', not custom hours")
@@ -121,13 +139,18 @@ func (h *Handler) CreateAvailabilityOverride(w http.ResponseWriter, r *http.Requ
 		defer tx.Rollback() //nolint:errcheck
 		days := 0
 		for d := startDate; !d.After(endDate); d = d.AddDate(0, 0, 1) {
-			// A range block wins over any existing single-date override on that date.
+			ds := d.Format("2006-01-02")
+			if _, err := tx.ExecContext(r.Context(),
+				`DELETE FROM availability_overrides WHERE user_id = ? AND date = ?`,
+				user.ID, ds); err != nil {
+				h.logger.ErrorContext(r.Context(), "override range: clear date", "error", err)
+				h.writeError(w, http.StatusInternalServerError, "internal error")
+				return
+			}
 			if _, err := tx.ExecContext(r.Context(), `
 				INSERT INTO availability_overrides (id, user_id, date, is_available, reason, start_time, end_time, group_id)
-				VALUES (?, ?, ?, 0, ?, NULL, NULL, ?)
-				ON CONFLICT(user_id, date) DO UPDATE SET
-					is_available = 0, reason = excluded.reason, start_time = NULL, end_time = NULL, group_id = excluded.group_id`,
-				uid.New(), user.ID, d.Format("2006-01-02"), req.Reason, groupID); err != nil {
+				VALUES (?, ?, ?, 0, ?, NULL, NULL, ?)`,
+				uid.New(), user.ID, ds, req.Reason, groupID); err != nil {
 				h.logger.ErrorContext(r.Context(), "override range: insert", "error", err)
 				h.writeError(w, http.StatusInternalServerError, "internal error")
 				return
@@ -145,18 +168,52 @@ func (h *Handler) CreateAvailabilityOverride(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	isAvailInt := 0
-	if isCustom {
-		isAvailInt = 1
+	// Single-date blocking override: replaces everything on the date (custom blocks
+	// included), same as a one-day range above.
+	if !isCustom {
+		tx, err := h.db.BeginTx(r.Context(), nil)
+		if err != nil {
+			h.logger.ErrorContext(r.Context(), "override block: begin tx", "error", err)
+			h.writeError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		defer tx.Rollback() //nolint:errcheck
+		if _, err := tx.ExecContext(r.Context(),
+			`DELETE FROM availability_overrides WHERE user_id = ? AND date = ?`,
+			user.ID, req.Date); err != nil {
+			h.logger.ErrorContext(r.Context(), "override block: clear date", "error", err)
+			h.writeError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		id := uid.New()
+		if _, err := tx.ExecContext(r.Context(), `
+			INSERT INTO availability_overrides (id, user_id, date, is_available, reason, start_time, end_time)
+			VALUES (?, ?, ?, 0, ?, NULL, NULL)`,
+			id, user.ID, req.Date, req.Reason); err != nil {
+			h.logger.ErrorContext(r.Context(), "override block: insert", "error", err)
+			h.writeError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		if err := tx.Commit(); err != nil {
+			h.logger.ErrorContext(r.Context(), "override block: commit", "error", err)
+			h.writeError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+		h.writeJSON(w, http.StatusCreated, availOverrideJSON{
+			ID: id, Date: req.Date, IsAvailable: false, Reason: req.Reason,
+		})
+		return
 	}
 
+	// Single custom-hours block. Several blocks may share the date (#95); only an
+	// exact duplicate is rejected.
 	id := uid.New()
 	if _, err := h.db.ExecContext(r.Context(), `
 		INSERT INTO availability_overrides (id, user_id, date, is_available, reason, start_time, end_time)
-		VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		id, user.ID, req.Date, isAvailInt, req.Reason, req.StartTime, req.EndTime); err != nil {
+		VALUES (?, ?, ?, 1, 'custom_hours', ?, ?)`,
+		id, user.ID, req.Date, req.StartTime, req.EndTime); err != nil {
 		if db.IsUniqueViolation(err) {
-			h.writeError(w, http.StatusConflict, "an override already exists for this date; delete it first")
+			h.writeError(w, http.StatusConflict, "those exact hours already exist for this date")
 			return
 		}
 		h.logger.ErrorContext(r.Context(), "create availability override", "error", err)
@@ -164,17 +221,10 @@ func (h *Handler) CreateAvailabilityOverride(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	resp := availOverrideJSON{
-		ID:          id,
-		Date:        req.Date,
-		IsAvailable: isCustom,
-		Reason:      req.Reason,
-	}
-	if isCustom {
-		resp.StartTime = req.StartTime
-		resp.EndTime = req.EndTime
-	}
-	h.writeJSON(w, http.StatusCreated, resp)
+	h.writeJSON(w, http.StatusCreated, availOverrideJSON{
+		ID: id, Date: req.Date, IsAvailable: true, Reason: "custom_hours",
+		StartTime: req.StartTime, EndTime: req.EndTime,
+	})
 }
 
 // ListAvailabilityOverrides handles GET /v1/availability-overrides.
@@ -312,9 +362,24 @@ func (h *Handler) UpdateAvailabilityOverride(w http.ResponseWriter, r *http.Requ
 	if current.IsAvailable {
 		isAvailInt = 1
 	}
+	// Flipping to blocked clears sibling custom blocks on the date: a date is either
+	// blocked or custom, never both (same rule as create).
+	if !current.IsAvailable {
+		if _, err := h.db.ExecContext(r.Context(),
+			`DELETE FROM availability_overrides WHERE user_id = ? AND date = ? AND id != ? AND is_available = 1`,
+			user.ID, current.Date, id); err != nil {
+			h.logger.ErrorContext(r.Context(), "update availability override: clear customs", "error", err)
+			h.writeError(w, http.StatusInternalServerError, "internal error")
+			return
+		}
+	}
 	if _, err := h.db.ExecContext(r.Context(),
 		`UPDATE availability_overrides SET is_available=?, reason=?, start_time=?, end_time=? WHERE id=? AND user_id=?`,
 		isAvailInt, current.Reason, current.StartTime, current.EndTime, id, user.ID); err != nil {
+		if db.IsUniqueViolation(err) {
+			h.writeError(w, http.StatusConflict, "those exact hours already exist for this date")
+			return
+		}
 		h.logger.ErrorContext(r.Context(), "update availability override", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal error")
 		return

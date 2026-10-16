@@ -1,0 +1,19 @@
+{
+  "name": "ns8-calnode",
+  "description": {
+    "en": "Calnode scheduling and booking platform"
+  },
+  "categories": ["productivity"],
+  "authors": [
+    {
+      "name": "Calnode",
+      "email": "hello@calnode.com"
+    }
+  ],
+  "docs": {
+    "documentation_url": "https://github.com/calnode/calnode",
+    "bug_url": "https://github.com/calnode/calnode/issues",
+    "code_url": "https://github.com/calnode/ns8-calnode"
+  },
+  "source": "ghcr.io/calnode/ns8-calnode"
+}

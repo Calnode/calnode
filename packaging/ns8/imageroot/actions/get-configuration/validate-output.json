@@ -1,0 +1,23 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "get-configuration output",
+    "$id": "http://schema.nethserver.org/calnode/get-configuration-output.json",
+    "description": "Get calnode configuration",
+    "type": "object",
+    "properties": {
+        "host": {
+            "type": "string"
+        },
+        "lets_encrypt": {
+            "type": "boolean"
+        },
+        "http2https": {
+            "type": "boolean"
+        },
+        "configured": {
+            "type": "boolean"
+        }
+    },
+    "required": ["host", "lets_encrypt", "http2https", "configured"],
+    "additionalProperties": false
+}

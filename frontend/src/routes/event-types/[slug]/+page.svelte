@@ -40,6 +40,11 @@
 		phone: '+1 555 123 4567 (required)', in_person: 'Address (optional)',
 	};
 
+	const INVITE_DELIVERY = [
+		{ value: 'calendar', label: "The host's calendar" },
+		{ value: 'calnode',  label: 'Calnode, from your workspace' },
+	];
+
 	// ── Event type ───────────────────────────────────────────────────────────────
 	let et = $state<EventType | null>(null);
 	const TABS = [
@@ -63,8 +68,10 @@
 	const isOnlineMeeting = (t: string) => t === 'google_meet' || t === 'teams';
 
 	let form = $state({
+		display_order: 0,
 		name: '', slug: '', description: '', duration_minutes: 30, slot_interval_minutes: 30,
 		is_active: true, is_public: true, show_taken_slots: false,
+		invite_delivery: 'calendar' as EventType['invite_delivery'],
 		location_type: 'link', location_value: '',
 		buffer_before_minutes: 0, buffer_after_minutes: 0,
 		min_notice_minutes: 0, max_future_days: 60,
@@ -108,6 +115,23 @@
 	let rotationHosts = $state<Host[]>([]);
 	let togetherHosts = $state<TogetherHost[]>([]);
 	let hostsLoaded = $state(false);
+	let transferOwner = $state('');
+	let transferring = $state(false);
+	let transferHosts = $state<EventTypeHost[]>([]);
+	async function transferEvent() {
+		if (!transferOwner || !$currentUser) return;
+		transferring = true;
+		try {
+			await api.post(`/v1/event-types/${slug}/transfer`, { expected_owner_id: $currentUser.id, new_owner_id: transferOwner });
+			toast.success('Event transferred');
+			await goto(`${base}/event-types`);
+		} catch (error) {
+			toast.error(error instanceof Error ? error.message : 'Could not transfer event');
+		} finally {
+			transferring = false;
+		}
+	}
+
 	let members = $state<TeamMember[]>([]);
 	let teams = $state<Team[]>([]);
 
@@ -120,6 +144,7 @@
 		try {
 			const res = await api.get<{ items: EventTypeHost[] }>(`/v1/event-types/${slug}/hosts`);
 			const items = res.items ?? [];
+			transferHosts = items.filter(h => h.role === 'required' && h.user_id !== $currentUser?.id);
 			const toHost = (h: EventTypeHost): Host => ({ user_id: h.user_id, name: h.name, email: h.email });
 			rotationHosts = items.filter((h) => h.role === 'rotation').map(toHost);
 			togetherHosts = items
@@ -250,13 +275,16 @@
 	let testSent    = $state<Partial<Record<MsgKey, boolean>>>({});
 	let testError   = $state<Partial<Record<MsgKey, string>>>({});
 
+	let allowPhoneCall = $state(false);
 	const slug = $page.params.slug;
 
 	async function loadET() {
 		etError = '';
 		try {
 			et = await api.get<EventType>(`/v1/event-types/${slug}`);
+			allowPhoneCall = et.allow_phone_call;
 			form = {
+				display_order: et.display_order,
 				name: et.name,
 				slug: et.slug,
 				description: et.description ?? '',
@@ -265,6 +293,7 @@
 				is_active: et.is_active,
 				is_public: et.is_public,
 				show_taken_slots: et.show_taken_slots ?? false,
+				invite_delivery: et.invite_delivery ?? 'calendar',
 				location_type: et.location_type,
 				location_value: et.location_value ?? '',
 				buffer_before_minutes: et.buffer_before_minutes,
@@ -299,6 +328,7 @@
 	}
 
 	async function saveET() {
+		if (!Number.isSafeInteger(form.display_order)) { toast.error('Directory order must be a whole number.'); return; }
 		if (!form.name.trim()) { toast.error('Name is required.'); return; }
 		if (form.duration_minutes < 5) { toast.error('Duration must be at least 5 minutes.'); return; }
 		// Matches the API, which only requires a positive value. A stricter floor here would
@@ -315,6 +345,7 @@
 		etSaving = true;
 		try {
 			const updated = await api.patch<EventType>(`/v1/event-types/${slug}`, {
+				display_order: form.display_order,
 				slug: form.slug.trim(),
 				name: form.name.trim(),
 				description: form.description.trim() || null,
@@ -323,6 +354,8 @@
 				is_active: form.is_active,
 				is_public: form.is_public,
 				show_taken_slots: form.show_taken_slots,
+				invite_delivery: form.invite_delivery,
+				allow_phone_call: allowPhoneCall,
 				location_type: form.location_type,
 				location_value: form.location_value.trim() || null,
 				buffer_before_minutes: Number(form.buffer_before_minutes),
@@ -377,6 +410,7 @@
 				return;
 			}
 			await loadET();
+			await loadHosts();
 		} catch (e: any) {
 			toast.error(e.message || 'Could not save changes');
 		} finally {
@@ -433,8 +467,8 @@
 		// Connected calendar — best-effort; drives the meeting-link hint only.
 		api.get<CalendarStatus>('/v1/calendar/status').then((s) => (calStatus = s)).catch(() => {});
 	api.get<ZoomStatus>('/v1/zoom/status').then((s) => (zoomStatus = s)).catch(() => {});
+		await loadHosts();
 		if (hostScope === 'people') {
-			await loadHosts();
 			loadMembers();
 			loadTeams();
 		}
@@ -558,6 +592,11 @@
 				<Label for="et-name">Name</Label>
 				<Input id="et-name" bind:value={form.name} />
 			</div>
+			<div class="space-y-1.5">
+				<Label for="et-display-order">Directory order</Label>
+				<Input id="et-display-order" type="number" step="1" bind:value={form.display_order} />
+				<p class="text-xs text-muted-foreground">Orders this event on the public person and team pages only — not on the admin list or the booking page. Lower numbers come first; equal numbers sort by name.</p>
+			</div>
 			<div class="space-y-1.5 col-span-2">
 				<Label for="et-slug">Booking link</Label>
 				<div class="flex items-center gap-1.5">
@@ -620,6 +659,9 @@
 			</p>
 		</div>
 
+		{#if isOnlineMeeting(form.location_type)}
+			<label class="flex items-center gap-3 text-sm"><input type="checkbox" bind:checked={allowPhoneCall} />Let invitees choose a phone call by entering their number</label>
+		{/if}
 		<!-- Location -->
 		<div class="mt-6 border-t pt-5">
 			<p class="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Location</p>
@@ -680,6 +722,42 @@
 					{/if}
 				</div>
 			</div>
+		</div>
+
+		<!-- Calendar invites -->
+		<div class="mt-6 border-t pt-5">
+			<p class="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Calendar invite</p>
+			<div class="grid grid-cols-2 gap-4">
+				<div class="space-y-1.5">
+					<Label for="et-invite">Sent by</Label>
+					<Select.Root type="single" bind:value={form.invite_delivery}>
+						<Select.Trigger id="et-invite" class="w-full">
+							{INVITE_DELIVERY.find((o) => o.value === form.invite_delivery)?.label ?? 'Select…'}
+						</Select.Trigger>
+						<Select.Content>
+							{#each INVITE_DELIVERY as o}
+								<Select.Item value={o.value} label={o.label}>{o.label}</Select.Item>
+							{/each}
+						</Select.Content>
+					</Select.Root>
+				</div>
+				<p class="self-end text-xs text-muted-foreground">
+					{#if form.invite_delivery === 'calnode'}
+						Invitees get the invite from your workspace's email sender
+						(<a href="{base}/settings/email" class="underline">Settings → Email</a>), never from a host's
+						own address. Hosts still see the meeting on their own calendar, with the meeting link.
+					{:else}
+						The host's connected calendar invites the booker, so the invite shows the host's own
+						email address. Choose Calnode to keep hosts' addresses private or to book as a team.
+					{/if}
+				</p>
+			</div>
+			{#if form.invite_delivery === 'calnode' && et?.invite_sender_ready === false}
+				<p class="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+					Email isn't set up, so bookers won't receive an invite. Add a sender in
+					<a href="{base}/settings/email" class="underline">Settings → Email</a>.
+				</p>
+			{/if}
 		</div>
 
 		<!-- Price -->
@@ -1055,6 +1133,18 @@
 
 	</div>
 </div>
+{/if}
+
+{#if activeTab === 'hosts' && $currentUser?.is_admin}
+	<div class="mt-6 space-y-3 border-t pt-5">
+		<Label for="transfer-owner">Transfer ownership</Label>
+		<p class="text-sm text-muted-foreground">Choose a saved required host. The booking URL stays the same. Transfer is available only when there are no upcoming bookings. Calendar connections and global availability stay with each account.</p>
+		<select id="transfer-owner" bind:value={transferOwner} class="h-9 w-full rounded-md border bg-background px-3 text-sm">
+			<option value="">Select new owner</option>
+			{#each transferHosts as host}<option value={host.user_id}>{host.name || host.email}</option>{/each}
+		</select>
+		<Button variant="outline" disabled={!transferOwner || transferring} onclick={transferEvent}>{transferring ? 'Transferring…' : 'Transfer ownership'}</Button>
+	</div>
 {/if}
 
 {#if activeTab === 'questions'}

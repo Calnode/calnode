@@ -74,7 +74,7 @@ prefer additive, nullable/defaulted columns.
 
 ## Translations
 
-Calnode ships 8 locales (`en es fr de it pt nl sv`) across the booker-facing surfaces:
+Calnode ships 9 locales (`en es fr fr-CA de it pt nl sv`) across the booker-facing surfaces:
 booking page, manage/reschedule page, embed widget, the four emails, and the calendar
 invite. The admin UI and the built-in video room are English-only.
 

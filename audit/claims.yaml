@@ -339,4 +339,10 @@ claims:
       the instance. Explicitly decided (2026-07-02) to keep this self-service rather
       than add admin approval — the friction of gating a personal calendar connection
       behind admin sign-off was judged worse than the bounded, already-authenticated-
-      user SSRF exposure it would close.
+      user SSRF exposure it would close. A second Layer 2 pass (#104) found the
+      connect form also distinguished failure classes (refused vs timeout vs TLS vs
+      auth), which is a usable scan oracle regardless of gating — so since 0.10.1 the
+      form returns one generic "could not connect" message and logs the detail
+      server-side. Timing side-channels (how fast different failures return) are
+      accepted as residual: closing those would mean fixed-delay responses on a
+      user-facing connect form.

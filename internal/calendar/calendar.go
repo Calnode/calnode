@@ -7,6 +7,7 @@ package calendar
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"sort"
 	"time"
 
@@ -79,6 +80,25 @@ type Provider interface {
 	CancelEvent(ctx context.Context, userID, calendarID, eventID string) error
 }
 
+// EventRecognizer is implemented by a provider whose event ids identify the provider by
+// themselves. The Service sends an update or cancel of such an event to that provider whatever
+// the user's destination is now, so moving the destination to another provider neither strands
+// the events written before the move nor hands their ids to a provider that never issued them.
+//
+// CalDAV implements it: its event id is the absolute URL of the event resource. Google and
+// Microsoft ids are opaque and never URLs; for them the stamped provider recorded at creation
+// (booking_hosts.external_provider, migration 00062) decides, falling back to recognition and
+// then the destination for rows written before stamping.
+type EventRecognizer interface {
+	RecognizesEvent(eventID string) bool
+}
+
+// ErrEventUnreachable matches an UpdateEvent or CancelEvent error that was refused before
+// anything was sent, because the stored ids do not identify one connected account to act as.
+// It is a verdict on stored state, not a failed request: a retry re-reads the same connections
+// and refuses the same way, so the reconciler stops retrying an event that returns it.
+var ErrEventUnreachable = errors.New("calendar: no single connected account holds this event")
+
 // Service holds the configured providers and dispatches per-user operations to
 // whichever provider that user has connected.
 type Service struct {
@@ -136,7 +156,7 @@ func (s *Service) providerForDestination(ctx context.Context, userID string) Pro
 func (s *Service) Connected(ctx context.Context, userID string) (bool, string, error) {
 	var name string
 	err := s.db.QueryRowContext(ctx,
-		`SELECT provider FROM calendar_connections WHERE user_id = ? LIMIT 1`, userID).Scan(&name)
+		`SELECT provider FROM calendar_connections WHERE user_id = ? ORDER BY is_destination DESC, created_at ASC LIMIT 1`, userID).Scan(&name)
 	if err == sql.ErrNoRows {
 		return false, "", nil
 	}
@@ -310,10 +330,11 @@ func (s *Service) DisconnectOne(ctx context.Context, userID, provider, accountEm
 	}
 	// Without this the account's calendar picks survive the disconnect, and reconnecting the
 	// same address silently inherits them - including a destination pointing at a calendar
-	// the user may no longer have.
+	// the user may no longer have. COALESCE matches the lookup above: a legacy row with a
+	// NULL account_email would otherwise keep its calendars while losing its connection.
 	if _, err := tx.ExecContext(ctx,
 		`DELETE FROM connection_calendars
-		 WHERE user_id = ? AND provider = ? AND account_email = ?`,
+		 WHERE user_id = ? AND provider = ? AND COALESCE(account_email,'') = ?`,
 		userID, provider, accountEmail); err != nil {
 		return err
 	}
@@ -348,55 +369,67 @@ func (s *Service) InvitesGuests(ctx context.Context, userID string) bool {
 	return false
 }
 
-// FreeBusy returns the UNION of busy intervals for the user across EVERY connected provider
-// (each provider internally unions its own connected accounts with check_conflicts = 1). This
-// is what lets a user connect multiple calendars and have them all checked. Fail-open: a
-// provider that errors is skipped; an error is returned only if every provider failed (so a
-// flaky calendar never blocks availability or a booking).
 func (s *Service) FreeBusy(ctx context.Context, userID string, from, to time.Time) ([]slots.Interval, error) {
 	var out []slots.Interval
-	var firstErr error
-	anyOK := false
 	for _, p := range s.providers {
 		iv, err := p.FreeBusy(ctx, userID, from, to)
 		if err != nil {
-			if firstErr == nil {
-				firstErr = err
-			}
-			continue
+			return nil, err
 		}
-		anyOK = true
 		out = append(out, iv...)
-	}
-	if !anyOK && firstErr != nil {
-		return nil, firstErr
 	}
 	return out, nil
 }
 
 // CreateEvent creates an event on the user's DESTINATION calendar. Returns the event id,
-// the join URL, and the calendar it was written to; ("","","",nil) if they have no
-// destination. Persist the calendar id alongside the event id.
-func (s *Service) CreateEvent(ctx context.Context, userID string, p CreateEventParams) (string, string, string, error) {
+// the join URL, the calendar it was written to, and the provider that wrote it;
+// ("","","","",nil) if they have no destination. Persist the calendar id AND the provider
+// alongside the event id: the provider stamp is what routes later updates and cancels
+// after a destination move (issue #58).
+func (s *Service) CreateEvent(ctx context.Context, userID string, p CreateEventParams) (string, string, string, string, error) {
 	if pr := s.providerForDestination(ctx, userID); pr != nil {
-		return pr.CreateEvent(ctx, userID, p)
+		eventID, joinURL, calendarID, err := pr.CreateEvent(ctx, userID, p)
+		if err != nil {
+			return "", "", "", "", err
+		}
+		return eventID, joinURL, calendarID, pr.Name(), nil
 	}
-	return "", "", "", nil
+	return "", "", "", "", nil
 }
 
-// UpdateEvent moves an event. calendarID is the one recorded at creation; empty falls back
-// to the user's current destination.
-func (s *Service) UpdateEvent(ctx context.Context, userID, calendarID, eventID string, start, end time.Time) error {
-	if pr := s.providerForDestination(ctx, userID); pr != nil {
+// providerForEvent resolves the provider an existing event belongs to: the stamped
+// provider recorded at creation (empty for rows written before stamping), else one
+// that recognizes its id (EventRecognizer), else the user's destination provider.
+// Returns nil if none. A stamped provider that is no longer registered falls through
+// to recognition and destination rather than stranding the event.
+func (s *Service) providerForEvent(ctx context.Context, userID, eventID, storedProvider string) Provider {
+	if storedProvider != "" {
+		if pr := s.providers[storedProvider]; pr != nil {
+			return pr
+		}
+	}
+	for _, name := range s.ProviderNames() {
+		if r, ok := s.providers[name].(EventRecognizer); ok && r.RecognizesEvent(eventID) {
+			return s.providers[name]
+		}
+	}
+	return s.providerForDestination(ctx, userID)
+}
+
+// UpdateEvent moves an event. calendarID is the one recorded at creation; provider is
+// the stamped provider recorded alongside it ("" for pre-stamp rows: recognition, then
+// the user's current destination).
+func (s *Service) UpdateEvent(ctx context.Context, userID, calendarID, eventID, provider string, start, end time.Time) error {
+	if pr := s.providerForEvent(ctx, userID, eventID, provider); pr != nil {
 		return pr.UpdateEvent(ctx, userID, calendarID, eventID, start, end)
 	}
 	return nil
 }
 
-// CancelEvent deletes an event. calendarID is the one recorded at creation; empty falls
-// back to the user's current destination.
-func (s *Service) CancelEvent(ctx context.Context, userID, calendarID, eventID string) error {
-	if pr := s.providerForDestination(ctx, userID); pr != nil {
+// CancelEvent deletes an event. calendarID and provider are the ones recorded at
+// creation; provider "" falls back as for UpdateEvent.
+func (s *Service) CancelEvent(ctx context.Context, userID, calendarID, eventID, provider string) error {
+	if pr := s.providerForEvent(ctx, userID, eventID, provider); pr != nil {
 		return pr.CancelEvent(ctx, userID, calendarID, eventID)
 	}
 	return nil

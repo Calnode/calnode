@@ -1,0 +1,57 @@
+{
+    "error": {
+        "403": "Operación no autorizada",
+        "cannot_retrieve_installed_modules": "No se pueden recuperar los módulos instalados",
+        "401": "Autentificación inválida",
+        "cannot_retrieve_module_info": "No se puede recuperar la información del módulo",
+        "generic_error": "Algo ha salido mal",
+        "error": "Error",
+        "network_timeout": "Tiempo de espera de la red agotado",
+        "404": "Recurso no encontrado",
+        "network_error": "Error en la red",
+        "validation_error": "Error en la validación"
+    },
+    "settings": {
+        "test_field": "Campo de prueba",
+        "configure_instance": "Configurar {instance}",
+        "save": "Guardar",
+        "title": "Ajustes"
+    },
+    "common": {
+        "required": "Obligatorio",
+        "work_in_progress": "Trabajando",
+        "processing": "Procesando..."
+    },
+    "status": {
+        "created": "Creado",
+        "size": "Tamaño",
+        "name": "Nombre",
+        "no_images": "Sin imágenes",
+        "app_volumes": "Volumen de la aplicación| Volumen de las aplicaciones",
+        "services": "Servicio | Servicios",
+        "app_images": "Imagen de la aplicación| Imágenes de las aplicaciones",
+        "no_services": "Sin servicios",
+        "app_instance": "Instancia de la aplicación",
+        "mount": "Montar",
+        "title": "Estado",
+        "installation_node": "Nodo de la instalación",
+        "node": "Nodo",
+        "no_volumes": "Sin volumenes"
+    },
+    "about": {
+        "title": "Acerca de"
+    },
+    "action": {
+        "list-backup-repositories": "Mostrar repositorios de respaldo",
+        "get-module-info": "Obtener información del módulo",
+        "list-installed-modules": "Lista de módulos instalados",
+        "list-backups": "Mostrar copias de seguridad",
+        "get-status": "Obtener el estado",
+        "configure-module": "Configurar el módulo",
+        "get-configuration": "Obtener los ajustes",
+        "get-name": "Obtener el nombre"
+    },
+    "task": {
+        "cannot_create_task": "No se puede crear la tarea {action}"
+    }
+}

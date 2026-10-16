@@ -45,6 +45,10 @@ func New(secretKey, publishableKey, webhookSecret string) (*Client, error) {
 	}, nil
 }
 
+// SetAPIBase overrides the API endpoint. Test-only: lets handler tests point
+// the client at a fake server without touching production construction.
+func (c *Client) SetAPIBase(url string) { c.apiBase = url }
+
 // PublishableKey returns the configured publishable key (safe to expose client-side).
 func (c *Client) PublishableKey() string { return c.publishableKey }
 
@@ -121,7 +125,9 @@ func (c *Client) GetCheckoutSession(ctx context.Context, id string) (*CheckoutSe
 }
 
 // Refund issues a full refund for a PaymentIntent. A blank id is a no-op.
-func (c *Client) Refund(ctx context.Context, paymentIntentID string) error {
+// idempotencyKey (e.g. "refund:<booking_id>") makes retries safe: Stripe returns
+// the original refund instead of creating a second one.
+func (c *Client) Refund(ctx context.Context, paymentIntentID, idempotencyKey string) error {
 	if paymentIntentID == "" {
 		return nil
 	}
@@ -130,11 +136,15 @@ func (c *Client) Refund(ctx context.Context, paymentIntentID string) error {
 	var out struct {
 		ID string `json:"id"`
 	}
-	return c.do(ctx, http.MethodPost, "/v1/refunds", form, &out)
+	return c.doWithKey(ctx, http.MethodPost, "/v1/refunds", form, idempotencyKey, &out)
 }
 
 // do performs a Stripe API call (form-encoded for POST) and decodes the JSON response.
 func (c *Client) do(ctx context.Context, method, path string, form url.Values, out any) error {
+	return c.doWithKey(ctx, method, path, form, "", out)
+}
+
+func (c *Client) doWithKey(ctx context.Context, method, path string, form url.Values, idempotencyKey string, out any) error {
 	var body io.Reader
 	if form != nil {
 		body = strings.NewReader(form.Encode())
@@ -146,6 +156,9 @@ func (c *Client) do(ctx context.Context, method, path string, form url.Values, o
 	req.SetBasicAuth(c.secretKey, "")
 	if form != nil {
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	}
+	if idempotencyKey != "" {
+		req.Header.Set("Idempotency-Key", idempotencyKey)
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {

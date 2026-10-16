@@ -26,13 +26,15 @@ var manageTmpl = template.Must(template.Must(template.New("manage").Funcs(templa
 }).Parse(sharedPartialsSrc)).Parse(manageTmplSrc))
 
 type managePageData struct {
-	Token         string
-	BookingID     string
-	EventTypeName string
-	EventTypeSlug string
-	HostName      string
-	HostInitial   string
-	AvatarURL     string
+	AccentColor      string
+	AccentForeground string
+	Token            string
+	BookingID        string
+	EventTypeName    string
+	EventTypeSlug    string
+	HostName         string
+	HostInitial      string
+	AvatarURL        string
 	// SoleHostName is the host's name when this booking has exactly one, else "" — see
 	// bookPageData.SoleHostName. HostName can be a group label ("Alex, Sam & 2 others"),
 	// which no "%s has no available times" sentence can use grammatically.
@@ -95,16 +97,24 @@ func (h *Handler) ManagePage(w http.ResponseWriter, r *http.Request) {
 
 	var etName, etSlug, locType, locValue string
 	var durMins, maxDays, minNotice int
-	var hostName string
+	var hostName, accentColor string
 	if err := h.db.QueryRowContext(r.Context(), `
 		SELECT et.name, et.slug, et.duration_minutes, et.max_future_days, et.min_notice_minutes,
-		       et.location_type, COALESCE(et.location_value,''), u.name
+		       et.location_type, COALESCE(et.location_value,''), u.name, u.booking_accent
 		FROM event_types et JOIN users u ON u.id = et.user_id
 		WHERE et.id = ?`, b.EventTypeID).
-		Scan(&etName, &etSlug, &durMins, &maxDays, &minNotice, &locType, &locValue, &hostName); err != nil {
+		Scan(&etName, &etSlug, &durMins, &maxDays, &minNotice, &locType, &locValue, &hostName, &accentColor); err != nil {
 		h.logger.ErrorContext(r.Context(), "manage page: load event type", "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
+	}
+	accentColor = accentOrDefault(accentColor)
+
+	if b.LocationType != "" {
+		locType = b.LocationType
+	}
+	if b.LocationValue != "" {
+		locValue = b.LocationValue
 	}
 
 	// Show the actual assigned host(s) for this booking, not the event-type owner
@@ -133,22 +143,24 @@ func (h *Handler) ManagePage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := managePageData{
-		Token:           token,
-		BookingID:       b.ID,
-		EventTypeName:   etName,
-		EventTypeSlug:   etSlug,
-		HostName:        hostName,
-		HostInitial:     hostInitial,
-		AvatarURL:       avatarURL,
-		SoleHostName:    soleHost,
-		MinNoticeLabel:  noticeLabel(minNotice, loc),
-		DurationLabel:   durationLabel(durMins, loc),
-		LocationLabel:   locationLabel(locType, locValue, loc),
-		MaxFutureDays:   maxDays,
-		DurationMinutes: durMins,
-		CurrentStartISO: b.StartAt.UTC().Format(time.RFC3339),
-		OrganizerTZ:     orgTZ,
-		Status:          b.Status,
+		AccentColor:      accentColor,
+		AccentForeground: accentForeground(accentColor),
+		Token:            token,
+		BookingID:        b.ID,
+		EventTypeName:    etName,
+		EventTypeSlug:    etSlug,
+		HostName:         hostName,
+		HostInitial:      hostInitial,
+		AvatarURL:        avatarURL,
+		SoleHostName:     soleHost,
+		MinNoticeLabel:   noticeLabel(minNotice, loc),
+		DurationLabel:    durationLabel(durMins, loc),
+		LocationLabel:    locationLabel(locType, locValue, loc),
+		MaxFutureDays:    maxDays,
+		DurationMinutes:  durMins,
+		CurrentStartISO:  b.StartAt.UTC().Format(time.RFC3339),
+		OrganizerTZ:      orgTZ,
+		Status:           b.Status,
 	}
 	h.renderManage(w, r, data, loc)
 }
@@ -278,6 +290,11 @@ func (h *Handler) rescheduleSideEffects(bCopy booking.Booking, capturedEtID stri
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
+	// LiveKit join URLs expire with the original meeting: re-mint them first so the
+	// email data loaded below, the manage page, and the stored record all carry
+	// links valid past the new end (#98). Same room, new expiry.
+	h.remintLiveKitLinks(ctx, &bCopy)
+
 	d, err := h.loadCancellationData(ctx, &bCopy)
 	if err != nil {
 		h.logger.Error("reschedule: load email data", "error", err, "booking_id", bCopy.ID)
@@ -297,7 +314,7 @@ func (h *Handler) rescheduleSideEffects(bCopy booking.Booking, capturedEtID stri
 	if tok, err := h.bookingSvc.RotateManageToken(ctx, bCopy.ID); err == nil {
 		d.ManageURL = h.publicURL() + "/manage/" + tok
 	}
-	d.AttachICS = h.noConnectedDestination(ctx, bCopy.HostID)
+	h.applyInviteDelivery(ctx, &d, bCopy.InviteDelivery, bCopy.HostID)
 	d.ICSSequence = int(bCopy.UpdatedAt.Unix())
 
 	prefs := h.hostPrefsOrDefault(ctx, bCopy.ID, bCopy.HostID)
@@ -316,7 +333,9 @@ func (h *Handler) rescheduleSideEffects(bCopy booking.Booking, capturedEtID stri
 		}
 	}
 	if prefs.NotifyHostReschedule {
-		if err := mailer.SendRescheduleToHost(ctx, h.mailer, d); err != nil {
+		hd := d
+		h.applyHostInvite(ctx, &hd, bCopy.InviteDelivery, bCopy.HostID)
+		if err := mailer.SendRescheduleToHost(ctx, h.mailer, hd); err != nil {
 			h.logger.Error("reschedule email (host)", "error", err, "booking_id", bCopy.ID)
 		}
 	}

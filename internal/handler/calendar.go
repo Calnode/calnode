@@ -9,6 +9,7 @@ import (
 
 	"github.com/calnode/calnode/internal/caldav"
 	"github.com/calnode/calnode/internal/calendar"
+	"github.com/calnode/calnode/internal/calendar/microsoft"
 )
 
 // stateSep separates the provider name from the userID inside the (encrypted)
@@ -93,6 +94,10 @@ func (h *Handler) CalendarCallback(w http.ResponseWriter, r *http.Request) {
 
 	if err := p.Exchange(r.Context(), userID, code, "primary"); err != nil {
 		h.logger.ErrorContext(r.Context(), "calendar callback: exchange", "error", err, "user_id", userID)
+		if errors.Is(err, microsoft.ErrNoAccountIdentity) {
+			h.writeError(w, http.StatusBadRequest, "Microsoft did not identify the account: add the profile and email scopes (or the ID-token email optional claim) in the Entra app registration, then connect again")
+			return
+		}
 		h.writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
@@ -147,8 +152,9 @@ func (h *Handler) ConnectCalDAV(w http.ResponseWriter, r *http.Request) {
 	// localhost) is a legitimate destination, so this only blocks the cloud-metadata
 	// range — see validateBYOServerURL (shared with the BYO-LLM and LiveKit URL checks).
 	// The caldav.Client's own http.Client re-validates at dial time
-	// (internal/caldav/caldav.go), and the cc.Connect below immediately exercises the
-	// URL, so a save-time DNS blip surfaces there as a user-actionable error.
+	// (internal/caldav/caldav.go); dial-time transport is the real enforcement, and a
+	// save-time DNS failure returns nil rather than an error, so an unreachable host
+	// surfaces below as a generic connect failure, not a DNS-specific one.
 	if err := validateBYOServerURL(r.Context(), server, "server URL", "http", "https"); err != nil {
 		h.writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -156,8 +162,11 @@ func (h *Handler) ConnectCalDAV(w http.ResponseWriter, r *http.Request) {
 	user, _ := userFromContext(r.Context())
 	email, _, err := cc.Connect(r.Context(), user.ID, server, req.Username, req.Password)
 	if err != nil {
-		// Discovery/auth failures are user-actionable — surface the message to the form.
-		h.writeError(w, http.StatusBadRequest, err.Error())
+		// Deliberately generic: connection-refused vs timeout vs TLS vs auth failure
+		// are distinguishable, and verbatim errors would turn this self-service form
+		// into a LAN scan oracle for any authenticated member (#104). Detail is logged.
+		h.logger.ErrorContext(r.Context(), "caldav connect failed", "error", err, "user_id", user.ID)
+		h.writeError(w, http.StatusBadRequest, "could not connect: check the server URL, username and app password")
 		return
 	}
 	h.writeJSON(w, http.StatusOK, map[string]any{"connected": true, "account_email": email})

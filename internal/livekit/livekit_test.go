@@ -172,3 +172,43 @@ func TestAPIBaseAndAdminToken(t *testing.T) {
 		t.Errorf("admin token should be a JWT")
 	}
 }
+
+func mintWebhookToken(t *testing.T, secret string, body []byte, exp, iat int64) string {
+	t.Helper()
+	sum := sha256.Sum256(body)
+	claims := map[string]any{"sha256": base64.StdEncoding.EncodeToString(sum[:])}
+	if exp != 0 {
+		claims["exp"] = exp
+	}
+	if iat != 0 {
+		claims["iat"] = iat
+	}
+	payload, _ := json.Marshal(claims)
+	head := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"HS256","typ":"JWT"}`))
+	enc := base64.RawURLEncoding.EncodeToString(payload)
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte(head + "." + enc))
+	return head + "." + enc + "." + base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+}
+
+// TestVerifyWebhook_rejectsStaleTokens proves replay protection: a captured
+// body + header must not verify forever. Fresh tokens pass; expired ones and
+// ones without timestamps fail.
+func TestVerifyWebhook_rejectsStaleTokens(t *testing.T) {
+	c := testClient()
+	body := []byte(`{"event":"egress_ended"}`)
+	now := time.Now().Unix()
+
+	if err := c.VerifyWebhook(mintWebhookToken(t, "topsecret", body, now+300, now), body); err != nil {
+		t.Fatalf("fresh token rejected: %v", err)
+	}
+	if err := c.VerifyWebhook(mintWebhookToken(t, "topsecret", body, now-3600, now-7200), body); err == nil {
+		t.Fatal("expired token accepted; want rejection")
+	}
+	if err := c.VerifyWebhook(mintWebhookToken(t, "topsecret", body, 0, 0), body); err == nil {
+		t.Fatal("timestamp-less token accepted; want rejection")
+	}
+	if err := c.VerifyWebhook(mintWebhookToken(t, "topsecret", []byte(`{"event":"other"}`), now+300, now), body); err == nil {
+		t.Fatal("body-mismatched token accepted; want rejection")
+	}
+}

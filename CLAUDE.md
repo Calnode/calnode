@@ -140,7 +140,7 @@ no string plumbing with the Go templates), and admin-authored content (event nam
 descriptions, questions, custom email copy). Locale is resolved per request from
 `Accept-Language` + a `?lang=` override + the operator's fallback setting
 (`internal/handler/i18n.go`), and the booker's locale is stored on the booking so later
-reminders match. Ships `en es fr de it pt nl sv`. Full detail: ARCHITECTURE §23.
+reminders match. Ships `en es fr fr-CA de it pt nl sv`. Full detail: ARCHITECTURE §23.
 
 **Adding a locale = adding `internal/i18n/locales/<code>.json`.** Nothing else. `init()`
 globs the directory; the switcher, the fallback dropdown and the public API payload all read
@@ -237,3 +237,15 @@ at an unconditional `"zoom"`.
 - `pnpm` (not npm). Use `pnpm exec <tool>` for local binaries.
 - Verify changes against the real app, not just builds — this codebase has been
   bitten by CSS that compiles fine but renders wrong.
+
+## Distribution packaging (packaging/)
+
+- One channel per directory: `packaging/ns8/` is the NethServer 8 module
+  (imageroot actions, systemd unit, Vue settings UI, robot tests). Future
+  channels (Umbrel, Coolify, TrueNAS, etc.) get siblings, never a mega-PR.
+- The NS8 module is a thin wrapper around the published app image, built by
+  `.github/workflows/ns8-module.yml` with the same tag scheme as
+  `docker-publish.yml`. Release tags pin module and app to the same version.
+- The app image ref lives in the `org.nethserver.images` label; at install
+  the cluster exposes it as `${CALNODE_IMAGE}` and the unit + configure read
+  it from there. Never hardcode an app tag in `packaging/ns8/`.

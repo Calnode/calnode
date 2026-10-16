@@ -88,6 +88,7 @@ func TestCreateAvailabilityOverride_customHours(t *testing.T) {
 func TestCreateAvailabilityOverride_duplicateDateReturns409(t *testing.T) {
 	h, key, _ := setupWorkspace(t)
 
+	// Re-blocking an already-blocked date replaces it (idempotent), not 409.
 	body := `{"date":"2026-07-04","is_available":false}`
 	code1, _ := createOverride(t, h, key, body)
 	if code1 != http.StatusCreated {
@@ -95,8 +96,78 @@ func TestCreateAvailabilityOverride_duplicateDateReturns409(t *testing.T) {
 	}
 
 	code2, _ := createOverride(t, h, key, body)
+	if code2 != http.StatusCreated {
+		t.Errorf("re-block: status = %d; want 201 (replace, not 409)", code2)
+	}
+}
+
+func TestCreateAvailabilityOverride_secondCustomBlockAllowed(t *testing.T) {
+	h, key, _ := setupWorkspace(t)
+
+	code1, _ := createOverride(t, h, key,
+		`{"date":"2026-07-05","reason":"custom_hours","start_time":"09:00","end_time":"12:00"}`)
+	if code1 != http.StatusCreated {
+		t.Fatalf("first block: status = %d; want 201", code1)
+	}
+	// A second, different block on the same date is the #95 case: allowed.
+	code2, _ := createOverride(t, h, key,
+		`{"date":"2026-07-05","reason":"custom_hours","start_time":"13:00","end_time":"17:00"}`)
+	if code2 != http.StatusCreated {
+		t.Errorf("second block: status = %d; want 201", code2)
+	}
+	// An exact duplicate is still rejected.
+	code3, _ := createOverride(t, h, key,
+		`{"date":"2026-07-05","reason":"custom_hours","start_time":"09:00","end_time":"12:00"}`)
+	if code3 != http.StatusConflict {
+		t.Errorf("exact duplicate: status = %d; want 409", code3)
+	}
+}
+
+func TestCreateAvailabilityOverride_customOnBlockedDateReturns409(t *testing.T) {
+	h, key, _ := setupWorkspace(t)
+
+	code1, _ := createOverride(t, h, key, `{"date":"2026-07-06","reason":"day_off"}`)
+	if code1 != http.StatusCreated {
+		t.Fatalf("block: status = %d; want 201", code1)
+	}
+	code2, resp := createOverride(t, h, key,
+		`{"date":"2026-07-06","reason":"custom_hours","start_time":"09:00","end_time":"12:00"}`)
 	if code2 != http.StatusConflict {
-		t.Errorf("duplicate: status = %d; want 409", code2)
+		t.Fatalf("custom on blocked date: status = %d; want 409 — %v", code2, resp)
+	}
+}
+
+func TestCreateAvailabilityOverride_blockReplacesCustoms(t *testing.T) {
+	h, key, _ := setupWorkspace(t)
+
+	code1, _ := createOverride(t, h, key,
+		`{"date":"2026-07-07","reason":"custom_hours","start_time":"09:00","end_time":"12:00"}`)
+	if code1 != http.StatusCreated {
+		t.Fatalf("custom: status = %d; want 201", code1)
+	}
+	// Blocking the date removes the custom block; the day reads as fully blocked.
+	code2, _ := createOverride(t, h, key, `{"date":"2026-07-07","reason":"day_off"}`)
+	if code2 != http.StatusCreated {
+		t.Fatalf("block: status = %d; want 201", code2)
+	}
+	req := authReq(http.MethodGet, "/v1/availability-overrides", "", key)
+	rec := httptest.NewRecorder()
+	h.RequireAuth(h.ListAvailabilityOverrides)(rec, req)
+	var list struct {
+		Items []map[string]any `json:"items"`
+	}
+	json.Unmarshal(rec.Body.Bytes(), &list)
+	count := 0
+	for _, it := range list.Items {
+		if it["date"] == "2026-07-07" {
+			count++
+			if it["reason"] != "day_off" {
+				t.Errorf("remaining row reason = %v; want day_off", it["reason"])
+			}
+		}
+	}
+	if count != 1 {
+		t.Errorf("rows on 2026-07-07 = %d; want exactly the blocking row", count)
 	}
 }
 

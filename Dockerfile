@@ -16,7 +16,7 @@ COPY frontend/ .
 RUN pnpm build
 
 # ── Go build stage ─────────────────────────────────────────────────────────────
-FROM golang:1.26.6-alpine AS builder
+FROM golang:1.27.2-alpine AS builder
 
 RUN apk add --no-cache ca-certificates wget
 
@@ -57,7 +57,7 @@ RUN wget -qO- \
 # alpine (not scratch) — needed for the shell entrypoint and Litestream.
 # No --platform pin here: inherits the build host's native architecture,
 # matching whatever TARGETARCH the binary above was actually compiled for.
-FROM alpine:3.21
+FROM alpine:3.24
 
 RUN apk add --no-cache ca-certificates tzdata
 

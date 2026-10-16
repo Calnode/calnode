@@ -25,6 +25,8 @@ type Handler struct {
 	logger            *slog.Logger
 	bookingSvc        *booking.Service
 	mailer            mailer.Mailer
+	smtpConnectHost   string
+	smtpConnectPort   string
 	live              *mailer.Live // non-nil in production; nil in tests using a direct stub
 	encKey            [32]byte     // AES-256 key for encrypting secrets stored in the DB
 	calMu             sync.RWMutex

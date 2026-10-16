@@ -143,6 +143,15 @@ func (w *Worker) Poll(ctx context.Context) {
 		   AND last_attempted_at < ?`, deliveryCutoff); err != nil {
 		w.logger.Error("worker: purge webhook deliveries", "error", err)
 	}
+	// Purge terminal jobs older than 30 days. Every booking creates webhook +
+	// reminder rows; without this the table (and its Litestream-replicated copy)
+	// grows for the life of the instance. finished_at is set on every
+	// done/failed transition below, so only completed work is swept.
+	jobCutoff := time.Now().UTC().Add(-30 * 24 * time.Hour).Format(time.RFC3339)
+	if _, err := w.db.ExecContext(ctx,
+		`DELETE FROM jobs WHERE status IN ('done', 'failed') AND finished_at IS NOT NULL AND finished_at < ?`, jobCutoff); err != nil {
+		w.logger.Error("worker: purge old jobs", "error", err)
+	}
 	// Backstop for the Stripe checkout.session.expired webhook: release any payment hold
 	// still pending well past the 31-min checkout window, freeing the slot. The webhook
 	// normally does this promptly; this catches missed/late deliveries.
@@ -165,8 +174,8 @@ func (w *Worker) Poll(ctx context.Context) {
 		w.logger.Error("worker: reaper: reset", "error", err)
 	}
 	if _, err := w.db.ExecContext(ctx, `
-		UPDATE jobs SET status = 'failed', last_error = 'max attempts exceeded after crash'
-		WHERE status = 'running' AND locked_until < ? AND attempts >= max_attempts`, now); err != nil {
+		UPDATE jobs SET status = 'failed', last_error = 'max attempts exceeded after crash', finished_at = ?
+		WHERE status = 'running' AND locked_until < ? AND attempts >= max_attempts`, now, now); err != nil {
 		w.logger.Error("worker: reaper: fail exhausted", "error", err)
 	}
 
@@ -174,6 +183,7 @@ func (w *Worker) Poll(ctx context.Context) {
 		SELECT id, type, payload, attempts, max_attempts
 		FROM jobs
 		WHERE status = 'pending' AND run_at <= ?
+		ORDER BY run_at ASC, id ASC
 		LIMIT 10`, now)
 	if err != nil {
 		w.logger.Error("worker: poll", "error", err)
@@ -212,11 +222,15 @@ func (w *Worker) Poll(ctx context.Context) {
 
 		if err := w.processJob(ctx, j.typ, j.payload); err != nil {
 			w.logger.Error("worker: process job", "error", err, "job_id", j.id, "type", j.typ)
+			finishedAt := time.Now().UTC().Format(time.RFC3339Nano)
 			if j.attempts >= j.maxAttempts {
 				if _, uerr := w.db.ExecContext(ctx,
-					`UPDATE jobs SET status = 'failed', last_error = ? WHERE id = ?`,
-					err.Error(), j.id); uerr != nil {
+					`UPDATE jobs SET status = 'failed', last_error = ?, finished_at = ? WHERE id = ?`,
+					err.Error(), finishedAt, j.id); uerr != nil {
 					w.logger.Error("worker: mark job failed", "error", uerr, "job_id", j.id)
+				}
+				if j.typ == "webhook.deliver" {
+					w.markDeliveryFailed(ctx, j.payload)
 				}
 			} else {
 				runAt := time.Now().UTC().Add(backoff(j.attempts)).Format(time.RFC3339)
@@ -227,8 +241,16 @@ func (w *Worker) Poll(ctx context.Context) {
 				}
 			}
 		} else {
-			if _, uerr := w.db.ExecContext(ctx, `UPDATE jobs SET status = 'done' WHERE id = ?`, j.id); uerr != nil {
+			// Conditional on still-running: if the lock expired mid-job, the reaper
+			// may have reset this row to pending and another pass may already own
+			// the retry — a stale completion must not overwrite that state.
+			res, uerr := w.db.ExecContext(ctx,
+				`UPDATE jobs SET status = 'done', finished_at = ? WHERE id = ? AND status = 'running'`,
+				time.Now().UTC().Format(time.RFC3339Nano), j.id)
+			if uerr != nil {
 				w.logger.Error("worker: mark job done", "error", uerr, "job_id", j.id)
+			} else if n, _ := res.RowsAffected(); n == 0 {
+				w.logger.Error("worker: job left running state mid-process", "job_id", j.id)
 			}
 		}
 	}
@@ -296,10 +318,10 @@ func (w *Worker) sendReminder(ctx context.Context, payload string) error {
 	}
 
 	var parseErr error
-	if d.StartAt, parseErr = time.Parse(time.RFC3339, startAt); parseErr != nil {
+	if d.StartAt, parseErr = time.Parse(time.RFC3339Nano, startAt); parseErr != nil {
 		return fmt.Errorf("worker: reminder: parse start_at %q: %w", startAt, parseErr)
 	}
-	if d.EndAt, parseErr = time.Parse(time.RFC3339, endAt); parseErr != nil {
+	if d.EndAt, parseErr = time.Parse(time.RFC3339Nano, endAt); parseErr != nil {
 		return fmt.Errorf("worker: reminder: parse end_at %q: %w", endAt, parseErr)
 	}
 	if locVal.Valid {
@@ -385,11 +407,14 @@ func (w *Worker) deliverWebhook(ctx context.Context, jobPayload string) error {
 	resp, err := w.httpClient.Do(req)
 	now := time.Now().UTC().Format(time.RFC3339)
 	if err != nil {
+		// Transient transport failure: the job retries, so the delivery is
+		// still in flight — record it as pending, not failed. Terminal state
+		// is set by markDeliveryFailed when the job exhausts its attempts.
 		if _, uerr := w.db.ExecContext(ctx, `
 			UPDATE webhook_deliveries
-			SET status = 'failed', attempt_count = attempt_count + 1, last_attempted_at = ?
+			SET status = 'pending', attempt_count = attempt_count + 1, last_attempted_at = ?
 			WHERE id = ?`, now, p.WebhookDeliveryID); uerr != nil {
-			w.logger.Error("worker: mark webhook delivery failed", "error", uerr, "delivery_id", p.WebhookDeliveryID)
+			w.logger.Error("worker: mark webhook delivery pending", "error", uerr, "delivery_id", p.WebhookDeliveryID)
 		}
 		return fmt.Errorf("worker: http post: %w", err)
 	}
@@ -401,7 +426,7 @@ func (w *Worker) deliverWebhook(ctx context.Context, jobPayload string) error {
 
 	status := "success"
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		status = "failed"
+		status = "pending"
 	}
 	if _, uerr := w.db.ExecContext(ctx, `
 		UPDATE webhook_deliveries
@@ -410,8 +435,28 @@ func (w *Worker) deliverWebhook(ctx context.Context, jobPayload string) error {
 		w.logger.Error("worker: record webhook delivery result", "error", uerr, "delivery_id", p.WebhookDeliveryID)
 	}
 
-	if status == "failed" {
+	if status == "pending" && (resp.StatusCode < 200 || resp.StatusCode >= 300) {
 		return fmt.Errorf("worker: endpoint returned HTTP %d", resp.StatusCode)
 	}
 	return nil
+}
+
+// markDeliveryFailed flips a webhook delivery to terminal 'failed' when its job
+// exhausts all attempts. Per-attempt failures stay 'pending' (still in flight),
+// so the deliveries UI only shows failure when retries are done.
+func (w *Worker) markDeliveryFailed(ctx context.Context, jobPayload string) {
+	var p struct {
+		WebhookDeliveryID string `json:"webhook_delivery_id"`
+	}
+	if err := json.Unmarshal([]byte(jobPayload), &p); err != nil {
+		return
+	}
+	if p.WebhookDeliveryID == "" {
+		return
+	}
+	if _, err := w.db.ExecContext(ctx,
+		`UPDATE webhook_deliveries SET status = 'failed' WHERE id = ? AND status != 'success'`,
+		p.WebhookDeliveryID); err != nil {
+		w.logger.Error("worker: mark webhook delivery failed", "error", err, "delivery_id", p.WebhookDeliveryID)
+	}
 }

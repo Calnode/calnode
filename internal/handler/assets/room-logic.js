@@ -35,5 +35,49 @@
     };
   }
 
-  return { amHost: amHost, nextIsHost: nextIsHost, hostUi: hostUi };
+  // roleFromToken — read the join link's role for DISPLAY HINTS ONLY (the prejoin
+  // host-link warning). The payload is signed but not encrypted; the server
+  // re-verifies on /token, so a forged role buys nothing. Returns 'host' or ''.
+  // Manual base64url decode (no atob/Buffer): this module runs in browsers and
+  // node alike and must stay dependency-free.
+  var B64URL = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+  function b64urlDecode(s) {
+    var bits = '', out = '';
+    s = String(s).replace(/=+$/, '');
+    for (var i = 0; i < s.length; i++) {
+      var v = B64URL.indexOf(s.charAt(i));
+      if (v < 0) throw new Error('bad char');
+      bits += ('000000' + v.toString(2)).slice(-6);
+    }
+    for (var j = 0; j + 8 <= bits.length; j += 8) {
+      out += String.fromCharCode(parseInt(bits.substr(j, 8), 2));
+    }
+    return decodeURIComponent(escape(out));
+  }
+  function roleFromToken(tok) {
+    if (!tok || typeof tok !== 'string') return '';
+    var dot = tok.indexOf('.');
+    if (dot < 0) return '';
+    try {
+      var payload = JSON.parse(b64urlDecode(tok.slice(0, dot)));
+      return payload && payload.role === 'host' ? 'host' : '';
+    } catch (e) {
+      return '';
+    }
+  }
+
+  // demoteNotice — what to tell ME when my host status just changed. An upgrade
+  // needs no words (the controls appearing say it). A downgrade names the new
+  // host when known — this is the "where did my settings cog go" moment, almost
+  // always because this host link was shared and someone else opened it.
+  function demoteNotice(wasHost, isHostNow, otherHostName, canReclaim) {
+    if (!wasHost || isHostNow) return null;
+    var msg = otherHostName
+      ? otherHostName + ' took over as host — you are now attending.'
+      : 'Someone else took over as host — you are now attending.';
+    if (canReclaim) msg += ' Take host back from the menu if that was a mistake.';
+    return msg;
+  }
+
+  return { amHost: amHost, nextIsHost: nextIsHost, hostUi: hostUi, roleFromToken: roleFromToken, demoteNotice: demoteNotice };
 });

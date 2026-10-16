@@ -103,14 +103,10 @@ body {
 }
 </style>
 </head>
-<body>
+<body style="--booking-accent:{{.AccentColor}};--booking-accent-text:{{.AccentForeground}}">
 {{template "demoBanner" .}}
 
-{{if or .LogoURL .BusinessName}}
-<header style="text-align:center;padding:24px 16px 4px;">
-  {{if .LogoURL}}<img src="{{.LogoURL}}" alt="{{.BusinessName}}" style="height:{{.LogoHeight}}px;width:auto;max-width:100%;opacity:{{.LogoOpacity}};display:inline-block;border:0;">{{else}}<span style="font-size:.9375rem;font-weight:600;color:#111827;">{{.BusinessName}}</span>{{end}}
-</header>
-{{end}}
+{{template "businessHeader" .}}
 
 {{if .BannerURL}}
 <img class="brand-banner" src="{{.BannerURL}}" alt="" style="opacity:{{.BannerOpacity}};">
@@ -285,6 +281,8 @@ body {
   let availabilityLoaded = false; // false = render optimistically (assume all days open)
   let slotsByDay = {};            // "YYYY-MM-DD" -> [slot]; cached from the month fetch
   let noticeDates = new Set();    // days the minimum-notice policy took starts away from
+  let slotsDegraded = false;      // an external calendar check failed: busy data is
+                                  // incomplete, so offered times may be unbookable
 
   const $ = id => document.getElementById(id);
   const pad = n => String(n).padStart(2, '0');
@@ -355,6 +353,7 @@ body {
       // timezone server-side, so these keys line up with slotsByDay's. A reschedule goes
       // through the same /slots endpoint, so the same policy hides the same times.
       noticeDates = new Set((data.min_notice && data.min_notice.dates) || []);
+      if (data.degraded) slotsDegraded = true;
     } catch {
       slotsByDay = {};
       availableDates = new Set();
@@ -446,10 +445,22 @@ body {
     if (notice) list.appendChild(hintP(notice, 'notice-hint'));
   }
 
+  let selectedPeriod = null;
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, c =>
+      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  }
+  function slotPeriod(slot) {
+    const hour = Number(new Intl.DateTimeFormat('en-GB', {timeZone: TZ, hour: 'numeric', hourCycle: 'h23'}).format(new Date(slot.start)));
+    return hour < 12 ? 0 : hour < 17 ? 1 : 2;
+  }
   function fillSlots(list, ds) {
     // Only when this specific day lost starts to the policy - saying it on a day the
     // policy did not touch would be noise attached to the wrong cause.
     const notice = noticeDates.has(ds) ? noticeHintText() : '';
+    // Shown whenever an external calendar check failed: the busy data behind this
+    // list is incomplete, and booking stays fail-closed at commit time.
+    const degraded = slotsDegraded ? hintP(t('calendar_degraded_notice'), 'notice-hint') : null;
     if (!slotsCache.length) {
       // Name the day, and the host when there is exactly one. A bare "No available times."
       // never told the visitor whether another day would help (#20).
@@ -460,20 +471,27 @@ body {
       list.innerHTML = '';
       list.appendChild(hintP(msg));
       if (notice) list.appendChild(hintP(notice, 'notice-hint'));
+      if (degraded) list.appendChild(degraded);
       return;
     }
     // Taken entries are disabled buttons: same box as a bookable slot, announced as
     // unavailable. `disabled` is what prevents picking one; the click guard is backup.
-    list.innerHTML = slotsCache.map((s, i) => s.taken
+    const periods = [...new Set(slotsCache.map(slotPeriod))].sort();
+    if (!periods.includes(selectedPeriod)) selectedPeriod = periods[0];
+    const labels = ['time_morning', 'time_afternoon', 'time_evening'];
+    const buttons = slotsCache.map((s, i) => ({s, i})).filter(({s}) => slotPeriod(s) === selectedPeriod).map(({s, i}) => s.taken
       ? `<button class="slot-btn taken" disabled aria-label="${fmtTime(s.start)} - ${t('slot_taken')}">${fmtTime(s.start)}</button>`
       : `<button class="slot-btn" data-i="${i}">${fmtTime(s.start)}</button>`
     ).join('');
+    const choices = periods.map(period => `<button type="button" data-period="${period}" aria-pressed="${period === selectedPeriod}">${esc(t(labels[period]))}</button>`).join('');
+    list.innerHTML = `<div class="time-periods" role="group" aria-label="${esc(t('time_period'))}">${choices}</div><div class="time-grid">${buttons}</div>`;
     if (slotsCache.length && !slotsCache.some(s => !s.taken)) {
       list.insertAdjacentHTML('beforeend', `<p class="hint">${t('all_times_taken')}</p>`);
     }
     // Appended after a non-empty list too: a day showing 2pm onwards but nothing this
     // morning is exactly the "why can't I see those times" case.
     if (notice) list.appendChild(hintP(notice));
+    if (degraded) list.appendChild(degraded);
   }
 
   async function pickDate(ds, y, m, d) {
@@ -497,6 +515,7 @@ body {
       if (!r.ok) throw new Error(r.status);
       const data = await r.json();
       ((data.min_notice && data.min_notice.dates) || []).forEach(k => noticeDates.add(k));
+      if (data.degraded) slotsDegraded = true;
       slotsCache = BookingLogic.mergeDaySlots(
         (data.slots || []).filter(s => s.start !== CURRENT_ISO),
         (data.taken || []).filter(s => s.start !== CURRENT_ISO));
@@ -507,6 +526,13 @@ body {
   }
 
   $('slots-list').addEventListener('click', e => {
+    const period = e.target.closest('[data-period]');
+    if (period) {
+      selectedPeriod = Number(period.dataset.period);
+      fillSlots($('slots-list'), toDateStr(pickedDate.getFullYear(), pickedDate.getMonth(), pickedDate.getDate()));
+      $('slots-list').querySelector(`[data-period="${selectedPeriod}"]`).focus();
+      return;
+    }
     const btn = e.target.closest('.slot-btn');
     if (!btn || btn.disabled) return;
     const i = +btn.dataset.i;

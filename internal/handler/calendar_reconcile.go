@@ -2,6 +2,8 @@ package handler
 
 import (
 	"context"
+	"errors"
+	"net/url"
 	"time"
 
 	"github.com/calnode/calnode/internal/calendar"
@@ -66,14 +68,14 @@ func (h *Handler) reconcileCalendar() {
 func (h *Handler) reconcileReschedules(ctx context.Context, gc *calendar.Service) {
 	now := time.Now().UTC().Format(time.RFC3339)
 	type drift struct {
-		bookingID, userID, eventID, calendarID, startStr, endStr string
+		bookingID, userID, eventID, calendarID, provider, startStr, endStr string
 	}
 	// Read fully before acting — the single DB connection can't serve the inner
 	// UpdateEvent/UPDATE while a cursor is open (would deadlock). Only upcoming
 	// confirmed bookings matter; past ones need no calendar correction.
 	var items []drift
 	rows, err := h.db.QueryContext(ctx, `
-		SELECT bh.booking_id, bh.user_id, bh.external_event_id, COALESCE(bh.external_calendar_id, ''), b.start_at, b.end_at
+		SELECT bh.booking_id, bh.user_id, bh.external_event_id, COALESCE(bh.external_calendar_id, ''), COALESCE(bh.external_provider, ''), b.start_at, b.end_at
 		FROM booking_hosts bh JOIN bookings b ON b.id = bh.booking_id
 		WHERE bh.needs_sync = 1 AND b.status = 'confirmed'
 		  AND COALESCE(bh.external_event_id, '') != '' AND b.end_at > ?`, now)
@@ -83,7 +85,7 @@ func (h *Handler) reconcileReschedules(ctx context.Context, gc *calendar.Service
 	}
 	for rows.Next() {
 		var d drift
-		if err := rows.Scan(&d.bookingID, &d.userID, &d.eventID, &d.calendarID, &d.startStr, &d.endStr); err == nil {
+		if err := rows.Scan(&d.bookingID, &d.userID, &d.eventID, &d.calendarID, &d.provider, &d.startStr, &d.endStr); err == nil {
 			items = append(items, d)
 		}
 	}
@@ -93,11 +95,29 @@ func (h *Handler) reconcileReschedules(ctx context.Context, gc *calendar.Service
 		start, err1 := time.Parse(time.RFC3339Nano, d.startStr)
 		end, err2 := time.Parse(time.RFC3339Nano, d.endStr)
 		if err1 != nil || err2 != nil {
+			// Corrupt row: the stored times will never parse, so retrying every
+			// sweep forever helps nothing. Quarantine it (clear the flag) with a
+			// warning rather than spinning on it until the booking ends.
+			h.logger.Warn("reconcile: unparseable booking times; clearing needs_sync",
+				"booking_id", d.bookingID, "host", d.userID,
+				"start", d.startStr, "end", d.endStr)
+			if _, err := h.db.ExecContext(ctx,
+				`UPDATE booking_hosts SET needs_sync = 0 WHERE booking_id = ? AND user_id = ?`,
+				d.bookingID, d.userID); err != nil {
+				h.logger.Error("reconcile: clear needs_sync", "error", err, "booking_id", d.bookingID)
+			}
 			continue
 		}
-		if err := gc.UpdateEvent(ctx, d.userID, d.calendarID, d.eventID, start, end); err != nil {
-			h.logger.Error("reconcile: re-apply event time", "error", err, "booking_id", d.bookingID, "host", d.userID)
-			continue // leave the flag set; retry next sweep
+		if err := gc.UpdateEvent(ctx, d.userID, d.calendarID, d.eventID, d.provider, start, end); err != nil {
+			if !errors.Is(err, calendar.ErrEventUnreachable) {
+				h.logger.Error("reconcile: re-apply event time", "error", err, "booking_id", d.bookingID, "host", d.userID)
+				continue // leave the flag set; retry next sweep
+			}
+			// Nothing was sent, and the next sweep would re-read the same connections and
+			// refuse the same way, so clear the flag rather than log this every sweep until
+			// the booking ends. The event keeps its old time.
+			h.logger.Warn("reconcile: not retrying an event no single account holds; it keeps its old time",
+				"error", err, "booking_id", d.bookingID, "host", d.userID)
 		}
 		if _, err := h.db.ExecContext(ctx,
 			`UPDATE booking_hosts SET needs_sync = 0 WHERE booking_id = ? AND user_id = ?`,
@@ -111,12 +131,12 @@ func (h *Handler) reconcileReschedules(ctx context.Context, gc *calendar.Service
 // bookings (the inline cancel never reached Google). On success the per-host
 // event id is cleared so the row drops out of the next sweep.
 func (h *Handler) reconcileCancellations(ctx context.Context, gc *calendar.Service) {
-	type orphan struct{ bookingID, userID, eventID, calendarID string }
+	type orphan struct{ bookingID, userID, eventID, calendarID, provider string }
 	// Read fully before acting — the single DB connection can't serve the inner
 	// CancelEvent/UPDATE queries while a cursor is open (would deadlock).
 	var orphans []orphan
 	rows, err := h.db.QueryContext(ctx, `
-		SELECT bh.booking_id, bh.user_id, bh.external_event_id, COALESCE(bh.external_calendar_id, '')
+		SELECT bh.booking_id, bh.user_id, bh.external_event_id, COALESCE(bh.external_calendar_id, ''), COALESCE(bh.external_provider, '')
 		FROM booking_hosts bh JOIN bookings b ON b.id = bh.booking_id
 		WHERE b.status = 'cancelled' AND COALESCE(bh.external_event_id, '') != ''`)
 	if err != nil {
@@ -125,16 +145,28 @@ func (h *Handler) reconcileCancellations(ctx context.Context, gc *calendar.Servi
 	}
 	for rows.Next() {
 		var o orphan
-		if err := rows.Scan(&o.bookingID, &o.userID, &o.eventID, &o.calendarID); err == nil {
+		if err := rows.Scan(&o.bookingID, &o.userID, &o.eventID, &o.calendarID, &o.provider); err == nil {
 			orphans = append(orphans, o)
 		}
 	}
 	rows.Close() // #nosec G104 -- rows already fully consumed above; nothing actionable on close error
 
 	for _, o := range orphans {
-		if err := gc.CancelEvent(ctx, o.userID, o.calendarID, o.eventID); err != nil {
-			h.logger.Error("reconcile: cancel orphaned event", "error", err, "booking_id", o.bookingID, "host", o.userID)
-			continue // leave the id in place; retry next sweep
+		if err := gc.CancelEvent(ctx, o.userID, o.calendarID, o.eventID, o.provider); err != nil {
+			if !errors.Is(err, calendar.ErrEventUnreachable) {
+				h.logger.Error("reconcile: cancel orphaned event", "error", err, "booking_id", o.bookingID, "host", o.userID)
+				continue // leave the id in place; retry next sweep
+			}
+			// As for reschedules: no retry can succeed, and this query has no date bound, so
+			// leaving the id would repeat the refusal every sweep forever. The event stays on
+			// its calendar; its id is logged because clearing it drops the only copy. A CalDAV
+			// id is a URL and could carry userinfo, so it is logged redacted, or not at all.
+			eventForLog := ""
+			if u, perr := url.Parse(o.eventID); perr == nil {
+				eventForLog = u.Redacted()
+			}
+			h.logger.Warn("reconcile: not retrying the delete of an event no single account holds; it stays on its calendar",
+				"error", err, "booking_id", o.bookingID, "host", o.userID, "event_id", eventForLog)
 		}
 		if _, err := h.db.ExecContext(ctx,
 			`UPDATE booking_hosts SET external_event_id = NULL WHERE booking_id = ? AND user_id = ?`,
@@ -155,13 +187,13 @@ func (h *Handler) reconcileCreations(ctx context.Context, gc *calendar.Service) 
 	cutoff := nowT.Add(-5 * time.Minute).Format(time.RFC3339)
 	type missing struct {
 		bookingID, userID, etName, orgName, orgEmail, orgLocale, startStr, endStr string
-		locationType, bookingLoc                                                  string
+		locationType, bookingLoc, inviteMode                                      string
 		isPrimary                                                                 bool
 	}
 	var items []missing
 	rows, err := h.db.QueryContext(ctx, `
-		SELECT bh.booking_id, bh.user_id, bh.is_primary, et.name, et.location_type,
-		       COALESCE(b.location_value, ''),
+		SELECT bh.booking_id, bh.user_id, bh.is_primary, et.name, COALESCE(NULLIF(b.location_type, ''), et.location_type),
+		       COALESCE(b.location_value, ''), b.invite_delivery,
 		       COALESCE(o.name, ''), COALESCE(o.email, ''), COALESCE(o.locale, ''), b.start_at, b.end_at
 		FROM booking_hosts bh
 		JOIN bookings b ON b.id = bh.booking_id
@@ -177,7 +209,7 @@ func (h *Handler) reconcileCreations(ctx context.Context, gc *calendar.Service) 
 		var m missing
 		var primary int
 		if err := rows.Scan(&m.bookingID, &m.userID, &primary, &m.etName, &m.locationType,
-			&m.bookingLoc, &m.orgName, &m.orgEmail, &m.orgLocale, &m.startStr, &m.endStr); err == nil {
+			&m.bookingLoc, &m.inviteMode, &m.orgName, &m.orgEmail, &m.orgLocale, &m.startStr, &m.endStr); err == nil {
 			m.isPrimary = primary != 0
 			items = append(items, m)
 		}
@@ -209,14 +241,14 @@ func (h *Handler) reconcileCreations(ctx context.Context, gc *calendar.Service) 
 			}
 		}
 		loc := i18n.Get(m.orgLocale) // nil (→ English) if empty/unrecognized; i18n.Locale.T handles nil safely
-		eventID, link, calID, err := gc.CreateEvent(ctx, m.userID, calendar.CreateEventParams{
+		eventID, link, calID, provider, err := gc.CreateEvent(ctx, m.userID, calendar.CreateEventParams{
 			Summary:        loc.Tf("calendar_event_summary", m.etName, m.orgName),
 			Description:    loc.Tf("calendar_event_booking_id", m.bookingID),
 			Location:       m.bookingLoc,
 			Start:          start,
 			End:            end,
 			OrganizerName:  m.orgName,
-			OrganizerEmail: m.orgEmail,
+			OrganizerEmail: calendarInvitee(m.inviteMode, m.orgEmail),
 			AddMeet:        autoGenMeet,
 		})
 		if err != nil {
@@ -227,9 +259,10 @@ func (h *Handler) reconcileCreations(ctx context.Context, gc *calendar.Service) 
 			continue
 		}
 		if _, err := h.db.ExecContext(ctx,
-			`UPDATE booking_hosts SET external_event_id = ?, external_calendar_id = ?
+			`UPDATE booking_hosts SET external_event_id = ?, external_calendar_id = ?,
+			 external_provider = ?
 			 WHERE booking_id = ? AND user_id = ?`,
-			eventID, calID, m.bookingID, m.userID); err != nil {
+			eventID, calID, provider, m.bookingID, m.userID); err != nil {
 			h.logger.Error("reconcile: save healed event id", "error", err, "booking_id", m.bookingID)
 		}
 		if m.isPrimary {
