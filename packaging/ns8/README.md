@@ -37,12 +37,20 @@ Replace `calnode` with the actual registry namespace if you built your own
 image (see Development). The command prints the instance name, usually
 `ns8-calnode1`.
 
-> **Use `:edge`, not `:latest`.** This module has not had a release tag yet, so
-> `:latest` still points at the first build, which predates the fixes for a
-> missing `create-module` action, non-executable action scripts and an
-> invalid schema pattern. That build fails at `add-module`. `:latest` becomes
-> usable at the next module release, at which point a pinned version tag
-> (`ghcr.io/calnode/ns8-calnode:0.10.2`, say) is the better thing to install.
+> **Use `:edge`, not `:latest`.** A release has been cut, but `:latest`,
+> `:0.10` and `:0.10.1` all point at the **same amd64-only** image. It installs
+> and works on an amd64 node, and **fails on an arm64 node** (a Raspberry Pi, for
+> example), which cannot pull it.
+>
+> That release predates the multi-arch publishing work, so each architecture was
+> pushed straight onto the public tags instead of being assembled into one
+> manifest list. `:edge` is a proper multi-arch image and is correct on both.
+>
+> When the next module release lands, `:latest` will be multi-arch too, and a
+> pinned version tag (`ghcr.io/calnode/ns8-calnode:0.11.1`, say) becomes the
+> better thing to install. CI now asserts that every published tag really is a
+> multi-arch index before a release is allowed to pass, so this specific
+> breakage cannot recur silently.
 
 Then configure it with your public hostname:
 
@@ -147,15 +155,27 @@ tag pushes, mirroring the app tags in `docker-publish.yml`:
 - push a `vX.Y.Z` tag pushes module `:X.Y.Z`, `:X.Y` and `:latest`, running
   app `:X.Y.Z`, so a module release always runs the matching app release
 
-Because `:latest` only moves on a release tag, and no module release has been
-cut yet, `:latest` is currently unusable (see Install). Use `:edge` until the
-first module release lands.
+Because `:latest` only moves on a release tag, and the one release so far was
+cut before the multi-arch work landed, `:latest` is currently amd64-only. Use
+`:edge` until the next module release (see Install).
 
 Every published module tag is a **multi-arch** manifest (amd64 + arm64). NS8
 runs modules as rootless containers on the node, so a single-arch image would
 install on amd64 and fail on arm64. CI builds each arch to a private
 `:build-<arch>` tag and only then assembles the public tags, so an interrupted
-release cannot publish a single-arch image under a version tag.
+release cannot publish a single-arch image under a version tag. After
+assembling, CI reads the published tag back out of the registry and asserts it
+really is a two-arch index with coherent per-arch labels, so a publish that
+silently produced a single-arch tag fails the release rather than shipping.
+
+**arm64 status, stated honestly.** The image is built for both architectures and
+the manifest lists both, so an arm64 node can install it. The arm64 app binary
+has been executed and works: it generated its encryption key, applied all
+database migrations, and served HTTP. That was under CPU emulation, though, so
+**arm64 is not yet verified on real hardware.** Nothing here has run on a
+physical arm64 machine or on an arm64 NS8 node, and emulation cannot show native
+kernel behaviour or performance. Treat arm64 as untested until it has been
+exercised on a device.
 
 To build locally on a machine with podman and buildah, from this directory:
 
