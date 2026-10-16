@@ -1,5 +1,6 @@
 export type User = {
-<<<<<<< HEAD
+  booking_accent: string;
+  handle?: string;
   id: string;
   email: string;
   name: string;
@@ -21,6 +22,9 @@ export type User = {
 };
 
 export type EventType = {
+  /** Lower first on public person/team pages; ties sort by name, then slug. */
+  display_order: number;
+  allow_phone_call: boolean;
   id: string;
   slug: string;
   name: string;
@@ -35,6 +39,13 @@ export type EventType = {
    *  them. Off by default: the slots endpoint is public, so this makes the host's
    *  booked hours visible to anyone with the link. */
   show_taken_slots: boolean;
+  /** Who sends the booker's calendar invite. 'calendar': each host's connected calendar,
+   *  from the host's own address. 'calnode': Calnode's own invite, from the email sender
+   *  in Settings → Email, so no host's personal address reaches the booker. */
+  invite_delivery: "calendar" | "calnode";
+  /** Whether Calnode can currently send invites (a sender and working email). Only
+   *  returned on the single event type GET. */
+  invite_sender_ready?: boolean;
   location_type: string;
   location_value?: string;
   buffer_before_minutes: number;
@@ -65,85 +76,6 @@ export type EventType = {
   /** Owner identity, returned only when the viewer is a read-only host. */
   owner_name?: string;
   owner_email?: string;
-=======
-	booking_accent: string;
-	handle?: string;
-	id: string;
-	email: string;
-	name: string;
-	timezone: string;
-	time_format: '12h' | '24h';
-	week_start: number; // 0=Sunday, 1=Monday
-	date_format: 'dmy' | 'mdy' | 'ymd';
-	avatar_url?: string;
-	is_admin: boolean;
-	is_owner: boolean;
-	role: 'owner' | 'admin' | 'member';
-	notify_confirmation: boolean;
-	notify_cancellation: boolean;
-	notify_reschedule: boolean;
-	notify_reminder: boolean;
-	notify_host_booking: boolean;
-	notify_host_cancel: boolean;
-	notify_host_reschedule: boolean;
-};
-
-export type EventType = {
-	/** Lower first on public person/team pages; ties sort by name, then slug. */
-	display_order: number;
-	allow_phone_call: boolean;
-	id: string;
-	slug: string;
-	name: string;
-	description?: string;
-	duration_minutes: number;
-	// How often a booking can START, independent of how long it runs. Defaults to the
-	// duration on create; editable so a 45-minute meeting can still be offered on the hour.
-	slot_interval_minutes: number;
-	is_active: boolean;
-	is_public: boolean;
-	/** Show already-booked times struck through on the booking page instead of hiding
-	 *  them. Off by default: the slots endpoint is public, so this makes the host's
-	 *  booked hours visible to anyone with the link. */
-	show_taken_slots: boolean;
-	/** Who sends the booker's calendar invite. 'calendar': each host's connected calendar,
-	 *  from the host's own address. 'calnode': Calnode's own invite, from the email sender
-	 *  in Settings → Email, so no host's personal address reaches the booker. */
-	invite_delivery: 'calendar' | 'calnode';
-	/** Whether Calnode can currently send invites (a sender and working email). Only
-	 *  returned on the single event type GET. */
-	invite_sender_ready?: boolean;
-	location_type: string;
-	location_value?: string;
-	buffer_before_minutes: number;
-	buffer_after_minutes: number;
-	min_notice_minutes: number;
-	max_future_days: number;
-	max_active_bookings: number;
-	price_cents: number; // 0 = free
-	currency: string;    // ISO 4217, lowercase (e.g. "usd")
-	created_at: string;
-	subj_confirmation?: string;
-	subj_cancellation?: string;
-	subj_reschedule?: string;
-	subj_reminder?: string;
-	msg_confirmation?: string;
-	msg_cancellation?: string;
-	msg_reschedule?: string;
-	msg_reminder?: string;
-	/** Overrides the conversational assistant's opening chat line; unset = built-in translated default. */
-	msg_greeting?: string;
-	reminders: number[]; // hours_before values
-	routing_mode: 'fixed' | 'round_robin' | 'collective';
-	rr_strategy: 'even' | 'soonest' | 'priority';
-	/** True when archived — hidden from the default list, is_active forced off. Reversible. */
-	archived?: boolean;
-	/** True if the current user owns this event type; false if they only host it (read-only). */
-	owned?: boolean;
-	/** Owner identity, returned only when the viewer is a read-only host. */
-	owner_name?: string;
-	owner_email?: string;
->>>>>>> b5b2f1095ca3a5a209cf5e347dfb56838080b4b0
 };
 
 export type EventTypeHost = {
@@ -167,7 +99,6 @@ export type Question = {
 };
 
 export type Booking = {
-<<<<<<< HEAD
   id: string;
   event_type_slug: string;
   start_at: string;
@@ -181,23 +112,8 @@ export type Booking = {
   payment_status?: "pending" | "paid" | "refunded";
   amount_paid_cents?: number;
   amount_paid_currency?: string;
-=======
-	id: string;
-	event_type_slug: string;
-	start_at: string;
-	end_at: string;
-	status: 'confirmed' | 'cancelled';
-	attendees: { name: string; email: string }[];
-	created_at: string;
-	host_name?: string; // populated only in the admin "All bookings" view
-	location_value?: string;
-	/** Payment fields — present only for paid bookings (omitted when free). */
-	payment_status?: 'pending' | 'paid' | 'refunded';
-	amount_paid_cents?: number;
-	amount_paid_currency?: string;
-	/** The booker's RSVP to a Calnode-sent invite; absent until an answer arrives. */
-	rsvp_status?: 'accepted' | 'declined' | 'tentative';
->>>>>>> b5b2f1095ca3a5a209cf5e347dfb56838080b4b0
+  /** The booker's RSVP to a Calnode-sent invite; absent until an answer arrives. */
+  rsvp_status?: "accepted" | "declined" | "tentative";
 };
 
 export type APIKey = {
@@ -263,7 +179,6 @@ export type CalendarStatus = {
 };
 
 export type EmailSettings = {
-<<<<<<< HEAD
   smtp_host: string;
   smtp_port: string;
   smtp_user: string;
@@ -277,29 +192,14 @@ export type EmailSettings = {
   // being delivered over SMTP" can differ, so the server reports the live answer.
   transport: "none" | "smtp" | "resend_api";
   enabled: boolean;
-=======
-	smtp_host: string;
-	smtp_port: string;
-	smtp_user: string;
-	smtp_pass_set: boolean; // true when a password is stored; never returned directly
-	smtp_tls: boolean;
-	smtp_starttls: boolean;
-	email_from: string;
-	email_from_name: string;
-	resend_api_key_set: boolean; // true when a key is stored; never returned directly
-	// Which path mail actually goes out over. "SMTP fields are filled in" and "mail is
-	// being delivered over SMTP" can differ, so the server reports the live answer.
-	transport: 'none' | 'smtp' | 'resend_api';
-	enabled: boolean;
-	/** RSVP tracking for invites Calnode sends: the Resend inbound address RSVPs are routed
-	 *  through (e.g. rsvp@reply.example.com). */
-	rsvp_address: string;
-	resend_webhook_secret_set: boolean; // never returned directly
-	/** True when address, webhook secret and Resend API key are all present. */
-	rsvp_tracking: boolean;
-	/** Where Resend must deliver email.received: this instance's BASE_URL + the inbound path. */
-	rsvp_webhook_url: string;
->>>>>>> b5b2f1095ca3a5a209cf5e347dfb56838080b4b0
+  /** RSVP tracking for invites Calnode sends: the Resend inbound address RSVPs are routed
+   *  through (e.g. rsvp@reply.example.com). */
+  rsvp_address: string;
+  resend_webhook_secret_set: boolean; // never returned directly
+  /** True when address, webhook secret and Resend API key are all present. */
+  rsvp_tracking: boolean;
+  /** Where Resend must deliver email.received: this instance's BASE_URL + the inbound path. */
+  rsvp_webhook_url: string;
 };
 
 export type GoogleSettings = {
@@ -347,10 +247,10 @@ export type LLMSettings = {
 };
 
 export type TeamMember = {
-<<<<<<< HEAD
   id: string;
   email: string;
   name: string;
+  handle?: string;
   timezone: string;
   is_admin: boolean;
   is_owner: boolean;
@@ -364,25 +264,6 @@ export type TeamMember = {
   archived_by?: string;
   archived_by_name?: string;
   teams: { id: string; name: string }[];
-=======
-	id: string;
-	email: string;
-	name: string;
-	handle?: string;
-	timezone: string;
-	is_admin: boolean;
-	is_owner: boolean;
-	role: 'owner' | 'admin' | 'member';
-	email_login: boolean;
-	provider?: string;
-	avatar_url?: string;
-	created_at: string;
-	archived: boolean;
-	archived_at?: string;
-	archived_by?: string;
-	archived_by_name?: string;
-	teams: { id: string; name: string }[];
->>>>>>> b5b2f1095ca3a5a209cf5e347dfb56838080b4b0
 };
 
 export type Team = {
