@@ -11,6 +11,38 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
 
 ## [Unreleased]
 
+## [0.11.1] - 2026-10-16
+
+### Fixed
+- **Deleting an event type with bookings in its history explains itself.** Calnode
+  refuses to delete an event type that has bookings, including cancelled ones, so the
+  booking history stays intact — but it answered with a generic "internal error" instead
+  of saying so. SQLite reports a constraint declared `ON DELETE RESTRICT` under a
+  different code than the default, and Calnode only recognised the default, so every
+  delete that hit this guard fell through to a server error. You now get the actionable
+  message, and "deactivate it instead" is what it says to do.
+- **Round-robin booking no longer picks a host who is unavailable** (#146). A rotation
+  booking could assign a host who cannot take the slot; such a host is now skipped.
+- **The dashboard stops advertising events you have switched off.** "Your booking links"
+  listed archived and deactivated event types. They still answer their booking URL, so the
+  list read as live and invited bookings for meetings you had turned off.
+- **NS8 module images publish for both architectures.** The release step assembled the
+  multi-arch manifest from the runner's local container storage, which on the release
+  runner did not contain the images it had just built, so no module release has ever
+  published a correct multi-arch image. Arches are now read from the registry, where the
+  build already put them. Releases are additionally gated on what actually reached the
+  registry — architecture, the `org.nethserver.images` label, and that the app image the
+  label names is itself multi-arch — so an amd64-only publish fails the build instead of
+  shipping quietly.
+
+### Changed
+- **NS8 install docs state what `:latest` really is.** The NethServer module's `:latest`,
+  `:0.10` and `:0.10.1` are one amd64-only build: fine on amd64 nodes, and it fails on
+  arm64 (a Pi 5, for example). That release predates multi-arch publishing, so each
+  architecture was pushed straight onto the public tags. `:edge` is correct on both. The
+  docs also say plainly that arm64 has only been exercised under CPU emulation, not on
+  real hardware.
+
 ## [0.11.0] - 2026-10-15
 
 ### Added
