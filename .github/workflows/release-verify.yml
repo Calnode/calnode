@@ -42,6 +42,35 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # Live evidence that the sibling lookup actually works against the real API.
+      # This runs unconditionally and does not depend on the gate's decision,
+      # because the previous version of this workflow looked correct in every
+      # local test and had never once issued the call. A lookup bug must be
+      # visible in a run log, not inferred from a stubbed unit test.
+      - name: Probe both publish workflows
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          rc=0
+          for entry in 'NS8 module publish|ns8-module.yml' 'Docker publish|docker-publish.yml'; do
+            display="${entry%%|*}"
+            file="${entry##*|}"
+            url="repos/${{ github.repository }}/actions/workflows/$file/runs?per_page=100"
+            if runs=$(gh api "$url" 2>&1); then
+              echo "$file -> 200, $(printf '%s' "$runs" | jq '.total_count') run(s) on record"
+              match=$(printf '%s' "$runs" | jq -r --arg sha "$SHA" \
+                '[.workflow_runs[] | select(.head_sha == $sha)] | first |
+                 "\(.status // "none") \(.conclusion // "none") \(.name // "?")"')
+              echo "$file run for $SHA: ${match:-none}"
+            else
+              echo "::error::lookup failed for '$display' ($file): $runs"
+              rc=1
+            fi
+          done
+          exit $rc
+
       - name: Wait for both publish workflows to finish
         id: gate
         env:
@@ -64,10 +93,40 @@ jobs:
             exit 0
           fi
 
-          status=$(gh api "repos/${{ github.repository }}/actions/workflows/$SIBLING/runs" \
-            --jq "[.workflow_runs[] | select(.head_sha == \"$SHA\")] | first | .status // \"absent\"")
-          conclusion=$(gh api "repos/${{ github.repository }}/actions/workflows/$SIBLING/runs" \
-            --jq "[.workflow_runs[] | select(.head_sha == \"$SHA\")] | first | .conclusion // \"absent\"")
+          # The REST path wants the workflow FILE name or the numeric id. It does
+          # NOT accept the display name, and answers 404 for one. Measured:
+          #   .../actions/workflows/NS8 module publish/runs  -> 404
+          #   .../actions/workflows/ns8-module.yml/runs        -> 200
+          # Under `set -e` that 404 kills the step, so every run of this workflow
+          # failed at this line and the gate could never verify anything.
+          #
+          # Note the display name is still what the workflow_run TRIGGER matches on
+          # and what github.event.workflow_run.name returns. Only the API path needs
+          # the file name, so this mapping is deliberately confined to that one call.
+          case "$SIBLING" in
+            'NS8 module publish') sibling_file='ns8-module.yml' ;;
+            'Docker publish')      sibling_file='docker-publish.yml' ;;
+            *)
+              # Loud, not silent. A renamed workflow must not look like a healthy
+              # no-op, which is exactly how the previous version of this bug hid.
+              echo "::error::no file name is mapped for sibling workflow '$SIBLING'."
+              echo "::error::Add it to the case statement above. The display names live in .github/workflows/ns8-module.yml and docker-publish.yml."
+              exit 1
+              ;;
+          esac
+          echo "sibling display name: $SIBLING"
+          echo "sibling workflow file: $sibling_file"
+
+          runs=$(gh api "repos/${{ github.repository }}/actions/workflows/$sibling_file/runs?per_page=100")
+          total=$(printf '%s' "$runs" | jq '.total_count')
+          echo "sibling workflow run count: $total"
+
+          read -r status conclusion < <(
+            printf '%s' "$runs" \
+              | jq -r --arg sha "$SHA" \
+                  '([.workflow_runs[] | select(.head_sha == $sha)] | first) // {} |
+                   "\(.status // "absent") \(.conclusion // "absent")"'
+          )
 
           echo "sibling status=$status conclusion=$conclusion"
           if [ "$status" != "completed" ]; then
