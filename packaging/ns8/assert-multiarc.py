@@ -72,12 +72,59 @@ class Fail(Exception):
     """A check failed in a way worth reporting verbatim."""
 
 
+def normalize_repo(repo):
+    """Reduce any spelling of a repository to the one form this script uses.
+
+    Two independent normalisations, because two independent things go wrong.
+
+    1. A leading registry host. This script builds absolute URLs itself,
+       `https://ghcr.io/v2/{repo}/...`, so a caller that passes
+       `ghcr.io/calnode/ns8-calnode` is supplying a host that does not belong in
+       that path at all. ghcr happens to tolerate the redundant segment, which
+       is exactly why it went unnoticed, but it does not tolerate it combined
+       with a capital: see the routing note below.
+
+       Only the host this script actually talks to is stripped. An arbitrary
+       dotted first segment is NOT stripped, because a dotted owner is a legal
+       image name and `my.org/team/image` must survive intact.
+
+    2. Case. ghcr's token endpoint answers HTTP 400 for an uppercase scope, and
+       GitHub reports the owner as `github.repository_owner`, verbatim `Calnode`.
+
+    ROUTING NOTE, measured against ghcr rather than assumed. Given a path with no
+    extra leading segment, the repository is matched case-insensitively:
+
+        /v2/calnode/ns8-calnode/manifests/latest -> 200
+        /v2/Calnode/ns8-calnode/manifests/latest -> 200
+
+    Given ONE extra leading segment, that segment is tolerated whatever it is,
+    and the segments after it are then matched case-sensitively:
+
+        /v2/ghcr.io/calnode/ns8-calnode/manifests/latest  -> 200
+        /v2/quay.io/calnode/ns8-calnode/manifests/latest  -> 200
+        /v2/ghcr.io/Calnode/ns8-calnode/manifests/latest  -> 404
+        /v2/quay.io/Calnode/ns8-calnode/manifests/latest  -> 404
+
+    Those 404s are GitHub's edge router, not the registry: the body is
+    `404 page not found` in text/plain, whereas a genuinely absent repository
+    returns a JSON MANIFEST_UNKNOWN. So the failure is routing, and it only
+    manifests when a caller supplies the redundant host. Which is precisely the
+    input this function removes.
+
+    ns8-module.yml passes `ghcr.io/${{ github.repository_owner }}/ns8-calnode`,
+    so prefix plus capital-C, the one combination that fails, and that made main
+    red on every push while the image itself was present and multi-arch.
+    """
+    repo = repo.strip()
+    host = urllib.parse.urlsplit(REGISTRY).netloc
+    prefix = host + "/"
+    if repo.lower().startswith(prefix.lower()):
+        repo = repo[len(prefix):]
+    return repo.lower()
+
+
 def token(repo):
-    # ghcr's token endpoint requires the repository path LOWERCASE and answers
-    # HTTP 400 otherwise. The owner arrives from GitHub as `github.repository_owner`
-    # verbatim, which is `Calnode` for this repo, so normalise here rather than
-    # trusting every caller to remember: a case slip here fails a correct release.
-    repo = repo.lower()
+    repo = normalize_repo(repo)
     if repo not in _tokens:
         url = f"{REGISTRY}/token?scope=repository:{repo}:pull&service=ghcr.io"
         with urllib.request.urlopen(url, timeout=30) as f:
@@ -87,6 +134,7 @@ def token(repo):
 
 def get(repo, reference):
     """GET a manifest, returning (body, mediaType)."""
+    repo = normalize_repo(repo)
     req = urllib.request.Request(
         f"{REGISTRY}/v2/{repo}/manifests/{reference}",
         headers={"Authorization": f"Bearer {token(repo)}", "Accept": ACCEPT},
@@ -96,6 +144,7 @@ def get(repo, reference):
 
 
 def get_blob(repo, digest):
+    repo = normalize_repo(repo)
     req = urllib.request.Request(
         f"{REGISTRY}/v2/{repo}/blobs/{digest}",
         headers={"Authorization": f"Bearer {token(repo)}"},

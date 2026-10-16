@@ -34,6 +34,11 @@ jobs:
         run: |
           python3 -m py_compile imageroot/actions/configure-module/20configure imageroot/actions/get-configuration/20read
           python3 -m py_compile assert-multiarc.py
+          python3 -m py_compile test_assert_multiarc.py
+          # Offline tests, so a broken invariant fails on every push rather than
+          # waiting for a release to notice. The registry round-trip tests in the
+          # same file are opt-in and skipped unless NS8_REGISTRY_TESTS=1.
+          python3 -m unittest discover -s . -p 'test_*.py'
           python3 -c "import json, glob; [json.load(open(f)) for f in glob.glob('imageroot/actions/*/*.json') + glob.glob('ui/public/*.json') + ['ui/public/i18n/en/translation.json']]"
           bash -n imageroot/actions/configure-module/80start_services
           bash -n build-images.sh
