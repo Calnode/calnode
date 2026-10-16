@@ -63,6 +63,11 @@ class Fail(Exception):
 
 
 def token(repo):
+    # ghcr's token endpoint requires the repository path LOWERCASE and answers
+    # HTTP 400 otherwise. The owner arrives from GitHub as `github.repository_owner`
+    # verbatim, which is `Calnode` for this repo, so normalise here rather than
+    # trusting every caller to remember: a case slip here fails a correct release.
+    repo = repo.lower()
     if repo not in _tokens:
         url = f"{REGISTRY}/token?scope=repository:{repo}:pull&service=ghcr.io"
         with urllib.request.urlopen(url, timeout=30) as f:
