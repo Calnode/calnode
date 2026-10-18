@@ -32,9 +32,9 @@ jobs:
       - name: Validate action scripts and schemas
         working-directory: packaging/ns8
         run: |
-          python3 -m py_compile imageroot/actions/configure-module/20configure imageroot/actions/get-configuration/20read
+          python3 -m py_compile imageroot/actions/configure-module/20configure imageroot/actions/get-configuration/20read imageroot/actions/clone-module/20unclaimhostname
           python3 -m py_compile assert-multiarc.py
-          python3 -m py_compile test_assert_multiarc.py
+          python3 -m py_compile test_assert_multiarc.py test_clone_module.py
           # Offline tests, so a broken invariant fails on every push rather than
           # waiting for a release to notice. The registry round-trip tests in the
           # same file are opt-in and skipped unless NS8_REGISTRY_TESTS=1.

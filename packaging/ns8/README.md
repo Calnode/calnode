@@ -167,6 +167,34 @@ operator of that destination, which may be a third-party storage provider, holds
 an encrypted copy of your database and the key that unlocks it. Configure the
 backup accordingly.
 
+## Clone and move
+
+Cloning an instance from the cluster admin UI copies the `calnode-data` volume
+and the module state, so the copy arrives with all its bookings, users and
+settings.
+
+The clone deliberately arrives **unconfigured**. The hostname belongs to one
+instance: it is stored in the module state, but the host-based route that answers
+for it is registered per instance. A clone that kept the hostname would hold a
+name it has no route for, and configuring it with that name would then be
+refused, because the source instance still answers for it. So the clone gives the
+hostname back and the Settings page asks for a new one. Give it a hostname,
+click save, and it is live. That is the same state a freshly added instance is
+in, and it is what makes the Settings page and the configure action agree.
+
+Two things the clone keeps, deliberately:
+
+- **The encryption key.** It travels with the copied database and is the only
+  thing that can unwrap the database key vault. Without it the clone would hold
+  an unreadable copy of every booking, so it is preserved across the clone even
+  though the hostname is not.
+- **All the data.** The copy is complete, so the clone is a genuine second
+  instance with its own URL, not a way to share one database.
+
+Moving an instance between nodes works the same way. If the instance is reached
+by a public hostname, point your DNS at the new node; the cluster reverse proxy
+is reconfigured for you.
+
 ## Uninstall
 
 To uninstall the instance, keeping its data for a later reinstall:
