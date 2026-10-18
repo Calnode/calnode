@@ -11,9 +11,10 @@
     }
   ],
   "docs": {
-    "documentation_url": "https://github.com/calnode/calnode",
+    "documentation_url": "https://github.com/calnode/calnode/blob/main/packaging/ns8/README.md",
     "bug_url": "https://github.com/calnode/calnode/issues",
-    "code_url": "https://github.com/calnode/ns8-calnode"
+    "code_url": "https://github.com/calnode/calnode",
+    "terms_url": "https://github.com/calnode/calnode/blob/main/packaging/ns8/README.md#data-and-privacy"
   },
   "source": "ghcr.io/calnode/ns8-calnode"
 }
