@@ -339,7 +339,14 @@ func assertWorkspaceInvite(t *testing.T, what, ics, method string, hostAddrs ...
 
 func (f *inviteFixture) calnodeBooking(t *testing.T) (*booking.Booking, string) {
 	t.Helper()
-	if rec := f.createEventType(t, "intro", booking.InviteByCalnode); rec.Code != http.StatusCreated {
+	return f.modeBooking(t, booking.InviteByCalnode)
+}
+
+// modeBooking books an event type created with the given invite mode and checks the mode
+// was copied onto the booking.
+func (f *inviteFixture) modeBooking(t *testing.T, mode string) (*booking.Booking, string) {
+	t.Helper()
+	if rec := f.createEventType(t, "intro", mode); rec.Code != http.StatusCreated {
 		t.Fatalf("create event type: %d — %s", rec.Code, rec.Body.String())
 	}
 	id, _ := f.book(t, "intro")
@@ -347,8 +354,8 @@ func (f *inviteFixture) calnodeBooking(t *testing.T) (*booking.Booking, string) 
 	if err != nil {
 		t.Fatalf("get booking: %v", err)
 	}
-	if b.InviteDelivery != booking.InviteByCalnode {
-		t.Fatalf("booking invite_delivery = %q; want calnode copied from the event type", b.InviteDelivery)
+	if b.InviteDelivery != mode {
+		t.Fatalf("booking invite_delivery = %q; want %s copied from the event type", b.InviteDelivery, mode)
 	}
 	return b, b.EventTypeID
 }
@@ -407,25 +414,175 @@ func TestInviteDelivery_reassignKeepsBothHostsPrivate(t *testing.T) {
 }
 
 // The reconciler re-creates a host event whose inline create failed; for a Calnode
-// booking it must not add the booker, or the provider would invite them after all.
+// booking, or one with no invite, it must not add the booker, or the provider would
+// invite them after all.
 func TestInviteDelivery_reconcilerHealsWithoutInvitingBooker(t *testing.T) {
-	f := newInviteFixture(t, true)
-	b, _ := f.calnodeBooking(t)
+	for _, mode := range []string{booking.InviteByCalnode, booking.InviteByNone} {
+		t.Run(mode, func(t *testing.T) {
+			f := newInviteFixture(t, true)
+			b, _ := f.modeBooking(t, mode)
 
-	if _, err := f.h.db.Exec(`UPDATE booking_hosts SET external_event_id = NULL WHERE booking_id = ?`, b.ID); err != nil {
+			if _, err := f.h.db.Exec(`UPDATE booking_hosts SET external_event_id = NULL WHERE booking_id = ?`, b.ID); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := f.h.db.Exec(`UPDATE bookings SET created_at = ? WHERE id = ?`,
+				time.Now().UTC().Add(-time.Hour).Format(time.RFC3339), b.ID); err != nil {
+				t.Fatal(err)
+			}
+			f.h.reconcileCreations(context.Background(), f.h.getCal())
+
+			events := f.cal.events()
+			if len(events) != 2 {
+				t.Fatalf("host calendar events = %d; want the missing one re-created", len(events))
+			}
+			if events[1].OrganizerEmail != "" {
+				t.Errorf("healed event invites %q; want no guest", events[1].OrganizerEmail)
+			}
+		})
+	}
+}
+
+// No invite at all is for integrations that send their own. It is not an email feature,
+// so unlike Calnode-sent invites it needs neither a sender nor a working mailer.
+func TestInviteDelivery_noneNeedsNoEmail(t *testing.T) {
+	f := newInviteFixture(t, false)
+	f.h.SetMailer(&mailer.Noop{}, "https://book.team.example")
+
+	if rec := f.createEventType(t, "intro", booking.InviteByNone); rec.Code != http.StatusCreated {
+		t.Fatalf("create with no invite and no email: %d — %s; want 201", rec.Code, rec.Body.String())
+	}
+	if rec := f.createEventType(t, "other", booking.InviteByCalendar); rec.Code != http.StatusCreated {
+		t.Fatalf("create event type: %d — %s", rec.Code, rec.Body.String())
+	}
+	if rec := f.do(t, f.h.PatchEventType, http.MethodPatch, "/v1/event-types/other",
+		`{"invite_delivery":"none"}`); rec.Code != http.StatusOK {
+		t.Fatalf("switch to no invite with no email: %d — %s; want 200", rec.Code, rec.Body.String())
+	}
+	var stored string
+	if err := f.h.db.QueryRow(`SELECT invite_delivery FROM event_types WHERE slug = 'other'`).Scan(&stored); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := f.h.db.Exec(`UPDATE bookings SET created_at = ? WHERE id = ?`,
-		time.Now().UTC().Add(-time.Hour).Format(time.RFC3339), b.ID); err != nil {
-		t.Fatal(err)
+	if stored != booking.InviteByNone {
+		t.Errorf("stored invite_delivery = %q after the switch; want none", stored)
 	}
-	f.h.reconcileCreations(context.Background(), f.h.getCal())
+	// The sender requirement still holds for Calnode-sent invites.
+	if rec := f.do(t, f.h.PatchEventType, http.MethodPatch, "/v1/event-types/other",
+		`{"invite_delivery":"calnode"}`); rec.Code != http.StatusBadRequest {
+		t.Errorf("switch to calnode invites with no email: %d; want 400", rec.Code)
+	}
+}
+
+// With no invite, the host's calendar holds the meeting but invites nobody, and nothing
+// Calnode sends carries an invite. The booker's confirmation itself still goes out when
+// email is set up: the mode decides the invite, not whether Calnode emails.
+func TestInviteDelivery_noneSendsNoInvite(t *testing.T) {
+	f := newInviteFixture(t, false)
+	f.modeBooking(t, booking.InviteByNone)
 
 	events := f.cal.events()
-	if len(events) != 2 {
-		t.Fatalf("host calendar events = %d; want the missing one re-created", len(events))
+	if len(events) != 1 {
+		t.Fatalf("host calendar events: got %d; want 1 (the host still needs the meeting on their calendar)", len(events))
 	}
-	if events[1].OrganizerEmail != "" {
-		t.Errorf("healed event invites %q; want no guest", events[1].OrganizerEmail)
+	if events[0].OrganizerEmail != "" {
+		t.Errorf("host event invites %q; want no guest, so the provider emails nobody", events[0].OrganizerEmail)
+	}
+	if ics := icsOf(f.waitFor(t, inviteBookerEmail, 1)); ics != "" {
+		t.Errorf("booker confirmation carries an .ics; the integration sends the invite:\n%s", ics)
+	}
+	if ics := icsOf(f.waitFor(t, inviteHostEmail, 1)); strings.Contains(ics, inviteBookerEmail) {
+		t.Errorf("host copy names the booker as a guest:\n%s", ics)
+	}
+}
+
+// Reschedule and cancel follow the booking's mode, not the event type's or the host's
+// calendar. With the event type switched back and the host's calendar disconnected, a
+// calendar-sent booking would now get Calnode's .ics; one with no invite still must not.
+func TestInviteDelivery_noneRescheduleAndCancelSendNoInvite(t *testing.T) {
+	f := newInviteFixture(t, false)
+	b, etID := f.modeBooking(t, booking.InviteByNone)
+
+	if rec := f.do(t, f.h.PatchEventType, http.MethodPatch, "/v1/event-types/intro",
+		`{"invite_delivery":"calendar"}`); rec.Code != http.StatusOK {
+		t.Fatalf("switch back to calendar: %d — %s", rec.Code, rec.Body.String())
+	}
+	if _, err := f.h.db.Exec(`DELETE FROM calendar_connections`); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx := context.Background()
+	newStart := b.StartAt.Add(24 * time.Hour)
+	updated, err := f.h.bookingSvc.Reschedule(ctx, b.ID, newStart, newStart.Add(30*time.Minute))
+	if err != nil {
+		t.Fatalf("reschedule: %v", err)
+	}
+	f.h.rescheduleSideEffects(*updated, etID, b.StartAt, b.EndAt)
+	if ics := icsOf(f.waitFor(t, inviteBookerEmail, 2)); ics != "" {
+		t.Errorf("reschedule email carries an .ics:\n%s", ics)
+	}
+
+	if err := f.h.bookingSvc.CancelByID(ctx, b.ID, "changed plans"); err != nil {
+		t.Fatalf("cancel: %v", err)
+	}
+	cancelled, err := f.h.bookingSvc.Get(ctx, b.ID)
+	if err != nil {
+		t.Fatalf("get booking: %v", err)
+	}
+	f.h.cancelSideEffects(*cancelled)
+	if ics := icsOf(f.waitFor(t, inviteBookerEmail, 3)); ics != "" {
+		t.Errorf("cancellation email carries an .ics:\n%s", ics)
+	}
+}
+
+// Reassigning a booking with no invite moves the event to the new host's calendar
+// without the booker, and the booker's notice of the change carries no invite.
+func TestInviteDelivery_noneReassignInvitesNobody(t *testing.T) {
+	f := newInviteFixture(t, false)
+	b, _ := f.modeBooking(t, booking.InviteByNone)
+
+	if _, err := f.h.db.Exec(`INSERT INTO users (id, email, name, iana_timezone, is_admin, created_at)
+		VALUES ('host-2', 'colleague@host.example', 'Colleague', 'UTC', 0, '2026-01-01T00:00:00Z')`); err != nil {
+		t.Fatalf("seed second host: %v", err)
+	}
+	if _, err := f.h.db.Exec(`INSERT INTO calendar_connections
+		  (id, user_id, provider, access_token_enc, calendar_id, check_conflicts, is_destination, created_at)
+		VALUES ('conn-2', 'host-2', 'google', 'e', 'primary', 1, 1, '2026-01-01T00:00:00Z')`); err != nil {
+		t.Fatalf("seed second host calendar: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/v1/bookings/"+b.ID+"/reassign", strings.NewReader(`{"host_id":"host-2"}`))
+	req.SetPathValue("id", b.ID)
+	req.Header.Set("X-API-Key", f.apiKey)
+	rec := httptest.NewRecorder()
+	f.h.RequireAuth(f.h.ReassignBooking)(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("reassign: %d — %s", rec.Code, rec.Body.String())
+	}
+
+	if ics := icsOf(f.waitFor(t, inviteBookerEmail, 2)); ics != "" {
+		t.Errorf("reassign email carries an .ics:\n%s", ics)
+	}
+	events := f.cal.events()
+	if len(events) != 2 || events[1].OrganizerEmail != "" {
+		t.Errorf("new host's calendar events = %+v; want the moved event created without the booker", events)
+	}
+}
+
+// Integrations read the mode per booking, so they can tell whether the booker already
+// holds an invite: on the single booking and on the workspace list.
+func TestInviteDelivery_bookingJSONReportsMode(t *testing.T) {
+	f := newInviteFixture(t, false)
+	b, _ := f.modeBooking(t, booking.InviteByNone)
+	const want = `"invite_delivery":"none"`
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/bookings/"+b.ID, nil)
+	req.SetPathValue("id", b.ID)
+	rec := httptest.NewRecorder()
+	f.h.GetBooking(rec, req)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), want) {
+		t.Errorf("GET booking: %d — %s; want it to contain %s", rec.Code, rec.Body.String(), want)
+	}
+
+	if rec := f.do(t, f.h.ListBookings, http.MethodGet, "/v1/bookings?scope=all", ""); rec.Code != http.StatusOK ||
+		!strings.Contains(rec.Body.String(), want) {
+		t.Errorf("list bookings: %d — %s; want it to contain %s", rec.Code, rec.Body.String(), want)
 	}
 }

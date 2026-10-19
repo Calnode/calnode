@@ -43,8 +43,10 @@ type eventTypeJSON struct {
 	// makes the host's booked hours legible to anyone with the link (#19).
 	ShowTakenSlots bool `json:"show_taken_slots"`
 	// InviteDelivery is who sends the booker's calendar invite: "calendar" (each host's
-	// connected calendar, from the host's own address) or "calnode" (Calnode's own .ics,
-	// from the instance sender, so no host address reaches the booker). See migration 00068.
+	// connected calendar, from the host's own address), "calnode" (Calnode's own .ics,
+	// from the instance sender, so no host address reaches the booker) or "none" (no one:
+	// guestless host events and no .ics, for integrations that send their own invite).
+	// See migrations 00068 and 00071.
 	InviteDelivery  string  `json:"invite_delivery"`
 	IsPublic        bool    `json:"is_public"`
 	CreatedAt       string  `json:"created_at"`
@@ -312,7 +314,7 @@ func (h *Handler) CreateEventType(w http.ResponseWriter, r *http.Request) {
 	if req.InviteDelivery != nil {
 		mode, ok := normalizeInviteDelivery(*req.InviteDelivery)
 		if !ok {
-			h.writeError(w, http.StatusBadRequest, "invite_delivery must be 'calendar' or 'calnode'")
+			h.writeError(w, http.StatusBadRequest, "invite_delivery must be 'calendar', 'calnode' or 'none'")
 			return
 		}
 		if mode == booking.InviteByCalnode && !h.inviteSenderReady(r.Context()) {
@@ -638,7 +640,7 @@ func (h *Handler) PatchEventType(w http.ResponseWriter, r *http.Request) {
 	if req.InviteDelivery != nil {
 		mode, ok := normalizeInviteDelivery(*req.InviteDelivery)
 		if !ok {
-			h.writeError(w, http.StatusBadRequest, "invite_delivery must be 'calendar' or 'calnode'")
+			h.writeError(w, http.StatusBadRequest, "invite_delivery must be 'calendar', 'calnode' or 'none'")
 			return
 		}
 		newInviteDelivery = mode

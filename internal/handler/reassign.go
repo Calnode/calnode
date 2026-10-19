@@ -208,10 +208,14 @@ func (h *Handler) ReassignBooking(w http.ResponseWriter, r *http.Request) {
 		}
 		// A Calnode-sent invite is re-issued (same UID, newer SEQUENCE) so the booker's
 		// calendar entry follows the change. A calendar-sent one needs nothing here: the
-		// new host's calendar invited the booker when the event was recreated above.
-		if inviteMode == booking.InviteByCalnode {
+		// new host's calendar invited the booker when the event was recreated above, and a
+		// booking with no invite gets none now either (applyInviteDelivery says so).
+		switch inviteMode {
+		case booking.InviteByCalnode:
 			h.applyInviteDelivery(ctx, &d, inviteMode, newHostID)
 			d.ICSSequence = int(time.Now().Unix())
+		case booking.InviteByNone:
+			h.applyInviteDelivery(ctx, &d, inviteMode, newHostID)
 		}
 		prefs := h.hostPrefsOrDefault(ctx, bCopy.ID, newHostID)
 		if prefs.NotifyConfirmation {

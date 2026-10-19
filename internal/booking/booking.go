@@ -15,7 +15,7 @@ var (
 )
 
 // Who sends a booking's calendar invite to the booker (event_types/bookings.invite_delivery,
-// migration 00068).
+// migrations 00068 and 00071).
 const (
 	// InviteByCalendar: the booker is a guest on each host's calendar event, and the host's
 	// provider (Google, Microsoft) emails the invite from the host's own account.
@@ -23,6 +23,10 @@ const (
 	// InviteByCalnode: the hosts' events are created without guests, and Calnode sends the
 	// invite itself, organized by the instance's sender identity instead of any one host.
 	InviteByCalnode = "calnode"
+	// InviteByNone: the hosts' events are created without guests, as for InviteByCalnode,
+	// but Calnode attaches no invite either. For integrations that deliver the invite
+	// themselves; with Calnode's own email set up, the booker's emails still go out.
+	InviteByNone = "none"
 )
 
 // Booking is a confirmed or cancelled appointment.
@@ -44,8 +48,8 @@ type Booking struct {
 	// ConfirmFailed reports whether the initial confirmation email failed (after
 	// retry). Operator-visible via the booking JSON; see migration 00064.
 	ConfirmFailed bool
-	// InviteDelivery is who sent this booking's invite (InviteByCalendar/InviteByCalnode),
-	// fixed at creation; reschedule, cancel and reassign follow it.
+	// InviteDelivery is who sent this booking's invite (InviteByCalendar/InviteByCalnode/
+	// InviteByNone), fixed at creation; reschedule, cancel and reassign follow it.
 	InviteDelivery string
 }
 
@@ -104,7 +108,8 @@ type CreateParams struct {
 	MaxBookingsPerHour int
 	// InviteDelivery records who sends the booker's calendar invite for this booking:
 	// InviteByCalendar (the hosts' connected calendars; the default when empty) or
-	// InviteByCalnode (Calnode's own .ics, with the hosts' events created guestless).
+	// InviteByCalnode (Calnode's own .ics, with the hosts' events created guestless) or
+	// InviteByNone (guestless host events and no .ics; the integration sends the invite).
 	// Stored on the booking so its reschedule and cancel follow the mode it was created
 	// with, not whatever the event type is set to by then.
 	InviteDelivery string
