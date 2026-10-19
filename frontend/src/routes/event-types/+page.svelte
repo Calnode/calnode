@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { api, type EventType } from '$lib/api';
+	import { currentUser } from '$lib/stores';
 	import { Button, buttonVariants } from '$lib/components/ui/button';
 	import { ConfirmDialog } from '$lib/components/ui/confirm-dialog';
 	import { Badge } from '$lib/components/ui/badge';
@@ -22,6 +23,11 @@
 	// copies while the request is in flight.
 	let duplicating = $state('');
 
+	// Admins can switch to every event type on the instance (?scope=all), the same way
+	// the bookings page offers "All bookings". Their default list stays their own.
+	const isAdmin = $derived($currentUser?.is_admin ?? false);
+	let scope = $state<'mine' | 'all'>('mine');
+
 	let filter = $state<'active' | 'archived'>('active');
 	const visible = $derived(items.filter((et) => (filter === 'archived' ? !!et.archived : !et.archived)));
 	const archivedCount = $derived(items.filter((et) => et.archived).length);
@@ -29,7 +35,7 @@
 
 	async function load() {
 		try {
-			const res = await api.get<{ items: EventType[] }>('/v1/event-types');
+			const res = await api.get<{ items: EventType[] }>(scope === 'all' && isAdmin ? '/v1/event-types?scope=all' : '/v1/event-types');
 			items = res.items;
 		} catch (e: any) {
 			toast.error(e.message || 'Could not load event types');
@@ -39,6 +45,16 @@
 	}
 
 	onMount(load);
+
+	async function setScope(s: 'mine' | 'all') {
+		if (scope === s) return;
+		scope = s;
+		await load();
+	}
+
+	function ownerLabel(et: EventType) {
+		return et.owned ? 'You' : et.owner_name || et.owner_email || '—';
+	}
 
 	async function create() {
 		if (!form.slug || !form.name || !form.duration_minutes) {
@@ -131,11 +147,27 @@
 <div class="mb-8 flex items-center justify-between">
 	<div>
 		<h1 class="text-2xl font-semibold tracking-tight">Event Types</h1>
-		<p class="mt-1 text-sm text-muted-foreground">Manage the types of meetings people can book with you.</p>
+		<p class="mt-1 text-sm text-muted-foreground">
+			{scope === 'all' ? 'Every event type in the workspace. As an admin you can edit any of them.' : 'Manage the types of meetings people can book with you.'}
+		</p>
 	</div>
-	<Button onclick={() => { showCreate = !showCreate; }}>
-		{showCreate ? 'Cancel' : 'New event type'}
-	</Button>
+	<div class="flex shrink-0 items-center gap-2">
+		{#if isAdmin}
+			<div class="inline-flex rounded-md border p-0.5">
+				<button
+					class="rounded px-3 py-1 text-sm font-medium transition-colors {scope === 'mine' ? 'bg-secondary text-secondary-foreground' : 'text-muted-foreground hover:text-foreground'}"
+					onclick={() => setScope('mine')}
+				>My event types</button>
+				<button
+					class="rounded px-3 py-1 text-sm font-medium transition-colors {scope === 'all' ? 'bg-secondary text-secondary-foreground' : 'text-muted-foreground hover:text-foreground'}"
+					onclick={() => setScope('all')}
+				>All event types</button>
+			</div>
+		{/if}
+		<Button onclick={() => { showCreate = !showCreate; }}>
+			{showCreate ? 'Cancel' : 'New event type'}
+		</Button>
+	</div>
 </div>
 
 {#if showCreate}
@@ -187,6 +219,7 @@
 			<thead>
 				<tr class="border-b">
 					<th class="px-4 pb-3 pt-3 text-left text-xs font-medium text-muted-foreground">Name</th>
+					{#if scope === 'all'}<th class="px-4 pb-3 pt-3 text-left text-xs font-medium text-muted-foreground">Owner</th>{/if}
 					<th class="px-4 pb-3 pt-3 text-left text-xs font-medium text-muted-foreground">Duration</th>
 					<th class="px-4 pb-3 pt-3 text-left text-xs font-medium text-muted-foreground">Booking link</th>
 					<th class="px-4 pb-3 pt-3 text-left text-xs font-medium text-muted-foreground">Active</th>
@@ -199,12 +232,13 @@
 						<td class="px-4 py-3">
 							<div class="flex items-center gap-2">
 								<span class="font-medium">{et.name}</span>
-								{#if et.owned === false}
+								{#if et.owned === false && scope === 'mine'}
 									<Badge variant="secondary" class="text-[10px]">You host</Badge>
 								{/if}
 							</div>
 							<div class="text-xs text-muted-foreground">{et.slug}</div>
 						</td>
+						{#if scope === 'all'}<td class="px-4 py-3 text-muted-foreground">{ownerLabel(et)}</td>{/if}
 						<td class="px-4 py-3 text-muted-foreground">{et.duration_minutes} min</td>
 						<td class="px-4 py-3">
 							<Tooltip.Provider>
@@ -221,7 +255,7 @@
 							</Tooltip.Provider>
 						</td>
 						<td class="px-4 py-3">
-							<Switch bind:checked={et.is_active} onCheckedChange={(v) => saveActive(et, v)} disabled={et.owned === false || et.archived} />
+							<Switch bind:checked={et.is_active} onCheckedChange={(v) => saveActive(et, v)} disabled={et.can_edit === false || et.archived} />
 						</td>
 						<td class="px-4 py-3">
 							<Tooltip.Provider>
@@ -237,7 +271,7 @@
 										<Tooltip.Content>Settings</Tooltip.Content>
 									</Tooltip.Root>
 
-									{#if et.owned !== false}
+									{#if et.can_edit !== false}
 										<Tooltip.Root>
 											<Tooltip.Trigger
 												class={buttonVariants({ variant: 'ghost', size: 'icon' })}

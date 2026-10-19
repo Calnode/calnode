@@ -11,6 +11,20 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
 
 ## [Unreleased]
 
+### Changed
+- **Admins can manage every event type, not just their own.** Until now only an event
+  type's owner could edit or delete it; admins and the instance owner got the same
+  read-only view as an assigned host. A shared round-robin event type owned by a shared
+  account could only be changed by signing in as that account. Admins now get an
+  *All event types* view (`GET /v1/event-types?scope=all`, ignored for members, like
+  bookings' `scope=all`) with an Owner column, and can edit, duplicate and delete any
+  event type, including its hosts and questions. The event type stays its owner's: the
+  owner does not change, a copy belongs to the same owner, and a Zoom/Teams/Meet location
+  without a link is still checked against the owner's connected accounts, not the
+  admin's. Members and hosts see exactly what they did before. Event types in API
+  responses gain `can_edit` and `owner_id`; `owned` keeps its meaning (the caller is the
+  owner). Changes an admin makes to someone else's event type are logged.
+
 ## [0.11.1] - 2026-10-16
 
 ### Fixed
