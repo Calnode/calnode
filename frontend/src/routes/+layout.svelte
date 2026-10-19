@@ -243,7 +243,7 @@
 
 			<!-- Footer -->
 			<div class="border-t border-sidebar-border p-2">
-				<button
+				<!-- <button
 					onclick={() => (reportOpen = true)}
 					class="flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-sidebar-foreground/45 transition-colors hover:bg-sidebar-accent/60 hover:text-sidebar-foreground/70"
 				>
@@ -251,7 +251,7 @@
 						<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
 					</svg>
 					Report an issue
-				</button>
+				</button> -->
 				<button
 					onclick={logout}
 					class="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium text-sidebar-foreground/60 transition-colors hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground"
@@ -263,7 +263,7 @@
 					</svg>
 					Sign out
 				</button>
-				{#if version}
+				<!-- {#if version}
 					<a
 						href={RELEASES_URL}
 						target="_blank"
@@ -272,7 +272,7 @@
 					>
 						{version}
 					</a>
-				{/if}
+				{/if} -->
 			</div>
 		</aside>
 
@@ -285,7 +285,7 @@
 	</div>
 	</div>
 
-	<Dialog.Root bind:open={reportOpen}>
+	<!-- <Dialog.Root bind:open={reportOpen}>
 		<Dialog.Content class="max-w-md">
 			<Dialog.Header>
 				<Dialog.Title>Report an issue</Dialog.Title>
@@ -316,5 +316,5 @@
 				</a>
 			</Dialog.Footer>
 		</Dialog.Content>
-	</Dialog.Root>
+	</Dialog.Root> -->
 {/if}

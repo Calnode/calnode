@@ -2,9 +2,8 @@ package mailer
 
 import (
 	"context"
-	"fmt"
-	"net/smtp"
-)
+	/* "fmt"
+	"net/smtp" */)
 
 // Attachment is a file attached to an outbound email.
 type Attachment struct {
@@ -32,7 +31,7 @@ type Noop struct{}
 
 func (n *Noop) Send(_ context.Context, _ Message) error { return nil }
 
-type loginAuth struct {
+/* type loginAuth struct {
 	username, password string
 }
 
@@ -58,4 +57,4 @@ func (a *loginAuth) Next(fromServer []byte, more bool) ([]byte, error) {
 		}
 	}
 	return nil, nil
-}
+} */

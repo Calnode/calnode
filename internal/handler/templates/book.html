@@ -551,23 +551,12 @@ body {
     el.classList.toggle('hidden', !show);
   }
 
-  let selectedPeriod = null;
-  function slotPeriod(slot) {
-    const hour = Number(new Intl.DateTimeFormat('en-GB', {timeZone: TZ, hour: 'numeric', hourCycle: 'h23'}).format(new Date(slot.start)));
-    return hour < 12 ? 0 : hour < 17 ? 1 : 2;
-  }
   function fillSlots(list, ds) {
-    // Only when this specific day lost starts to the policy - saying it on a day the
-    // policy did not touch would be noise attached to the wrong cause.
     const noticeLine = noticeDates.has(ds) ? noticeHintText() : '';
     const noticeHTML = noticeLine ? `<p class="hint notice-hint">${esc(noticeLine)}</p>` : '';
-    // Shown whenever an external calendar check failed: the busy data behind this
-    // list is incomplete, and booking stays fail-closed at commit time.
     const degradedHTML = slotsDegraded ? `<p class="hint notice-hint">${esc(t('calendar_degraded_notice'))}</p>` : '';
+    
     if (!slotsCache.length) {
-      // Name the day, and the host when there is exactly one. A bare "No available times."
-      // never told the visitor whether another day would help, which is the whole
-      // complaint in #20.
       const dayLabel = fmtDate(pickedDate);
       const msg = SOLE_HOST
         ? BookingLogic.fmt(t('no_available_times_host'), [SOLE_HOST, dayLabel])
@@ -575,26 +564,20 @@ body {
       list.innerHTML = `<p class="hint">${esc(msg)}</p>` + noticeHTML + degradedHTML;
       return;
     }
-    // Taken entries render as disabled buttons so they keep the same box and rhythm as
-    // bookable ones, and are announced as unavailable rather than read out as a plain
-    // time. `disabled` is what actually prevents picking one; the click guard below is
-    // the second line, not the first.
-    const periods = [...new Set(slotsCache.map(slotPeriod))].sort();
-    if (!periods.includes(selectedPeriod)) selectedPeriod = periods[0];
-    const labels = ['time_morning', 'time_afternoon', 'time_evening'];
-    const buttons = slotsCache.map((s, i) => ({s, i})).filter(({s}) => slotPeriod(s) === selectedPeriod).map(({s, i}) => s.taken
+
+    // Generate the buttons (greyed-out 'taken' slots are still preserved here)
+    const buttons = slotsCache.map((s, i) => s.taken
       ? `<button class="slot-btn taken" disabled aria-label="${fmtTime(s.start)} - ${t('slot_taken')}">${fmtTime(s.start)}</button>`
       : `<button class="slot-btn" data-i="${i}">${fmtTime(s.start)}</button>`
     ).join('');
-    const choices = periods.map(period => `<button type="button" data-period="${period}" aria-pressed="${period === selectedPeriod}">${esc(t(labels[period]))}</button>`).join('');
-    list.innerHTML = `<div class="time-periods" role="group" aria-label="${esc(t('time_period'))}">${choices}</div><div class="time-grid">${buttons}</div>`;
-    // Only meaningful for opted-in event types: when every time on the day is gone,
-    // say so, rather than leaving a list of struck-through times to be inferred from.
+
+    // Wrap the buttons in a scrollable container
+    list.innerHTML = `<div class="time-grid" style="max-height: 320px; overflow-y: auto; padding-right: 4px;">${buttons}</div>`;
+
+    // Append standard warnings
     if (slotsCache.length && !slotsCache.some(s => !s.taken)) {
       list.insertAdjacentHTML('beforeend', `<p class="hint">${t('all_times_taken')}</p>`);
     }
-    // Appended after a non-empty list too: a day showing 2pm onwards but nothing this
-    // morning is exactly the "why can't I see those times" case.
     if (noticeHTML) list.insertAdjacentHTML('beforeend', noticeHTML);
     if (degradedHTML) list.insertAdjacentHTML('beforeend', degradedHTML);
   }
@@ -634,13 +617,6 @@ body {
   }
 
   $('slots-list').addEventListener('click', e => {
-    const period = e.target.closest('[data-period]');
-    if (period) {
-      selectedPeriod = Number(period.dataset.period);
-      fillSlots($('slots-list'), toDateStr(pickedDate.getFullYear(), pickedDate.getMonth(), pickedDate.getDate()));
-      $('slots-list').querySelector(`[data-period="${selectedPeriod}"]`).focus();
-      return;
-    }
     const btn = e.target.closest('.slot-btn');
     if (!btn || btn.disabled) return;
     pickSlot(+btn.dataset.i);
