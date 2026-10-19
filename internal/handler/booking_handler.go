@@ -657,6 +657,11 @@ type bookingJSON struct {
 	// ConfirmFailed flags a booking whose initial confirmation email failed after
 	// retry — operator-visible so a lost confirmation can be followed up manually.
 	ConfirmFailed bool `json:"confirm_failed,omitempty"`
+	// InviteDelivery is who sent this booking's calendar invite, fixed when it was made:
+	// "calendar" (the host's calendar invited the booker), "calnode" (Calnode's .ics) or
+	// "none" (nobody; the integration sends its own). Always present, so an integration
+	// can tell whether the booker already holds an invite.
+	InviteDelivery string `json:"invite_delivery" jsonschema:"who sent the booker's calendar invite: calendar (the host's calendar), calnode (Calnode's own email), or none (no invite was sent)"`
 	// RSVPStatus is the booker's answer to a Calnode-sent invite ("accepted", "declined",
 	// "tentative"), absent until one arrives. Admin list views only.
 	RSVPStatus string         `json:"rsvp_status,omitempty"`
@@ -684,6 +689,10 @@ func toBookingJSON(b *booking.Booking) bookingJSON {
 		LocationType:       b.LocationType,
 		CreatedAt:          b.CreatedAt.UTC().Format(time.RFC3339),
 		UpdatedAt:          b.UpdatedAt.UTC().Format(time.RFC3339),
+		InviteDelivery:     b.InviteDelivery,
+	}
+	if j.InviteDelivery == "" {
+		j.InviteDelivery = booking.InviteByCalendar
 	}
 	// Payment fields are omitted for free bookings (payment_status defaults to 'none').
 	if b.PaymentStatus != "" && b.PaymentStatus != "none" {

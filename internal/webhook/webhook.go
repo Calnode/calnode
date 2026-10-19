@@ -56,6 +56,7 @@ const (
 	FieldAmountPaid      = "amount_paid_cents"
 	FieldCurrency        = "amount_paid_currency"
 	FieldRSVPStatus      = "rsvp_status"
+	FieldInviteDelivery  = "invite_delivery"
 )
 
 // AllFields is every selectable field, in payload order. Used to validate config
@@ -67,11 +68,14 @@ var AllFields = []string{
 	FieldHostID, FieldHostName, FieldHostEmail,
 	FieldAttendeeName, FieldAttendeeEmail, FieldAttendeeTZ, FieldAnswers,
 	FieldPaymentStatus, FieldAmountPaid, FieldCurrency, FieldRSVPStatus,
+	FieldInviteDelivery,
 }
 
 // defaultFields reproduces the original payload (no PII, no answers) so a webhook with no
 // field config (fields IS NULL) keeps its historical shape. Payment fields are included but
 // omitempty, so free bookings are byte-identical to before; only paid bookings gain them.
+// FieldInviteDelivery is opt-in for the same reason: every booking has a value, so adding
+// it here would change the payload of every unconfigured webhook.
 var defaultFields = []string{
 	FieldID, FieldEventTypeSlug, FieldHostID, FieldStartAt, FieldEndAt,
 	FieldStatus, FieldLocation, FieldCancelReason, FieldCreatedAt,
@@ -282,10 +286,13 @@ type enrichedBooking struct {
 	hostName, hostEmail                     string
 	attendeeName, attendeeEmail, attendeeTZ string
 	answers                                 []map[string]string
+	// inviteDelivery is who sent the booker's invite (calendar, calnode or none), read
+	// from the booking row so every event carries it without each caller passing it.
+	inviteDelivery string
 }
 
 // enrich loads the data not carried in BookingPayload (host name/email, event-type
-// name, attendee identity, intake answers) from the booking row. Best-effort: any
+// name, attendee identity, intake answers, invite delivery) from the booking row. Best-effort: any
 // query failure simply leaves those fields empty. Queries are drained sequentially,
 // safe on the single-connection pool, and run before Enqueue opens its tx.
 func (s *Service) enrich(ctx context.Context, p BookingPayload) enrichedBooking {
@@ -294,11 +301,11 @@ func (s *Service) enrich(ctx context.Context, p BookingPayload) enrichedBooking 
 		return bd
 	}
 	_ = s.db.QueryRowContext(ctx, `
-		SELECT COALESCE(et.name,''), COALESCE(u.name,''), COALESCE(u.email,'')
+		SELECT COALESCE(et.name,''), COALESCE(u.name,''), COALESCE(u.email,''), b.invite_delivery
 		FROM bookings b
 		JOIN event_types et ON et.id = b.event_type_id
 		JOIN users u ON u.id = b.host_id
-		WHERE b.id = ?`, p.ID).Scan(&bd.eventTypeName, &bd.hostName, &bd.hostEmail)
+		WHERE b.id = ?`, p.ID).Scan(&bd.eventTypeName, &bd.hostName, &bd.hostEmail, &bd.inviteDelivery)
 
 	_ = s.db.QueryRowContext(ctx, `
 		SELECT COALESCE(name,''), COALESCE(email,''), COALESCE(iana_timezone,'')
@@ -351,6 +358,7 @@ func buildData(bd enrichedBooking, fields []string) map[string]any {
 		FieldPaymentStatus:   bd.core.PaymentStatus,
 		FieldCurrency:        bd.core.AmountPaidCurrency,
 		FieldRSVPStatus:      bd.core.RSVPStatus,
+		FieldInviteDelivery:  bd.inviteDelivery,
 	}
 	out := make(map[string]any, len(fields))
 	for _, f := range fields {

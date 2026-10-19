@@ -8,7 +8,7 @@ import (
 	"github.com/calnode/calnode/internal/mailer"
 )
 
-// Invite delivery decides who sends the booker's calendar invite (migration 00068):
+// Invite delivery decides who sends the booker's calendar invite (migrations 00068, 00071):
 //
 //   - booking.InviteByCalendar: each host's connected calendar invites the booker, so
 //     Google/Microsoft email the invite from that host's own account. The default.
@@ -17,6 +17,13 @@ import (
 //     Calnode sends the invite itself on the confirmation email, organized by the
 //     instance's sender identity (Settings → Email). No host's address reaches the booker,
 //     and a team books under one name.
+//   - booking.InviteByNone: the hosts' events are written guestless as for InviteByCalnode,
+//     and Calnode attaches no invite to the booker's emails either. For integrations that
+//     send their own invite (typically their own confirmation with their own .ics), where
+//     anything from the provider or from Calnode would be a duplicate. Needs no email
+//     setup: the booker's emails still go out when email is configured, just without an
+//     invite, so whether Calnode emails at all stays the mailer's and the notification
+//     settings' decision, not this one's.
 //
 // The mode is copied onto the booking when it is created (booking.Booking.InviteDelivery)
 // and read from there afterwards, so a booking's reschedule and cancel follow the channel
@@ -33,17 +40,26 @@ func normalizeInviteDelivery(v string) (string, bool) {
 		return booking.InviteByCalendar, true
 	case booking.InviteByCalnode:
 		return booking.InviteByCalnode, true
+	case booking.InviteByNone:
+		return booking.InviteByNone, true
 	}
 	return "", false
 }
 
+// hostEventsGuestless reports whether a mode keeps the booker off the hosts' calendar
+// events, so their providers email nobody: every mode except calendar-sent. An empty mode
+// is the default, InviteByCalendar.
+func hostEventsGuestless(mode string) bool {
+	return mode == booking.InviteByCalnode || mode == booking.InviteByNone
+}
+
 // calendarInvitee is the address passed as CreateEventParams.OrganizerEmail for a host's
 // calendar event: the booker when the hosts' calendars send the invite, "" when Calnode
-// does. Google and Microsoft add that address as the event's attendee, so "" leaves them
+// does or nobody does. Google and Microsoft add that address as the event's attendee, so "" leaves them
 // no one to email and the event private to the host. CalDAV never sends invites; there it
 // only decides whether the stored event names the booker at all.
 func calendarInvitee(mode, bookerEmail string) string {
-	if mode == booking.InviteByCalnode {
+	if hostEventsGuestless(mode) {
 		return ""
 	}
 	return bookerEmail
@@ -74,7 +90,12 @@ func (h *Handler) inviteSenderReady(ctx context.Context) bool {
 // Calnode-sent: always attach, organized by the booking's fixed invite organizer, never
 // the host. Calendar-sent: attach only when the primary host's calendar will not invite
 // the booker itself (noConnectedDestination), with the host as organizer, exactly as before.
+// None: never attach, whatever the host's calendar; the invite is someone else's to send.
 func (h *Handler) applyInviteDelivery(ctx context.Context, d *mailer.BookingData, mode, primaryHostID string) {
+	if mode == booking.InviteByNone {
+		d.AttachICS = false
+		return
+	}
 	if mode == booking.InviteByCalnode {
 		d.AttachICS = true
 		d.HideHostInInvite = true
@@ -85,11 +106,12 @@ func (h *Handler) applyInviteDelivery(ctx context.Context, d *mailer.BookingData
 }
 
 // applyHostInvite turns booking email data into one host's own copy: organized by that
-// host, attached only when their calendar does not already hold the event, and - for a
-// Calnode-invited booking - without the booker as a guest (see ICSWithoutAttendee).
+// host, attached only when their calendar does not already hold the event, and - when the
+// hosts' events are guestless (Calnode-sent or no invite) - without the booker as a guest
+// (see ICSWithoutAttendee).
 func (h *Handler) applyHostInvite(ctx context.Context, d *mailer.BookingData, mode, hostID string) {
 	d.HideHostInInvite = false
-	d.ICSWithoutAttendee = mode == booking.InviteByCalnode
+	d.ICSWithoutAttendee = hostEventsGuestless(mode)
 	d.AttachICS = h.noConnectedDestination(ctx, hostID)
 }
 

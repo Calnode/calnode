@@ -72,3 +72,18 @@ func TestValidFields_dropsUnknown(t *testing.T) {
 		t.Errorf("ValidFields = %v; want [id attendee_email]", got)
 	}
 }
+
+// invite_delivery is opt-in: selected, it carries the booking's mode; in the default set
+// it would change every unconfigured webhook's payload, so it is not there.
+func TestBuildData_inviteDeliveryIsOptIn(t *testing.T) {
+	bd := enrichedBooking{core: BookingPayload{ID: "b1"}, inviteDelivery: "none"}
+	if _, ok := buildData(bd, defaultFields)[FieldInviteDelivery]; ok {
+		t.Error("default payload must not include invite_delivery (backwards-compat)")
+	}
+	if got := buildData(bd, []string{FieldInviteDelivery})[FieldInviteDelivery]; got != "none" {
+		t.Errorf("invite_delivery = %v; want \"none\"", got)
+	}
+	if got := ValidFields([]string{FieldInviteDelivery}); len(got) != 1 {
+		t.Errorf("invite_delivery is not a selectable field: %v", got)
+	}
+}
