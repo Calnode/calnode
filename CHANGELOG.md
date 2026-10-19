@@ -11,6 +11,19 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
 
 ## [Unreleased]
 
+### Added
+- **Calendar invites can be left to your own system.** *Calendar invite → Sent by* gains a
+  third choice, *No one*. Hosts still get the meeting, with its Meet/Teams link, on their
+  own calendar, but the booker is not a guest there, so their calendar provider sends no
+  invite, and Calnode attaches none to its emails. For setups that send their own
+  confirmation and invite. It needs no email setup; if email is set up, the booker's
+  confirmation, reschedule and cancellation emails still go out, without an invite.
+  Existing bookings keep the way they were invited.
+- **Bookings say how their invite was sent.** The booking JSON (`GET /v1/bookings`,
+  `GET /v1/bookings/{id}` and the MCP tools) now includes `invite_delivery` (`calendar`,
+  `calnode` or `none`), and webhooks can add it as a payload field. It is not in the
+  default field set, so existing webhooks are unchanged.
+
 ## [0.11.1] - 2026-10-16
 
 ### Fixed

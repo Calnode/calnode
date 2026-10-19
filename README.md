@@ -183,6 +183,7 @@ domains, Resend email, Google & Microsoft OAuth, Litestream backups, troubleshoo
 - **CalDAV calendars** — iCloud / Fastmail / Nextcloud via app-password (free/busy + event write-back)
 - Public booking + self-serve **reschedule/cancel** via signed manage links
 - HTML branded email (logo, banner, business name, size/opacity) with add-to-calendar links
+- Per-event-type **calendar invite sender**: the host's calendar, Calnode from your workspace address, or no one (your own system sends it)
 - REST API (88 endpoints) + API keys; **HMAC webhooks** with per-webhook payloads + delivery log
 - **Native MCP server** (10 tools incl. meeting notes + transcript; stdio via `calnode mcp` + Streamable HTTP at `/mcp`)
 - **Conversational booking** ("Book by chat" on the booking page + embed widget; BYO-LLM, off by default)
