@@ -263,6 +263,10 @@ claims:
       - "grep -rn 'requireAdmin' internal/handler — every admin-only handler grants
          workspace-wide access; there is no per-resource permission matrix to
          misconfigure or drift out of sync."
+      - "internal/handler/event_type_hosts.go's canManageEventType — owner or
+         IsAdmin, the single check behind every event-type edit route (via
+         eventTypeForEditor), so admins manage every event type the same way they see
+         every booking."
     status: verified
     caveat: >
       Recorded here because a prior Layer 2 audit pass flagged REST's admin-only

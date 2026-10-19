@@ -192,8 +192,8 @@ the platform/recovery secret doesn't expose secrets.
   requests are untouched. API-key auth isn't CSRF-able (custom header).
 - **Roles:** Member / Admin / Owner. `is_owner` is additive over `is_admin`.
   Owner-gated actions: grant/revoke admin, transfer ownership. Admins can cancel
-  any booking, see all bookings, manage teams/members. Safe-removal + archive
-  guards prevent orphaning.
+  any booking, see all bookings, manage teams/members, and edit, duplicate or delete
+  any event type (§14). Safe-removal + archive guards prevent orphaning.
 - **Sign out everywhere** (`POST /v1/auth/sessions/revoke-all`, `session.go`). With no
   body it drops all of the caller's sessions **except the one that made the request** —
   "sign out my other devices", as distinct from `POST /v1/auth/logout`, which ends the
@@ -809,6 +809,27 @@ as the desired state:
 - Owners/admins can request the whole workspace: `GET /v1/bookings?scope=all`
   (gated on `IsAdmin`; ignored for non-admins so it can't escalate). The bookings
   page has a "My / All" toggle for admins with a Host column.
+- **Event types** follow the same model. A member lists what they own or host
+  (`GET /v1/event-types`); a host sees an event type read-only and only its owner may
+  change it. Admins (and so the instance owner) may manage **every** event type:
+  `GET /v1/event-types?scope=all` lists all of them (same `IsAdmin` gate, silently
+  ignored for members), and GET/PATCH/DELETE, `/hosts`, `/questions`, `/duplicate` and
+  `/test-email` accept any slug from an admin. One rule decides it,
+  `canManageEventType` (owner or admin), resolved by `eventTypeForEditor`, which returns
+  404 rather than 403 so a member cannot probe slugs. Slugs are unique per instance, so
+  the slug-addressed routes stay unambiguous.
+  The JSON carries `owned` (caller is the owner), `can_edit` (owner or admin; false =
+  read-only host) and `owner_id`; `owner_name`/`owner_email` whenever the caller is not
+  the owner. The admin UI gates read-only on `can_edit`, not `owned`.
+  ⛔ An admin edit never changes **whose** event type it is. Everything per-owner keeps
+  resolving to `event_types.user_id`: `validateLocation` checks the owner's calendar
+  and Zoom connections (that is whose account mints links at booking time), the
+  editor's "Just me" host is the owner, a duplicate belongs to the source's owner, and
+  the test email names the owner as host (it is still sent to the admin who asked).
+  There is no audit table; admin changes to someone else's event type are logged as
+  `event type changed by admin` with action, owner and actor, next to the transfer log
+  line. Transfer itself (§7) is unchanged: it still moves only the caller's own event
+  type.
 
 ---
 
