@@ -827,8 +827,8 @@ as the desired state:
   and Zoom connections (the same rule as an owner's own edit), the editor's "Just me"
   host is the owner, a duplicate belongs to the source's owner, and the test email
   names the owner as host (it is still sent to the admin who asked).
-  Known limitation, unchanged by admin editing: links are minted at booking time by
-  the **primary host's** account (§10): the fixed event type's host or the assigned
+  Known limitation, unchanged by admin editing: Meet, Teams and Zoom links are minted
+  at booking time by the **primary host's** account (§10): the fixed event type's host or the assigned
   round-robin/collective host, neither of whom has to be the owner (the host list
   need not include them). A
   location saved without a manual link can therefore validate against the owner and
