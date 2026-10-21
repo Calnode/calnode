@@ -509,7 +509,7 @@ type bookableEventType struct {
 	// so the page can grey them out. Read by the public slots endpoint only: the MCP
 	// tool and the booking assistant must keep seeing bookable times and nothing else.
 	ShowTakenSlots bool
-	// InviteDelivery is who sends the booker's invite (booking.InviteByCalendar/ByCalnode),
+	// InviteDelivery is who sends the booker's invite (booking.InviteByCalendar/ByCalnode/ByNone),
 	// copied onto each booking at creation.
 	InviteDelivery string
 }
