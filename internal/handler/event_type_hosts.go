@@ -59,7 +59,9 @@ func canManageEventType(user AuthUser, ownerID string) bool {
 //
 // The owner id is what per-owner checks must use when an admin edits someone else's
 // event type: location validation, for one, asks whether the OWNER's calendar or Zoom
-// account can mint links, because that is whose account mints them at booking time.
+// account can mint links, the same rule as when the owner edits it. At booking time the
+// primary host's account mints the link, which for round-robin or collective event
+// types need not be the owner.
 func (h *Handler) eventTypeForEditor(w http.ResponseWriter, r *http.Request, slug string, user AuthUser) (id, ownerID string) {
 	err := h.db.QueryRowContext(r.Context(),
 		`SELECT id, user_id FROM event_types WHERE slug = ?`, slug).Scan(&id, &ownerID)

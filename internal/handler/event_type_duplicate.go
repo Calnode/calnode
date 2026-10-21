@@ -94,7 +94,7 @@ func (h *Handler) DuplicateEventType(w http.ResponseWriter, r *http.Request) {
 	// one for that person, not one for themselves.
 	srcID, ownerID := h.eventTypeForEditor(w, r, srcSlug, user)
 	if srcID == "" {
-		return // eventTypeIDForOwner already wrote 404/500
+		return // eventTypeForEditor already wrote 404/500
 	}
 
 	tx, err := h.db.BeginTx(r.Context(), nil)

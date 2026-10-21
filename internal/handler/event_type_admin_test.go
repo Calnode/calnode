@@ -272,8 +272,8 @@ func TestEventTypes_hostStaysReadOnly(t *testing.T) {
 
 // When an admin edits someone else's event type, per-owner checks still use the event
 // type's OWNER. The location is the one such check in the edit path: a Zoom location
-// with no manual link is valid only if the account that will mint the meetings at
-// booking time is connected, and that is the owner's, not the admin's.
+// with no manual link is valid only if the owner's Zoom account is connected, as when
+// the owner edits it; the admin's own connection does not count.
 func TestPatchEventType_adminEditValidatesLocationAgainstOwner(t *testing.T) {
 	ws := setupAdminWorkspace(t)
 	zc, err := zoom.New(ws.db, "client", "secret", "http://localhost/zoom/callback", strings.Repeat("ab", 32))
@@ -285,7 +285,7 @@ func TestPatchEventType_adminEditValidatesLocationAgainstOwner(t *testing.T) {
 		return etCall(t, ws.h.RequireAuth(ws.h.PatchEventType), http.MethodPatch, "/v1/event-types/"+ws.slug, ws.slug, `{"location_type":"zoom","location_value":""}`, ws.adminKey)
 	}
 
-	// Only the admin has Zoom: not good enough, the owner's account mints the meetings.
+	// Only the admin has Zoom: not good enough, the check is on the owner's account.
 	if _, err := ws.db.Exec(`INSERT INTO zoom_connections (user_id, access_token_enc) VALUES (?, 'x')`, ws.adminID); err != nil {
 		t.Fatal(err)
 	}
