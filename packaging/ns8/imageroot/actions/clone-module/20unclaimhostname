@@ -1,0 +1,130 @@
+#!/usr/bin/env python3
+
+#
+# Copyright (C) 2023 Nethesis S.r.l.
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+
+#
+# Clone support.
+#
+# The core clone-module implementation copies the module volumes and the whole
+# state/ directory, and that alone is enough to duplicate a working instance.
+# Two things in state/ are specific to ONE hostname, though, and carrying them
+# to a second instance silently breaks it:
+#
+#   config.json  the public hostname and its TLS flags
+#   calnode.env  BASE_URL, which is derived from that hostname
+#
+# A cloned instance would arrive holding the source's hostname but with no route
+# of its own, because the host-based Traefik route is registered by
+# configure-module and belongs to the source instance (routes are keyed by
+# MODULE_ID, so nothing stale is copied and nothing needs cleaning up here).
+# Worse, configuring the clone with that hostname would then be REFUSED, since
+# the source still answers for it. A clone would come up quietly broken and
+# appear to be a configuration bug.
+#
+# So the clone gives up the hostname and becomes an unconfigured instance. The
+# Settings page then asks for a hostname, configure-module registers a route for
+# it, and the clone works. This is the same state a freshly added instance is in.
+#
+# What must NOT be cleared is CALNODE_ENCRYPTION_KEY. It travels with the copied
+# database and is the only thing that can unwrap the database key vault; drop it
+# and the clone holds an unreadable copy of every booking. Keep the key, drop the
+# hostname.
+#
+# get-configuration already reports configured:false when config.json has no
+# host, so no other change is needed for the UI to prompt.
+#
+# Steps run in sorted order: the core moves data in 10recvstate and starts the
+# service in 90finalize, so this runs after the data lands and before startup.
+
+import json
+import os
+import sys
+
+CONFIG_FILE = "config.json"
+ENV_FILE = "calnode.env"
+# Derived from the hostname, so it goes whenever the hostname goes.
+HOSTNAME_DERIVED_KEYS = ("BASE_URL",)
+
+
+def read_env_file(path):
+    values = {}
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            for line in handle.read().splitlines():
+                stripped = line.strip()
+                if not stripped or stripped.startswith("#") or "=" not in stripped:
+                    continue
+                key, _, value = stripped.partition("=")
+                values[key.strip()] = value.strip()
+    except FileNotFoundError:
+        pass
+    return values
+
+
+def drop_hostname_from_env(path, keep):
+    """Remove hostname-derived keys from calnode.env, preserving everything else.
+
+    Rewrites the file in the same # comment / KEY=value shape configure-module
+    writes, so a later configure produces an identical file. Returns the keys
+    that were actually removed, or [] if there was nothing to do.
+    """
+    values = read_env_file(path)
+    dropped = [key for key in HOSTNAME_DERIVED_KEYS if key in values]
+    if not dropped:
+        return []
+
+    # Refuse BEFORE touching the file. Checking afterwards would rewrite the env
+    # file and then fail, leaving the instance mutated by a step that aborted;
+    # the clone would then differ from its source in ways nothing recorded.
+    missing = [key for key in keep if key not in values]
+    if missing:
+        raise RuntimeError(
+            f"refusing to release the hostname: {path} has no "
+            f"{', '.join(missing)}, so the clone could not decrypt its own "
+            "database"
+        )
+
+    for key in dropped:
+        values.pop(key, None)
+
+    lines = [
+        "# Rewritten by clone-module: the hostname was released with the",
+        "# source instance and is set again by configure-module.",
+    ]
+    lines += [f"{key}={values[key]}" for key in sorted(values)]
+    with open(path, "w", encoding="utf-8") as handle:
+        handle.write("\n".join(lines) + "\n")
+    os.chmod(path, 0o600)
+    return dropped
+
+
+def release_hostname(config_path, env_path, keep=("CALNODE_ENCRYPTION_KEY",)):
+    """Return the clone to an unconfigured state, keeping its encryption key."""
+    dropped = drop_hostname_from_env(env_path, keep)
+
+    removed_config = False
+    if os.path.exists(config_path):
+        os.remove(config_path)
+        removed_config = True
+
+    if removed_config or dropped:
+        print(
+            f"clone is unconfigured; set a hostname to finish (dropped "
+            f"{', '.join(dropped) or 'nothing'} from {env_path}, "
+            f"{'removed' if removed_config else 'kept'} {config_path})",
+            file=sys.stderr,
+        )
+    else:
+        print("clone had no hostname to release", file=sys.stderr)
+    return removed_config, dropped
+
+
+if __name__ == "__main__":
+    state_dir = os.getcwd()
+    release_hostname(
+        os.path.join(state_dir, CONFIG_FILE),
+        os.path.join(state_dir, ENV_FILE),
+    )
