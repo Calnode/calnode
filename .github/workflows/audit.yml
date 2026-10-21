@@ -8,6 +8,11 @@ name: Audit
 on:
   push:
     branches: [main]
+  # Also on pull requests. Without this the Go stdlib CVE that broke the
+  # clean-security-scan claim sat undetected until it was already on main,
+  # because this workflow only ran on push, weekly, and manually. The scan is
+  # cheap and catches that class before merge instead of after.
+  pull_request:
   schedule:
     - cron: '20 6 * * 1' # weekly, Monday — catches newly-disclosed CVEs even with no code changes
   workflow_dispatch:
@@ -17,6 +22,11 @@ permissions: read-all
 jobs:
   scorecard:
     name: OpenSSF Scorecard
+    # Scorecard refuses any ref but the default branch ("Only the default branch
+    # main is supported"), so running it on a PR or a workflow_dispatch against a
+    # feature branch produced a red run that meant nothing and buried the real
+    # result from the claims guard. Schedule and push-to-main still cover it.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       security-events: write
