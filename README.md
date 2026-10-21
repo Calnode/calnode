@@ -147,6 +147,12 @@ bookings they host. (The stdio subcommand is the local operator → full access.
 
 ## Deploy for real
 
+**Without Docker:** [GitHub releases](https://github.com/Calnode/calnode/releases)
+include standalone Linux amd64 and arm64 archives, each containing the static
+`calnode` binary and its license, alongside SHA-256 checksums. See
+[running the standalone binary](DEPLOY.md#standalone-binary) for setup and backup
+differences from the container.
+
 ```bash
 docker run -d -p 3000:3000 \
   -e BASE_URL=https://booking.example.com \
