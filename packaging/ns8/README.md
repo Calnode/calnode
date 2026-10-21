@@ -6,10 +6,12 @@ with one command and get Calnode on your own domain. No Calnode docs required.
 
 ## How it works
 
-This module is a thin wrapper around the published Calnode container image
-(`ghcr.io/calnode/calnode:latest`). Nothing is ported or rebuilt: the module
-image only carries configuration scripts and the settings UI. At install time
-the cluster pulls the Calnode image and runs it as a rootless container.
+This module is a thin wrapper around the published Calnode container image.
+Nothing is ported or rebuilt: the module image only carries configuration
+scripts and the settings UI. At install time the cluster pulls the Calnode
+image named by the module's `org.nethserver.images` label and runs it as a
+rootless container. A module release always names the matching app release, so
+the two cannot drift apart.
 
 Key facts:
 
@@ -30,27 +32,24 @@ Key facts:
 On the cluster leader, as root:
 
 ```
-add-module ghcr.io/calnode/ns8-calnode:edge 1
+add-module ghcr.io/calnode/ns8-calnode:0.11.1 1
 ```
 
 Replace `calnode` with the actual registry namespace if you built your own
 image (see Development). The command prints the instance name, usually
 `ns8-calnode1`.
 
-> **Use `:edge`, not `:latest`.** A release has been cut, but `:latest`,
-> `:0.10` and `:0.10.1` all point at the **same amd64-only** image. It installs
-> and works on an amd64 node, and **fails on an arm64 node** (a Raspberry Pi, for
-> example), which cannot pull it.
+> **Pin a version, don't use `:edge`.** `0.11.1`, `0.11` and `:latest` are all
+> the same release and are all multi-arch, so `:latest` is now safe to install.
+> A pinned tag is still the better choice: it tells you exactly what you are
+> running, and an update is then a deliberate act rather than whatever `main`
+> happened to publish. Use `:edge` only if you are deliberately testing the
+> unreleased build.
 >
-> That release predates the multi-arch publishing work, so each architecture was
-> pushed straight onto the public tags instead of being assembled into one
-> manifest list. `:edge` is a proper multi-arch image and is correct on both.
->
-> When the next module release lands, `:latest` will be multi-arch too, and a
-> pinned version tag (`ghcr.io/calnode/ns8-calnode:0.11.1`, say) becomes the
-> better thing to install. CI now asserts that every published tag really is a
-> multi-arch index before a release is allowed to pass, so this specific
-> breakage cannot recur silently.
+> The first release (0.10.1) was amd64-only and failed on arm64 nodes. That is
+> fixed, and CI now reads every published tag back out of the registry and
+> refuses the release unless it really is a two-arch index, so it cannot recur
+> silently.
 
 Then configure it with your public hostname:
 
@@ -129,6 +128,45 @@ the browser and 5/5 with `RUN_UI_TESTS=true`, on a single-node NS8 built from
 `ns8-core@ns8-stable` on Rocky 9.8. Running it is what turned up the
 route-registration race described in [Testing](#testing).
 
+## Data and privacy
+
+This section is what the module's `terms_url` in `ui/public/metadata.json`
+points at, so it is worth keeping accurate.
+
+**Everything stays on your cluster.** Calnode runs as a container on your node
+and stores everything in a local SQLite file on the `calnode-data` volume. The
+module and the app phone home to nothing. There is no Calnode-operated server,
+no telemetry, no analytics, and no licence check that calls out.
+
+**What is stored.** The booking data you enter: event types, availability,
+bookings, attendee names and email addresses, any notes you attach to a booking,
+and your user accounts. Plus the module's own configuration: the hostname,
+the Let's Encrypt and HTTP-to-HTTPS toggles, and `CALNODE_ENCRYPTION_KEY`.
+
+**The encryption key.** On first configuration the module generates
+`CALNODE_ENCRYPTION_KEY`, which unlocks the database key vault so secrets
+stored inside the database are not readable in the raw file. It lives in the
+module state at `/var/lib/nethserver/calnode/state/calnode.env`, with the same
+file permissions as the rest of the cluster state, and it is covered by cluster
+backup. It is never transmitted anywhere.
+
+**Who can send mail.** Invites and reminders go out through whatever SMTP server
+you configure inside Calnode under Settings. If you point that at a third-party
+smarthost, that provider necessarily sees the recipient addresses and message
+content. Nothing is sent until you configure it.
+
+**TLS.** Terminated by the cluster's own Traefik proxy using a Let's Encrypt
+certificate for the hostname you set. Traffic does not pass through Calnode or
+any Calnode infrastructure. If you enable Let's Encrypt, the ACME challenge
+requires your domain to resolve publicly, which is a property of your DNS, not
+a disclosure to us.
+
+**Backup.** Cluster backup copies the `calnode-data` volume and the module
+state, including the encryption key, to whatever destination you configure. The
+operator of that destination, which may be a third-party storage provider, holds
+an encrypted copy of your database and the key that unlocks it. Configure the
+backup accordingly.
+
 ## Uninstall
 
 To uninstall the instance, keeping its data for a later reinstall:
@@ -155,9 +193,9 @@ tag pushes, mirroring the app tags in `docker-publish.yml`:
 - push a `vX.Y.Z` tag pushes module `:X.Y.Z`, `:X.Y` and `:latest`, running
   app `:X.Y.Z`, so a module release always runs the matching app release
 
-Because `:latest` only moves on a release tag, and the one release so far was
-cut before the multi-arch work landed, `:latest` is currently amd64-only. Use
-`:edge` until the next module release (see Install).
+`:latest` moves only when a release tag is pushed, so it always tracks a real
+release rather than whatever is on `main`. `:edge` tracks `main` and is the
+unreleased build.
 
 Every published module tag is a **multi-arch** manifest (amd64 + arm64). NS8
 runs modules as rootless containers on the node, so a single-arch image would
