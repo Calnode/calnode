@@ -795,8 +795,8 @@ func (h *Handler) PatchEventType(w http.ResponseWriter, r *http.Request) {
 	//
 	// Validated against the event type's OWNER, not the caller, so an admin edit applies
 	// the same rule the owner's own edit always has and the admin's connections prove
-	// nothing. The link itself is minted at booking time by the PRIMARY host's account
-	// (mintMeetingLink), i.e. the event type's host, which need not be the owner: the
+	// nothing. A Meet, Teams or Zoom link is minted at booking time by the PRIMARY host's
+	// account (mintMeetingLink), i.e. the event type's host, which need not be the owner: the
 	// host list can exclude them, and round-robin or collective pick among several. This
 	// check does not look at the hosts.
 	if effLocType != curLocType || effLocVal != curLocVal {
