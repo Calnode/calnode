@@ -828,8 +828,9 @@ as the desired state:
   host is the owner, a duplicate belongs to the source's owner, and the test email
   names the owner as host (it is still sent to the admin who asked).
   Known limitation, unchanged by admin editing: links are minted at booking time by
-  the **primary host's** account (§10). For a fixed event type that is the owner; for
-  round-robin or collective it is the assigned host, who need not be the owner. A
+  the **primary host's** account (§10): the fixed event type's host or the assigned
+  round-robin/collective host, neither of whom has to be the owner (the host list
+  need not include them). A
   location saved without a manual link can therefore validate against the owner and
   still fall back to no link for a host who has no matching connection, and the test
   email names the owner where a real booking names the primary host.
