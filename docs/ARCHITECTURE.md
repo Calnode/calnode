@@ -815,17 +815,24 @@ as the desired state:
   `GET /v1/event-types?scope=all` lists all of them (same `IsAdmin` gate, silently
   ignored for members), and GET/PATCH/DELETE, `/hosts`, `/questions`, `/duplicate` and
   `/test-email` accept any slug from an admin. One rule decides it,
-  `canManageEventType` (owner or admin), resolved by `eventTypeForEditor`, which returns
-  404 rather than 403 so a member cannot probe slugs. Slugs are unique per instance, so
+  `canManageEventType` (owner or admin), mostly resolved by `eventTypeForEditor`
+  (PATCH and test-email call it directly), which returns 404 rather than 403 so a
+  member cannot probe slugs. Slugs are unique per instance, so
   the slug-addressed routes stay unambiguous.
   The JSON carries `owned` (caller is the owner), `can_edit` (owner or admin; false =
-  read-only host) and `owner_id`; `owner_name`/`owner_email` whenever the caller is not
-  the owner. The admin UI gates read-only on `can_edit`, not `owned`.
+  read-only host) and `owner_id`; on GET and the list, `owner_name`/`owner_email`
+  whenever the caller is not the owner (PATCH and duplicate responses omit them). The admin UI gates read-only on `can_edit`, not `owned`.
   ⛔ An admin edit never changes **whose** event type it is. Everything per-owner keeps
   resolving to `event_types.user_id`: `validateLocation` checks the owner's calendar
-  and Zoom connections (that is whose account mints links at booking time), the
-  editor's "Just me" host is the owner, a duplicate belongs to the source's owner, and
-  the test email names the owner as host (it is still sent to the admin who asked).
+  and Zoom connections (the same rule as an owner's own edit), the editor's "Just me"
+  host is the owner, a duplicate belongs to the source's owner, and the test email
+  names the owner as host (it is still sent to the admin who asked).
+  Known limitation, unchanged by admin editing: links are minted at booking time by
+  the **primary host's** account (§10). For a fixed event type that is the owner; for
+  round-robin or collective it is the assigned host, who need not be the owner. A
+  location saved without a manual link can therefore validate against the owner and
+  still fall back to no link for a host who has no matching connection, and the test
+  email names the owner where a real booking names the primary host.
   There is no audit table; admin changes to someone else's event type are logged as
   `event type changed by admin` with action, owner and actor, next to the transfer log
   line. Transfer itself (§7) is unchanged: it still moves only the caller's own event

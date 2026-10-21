@@ -77,9 +77,10 @@ type eventTypeJSON struct {
 	// resources - availability, calendar and Zoom connections - are that user's, also
 	// when an admin is the one editing.
 	OwnerID string `json:"owner_id"`
-	// OwnerName/OwnerEmail identify the owner when the requesting user is not the
-	// owner, so a read-only host knows who to contact for changes and an admin can see
-	// whose event type they are looking at.
+	// OwnerName/OwnerEmail identify the owner on the GET and list responses when the
+	// requesting user is not the owner, so a read-only host knows who to contact for
+	// changes and an admin can see whose event type they are looking at. PATCH and
+	// duplicate responses leave them empty.
 	OwnerName  string `json:"owner_name,omitempty"`
 	OwnerEmail string `json:"owner_email,omitempty"`
 	// InviteSenderReady reports, on the single-event-type GET, whether Calnode can
@@ -792,9 +793,11 @@ func (h *Handler) PatchEventType(w http.ResponseWriter, r *http.Request) {
 		effLocVal = *req.LocationValue
 	}
 	//
-	// Validated against the event type's OWNER, not the caller: when an admin edits
-	// someone else's event type, it is still the owner's calendar or Zoom account that
-	// mints the link at booking time, so the admin's own connections prove nothing.
+	// Validated against the event type's OWNER, not the caller, so an admin edit applies
+	// the same rule the owner's own edit always has and the admin's connections prove
+	// nothing. The link itself is minted at booking time by the PRIMARY host's account
+	// (mintMeetingLink); for a fixed event type that is the owner, for round-robin or
+	// collective it can be another host, and this check does not look at them.
 	if effLocType != curLocType || effLocVal != curLocVal {
 		if err := h.validateLocation(r.Context(), ownerID, effLocType, &effLocVal); err != nil {
 			h.writeError(w, http.StatusBadRequest, err.Error())

@@ -205,7 +205,7 @@ func (h *Handler) validateLocation(ctx context.Context, ownerID, locType string,
 				return nil
 			}
 		}
-		return fmt.Errorf("connect your Zoom account to auto-generate meeting links, or enter a Zoom link")
+		return fmt.Errorf("connect the event type owner's Zoom account to auto-generate meeting links, or enter a Zoom link")
 	case "livekit":
 		// Built-in video: the room is always minted server-side per booking, so there's no
 		// manual link (that's what the "Video link" type is for). LiveKit must be configured.
