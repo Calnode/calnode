@@ -45,3 +45,16 @@ jobs:
           custom-allsigned-prcomment: 'All contributors have signed the CLA. ✅'
           # TODO: replace with your maintainers' GitHub usernames.
           allowlist: 'shockalotti,dependabot[bot]'
+          # The action's default is 'true', which locks every merged PR's conversation. That
+          # silently blocks all post-merge activity: a bot cannot post a review, and a mention
+          # on a merged PR can never be answered. It caused a green pullfrog run that produced
+          # nothing, which reads as a broken integration rather than a lock.
+          #
+          # Disabling it does NOT let contributors revoke their CLA, which is what the lock
+          # exists for. The record is not the signing comment: signatures are appended to
+          # signatures/version1/cla.json, committed to main, and the action only ever appends
+          # (src/persistence/persistence.ts does push(), never a removal). An outside
+          # contributor has no write access to this repository and cannot alter that ledger or
+          # rewrite main's history. The "CLA ledger is append-only" step in ci.yml enforces
+          # that no pull request ever removes a recorded signature.
+          lock-pullrequest-aftermerge: 'false'

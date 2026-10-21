@@ -19,6 +19,42 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # The CLA signature ledger may only grow. Signatures live in
+      # signatures/version1/cla.json, committed to main, and the contributor-assistant action
+      # only ever appends to it. This step makes that invariant enforced rather than assumed:
+      # no pull request may drop a contributor who had already signed. It matters because
+      # cla.yml no longer locks merged PRs (see the comment there), so the ledger is the
+      # guarantee rather than the locked conversation.
+      - name: CLA ledger is append-only
+        if: github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          ledger=signatures/version1/cla.json
+          git fetch --no-tags --depth=1 origin "${{ github.base_ref }}"
+          # Bootstrap case: if the base branch has no ledger yet, there is nothing to protect.
+          if ! git cat-file -e "FETCH_HEAD:${ledger}" 2>/dev/null; then
+            echo "No CLA ledger at base; nothing to protect yet."
+            exit 0
+          fi
+          git show "FETCH_HEAD:${ledger}" > /tmp/cla-base.json
+          python3 - <<'PY'
+          import json, sys
+
+          def load(path):
+              with open(path, encoding="utf-8") as handle:
+                  return json.load(handle)["signedContributors"]
+
+          base = load("/tmp/cla-base.json")
+          head = load("signatures/version1/cla.json")
+          # id is stable across a login rename; name is only for the message.
+          base_by_id = {entry["id"]: entry.get("name", "?") for entry in base}
+          head_ids = {entry["id"] for entry in head}
+          removed = [f"{name} (id {sid})" for sid, name in base_by_id.items() if sid not in head_ids]
+          if removed:
+              sys.exit("CLA signatures may not be revoked, but these were removed: " + ", ".join(removed))
+          print(f"CLA ledger append-only: {len(base_by_id)} signed at base, {len(head_ids)} now, none removed")
+          PY
+
       - uses: pnpm/action-setup@v6
         with:
           version: 10.32.1
