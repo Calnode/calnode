@@ -101,6 +101,23 @@ class ReleaseHostname(unittest.TestCase):
             unclaim.release_hostname(str(self.config), str(self.env))
         self.assertIn("CALNODE_ENCRYPTION_KEY", str(caught.exception))
 
+    def test_refusal_leaves_the_files_untouched(self):
+        """The guard must fire before anything is rewritten.
+
+        Checking after the write would abort a step that had already mutated the
+        clone, so it would differ from its source with nothing recording it.
+        """
+        write_env(self.env, {"BASE_URL": "https://x.example.com", "PORT": "3000"})
+        write_config(self.config, "x.example.com")
+        before_env = self.env.read_text()
+        before_config = self.config.read_text()
+
+        with self.assertRaises(RuntimeError):
+            unclaim.release_hostname(str(self.config), str(self.env))
+
+        self.assertEqual(self.env.read_text(), before_env)
+        self.assertEqual(self.config.read_text(), before_config)
+
     def test_env_file_stays_owner_only(self):
         write_env(self.env, {"BASE_URL": "https://x.example.com", "CALNODE_ENCRYPTION_KEY": "k"})
         unclaim.release_hostname(str(self.config), str(self.env))

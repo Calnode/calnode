@@ -75,6 +75,18 @@ def drop_hostname_from_env(path, keep):
     dropped = [key for key in HOSTNAME_DERIVED_KEYS if key in values]
     if not dropped:
         return []
+
+    # Refuse BEFORE touching the file. Checking afterwards would rewrite the env
+    # file and then fail, leaving the instance mutated by a step that aborted;
+    # the clone would then differ from its source in ways nothing recorded.
+    missing = [key for key in keep if key not in values]
+    if missing:
+        raise RuntimeError(
+            f"refusing to release the hostname: {path} has no "
+            f"{', '.join(missing)}, so the clone could not decrypt its own "
+            "database"
+        )
+
     for key in dropped:
         values.pop(key, None)
 
@@ -86,12 +98,6 @@ def drop_hostname_from_env(path, keep):
     with open(path, "w", encoding="utf-8") as handle:
         handle.write("\n".join(lines) + "\n")
     os.chmod(path, 0o600)
-
-    missing = [key for key in keep if key not in values]
-    if missing:
-        raise RuntimeError(
-            f"refusing to release the hostname: {path} would lose {', '.join(missing)}"
-        )
     return dropped
 
 
