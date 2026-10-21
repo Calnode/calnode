@@ -29,9 +29,14 @@ env:
   # casing (${{ github.repository }} would break the push).
   IMAGE_NAME: calnode/calnode
 
-jobs:
-  build:
-    runs-on: ubuntu-latest
+  jobs:
+    build:
+      runs-on: ubuntu-latest
+      # Without this the job inherits GitHub's 360-minute default, so a hung
+      # multi-arch build sits for six hours before being cancelled (observed on
+      # #129's branch, cancelled at exactly 6h0m44s). Normal duration is 11-13
+      # minutes, so an hour is a generous ceiling that fails visibly instead.
+      timeout-minutes: 60
     permissions:
       contents: read
       packages: write

@@ -1,7 +1,11 @@
 # syntax=docker/dockerfile:1
 
 # ── Frontend build stage ───────────────────────────────────────────────────────
-FROM node:22-alpine AS frontend-builder
+# Built for the BUILD platform, not the target: the output is static JS/CSS that is
+# identical for every architecture. Without this pin a multi-arch build (buildx:
+# linux/amd64,linux/arm64) runs pnpm install and pnpm build a second time under QEMU
+# for arm64, which is slow and occasionally hangs for hours.
+FROM --platform=$BUILDPLATFORM node:22-alpine AS frontend-builder
 
 # Pin pnpm to the version in package.json's `packageManager` field (not @latest)
 # so CI builds are reproducible and match the committed lockfile.
@@ -16,7 +20,11 @@ COPY frontend/ .
 RUN pnpm build
 
 # ── Go build stage ─────────────────────────────────────────────────────────────
-FROM golang:1.27.2-alpine AS builder
+# Also the BUILD platform. CGO is disabled, so Go cross-compiles natively to the
+# target arch; there is no reason for this stage to run under QEMU. Running it
+# emulated is what made a multi-arch build stall: the arm64 leg spent its time
+# interpreting the compiler instead of compiling.
+FROM --platform=$BUILDPLATFORM golang:1.27.2-alpine AS builder
 
 RUN apk add --no-cache ca-certificates wget
 
@@ -28,10 +36,10 @@ RUN go mod download
 COPY . .
 COPY --from=frontend-builder /app/build ./frontend/build
 
-# Build natively for whatever architecture this stage is running on
-# (TARGETARCH is auto-populated by Docker buildx; falls back correctly
-# on ARM hosts where the original hardcoded amd64 would produce a
-# binary that can't execute at all).
+# Build for the TARGET architecture from this (build-platform) stage. buildx
+# populates TARGETARCH; with no CGO this is a native cross-compile, not emulation.
+# A plain `docker build` on an arm64 host still works: TARGETARCH then matches the
+# host, so the binary executes there as before.
 ARG TARGETARCH
 # VERSION is passed by docker-publish.yml from the resolved image tag (semver on a
 # release, "edge"/branch on a plain main push); defaults to "dev" for local builds
@@ -55,8 +63,9 @@ RUN wget -qO- \
 
 # ── Runtime stage ─────────────────────────────────────────────────────────────
 # alpine (not scratch) — needed for the shell entrypoint and Litestream.
-# No --platform pin here: inherits the build host's native architecture,
-# matching whatever TARGETARCH the binary above was actually compiled for.
+# No --platform pin: under buildx this defaults to the TARGET platform, which is
+# what we want (an arm64 final image for arm64 consumers). Only the two builder
+# stages above are pinned to BUILDPLATFORM.
 FROM alpine:3.24
 
 RUN apk add --no-cache ca-certificates tzdata
