@@ -611,7 +611,7 @@
 			<div class="space-y-1.5">
 				<Label for="et-display-order">Directory order</Label>
 				<Input id="et-display-order" type="number" step="1" bind:value={form.display_order} />
-				<p class="text-xs text-muted-foreground">Lower numbers appear first on public person and team pages. Equal numbers sort by name. Applies wherever this event is listed.</p>
+				<p class="text-xs text-muted-foreground">Orders this event on the public person and team pages only — not on the admin list or the booking page. Lower numbers come first; equal numbers sort by name.</p>
 			</div>
 			<div class="space-y-1.5 col-span-2">
 				<Label for="et-slug">Booking link</Label>

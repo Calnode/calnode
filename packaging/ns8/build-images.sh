@@ -17,6 +17,10 @@
 #              reads the exact reference from ${CALNODE_IMAGE}, which the
 #              cluster writes into the module environment at install time
 #              from that same label. One source of truth, no stamping.
+#   TARGETARCH  architecture to build for, default amd64. NS8 runs modules
+#              as rootless containers on the node, so an amd64-only module
+#              image cannot be installed on an arm64 node: build each arch
+#              and assemble them into one manifest tag (see push-manifest.sh).
 #   IMAGETAGS  space-separated module tags to push, default "latest"
 #   PUSH=1     push after building. Default 0 prints the push commands.
 #
@@ -39,9 +43,13 @@ repobase="${repobase,,}"
 reponame="ns8-calnode"
 app_image="${APP_IMAGE:-ghcr.io/calnode/calnode:latest}"
 read -r -a imagetags <<< "${IMAGETAGS:-latest}"
+targetarch="${TARGETARCH:-amd64}"
 
-# Add imageroot directory to the container image
-container=$(buildah from scratch)
+# Per-arch build tag. push-manifest.sh stitches these into the public tags.
+buildtag="build-${targetarch}"
+
+# Add imageroot directory to the container image, pinned to this arch.
+container=$(buildah from --arch "${targetarch}" scratch)
 buildah add "${container}" imageroot /imageroot
 
 # Reuse existing nodebuilder-ns8-calnode container, to speed up builds
@@ -68,18 +76,19 @@ buildah config --entrypoint=/ \
     --label="org.nethserver.images=${app_image}" \
     "${container}"
 # Commit the image (repobase already lowercased at variable prep above).
-buildah commit "${container}" "${repobase}/${reponame}:build"
+buildah commit "${container}" "${repobase}/${reponame}:${buildtag}"
 
 if [ "${PUSH:-0}" = "1" ]; then
-    for imagetag in "${imagetags[@]}"; do
-        buildah tag "${repobase}/${reponame}:build" "${repobase}/${reponame}:${imagetag}"
-        buildah push "${repobase}/${reponame}:${imagetag}" "docker://${repobase}/${reponame}:${imagetag}"
-    done
+    # Push only the per-arch tag. The public tags are assembled from these by
+    # push-manifest.sh, so a half-finished release can never publish a
+    # single-arch image under a version tag.
+    buildah push "${repobase}/${reponame}:${buildtag}" \
+        "docker://${repobase}/${reponame}:${buildtag}"
 else
-    printf "Built %s:%s (app %s).\nPublish with:\n\n" "${repobase}/${reponame}" "build" "${app_image}"
-    for imagetag in "${imagetags[@]}"; do
-        printf "  buildah tag %s:build %s:%s\n" "${repobase}/${reponame}" "${repobase}/${reponame}" "${imagetag}"
-        printf "  buildah push %s:%s docker://%s:%s\n" "${repobase}/${reponame}" "${imagetag}" "${repobase}/${reponame}" "${imagetag}"
-    done
-    printf "\nOr rerun with PUSH=1 IMAGETAGS=\"...\" to push directly.\n"
+    printf "Built %s:%s (arch %s, app %s).\n\n" "${repobase}/${reponame}" "${buildtag}" "${targetarch}" "${app_image}"
+    printf "To publish this arch and assemble the multi-arch tags:\n\n"
+    printf "  PUSH=1 TARGETARCH=%s IMAGETAGS=\"%s\" bash build-images.sh\n" \
+        "${targetarch}" "${imagetags[*]}"
+    printf "  TARGETARCHES=\"%s\" IMAGETAGS=\"%s\" bash push-manifest.sh\n" \
+        "${targetarch}" "${imagetags[*]}"
 fi

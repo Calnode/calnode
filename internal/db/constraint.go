@@ -27,6 +27,17 @@ const (
 	sqliteConstraintForeignKey = 787  // SQLITE_CONSTRAINT_FOREIGNKEY
 	sqliteConstraintPrimaryKey = 1555 // SQLITE_CONSTRAINT_PRIMARYKEY
 	sqliteConstraintUnique     = 2067 // SQLITE_CONSTRAINT_UNIQUE
+
+	// sqliteConstraintForeignKeyKey is SQLITE_CONSTRAINT_FOREIGNKEYKEY, the extended
+	// code SQLite reports INSTEAD of 787 when the violated constraint is declared
+	// ON DELETE RESTRICT. Verified against the driver: NO ACTION and an unqualified
+	// REFERENCES both report 787, RESTRICT reports 1811, and the message is identical
+	// in every case. Calnode declares bookings.event_type_id ON DELETE RESTRICT
+	// (explicitly, to stop event-type deletion), so the 787-only check classified
+	// every such delete as unrecognised and the handler answered 500 "internal error"
+	// where it means 409. Matching only 787 was a silent hole in exactly the case
+	// this classifier exists to catch.
+	sqliteConstraintForeignKeyKey = 1811 // SQLITE_CONSTRAINT_FOREIGNKEYKEY
 )
 
 // SQLite's message fragments, used only as a fallback — see violates.
@@ -51,9 +62,11 @@ func IsCheckViolation(err error) bool {
 }
 
 // IsForeignKeyViolation reports whether err is a foreign-key violation — a reference
-// to a row that does not exist, or a delete that would orphan one.
+// to a row that does not exist, or a delete that would orphan one. ON DELETE RESTRICT
+// reports a different extended code from the default NO ACTION, so both are accepted;
+// see sqliteConstraintForeignKeyKey.
 func IsForeignKeyViolation(err error) bool {
-	return violates(err, sqliteForeignKeyText, sqliteConstraintForeignKey)
+	return violates(err, sqliteForeignKeyText, sqliteConstraintForeignKey, sqliteConstraintForeignKeyKey)
 }
 
 // violates classifies err: the driver's own error code when one is available, the

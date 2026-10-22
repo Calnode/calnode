@@ -1,0 +1,84 @@
+name: Test module (robot)
+
+# Robot Framework integration tests for the NS8 module. The suite in
+# packaging/ns8/tests installs the module on a real NS8 cluster, configures it,
+# checks the route, screenshots the UI and removes it again.
+#
+# WHY THIS DOES NOT USE THE STOCK NS8 WORKFLOW
+#
+# NethServer/ns8-github-actions provides test-module.yml@v1, the one-line
+# entry point every NS8 module uses. It cannot be used here. It derives the
+# image under test from the repository name:
+#
+#   name  = basename(repository), with any leading "ns8-" stripped
+#   owner = lowercased repo owner
+#   tag   = head branch, with "main" forced to "latest"
+#   image = ghcr.io/<owner>/<name>:<tag>
+#
+# For this repository that yields ghcr.io/calnode/calnode:latest, which is two
+# wrong answers at once:
+#   * the module image is ghcr.io/calnode/ns8-calnode, not ghcr.io/calnode/calnode
+#     (the latter is the Calnode application image, which has no NS8 module
+#     manifest, so add-module would fail);
+#   * this repo deliberately never publishes a :latest module tag. :latest stays
+#     pinned to releases, and main publishes :edge, exactly as docker-publish.yml
+#     does for the app image.
+#
+# So this workflow calls test-on-digitalocean-infra.yml@v1 directly, which is
+# the reusable workflow test-module.yml delegates to anyway, and supplies the
+# image URL itself via the `args` input. Everything else (DigitalOcean
+# provisioning, NS8 install, create-cluster, the test runner, artifact upload,
+# tmate debugging) is still theirs and unmodified.
+#
+# NOT RUNNING AUTOMATICALLY YET
+#
+# It needs a `do_token` repository secret (DigitalOcean API token) for the
+# cluster provisioning, and this repo does not have one. Declaring the workflow
+# with a workflow_run trigger now would just fail red on every publish, so it is
+# manual-only until that is sorted out.
+on:
+  workflow_dispatch:
+    inputs:
+      image:
+        description: 'Module image under test'
+        required: false
+        type: string
+        default: 'ghcr.io/calnode/ns8-calnode:edge'
+      run_ui_tests:
+        description: 'Run the [ui] tests (slower, needs the Playwright image)'
+        required: false
+        type: boolean
+        default: false
+      debug_shell:
+        description: 'Hand out a tmate debug shell on failure'
+        required: false
+        type: boolean
+        default: false
+# To run this on every successful publish instead of by hand, add:
+#   workflow_run:
+#     workflows: ['NS8 module publish']
+#     types: [completed]
+# ...after setting the do_token secret.
+
+jobs:
+  test:
+    name: Run tests
+    permissions:
+      contents: read
+      pull-requests: write
+      statuses: write
+    uses: NethServer/ns8-github-actions/.github/workflows/test-on-digitalocean-infra.yml@v1
+    with:
+      # packaging/ns8 holds both the module definition and tests/, so this is the
+      # module root for the purposes of the runner.
+      path: packaging/ns8
+      # `args` is the second positional argument to run-ns8-tests, i.e. the
+      # IMAGE_URL that the suite passes to add-module. See the header note.
+      args: ${{ inputs.image }}
+      # One leader node. The default is "dn1 rl1" (two droplets); the suite is
+      # single-node, so a second one only doubles the cost.
+      leader_nodes: rl1
+      run_ui_tests: ${{ inputs.run_ui_tests }}
+      debug_shell: ${{ inputs.debug_shell }}
+    secrets:
+      do_token: ${{ secrets.do_token }}

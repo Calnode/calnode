@@ -97,6 +97,38 @@ func TestConstraintPredicates(t *testing.T) {
 		assertOnly(t, err, "foreign key", db.IsForeignKeyViolation)
 	})
 
+	// The foreign-key case above inserts a booking pointing at a row that does not
+	// exist, which SQLite reports as SQLITE_CONSTRAINT_FOREIGNKEY (787). Deleting an
+	// event type that a booking already references is a different statement against a
+	// different clause — bookings.event_type_id is declared ON DELETE RESTRICT — and
+	// SQLite reports THAT as SQLITE_CONSTRAINT_FOREIGNKEYKEY (1811), with an identical
+	// message. A classifier checking only 787 passes the subtest above and fails here,
+	// which is exactly how DeleteEventType answered 500 "internal error" instead of
+	// 409 when an operator tried to delete an event type with bookings in history.
+	t.Run("foreign key on delete restrict", func(t *testing.T) {
+		const etID = "et-restrict"
+		if _, err := database.Exec(
+			`INSERT INTO event_types (id, user_id, slug, name, duration_minutes, slot_interval_minutes, location_type, is_active, is_public, archived_at)
+			VALUES (?, ?, 'restrict-et', 'Restrict ET', 30, 30, 'in_person', 1, 1, NULL)`,
+			etID, userID); err != nil {
+			t.Fatalf("seed event type: %v", err)
+		}
+		if _, err := database.Exec(
+			`INSERT INTO event_type_hosts (event_type_id, user_id, role, priority) VALUES (?, ?, 'required', 0)`,
+			etID, userID); err != nil {
+			t.Fatalf("seed host: %v", err)
+		}
+		if _, err := database.Exec(
+			`INSERT INTO bookings (id, event_type_id, host_id, start_at, end_at, status, created_at, updated_at)
+			VALUES (?, ?, ?, '2026-06-15T11:00:00Z', '2026-06-15T11:30:00Z', 'confirmed', ?, ?)`,
+			"b-restrict", etID, userID, "2026-06-01T00:00:00Z", "2026-06-01T00:00:00Z"); err != nil {
+			t.Fatalf("seed booking: %v", err)
+		}
+
+		_, err := database.Exec(`DELETE FROM event_types WHERE id = ?`, etID)
+		assertOnly(t, err, "foreign key (delete restrict)", db.IsForeignKeyViolation)
+	})
+
 	t.Run("unrelated error", func(t *testing.T) {
 		// A predicate that answered true for everything would satisfy every caller
 		// above and be badly wrong, so the negative cases carry as much weight.

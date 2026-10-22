@@ -62,3 +62,7 @@ pnpm-debug.log*
 # Vitest browser-mode artifacts (failure screenshots / attachments)
 __screenshots__/
 .vitest-attachments/
+
+# NS8 Robot Framework test output (output.xml, log.html, report.html, screenshots)
+packaging/ns8/tests/outputs/
+__pycache__/
