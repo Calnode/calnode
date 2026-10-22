@@ -43,6 +43,7 @@
 	const INVITE_DELIVERY = [
 		{ value: 'calendar', label: "The host's calendar" },
 		{ value: 'calnode',  label: 'Calnode, from your workspace' },
+		{ value: 'none',     label: 'No one (you send your own)' },
 	];
 
 	// ── Event type ───────────────────────────────────────────────────────────────
@@ -746,6 +747,9 @@
 						Invitees get the invite from your workspace's email sender
 						(<a href="{base}/settings/email" class="underline">Settings → Email</a>), never from a host's
 						own address. Hosts still see the meeting on their own calendar, with the meeting link.
+					{:else if form.invite_delivery === 'none'}
+						Neither the host's calendar nor Calnode sends the booker an invite, for when your own
+						system does. Hosts still see the meeting on their own calendar, with the meeting link.
 					{:else}
 						The host's connected calendar invites the booker, so the invite shows the host's own
 						email address. Choose Calnode to keep hosts' addresses private or to book as a team.

@@ -41,8 +41,9 @@ export type EventType = {
 	show_taken_slots: boolean;
 	/** Who sends the booker's calendar invite. 'calendar': each host's connected calendar,
 	 *  from the host's own address. 'calnode': Calnode's own invite, from the email sender
-	 *  in Settings → Email, so no host's personal address reaches the booker. */
-	invite_delivery: 'calendar' | 'calnode';
+	 *  in Settings → Email, so no host's personal address reaches the booker. 'none': no
+	 *  invite from either; the hosts' events are guestless, for integrations that send their own. */
+	invite_delivery: 'calendar' | 'calnode' | 'none';
 	/** Whether Calnode can currently send invites (a sender and working email). Only
 	 *  returned on the single event type GET. */
 	invite_sender_ready?: boolean;
@@ -114,6 +115,8 @@ export type Booking = {
 	amount_paid_currency?: string;
 	/** The booker's RSVP to a Calnode-sent invite; absent until an answer arrives. */
 	rsvp_status?: 'accepted' | 'declined' | 'tentative';
+	/** Who sent the booker's calendar invite, fixed when the booking was made. */
+	invite_delivery?: 'calendar' | 'calnode' | 'none';
 };
 
 export type APIKey = {
