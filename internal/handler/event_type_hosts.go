@@ -13,9 +13,9 @@ import (
 // EventHost is a resolved host of an event type (used by slot generation and
 // booking-time assignment). Archived users are excluded by resolveEventTypeHosts.
 type EventHost struct {
-	UserID   string
-	Role     string // required | rotation | optional
-	Priority int
+	UserID   string `json:"user_id"`
+	Role     string `json:"role"` // required | rotation | optional
+	Priority int    `json:"priority"`
 }
 
 // resolveEventTypeHosts returns an event type's active (non-archived) hosts.

@@ -36,13 +36,13 @@ func (h *Handler) RescheduleBooking(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Load booking + event type in one query to check ownership and get duration.
-	var hostID, startStr, endStr, status, etSlug, etID string
+	var hostID, startStr, endStr, status, etSlug, etID, invitationID string
 	var durMins int
 	err = h.db.QueryRowContext(r.Context(), `
-		SELECT b.host_id, b.start_at, b.end_at, b.status, et.duration_minutes, et.slug, et.id
+		SELECT b.host_id, b.start_at, b.end_at, b.status, et.duration_minutes, et.slug, et.id, COALESCE(b.scheduling_invitation_id,'')
 		FROM bookings b JOIN event_types et ON et.id = b.event_type_id
 		WHERE b.id = ?`, id).
-		Scan(&hostID, &startStr, &endStr, &status, &durMins, &etSlug, &etID)
+		Scan(&hostID, &startStr, &endStr, &status, &durMins, &etSlug, &etID, &invitationID)
 	if errors.Is(err, sql.ErrNoRows) {
 		h.writeError(w, http.StatusNotFound, "booking not found")
 		return
@@ -83,6 +83,9 @@ func (h *Handler) RescheduleBooking(w http.ResponseWriter, r *http.Request) {
 	}
 
 	newEnd := newStart.Add(time.Duration(durMins) * time.Minute)
+	if invitationID != "" {
+		newEnd = newStart.Add(previousEnd.Sub(previousStart))
+	}
 
 	if err := h.validateRescheduleTime(r.Context(), id, etID, hostID, newStart, newEnd); err != nil {
 		if errors.Is(err, errSlotUnavailable) {
@@ -94,8 +97,8 @@ func (h *Handler) RescheduleBooking(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	updated, err := h.bookingSvc.Reschedule(r.Context(), id, newStart, newEnd)
-	if errors.Is(err, booking.ErrDoubleBooked) {
+	updated, err := h.rescheduleBooking(r.Context(), id, newStart, newEnd)
+	if errors.Is(err, booking.ErrDoubleBooked) || errors.Is(err, errSlotUnavailable) || errors.Is(err, booking.ErrInvitationUnavailable) {
 		h.writeError(w, http.StatusConflict, "that time slot is no longer available")
 		return
 	}

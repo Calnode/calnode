@@ -2,6 +2,8 @@ package handler
 
 import (
 	"bytes"
+	"os/exec"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -39,5 +41,57 @@ func TestManageTemplate_jsConstantsNotDoubleQuoted(t *testing.T) {
 	}
 	if !strings.Contains(out, `"2026-06-18T10:00:00Z"`) {
 		t.Error("CURRENT_ISO not emitted as a clean quoted JS string")
+	}
+}
+
+// Exercise html/template's JavaScript string context in both public templates.
+// Node parses the entire script, then evaluates only the URL constant so the
+// test needs no DOM or browser and catches double quoting and query corruption.
+func TestInvitationTemplatesSlotsURLJavaScript(t *testing.T) {
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node is required to validate rendered JavaScript")
+	}
+	for _, url := range []string{
+		"/v1/schedule/token/slots",
+		`/v1/schedule/token/slots?lang=fr-CA&tz=Europe%2FParis&label="a b"&end=</script>&value=${secret}`,
+	} {
+		for _, surface := range []string{"book", "manage"} {
+			t.Run(surface+"/"+url, func(t *testing.T) {
+				var buf bytes.Buffer
+				var err error
+				if surface == "book" {
+					err = bookTmpl.Execute(&buf, bookPageData{IsInvitation: true, SlotsURL: url, T: i18n.Default().T})
+				} else {
+					err = manageTmpl.Execute(&buf, managePageData{IsInvitation: true, SlotsURL: url, T: i18n.Default().T})
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				scripts := regexp.MustCompile(`(?s)<script>(.*?)</script>`).FindAllStringSubmatch(buf.String(), -1)
+				var script string
+				for _, match := range scripts {
+					if strings.Contains(match[1], "const SLOTS_URL") {
+						script = match[1]
+					}
+				}
+				if script == "" {
+					t.Fatal("slots script missing")
+				}
+				cmd := exec.Command(node, "--check")
+				cmd.Stdin = strings.NewReader(script)
+				if output, err := cmd.CombinedOutput(); err != nil {
+					t.Fatalf("invalid rendered JavaScript: %s %v", output, err)
+				}
+				constant := regexp.MustCompile(`const SLOTS_URL = ([^\n]+);`).FindStringSubmatch(script)
+				if len(constant) != 2 {
+					t.Fatal("slots constant missing")
+				}
+				output, err := exec.Command(node, "-e", "process.stdout.write("+constant[1]+")").CombinedOutput()
+				if err != nil || string(output) != url {
+					t.Fatalf("rendered URL=%q, want %q; error=%v", output, url, err)
+				}
+			})
+		}
 	}
 }

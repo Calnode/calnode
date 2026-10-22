@@ -13,31 +13,34 @@ import (
 
 // duplicateResponse is the subset of the created copy the tests assert on.
 type duplicateResponse struct {
-	ID                  string  `json:"id"`
-	Slug                string  `json:"slug"`
-	Name                string  `json:"name"`
-	Description         *string `json:"description"`
-	DurationMinutes     int     `json:"duration_minutes"`
-	SlotIntervalMinutes int     `json:"slot_interval_minutes"`
-	LocationType        string  `json:"location_type"`
-	LocationValue       *string `json:"location_value"`
-	RoutingMode         string  `json:"routing_mode"`
-	RRStrategy          string  `json:"rr_strategy"`
-	BufferBeforeMinutes int     `json:"buffer_before_minutes"`
-	BufferAfterMinutes  int     `json:"buffer_after_minutes"`
-	MinNoticeMinutes    int     `json:"min_notice_minutes"`
-	MaxFutureDays       int     `json:"max_future_days"`
-	MaxActiveBookings   int     `json:"max_active_bookings"`
-	IsActive            bool    `json:"is_active"`
-	IsPublic            bool    `json:"is_public"`
-	ShowTakenSlots      bool    `json:"show_taken_slots"`
-	Archived            bool    `json:"archived"`
-	MsgConfirmation     *string `json:"msg_confirmation"`
-	SubjConfirmation    *string `json:"subj_confirmation"`
-	MsgGreeting         *string `json:"msg_greeting"`
-	PriceCents          int     `json:"price_cents"`
-	Currency            string  `json:"currency"`
-	Reminders           []int   `json:"reminders"`
+	ID                       string  `json:"id"`
+	Slug                     string  `json:"slug"`
+	Name                     string  `json:"name"`
+	Description              *string `json:"description"`
+	DurationMinutes          int     `json:"duration_minutes"`
+	MinDurationMinutes       int     `json:"min_duration_minutes"`
+	MaxDurationMinutes       int     `json:"max_duration_minutes"`
+	DurationIncrementMinutes int     `json:"duration_increment_minutes"`
+	SlotIntervalMinutes      int     `json:"slot_interval_minutes"`
+	LocationType             string  `json:"location_type"`
+	LocationValue            *string `json:"location_value"`
+	RoutingMode              string  `json:"routing_mode"`
+	RRStrategy               string  `json:"rr_strategy"`
+	BufferBeforeMinutes      int     `json:"buffer_before_minutes"`
+	BufferAfterMinutes       int     `json:"buffer_after_minutes"`
+	MinNoticeMinutes         int     `json:"min_notice_minutes"`
+	MaxFutureDays            int     `json:"max_future_days"`
+	MaxActiveBookings        int     `json:"max_active_bookings"`
+	IsActive                 bool    `json:"is_active"`
+	IsPublic                 bool    `json:"is_public"`
+	ShowTakenSlots           bool    `json:"show_taken_slots"`
+	Archived                 bool    `json:"archived"`
+	MsgConfirmation          *string `json:"msg_confirmation"`
+	SubjConfirmation         *string `json:"subj_confirmation"`
+	MsgGreeting              *string `json:"msg_greeting"`
+	PriceCents               int     `json:"price_cents"`
+	Currency                 string  `json:"currency"`
+	Reminders                []int   `json:"reminders"`
 }
 
 // duplicate POSTs /v1/event-types/{slug}/duplicate and returns the recorder.
@@ -58,7 +61,7 @@ func seedRichEventType(t *testing.T, database *sql.DB, ownerID, memberID string)
 	mustExec(t, database, `
 		INSERT INTO event_types (
 		  id, user_id, slug, name, description,
-		  duration_minutes, slot_interval_minutes, location_type, location_value,
+		  duration_minutes, slot_interval_minutes, min_duration_minutes, max_duration_minutes, duration_increment_minutes, location_type, location_value,
 		  routing_mode, rr_strategy, buffer_before_minutes, buffer_after_minutes,
 		  min_notice_minutes, max_future_days, max_active_bookings, seat_limit,
 		  is_active, is_public, show_taken_slots,
@@ -67,7 +70,7 @@ func seedRichEventType(t *testing.T, database *sql.DB, ownerID, memberID string)
 		  price_cents, currency)
 		VALUES (
 		  'src', ?, 'intro-call', 'Intro Call', 'A chat about the role',
-		  45, 15, 'phone', '+15550100',
+		  45, 15, 15, 120, 15, 'phone', '+15550100',
 		  'round_robin', 'priority', 10, 20,
 		  240, 45, 3, 4,
 		  1, 0, 1,
@@ -165,6 +168,9 @@ func TestDuplicateEventType_copiesTheRowAndEveryChildDataset(t *testing.T) {
 	}
 	if got.DurationMinutes != 45 || got.SlotIntervalMinutes != 15 {
 		t.Errorf("duration/interval: got %d/%d; want 45/15", got.DurationMinutes, got.SlotIntervalMinutes)
+	}
+	if got.MinDurationMinutes != 15 || got.MaxDurationMinutes != 120 || got.DurationIncrementMinutes != 15 {
+		t.Errorf("duration policy not copied: %+v", got)
 	}
 	if got.LocationType != "phone" || got.LocationValue == nil || *got.LocationValue != "+15550100" {
 		t.Errorf("location: got %q/%v", got.LocationType, got.LocationValue)
@@ -593,6 +599,7 @@ func TestDuplicateEventType_handlesEveryEventTypeColumn(t *testing.T) {
 	copied := map[string]bool{
 		"user_id": true, "team_id": true, "name": true, "description": true,
 		"duration_minutes": true, "slot_interval_minutes": true,
+		"min_duration_minutes": true, "max_duration_minutes": true, "duration_increment_minutes": true,
 		"location_type": true, "location_value": true, "allow_phone_call": true,
 		"routing_mode": true, "rr_strategy": true,
 		"buffer_before_minutes": true, "buffer_after_minutes": true,

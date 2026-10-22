@@ -375,6 +375,13 @@ func (h *Handler) validateBookingTime(ctx context.Context, et *bookableEventType
 // free" semantics — falls back to the booking's primary host_id for a legacy booking with
 // no booking_hosts rows, the same fallback Reschedule itself uses.
 func (h *Handler) validateRescheduleTime(ctx context.Context, bookingID, eventTypeID, fallbackHostID string, newStart, newEnd time.Time) error {
+	b, err := h.bookingSvc.Get(ctx, bookingID)
+	if err != nil {
+		return err
+	}
+	if b.SchedulingInvitationID != "" {
+		return h.validateInvitationReschedule(ctx, b, newStart, newEnd)
+	}
 	var et bookableEventType
 	et.ID = eventTypeID
 	if err := h.db.QueryRowContext(ctx,

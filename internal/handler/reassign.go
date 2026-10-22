@@ -119,6 +119,10 @@ func (h *Handler) ReassignBooking(w http.ResponseWriter, r *http.Request) {
 	}
 
 	updated, err := h.bookingSvc.ReassignHost(r.Context(), id, req.HostID)
+	if errors.Is(err, booking.ErrInvitationUnavailable) {
+		h.writeError(w, http.StatusConflict, "Invitation booking hosts cannot be reassigned.")
+		return
+	}
 	if errors.Is(err, booking.ErrDoubleBooked) {
 		h.writeError(w, http.StatusConflict, "the chosen host already has a booking at that time")
 		return
