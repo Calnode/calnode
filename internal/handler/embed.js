@@ -22,6 +22,8 @@
   var BASE = SELF ? new URL(SELF.src).origin : window.location.origin;
 
   var TZ = (Intl.DateTimeFormat().resolvedOptions().timeZone) || 'UTC';
+  // Max host faces drawn in the info panel; mirrors maxHostFaces in book.go.
+  var MAX_HOST_FACES = 3;
   var STEP_BP = 560; // below this width → step-flow (one view at a time)
 
   // i18n — the server resolves locale from the browser's own Accept-Language header
@@ -289,13 +291,19 @@
         hosts = sel.host_ids.map(function (id) { return hm[id]; }).filter(Boolean);
       }
       if (!hosts || !hosts.length) hosts = (this.info.hosts && this.info.hosts.length) ? this.info.hosts : [];
-      var faceKids = hosts.map(function (host, i) {
-        var z = (hosts.length - i) * 10;
+      // Cap the face stack so it cannot overflow the info panel into the calendar (#166).
+      // Keep in step with maxHostFaces in book.go and book.html's copy.
+      var shown = hosts.slice(0, MAX_HOST_FACES);
+      var faceKids = shown.map(function (host, i) {
+        var z = (shown.length - i) * 10;
         var inner = host.avatar_url
           ? el('img', { class: 'avatar-img', src: host.avatar_url, alt: host.name || '' })
           : el('span', { class: 'avatar-initials', text: ((host.name || '?')[0] || '?').toUpperCase() });
         return el('span', { class: 'face', style: 'z-index:' + z }, [inner]);
       });
+      if (hosts.length > shown.length) {
+        faceKids.push(el('span', { class: 'face face-more', style: 'z-index:100', text: '+' + (hosts.length - shown.length) }));
+      }
       // info-head = avatar + title (host name + event name). On compact widths the
       // avatar centers against this title only; meta + description sit below, indented
       // to line up under the title. On desktop these wrappers are plain blocks, so the

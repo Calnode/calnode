@@ -317,6 +317,19 @@
   border: 2.5px solid #fff;
   box-shadow: 0 0 0 1px rgba(0,0,0,.06);
 }
+/* "+N" chip when the stack is capped (see maxHostFaces). Painted above the last
+   face and inset the same 16px, so its text is never clipped by the overlap. */
+.host-faces .face-more {
+  width: 56px; height: 56px;
+  border-radius: 50%;
+  background: #f3f4f6;
+  color: #374151;
+  border: 2.5px solid #fff;
+  box-shadow: 0 0 0 1px rgba(0,0,0,.06);
+  display: flex; align-items: center; justify-content: center;
+  font-size: .8125rem; font-weight: 600; line-height: 1;
+  box-sizing: border-box;
+}
 
 /* ── Conversational booking assistant — floating launcher + drawer (book.html; shared with the widget) ── */
 .asst-fab-btn {
