@@ -231,3 +231,46 @@ func (c *Client) CancelEvent(ctx context.Context, userID, calendarID, eventID st
 	}
 	return nil
 }
+
+// EventCancelled reads the stored event before reminder delivery. A missing or
+// inaccessible event is ambiguous (e.g. the destination account changed), so only
+// an explicit cancelled status suppresses delivery; all other failures retry.
+func (c *Client) EventCancelled(ctx context.Context, userID, calendarID, eventID string) (bool, error) {
+	hc, calID, err := c.DestinationClient(ctx, userID)
+	if err != nil {
+		return false, err
+	}
+	if hc == nil {
+		return false, fmt.Errorf("gcal: event status: no destination connection")
+	}
+	if calendarID != "" {
+		calID = calendarID
+	}
+	apiURL := c.apiBase + "/calendars/" + url.PathEscape(calID) + "/events/" + url.PathEscape(eventID) + "?fields=status"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
+	if err != nil {
+		return false, fmt.Errorf("gcal: event status request: %w", err)
+	}
+	resp, err := hc.Do(req)
+	if err != nil {
+		return false, fmt.Errorf("gcal: event status: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return false, fmt.Errorf("gcal: event status HTTP %d", resp.StatusCode)
+	}
+	var event struct {
+		Status string `json:"status"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&event); err != nil {
+		return false, fmt.Errorf("gcal: decode event status: %w", err)
+	}
+	switch event.Status {
+	case "cancelled":
+		return true, nil
+	case "confirmed", "tentative":
+		return false, nil
+	default:
+		return false, fmt.Errorf("gcal: unknown event status %q", event.Status)
+	}
+}

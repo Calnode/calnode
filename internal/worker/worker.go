@@ -25,13 +25,14 @@ const webhookDeliveryRetention = 30 * 24 * time.Hour
 
 // Worker polls the jobs table and processes pending jobs (webhooks, reminders).
 type Worker struct {
-	db         *sql.DB
-	svc        *webhook.Service
-	mailer     mailer.Mailer
-	logger     *slog.Logger
-	httpClient *http.Client
-	handlers   map[string]func(context.Context, string) error // custom job types (e.g. notetaker)
-	done       chan struct{}
+	db            *sql.DB
+	svc           *webhook.Service
+	mailer        mailer.Mailer
+	logger        *slog.Logger
+	httpClient    *http.Client
+	handlers      map[string]func(context.Context, string) error // custom job types (e.g. notetaker)
+	reminderCheck func(context.Context, string) (bool, error)
+	done          chan struct{}
 }
 
 // RegisterHandler registers a processor for a custom job type whose logic lives outside this
@@ -49,6 +50,12 @@ func WithHTTPClient(c *http.Client) func(*Worker) {
 // WithMailer configures the mailer used to send reminder emails.
 func WithMailer(m mailer.Mailer) func(*Worker) {
 	return func(w *Worker) { w.mailer = m }
+}
+
+// WithReminderCheck adds a live calendar check before sending a reminder.
+// False suppresses delivery; errors use the job's normal retry policy.
+func WithReminderCheck(check func(context.Context, string) (bool, error)) func(*Worker) {
+	return func(w *Worker) { w.reminderCheck = check }
 }
 
 func New(db *sql.DB, svc *webhook.Service, logger *slog.Logger, opts ...func(*Worker)) *Worker {
@@ -352,6 +359,27 @@ func (w *Worker) sendReminder(ctx context.Context, payload string) error {
 	_ = w.db.QueryRowContext(ctx, `
 		SELECT COALESCE(business_name,''), COALESCE(logo_url,'')
 		FROM server_settings WHERE id = 1`).Scan(&d.BrandName, &d.LogoURL)
+
+	if w.reminderCheck != nil {
+		checkCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		allowed, err := w.reminderCheck(checkCtx, p.BookingID)
+		cancel()
+		if err != nil {
+			return fmt.Errorf("worker: reminder: calendar check: %w", err)
+		}
+		if !allowed {
+			return nil
+		}
+	}
+	// Cancellation may have completed while the external lookup was in flight.
+	if err := w.db.QueryRowContext(ctx, `SELECT status FROM bookings WHERE id = ?`, p.BookingID).Scan(&status); err == sql.ErrNoRows {
+		return nil
+	} else if err != nil {
+		return fmt.Errorf("worker: reminder: recheck booking: %w", err)
+	}
+	if status != "confirmed" {
+		return nil
+	}
 
 	if err := mailer.SendReminder(ctx, w.mailer, d); err != nil {
 		return fmt.Errorf("worker: reminder: send: %w", err)

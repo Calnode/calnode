@@ -8,6 +8,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"sort"
 	"time"
 
@@ -433,4 +434,26 @@ func (s *Service) CancelEvent(ctx context.Context, userID, calendarID, eventID, 
 		return pr.CancelEvent(ctx, userID, calendarID, eventID)
 	}
 	return nil
+}
+
+// EventCancellationReader is an optional provider capability. Only a positively
+// identified cancellation returns true; access and lookup failures are errors.
+type EventCancellationReader interface {
+	EventCancelled(context.Context, string, string, string) (bool, error)
+}
+
+// EventCancelled checks the provider recorded at creation, using the same routing
+// as updates and cancellations. Providers without this capability keep existing behavior.
+func (s *Service) EventCancelled(ctx context.Context, userID, calendarID, eventID, provider string) (bool, error) {
+	if provider != "" && s.providers[provider] == nil {
+		return false, fmt.Errorf("calendar: recorded event provider unavailable")
+	}
+	pr := s.providerForEvent(ctx, userID, eventID, provider)
+	if pr == nil {
+		return false, fmt.Errorf("calendar: event provider unavailable")
+	}
+	if reader, ok := pr.(EventCancellationReader); ok {
+		return reader.EventCancelled(ctx, userID, calendarID, eventID)
+	}
+	return false, nil
 }

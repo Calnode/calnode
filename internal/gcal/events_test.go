@@ -328,3 +328,48 @@ func TestUpdateEvent_emptyEventID_noOp(t *testing.T) {
 		t.Errorf("UpdateEvent(\"\") = %v; want nil", err)
 	}
 }
+
+func TestEventCancelled(t *testing.T) {
+	for _, tc := range []struct {
+		name, body         string
+		code               int
+		cancelled, wantErr bool
+	}{
+		{"cancelled", `{"status":"cancelled"}`, 200, true, false},
+		{"confirmed", `{"status":"confirmed"}`, 200, false, false},
+		{"tentative", `{"status":"tentative"}`, 200, false, false},
+		{"missing", `{}`, 404, false, true},
+		{"gone", `{}`, 410, false, true},
+		{"forbidden", `{}`, 403, false, true},
+		{"rate_limit", `{}`, 429, false, true},
+		{"server_error", `{}`, 500, false, true},
+		{"invalid_json", `{`, 200, false, true},
+		{"empty_status", `{}`, 200, false, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method != "GET" || r.URL.Path != "/calendars/original@example.com/events/event-id" || r.URL.Query().Get("fields") != "status" {
+					t.Errorf("unexpected request: %s %s", r.Method, r.URL)
+				}
+				w.WriteHeader(tc.code)
+				_, _ = w.Write([]byte(tc.body))
+			}))
+			defer srv.Close()
+			c := newTestClient(t)
+			c.apiBase = srv.URL
+			saveDestinationConnection(t, c, "user-1", "new-destination")
+			got, err := c.EventCancelled(context.Background(), "user-1", "original@example.com", "event-id")
+			if got != tc.cancelled || (err != nil) != tc.wantErr {
+				t.Fatalf("got (%v, %v), want cancelled=%v error=%v", got, err, tc.cancelled, tc.wantErr)
+			}
+		})
+	}
+}
+
+func TestEventCancelledDisconnected(t *testing.T) {
+	c := newTestClient(t)
+	got, err := c.EventCancelled(context.Background(), "unknown", "primary", "event-id")
+	if got || err == nil {
+		t.Fatalf("got (%v, %v); want lookup error", got, err)
+	}
+}

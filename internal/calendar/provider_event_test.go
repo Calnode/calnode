@@ -118,3 +118,48 @@ func TestProviderForEvent_prefersStampedProvider(t *testing.T) {
 		}
 	}
 }
+
+type cancellationProvider struct {
+	recordProvider
+	cancelled bool
+	calls     int
+}
+
+func (p *cancellationProvider) EventCancelled(context.Context, string, string, string) (bool, error) {
+	p.calls++
+	return p.cancelled, nil
+}
+
+func TestEventCancelledUsesStoredProvider(t *testing.T) {
+	database, err := db.Open("sqlite://" + t.TempDir() + "/test.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	s := NewService(database)
+	google := &cancellationProvider{recordProvider: recordProvider{name: "google"}, cancelled: true}
+	microsoft := &cancellationProvider{recordProvider: recordProvider{name: "microsoft"}}
+	s.Register(google)
+	s.Register(microsoft)
+	cancelled, err := s.EventCancelled(context.Background(), "host", "original", "event", "google")
+	if err != nil || !cancelled || google.calls != 1 || microsoft.calls != 0 {
+		t.Fatalf("cancelled=%v err=%v calls=%d/%d", cancelled, err, google.calls, microsoft.calls)
+	}
+	if _, err := s.EventCancelled(context.Background(), "host", "original", "event", "missing-provider"); err == nil {
+		t.Fatal("missing stamped provider must not fall through")
+	}
+}
+
+func TestEventCancelledUnsupportedProvider(t *testing.T) {
+	database, err := db.Open("sqlite://" + t.TempDir() + "/test.db")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	s := NewService(database)
+	s.Register(&recordProvider{name: "microsoft"})
+	cancelled, err := s.EventCancelled(context.Background(), "host", "calendar", "event", "microsoft")
+	if err != nil || cancelled {
+		t.Fatalf("unsupported provider got %v, %v", cancelled, err)
+	}
+}
