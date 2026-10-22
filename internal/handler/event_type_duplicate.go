@@ -87,12 +87,14 @@ func (h *Handler) DuplicateEventType(w http.ResponseWriter, r *http.Request) {
 	user, _ := userFromContext(r.Context())
 	srcSlug := r.PathValue("slug")
 
-	// Owner-scoped, like PATCH and DELETE. An assigned host sees an event type
-	// read-only (only the owner can edit), so handing them a copy they could not
-	// then change would be worse than refusing.
-	srcID := h.eventTypeIDForOwner(w, r, srcSlug, user.ID)
+	// Editor-scoped, like PATCH and DELETE: the owner or an admin. An assigned host
+	// sees an event type read-only, so handing them a copy they could not then change
+	// would be worse than refusing. The copy keeps the source's owner (user_id is
+	// copied below), so an admin duplicating someone else's event type makes another
+	// one for that person, not one for themselves.
+	srcID, ownerID := h.eventTypeForEditor(w, r, srcSlug, user)
 	if srcID == "" {
-		return // eventTypeIDForOwner already wrote 404/500
+		return // eventTypeForEditor already wrote 404/500
 	}
 
 	tx, err := h.db.BeginTx(r.Context(), nil)
@@ -185,7 +187,8 @@ func (h *Handler) DuplicateEventType(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	et.Owned = true // the copy belongs to the caller, like a freshly created one
+	et.setOwnership(user, ownerID) // the copy belongs to the source's owner
+	h.logForeignEventTypeChange(r.Context(), "duplicate", newID, ownerID, user)
 	h.writeJSON(w, http.StatusCreated, et)
 }
 

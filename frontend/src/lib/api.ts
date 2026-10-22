@@ -71,9 +71,13 @@ export type EventType = {
 	rr_strategy: 'even' | 'soonest' | 'priority';
 	/** True when archived — hidden from the default list, is_active forced off. Reversible. */
 	archived?: boolean;
-	/** True if the current user owns this event type; false if they only host it (read-only). */
+	/** True if the current user owns this event type; false if they host it, or are an admin viewing someone else's. */
 	owned?: boolean;
-	/** Owner identity, returned only when the viewer is a read-only host. */
+	/** True if the current user may edit it (the owner, or any admin); false = read-only host. */
+	can_edit?: boolean;
+	/** The user the event type belongs to; its availability and calendar/Zoom connections are theirs. */
+	owner_id?: string;
+	/** Owner identity, returned when the viewer is not the owner. */
 	owner_name?: string;
 	owner_email?: string;
 };

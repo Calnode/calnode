@@ -11,8 +11,10 @@ import (
 )
 
 // SendTestEmail handles POST /v1/event-types/{slug}/test-email.
-// It sends a sample email to the authenticated host so they can preview
-// how the custom message looks inside the real email template.
+// It sends a sample email to the caller so they can preview how the custom message
+// looks inside the real email template. When an admin previews someone else's event
+// type, the sample still names the event type's owner as the host (that is what a
+// booker would see), but it goes to the admin who asked for it, never to the owner.
 func (h *Handler) SendTestEmail(w http.ResponseWriter, r *http.Request) {
 	user, _ := userFromContext(r.Context())
 	slug := r.PathValue("slug")
@@ -34,21 +36,24 @@ func (h *Handler) SendTestEmail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Load the event type and its custom messages (verifies ownership first).
-	var etName string
+	// Load the event type, its owner and its custom messages (verifies the caller may
+	// edit it first).
+	var ownerID, ownerName, ownerEmail, etName string
 	var durationMinutes int
 	var locVal, msgConf, msgCancel, msgResched, msgRemind sql.NullString
 	var subjConf, subjCancel, subjResched, subjRemind sql.NullString
 	err := h.db.QueryRowContext(r.Context(), `
-		SELECT name, duration_minutes, location_value,
-		       msg_confirmation, msg_cancellation, msg_reschedule, msg_reminder,
-		       subj_confirmation, subj_cancellation, subj_reschedule, subj_reminder
-		FROM event_types
-		WHERE slug = ? AND user_id = ?`, slug, user.ID).
-		Scan(&etName, &durationMinutes, &locVal,
+		SELECT et.user_id, u.name, u.email,
+		       et.name, et.duration_minutes, et.location_value,
+		       et.msg_confirmation, et.msg_cancellation, et.msg_reschedule, et.msg_reminder,
+		       et.subj_confirmation, et.subj_cancellation, et.subj_reschedule, et.subj_reminder
+		FROM event_types et
+		JOIN users u ON u.id = et.user_id
+		WHERE et.slug = ?`, slug).
+		Scan(&ownerID, &ownerName, &ownerEmail, &etName, &durationMinutes, &locVal,
 			&msgConf, &msgCancel, &msgResched, &msgRemind,
 			&subjConf, &subjCancel, &subjResched, &subjRemind)
-	if err == sql.ErrNoRows {
+	if err == sql.ErrNoRows || (err == nil && !canManageEventType(user, ownerID)) {
 		h.writeError(w, http.StatusNotFound, "event type not found")
 		return
 	}
@@ -89,8 +94,8 @@ func (h *Handler) SendTestEmail(w http.ResponseWriter, r *http.Request) {
 		BookingID:         "preview-test",
 		EventTypeName:     etName,
 		EventTypeSlug:     slug,
-		HostName:          user.Name,
-		HostEmail:         user.Email,
+		HostName:          ownerName,
+		HostEmail:         ownerEmail,
 		OrganizerName:     "Alex Johnson",
 		OrganizerEmail:    user.Email, // send to host so they can review it
 		OrganizerTimezone: user.IANATZ,

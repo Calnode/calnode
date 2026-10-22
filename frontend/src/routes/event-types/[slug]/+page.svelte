@@ -60,6 +60,9 @@
 	let etSaving = $state(false);
 
 	// Connected calendar (the owner's) — drives the meeting-link auto-generation hint.
+	// Only fetched when the viewer owns the event type: the status endpoints describe the
+	// caller's own connections, which say nothing about an event type an admin is editing
+	// for someone else.
 	let calStatus = $state<CalendarStatus | null>(null);
 	// Owner's Zoom connection — drives the Zoom auto-mint hint.
 	let zoomStatus = $state<ZoomStatus | null>(null);
@@ -139,6 +142,10 @@
 	const routingMode = $derived(
 		hostScope === 'me' ? 'fixed' : staffing === 'rotate' ? 'round_robin' : 'collective'
 	);
+	// An admin editing someone else's event type: "Just me" then means the owner, and the
+	// owner's connections, not the admin's, decide which meeting links can be generated.
+	const editingForOwner = $derived(!!et && et.owned === false && et.can_edit !== false);
+	const ownerLabel = $derived(et?.owner_name || et?.owner_email || 'the owner');
 
 	async function loadHosts() {
 		try {
@@ -397,8 +404,10 @@
 					})),
 				});
 			} else {
+				// The owner, not the person saving: an admin saving someone else's single-host
+				// event type would otherwise make themselves its host.
 				await api.put(`/v1/event-types/${effSlug}/hosts`, {
-					hosts: [{ user_id: $currentUser?.id, role: 'required', priority: 0 }],
+					hosts: [{ user_id: et?.owner_id ?? $currentUser?.id, role: 'required', priority: 0 }],
 				});
 			}
 			toast.success('Changes saved');
@@ -462,11 +471,14 @@
 
 	onMount(async () => {
 		await loadET();
-		// Editor-only data (owner-scoped endpoints) — skip for read-only hosts.
-		if (et?.owned === false) return;
-		// Connected calendar — best-effort; drives the meeting-link hint only.
-		api.get<CalendarStatus>('/v1/calendar/status').then((s) => (calStatus = s)).catch(() => {});
-	api.get<ZoomStatus>('/v1/zoom/status').then((s) => (zoomStatus = s)).catch(() => {});
+		// Editor-only data — skip for read-only hosts.
+		if (et?.can_edit === false) return;
+		// Connected calendar — best-effort; drives the meeting-link hint only, and only
+		// for the owner's own event types (see calStatus).
+		if (et?.owned !== false) {
+			api.get<CalendarStatus>('/v1/calendar/status').then((s) => (calStatus = s)).catch(() => {});
+			api.get<ZoomStatus>('/v1/zoom/status').then((s) => (zoomStatus = s)).catch(() => {});
+		}
 		await loadHosts();
 		if (hostScope === 'people') {
 			loadMembers();
@@ -540,7 +552,7 @@
 	<p class="py-8 text-sm text-muted-foreground">Loading…</p>
 {:else if etError}
 	<p class="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{etError}</p>
-{:else if et && et.owned === false}
+{:else if et && et.can_edit === false}
 
 <!-- Read-only: the user hosts this event type but doesn't own it -->
 <div class="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
@@ -569,6 +581,13 @@
 </div>
 
 {:else}
+
+{#if editingForOwner}
+<div class="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+	You're editing <span class="font-medium">{ownerLabel}</span>'s event type as an admin. It stays theirs,
+	and your own calendar and Zoom connections play no part in it.
+</div>
+{/if}
 
 <div class="mb-6 flex gap-1 overflow-x-auto border-b">
 	{#each TABS as t}
@@ -683,7 +702,11 @@
 					{#if isOnlineMeeting(form.location_type)}
 						{@const platform = form.location_type === 'teams' ? 'Microsoft Teams' : 'Google Meet'}
 						<Label for="et-loc-val">{platform} link</Label>
-						{#if meetAutoGen}
+						{#if editingForOwner}
+							<p class="rounded-md border px-3 py-2 text-sm text-muted-foreground">
+								A {platform} link is generated for each booking if {ownerLabel}'s connected calendar can create one. Otherwise paste a link below; saving checks this against their account.
+							</p>
+						{:else if meetAutoGen}
 							<p class="rounded-md border border-green-600/20 bg-green-50 px-3 py-2 text-sm text-green-700">
 								A {platform} link is generated automatically for each booking from your connected calendar.{#if form.location_type === 'teams'} Personal Microsoft accounts can't generate Teams links — add one below as a fallback.{/if}
 							</p>
@@ -698,7 +721,11 @@
 						<Input id="et-loc-val" bind:value={form.location_value} placeholder={meetAutoGen ? 'Optional fallback link' : `Paste a ${platform} link`} />
 					{:else if form.location_type === 'zoom'}
 						<Label for="et-loc-val">Zoom link</Label>
-						{#if zoomAutoGen}
+						{#if editingForOwner}
+							<p class="rounded-md border px-3 py-2 text-sm text-muted-foreground">
+								A Zoom meeting is created for each booking if the host has connected Zoom. Without a link below, saving checks that {ownerLabel} has.
+							</p>
+						{:else if zoomAutoGen}
 							<p class="rounded-md border border-green-600/20 bg-green-50 px-3 py-2 text-sm text-green-700">
 								A Zoom meeting is created automatically for each booking under the assigned host's connected Zoom account.
 							</p>
@@ -828,7 +855,7 @@
 				<div class="inline-flex rounded-lg border bg-muted/40 p-0.5">
 					<button type="button" onclick={() => setScope('me')}
 						class="rounded-md px-3 py-1.5 text-sm font-medium transition-colors {hostScope === 'me' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground'}">
-						Just me
+						{editingForOwner ? `Just ${ownerLabel}` : 'Just me'}
 					</button>
 					<button type="button" onclick={() => setScope('people')}
 						class="rounded-md px-3 py-1.5 text-sm font-medium transition-colors {hostScope === 'people' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground'}">
@@ -837,7 +864,7 @@
 				</div>
 				<p class="text-xs text-muted-foreground">
 					{#if hostScope === 'me'}
-						Every booking goes to you.
+						{editingForOwner ? `Every booking goes to ${ownerLabel}.` : 'Every booking goes to you.'}
 					{:else}
 						Pick who can take these bookings — add members individually or pull in a whole team.
 					{/if}
@@ -1135,7 +1162,7 @@
 </div>
 {/if}
 
-{#if activeTab === 'hosts' && $currentUser?.is_admin}
+{#if activeTab === 'hosts' && $currentUser?.is_admin && et?.owned !== false}
 	<div class="mt-6 space-y-3 border-t pt-5">
 		<Label for="transfer-owner">Transfer ownership</Label>
 		<p class="text-sm text-muted-foreground">Choose a saved required host. The booking URL stays the same. Transfer is available only when there are no upcoming bookings. Calendar connections and global availability stay with each account.</p>
