@@ -29,13 +29,13 @@ func validateInvitationCreate(ctx context.Context, tx *sql.Tx, p *CreateParams) 
 	for rows.Next() {
 		var id, role string
 		if err := rows.Scan(&id, &role); err != nil {
-			rows.Close()
+			rows.Close() // #nosec G104 -- cleanup after scan failure; preserve the original error
 			return err
 		}
 		roles[id] = role
 	}
 	err = rows.Err()
-	rows.Close()
+	rows.Close() // #nosec G104 -- rows fully consumed; iteration/driver errors checked through rows.Err()
 	if err != nil {
 		return err
 	}

@@ -35,14 +35,14 @@ func (h *Handler) ListSchedulingInvitations(w http.ResponseWriter, r *http.Reque
 	for rows.Next() {
 		var id string
 		if err := rows.Scan(&id); err != nil {
-			rows.Close()
+			rows.Close() // #nosec G104 -- cleanup after scan failure; preserve the original error
 			h.invitationError(w, r, err)
 			return
 		}
 		ids = append(ids, id)
 	}
 	err = rows.Err()
-	rows.Close()
+	rows.Close() // #nosec G104 -- rows fully consumed; iteration/driver errors checked through rows.Err()
 	if err != nil {
 		h.invitationError(w, r, err)
 		return

@@ -18,6 +18,7 @@ func credentialImage(value string) string {
 	return ""
 }
 
+// #nosec G101 -- Content Security Policy directives, not a credential or secret.
 const credentialCSP = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
 
 var invitationStateTmpl = template.Must(template.New("invitation-state").Parse(`<!doctype html><html lang="{{.Locale}}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>{{.Title}}</title><link rel="stylesheet" href="/booking.css"></head><body><main class="card"><h1>{{.Title}}</h1><p>{{.Message}}</p></main></body></html>`))
@@ -55,19 +56,19 @@ func (h *Handler) InvitationPage(w http.ResponseWriter, r *http.Request) {
 		var q bookQuestion
 		var options string
 		if err := rows.Scan(&q.ID, &q.Label, &q.QType, &options, &q.Required); err != nil {
-			rows.Close()
+			rows.Close() // #nosec G104 -- cleanup after scan failure; preserve the original error
 			h.renderInvitationState(w, r, loc, http.StatusServiceUnavailable, loc.T("err_invitation_unavailable"))
 			return
 		}
 		if err := json.Unmarshal([]byte(options), &q.Options); err != nil {
-			rows.Close()
+			rows.Close() // #nosec G104 -- cleanup after JSON decode failure; preserve the original error
 			h.renderInvitationState(w, r, loc, http.StatusServiceUnavailable, loc.T("err_invitation_unavailable"))
 			return
 		}
 		questions = append(questions, q)
 	}
 	err = rows.Err()
-	rows.Close()
+	rows.Close() // #nosec G104 -- rows fully consumed; iteration/driver errors checked through rows.Err()
 	if err != nil {
 		h.renderInvitationState(w, r, loc, http.StatusServiceUnavailable, loc.T("err_invitation_unavailable"))
 		return
@@ -114,10 +115,10 @@ func (h *Handler) InvitationPage(w http.ResponseWriter, r *http.Request) {
 		MaxFutureDays:    schedule.Event.MaxFutureDays,
 		Questions:        questions,
 		CSSVersion:       bookingCSSVersion,
-		BookingLogicJS:   template.JS(bookingLogicJS),
+		BookingLogicJS:   template.JS(bookingLogicJS), // #nosec G203 -- embedded assets/booking-logic.js, not user input
 		Locale:           loc.Code,
 		T:                loc.T,
-		I18NJSON:         template.JS(translations),
+		I18NJSON:         template.JS(translations), // #nosec G203 -- Locale.JSON uses json.Marshal, which escapes <, > and & for script embedding
 		DataLayerFields:  template.JS("[]"),
 		QuestionsJSON:    template.JS("{}"),
 		BusinessName:     brand.BusinessName,

@@ -33,13 +33,13 @@ func (h *Handler) bookingInvitationContext(ctx context.Context, b *booking.Booki
 	for rows.Next() {
 		var id string
 		if err := rows.Scan(&id); err != nil {
-			rows.Close()
+			rows.Close() // #nosec G104 -- cleanup after scan failure; preserve the original error
 			return schedulingContext{}, err
 		}
 		hosts = append(hosts, EventHost{UserID: id, Role: "required"})
 	}
 	err = rows.Err()
-	rows.Close()
+	rows.Close() // #nosec G104 -- rows fully consumed; iteration/driver errors checked through rows.Err()
 	if err != nil {
 		return schedulingContext{}, err
 	}

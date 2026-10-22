@@ -36,13 +36,13 @@ func (s *Service) bookingInvitationCorrelation(ctx context.Context, source invit
 		var hostID, name string
 		var primary bool
 		if err := rows.Scan(&hostID, &name, &primary); err != nil {
-			rows.Close()
+			rows.Close() // #nosec G104 -- cleanup after scan failure; preserve the original error
 			return nil, err
 		}
 		hosts = append(hosts, map[string]any{"id": hostID, "name": name, "is_primary": primary})
 	}
 	err = rows.Err()
-	rows.Close()
+	rows.Close() // #nosec G104 -- rows fully consumed; iteration/driver errors checked through rows.Err()
 	if err != nil {
 		return nil, err
 	}
@@ -72,13 +72,13 @@ func (s *Service) ProcessSchedulingInvitations(ctx context.Context) error {
 	for rows.Next() {
 		var p pending
 		if err := rows.Scan(&p.id, &p.invID, &p.event, &p.createdAt, &p.payload, &p.owner); err != nil {
-			rows.Close()
+			rows.Close() // #nosec G104 -- cleanup after scan failure; preserve the original error
 			return err
 		}
 		batch = append(batch, p)
 	}
 	err = rows.Err()
-	rows.Close()
+	rows.Close() // #nosec G104 -- rows fully consumed; iteration/driver errors checked through rows.Err()
 	if err != nil {
 		return err
 	}
@@ -110,12 +110,12 @@ func (s *Service) ProcessSchedulingInvitations(ctx context.Context) error {
 		for whRows.Next() {
 			var id, raw string
 			if err := whRows.Scan(&id, &raw); err != nil {
-				whRows.Close()
+				whRows.Close() // #nosec G104 -- cleanup after scan failure; preserve the original error
 				return err
 			}
 			var events []string
 			if err := json.Unmarshal([]byte(raw), &events); err != nil {
-				whRows.Close()
+				whRows.Close() // #nosec G104 -- cleanup after JSON decode failure; preserve the original error
 				return err
 			}
 			for _, event := range events {
@@ -126,7 +126,7 @@ func (s *Service) ProcessSchedulingInvitations(ctx context.Context) error {
 			}
 		}
 		err = whRows.Err()
-		whRows.Close()
+		whRows.Close() // #nosec G104 -- rows fully consumed; iteration/driver errors checked through rows.Err()
 		if err != nil {
 			return err
 		}

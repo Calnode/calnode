@@ -151,19 +151,19 @@ func recheckSchedulingContext(ctx context.Context, source dbQuerier, schedule sc
 		for rows.Next() {
 			var ss, es string
 			if err := rows.Scan(&ss, &es); err != nil {
-				rows.Close()
+				rows.Close() // #nosec G104 -- cleanup after scan failure; preserve the original error
 				return nil, err
 			}
 			s, e1 := time.Parse(time.RFC3339Nano, ss)
 			e, e2 := time.Parse(time.RFC3339Nano, es)
 			if e1 != nil || e2 != nil {
-				rows.Close()
+				rows.Close() // #nosec G104 -- cleanup before rejecting invalid stored booking times
 				return nil, errSlotUnavailable
 			}
 			ha.Busy = append(ha.Busy, slots.Interval{Start: s, End: e})
 		}
 		err = rows.Err()
-		rows.Close()
+		rows.Close() // #nosec G104 -- rows fully consumed; iteration/driver errors checked through rows.Err()
 		if err != nil {
 			return nil, err
 		}
