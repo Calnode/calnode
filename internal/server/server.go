@@ -125,7 +125,13 @@ func BuildHandler(ctx context.Context, cfg *config.Config, db *sql.DB, logger *s
 	} else {
 		h.SetWebhookSvc(whs)
 		// Pass live so the worker picks up SMTP changes automatically.
-		wrk := worker.New(db, whs, logger, worker.WithMailer(live))
+		// Reminder emails need the booker-facing host to make branding asset paths
+		// absolute — mirror handler.publicURL()'s PUBLIC_BASE_URL → BaseURL fallback.
+		publicURL := cfg.PublicBaseURL
+		if publicURL == "" {
+			publicURL = cfg.BaseURL
+		}
+		wrk := worker.New(db, whs, logger, worker.WithMailer(live), worker.WithPublicURL(publicURL))
 		// Notetaker jobs live in the handler package (they need LLM/S3/encKey).
 		wrk.RegisterHandler("notetaker.transcribe", h.JobNotetakerTranscribe)
 		wrk.RegisterHandler("notetaker.summarize", h.JobNotetakerSummarize)

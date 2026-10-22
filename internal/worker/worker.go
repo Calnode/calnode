@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/calnode/calnode/internal/branding"
 	"github.com/calnode/calnode/internal/i18n"
 	"github.com/calnode/calnode/internal/mailer"
 	"github.com/calnode/calnode/internal/netutil"
@@ -30,6 +31,7 @@ type Worker struct {
 	mailer     mailer.Mailer
 	logger     *slog.Logger
 	httpClient *http.Client
+	publicURL  string                                         // booker-facing base URL for outbound email links/assets
 	handlers   map[string]func(context.Context, string) error // custom job types (e.g. notetaker)
 	done       chan struct{}
 }
@@ -49,6 +51,14 @@ func WithHTTPClient(c *http.Client) func(*Worker) {
 // WithMailer configures the mailer used to send reminder emails.
 func WithMailer(m mailer.Mailer) func(*Worker) {
 	return func(w *Worker) { w.mailer = m }
+}
+
+// WithPublicURL sets the booker-facing base URL used to turn stored relative
+// branding asset paths into absolute URLs in outbound email. Callers pass the
+// same value handler.publicURL() resolves (PUBLIC_BASE_URL, falling back to the
+// identity base URL).
+func WithPublicURL(url string) func(*Worker) {
+	return func(w *Worker) { w.publicURL = url }
 }
 
 func New(db *sql.DB, svc *webhook.Service, logger *slog.Logger, opts ...func(*Worker)) *Worker {
@@ -348,10 +358,12 @@ func (w *Worker) sendReminder(ctx context.Context, payload string) error {
 	}
 	d.Locale = i18n.Get(locale)
 
-	// Brand the reminder email with the instance wordmark/logo.
-	_ = w.db.QueryRowContext(ctx, `
-		SELECT COALESCE(business_name,''), COALESCE(logo_url,'')
-		FROM server_settings WHERE id = 1`).Scan(&d.BrandName, &d.LogoURL)
+	// Brand the reminder email with the instance wordmark/logo/banner. Reminders
+	// used to read business_name/logo_url straight from server_settings here, which
+	// skipped the relative→absolute URL step and never loaded the banner, so mail
+	// clients rendered a broken <img src="/branding/logo?..."> (#167). The shared
+	// branding package is now the only place that does this.
+	branding.Load(ctx, w.db).ApplyTo(&d, w.publicURL)
 
 	if err := mailer.SendReminder(ctx, w.mailer, d); err != nil {
 		return fmt.Errorf("worker: reminder: send: %w", err)
