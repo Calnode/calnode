@@ -270,3 +270,70 @@ func TestWorker_reminderNamesAssignedHost(t *testing.T) {
 		t.Errorf("reminder body names the event-type owner; want the assigned host:\n%s", msg.Text)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// reminder.send: branding reaches the email as absolute URLs (#167)
+// ---------------------------------------------------------------------------
+
+// Reminder emails skipped the handler's applyBranding: they read logo_url
+// straight from server_settings and never loaded the banner. The stored value is
+// a relative served path, so the rendered <img src="/branding/logo?..."> was
+// unresolvable in a mail client and the logo silently disappeared. Assert the
+// worker now emits absolute asset URLs and carries the banner too.
+func TestWorker_reminderEmailCarriesAbsoluteBranding(t *testing.T) {
+	database, svc := setup(t)
+	ctx := context.Background()
+
+	pastRunAt := time.Now().UTC().Add(-time.Second).Format(time.RFC3339)
+	bookingStart := time.Now().UTC().Add(25 * time.Hour).Format(time.RFC3339)
+
+	if _, err := database.ExecContext(ctx, `
+		UPDATE server_settings SET
+		  business_name = 'Acme Scheduling',
+		  logo_url = '/branding/logo?v=42',
+		  logo_height = 40,
+		  logo_opacity = 80,
+		  banner_url = '/branding/banner?v=43',
+		  banner_opacity = 60
+		WHERE id = 1`); err != nil {
+		t.Fatalf("seed branding: %v", err)
+	}
+
+	database.ExecContext(ctx,
+		`INSERT INTO event_types (id, user_id, slug, name, duration_minutes)
+		 VALUES ('et-b1','host-01','rem-brand-1','Branded Meeting',30)`)
+	database.ExecContext(ctx,
+		`INSERT INTO bookings (id, event_type_id, host_id, start_at, end_at, status)
+		 VALUES ('bk-b1','et-b1','host-01',?,?,'confirmed')`, bookingStart, bookingStart)
+	database.ExecContext(ctx,
+		`INSERT INTO booking_attendees (id, booking_id, name, email, iana_timezone, is_organizer)
+		 VALUES ('att-b1','bk-b1','Alice','alice@example.com','UTC',1)`)
+	database.ExecContext(ctx, `
+		INSERT INTO jobs (id, type, payload, run_at, status, attempts, max_attempts)
+		VALUES ('job-b1','reminder.send','{"booking_id":"bk-b1"}',?,'pending',0,3)`,
+		pastRunAt)
+
+	m := &captureMailer{}
+	w := worker.New(database, svc, slog.Default(),
+		worker.WithMailer(m),
+		worker.WithPublicURL("https://book.example.com"),
+		worker.WithHTTPClient(&http.Client{}))
+	w.Poll(ctx)
+
+	if len(m.sent) != 1 {
+		t.Fatalf("sent %d emails; want 1", len(m.sent))
+	}
+	html := m.sent[0].HTML
+	for _, want := range []string{
+		`src="https://book.example.com/branding/logo?v=42"`,
+		`src="https://book.example.com/branding/banner?v=43"`,
+		"Acme Scheduling",
+	} {
+		if !strings.Contains(html, want) {
+			t.Errorf("reminder HTML missing %q", want)
+		}
+	}
+	if strings.Contains(html, `src="/branding/`) {
+		t.Error("reminder HTML still contains a relative branding asset path")
+	}
+}
