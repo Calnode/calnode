@@ -130,6 +130,7 @@ body {
         {{end}}
       </span>
       {{end}}
+      {{if .HostsMore}}<span class="face face-more" style="z-index:100">+{{.HostsMore}}</span>{{end}}
     </div>
     <p id="host-name" class="host-name">{{.HostsLabel}}</p>
     <h1 class="event-name">{{.Name}}</h1>
@@ -300,6 +301,7 @@ body {
   // The default face(s) are server-rendered; on slot-pick we swap to the host(s)
   // that slot's host_ids resolve to (round-robin: the priority pick; group: all).
   let hostMeta = {};
+  const MAX_FACES = 3; // keep in step with maxHostFaces in book.go
   const facesEl = $('host-faces'), nameEl = $('host-name');
   const defaultFacesHTML = facesEl ? facesEl.innerHTML : '';
   const defaultName = nameEl ? nameEl.textContent : '';
@@ -332,8 +334,13 @@ body {
     if (!facesEl) return;
     const metas = (ids || []).map(id => hostMeta[id]).filter(Boolean);
     if (!metas.length) return; // unknown — keep whatever's shown
-    const n = metas.length;
-    facesEl.innerHTML = metas.map((m, i) => faceHTML(m, (n - i) * 10)).join('');
+    // Cap the stack so it cannot overflow the info panel into the calendar (#166).
+    // Keep in step with maxHostFaces in book.go and the embed widget's copy.
+    const shown = metas.slice(0, MAX_FACES);
+    const more = metas.length - shown.length;
+    facesEl.innerHTML =
+      shown.map((m, i) => faceHTML(m, (shown.length - i) * 10)).join('') +
+      (more > 0 ? `<span class="face face-more" style="z-index:100">+${more}</span>` : '');
     nameEl.textContent = hostsLabel(metas);
   }
   function restoreDefaultHosts() {

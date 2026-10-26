@@ -54,7 +54,8 @@ type bookPageData struct {
 	HostName         string
 	HostInitial      string
 	AvatarURL        string
-	Hosts            []hostDisplay // faces for the info panel (1 = single, >1 = group stack)
+	Hosts            []hostDisplay // faces for the info panel (1 = single, >1 = group stack); capped at maxHostFaces
+	HostsMore        int           // >0 when the stack was capped: hosts not drawn, shown as a "+N" chip
 	HostsLabel       string        // "Alex, Sam & 2 others" for the group case
 	// SoleHostName is the host's name when this event type has exactly one, and "" when
 	// it has several. It is what lets an empty day read "Alex has no available times on
@@ -158,6 +159,29 @@ func (h *Handler) displayHosts(ctx context.Context, etID, mode string) []hostDis
 	// actually belong to someone else. On slot-pick the JS narrows the header to that
 	// slot's assigned host. Other modes show their whole required set.
 	return out
+}
+
+// maxHostFaces caps the host face stack in the info panel. The panel is 240px
+// wide with 1.5rem padding (192px of content); each face is 56px and the stack
+// overlaps by 16px, so four circles already fill 176px. Drawing every face of a
+// six-host team overflowed the panel and spilled into the calendar (#166). Three
+// faces plus a "+N" chip matches the label, which names at most three hosts.
+const maxHostFaces = 3
+
+// capHostFaces returns at most limit faces for drawing.
+func capHostFaces(hosts []hostDisplay, limit int) []hostDisplay {
+	if limit <= 0 || len(hosts) <= limit {
+		return hosts
+	}
+	return hosts[:limit]
+}
+
+// hostsOverflow counts the hosts capHostFaces left out, for the "+N" chip.
+func hostsOverflow(hosts []hostDisplay, limit int) int {
+	if limit <= 0 || len(hosts) <= limit {
+		return 0
+	}
+	return len(hosts) - limit
 }
 
 // hostsLabel renders a group host list as "Alex, Sam & 2 others" (first names), or
@@ -522,7 +546,8 @@ func (h *Handler) BookPage(w http.ResponseWriter, r *http.Request) {
 		HostName:            hosts[0].Name,
 		HostInitial:         hosts[0].Initial,
 		AvatarURL:           hosts[0].AvatarURL,
-		Hosts:               hosts,
+		Hosts:               capHostFaces(hosts, maxHostFaces),
+		HostsMore:           hostsOverflow(hosts, maxHostFaces),
 		HostsLabel:          hostsLabel(hosts, loc),
 		SoleHostName:        soleHostName(hosts),
 		MinNoticeLabel:      noticeLabel(minNotice, loc),
