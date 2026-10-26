@@ -36,6 +36,28 @@ import (
 // uses it to back the HTTP server; the `calnode mcp` subcommand uses it to serve the
 // MCP server over stdio. The returned drain func blocks until the background worker
 // has finished its current poll cycle.
+// newMCPStreamableHandler builds the Streamable HTTP transport for POST /mcp.
+//
+// Stateless is deliberate, not a default that slipped through. The go-sdk only
+// advertises and serves protocol 2026-07-28 (SEP-2575's server/discover flow) on a
+// stateless transport: StreamableServerTransport.SupportsProtocolVersion filters
+// every version >= 2026-07-28 out of a stateful one, so /mcp answered discovery
+// with a list ending at 2025-11-25. ChatGPT's connector flow asks for 2026-07-28
+// and does not fall back to an older version, so its action discovery failed
+// (#170). Clients that negotiate down (MCP Inspector, MiniMax, plain SDK clients)
+// were unaffected — which is why this went unnoticed.
+//
+// Calnode holds no MCP session state: each request is authenticated on its own by
+// RequireBearerToken + MCPCallerMiddleware, and no tool sends server->client
+// requests or notifications. The trade-off is that GET and DELETE /mcp answer 405,
+// since there is no session to stream or terminate.
+func newMCPStreamableHandler(srv *mcp.Server) http.Handler {
+	return mcp.NewStreamableHTTPHandler(
+		func(*http.Request) *mcp.Server { return srv },
+		&mcp.StreamableHTTPOptions{Stateless: true},
+	)
+}
+
 func BuildHandler(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logger) (*handler.Handler, func()) {
 	h := handler.New(db, logger)
 	h.SetBaseURL(cfg.BaseURL)
@@ -306,7 +328,7 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	// an OAuth access token (the "Connect" flow) or a cno_ API key, both resolved by
 	// verifyMCPBearer. A 401 advertises the OAuth discovery doc so clients can connect.
 	mcpSrv := h.MCPServer()
-	mcpHTTP := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return mcpSrv }, nil)
+	mcpHTTP := newMCPStreamableHandler(mcpSrv)
 	mcpAuth := auth.RequireBearerToken(h.VerifyMCPBearer, &auth.RequireBearerTokenOptions{
 		ResourceMetadataURL: cfg.BaseURL + "/.well-known/oauth-protected-resource",
 	})
