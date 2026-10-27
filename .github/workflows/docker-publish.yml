@@ -34,6 +34,11 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      # Digest of the multi-arch index this job pushed. The arm64 smoke test
+      # pulls exactly this image, so it cannot test a stale tag and cannot race
+      # the publish: it runs after this job, against the bytes just published.
+      digest: ${{ steps.build.outputs.digest }}
     # Without this the job inherits GitHub's 360-minute default, so a hung
     # multi-arch build sits for six hours before being cancelled (observed on
     # one branch, cancelled at exactly 6h0m44s). Normal duration is 11-13
@@ -77,6 +82,7 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
 
       - name: Build (push on branch pushes and on tags)
+        id: build
         uses: docker/build-push-action@v7
         with:
           context: .
@@ -118,6 +124,90 @@ jobs:
           name: standalone-binaries
           path: dist/release/
           if-no-files-found: error
+
+  arm64-smoke:
+    # Proves the arm64 half of the multi-arch image actually runs on an ARM CPU,
+    # not under QEMU. The build job cross-builds both arches under emulation,
+    # which cannot demonstrate native execution; this pulls the just-published
+    # digest onto a real arm64 runner and starts it.
+    #
+    # Free and unmetered: standard arm64 runners cost nothing on public repos.
+    # Skipped on pull requests, where nothing is pushed to pull.
+    needs: build
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Prove this runner is genuinely arm64
+        run: |
+          set -euo pipefail
+          echo "uname -m: $(uname -m)"
+          echo "nproc: $(nproc)"
+          test "$(uname -m)" = "aarch64"
+
+      - name: Pull the image this build just published
+        env:
+          IMAGE_REF: "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.build.outputs.digest }}"
+        run: |
+          set -euo pipefail
+          if [ -z "${{ needs.build.outputs.digest }}" ]; then
+            echo "::error::build produced no digest, so there is nothing to verify"
+            exit 1
+          fi
+          docker pull "$IMAGE_REF"
+          docker image inspect "$IMAGE_REF" --format 'image arch: {{.Architecture}} / {{.Os}}'
+
+      - name: Run it natively, as a deployment would
+        env:
+          IMAGE_REF: "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.build.outputs.digest }}"
+        run: |
+          set -euo pipefail
+          docker run -d --name calnode \
+            -p 127.0.0.1:3000:3000 \
+            -e PORT=3000 \
+            -e DATABASE_URL=sqlite:///data/calnode.db \
+            -e BASE_URL=http://127.0.0.1:3000 \
+            -v calnode-data:/data \
+            "$IMAGE_REF"
+          echo "container arch: $(docker exec calnode uname -m)"
+
+      - name: Wait for HTTP and assert the app serves
+        run: |
+          set -euo pipefail
+          for i in $(seq 1 60); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/ || true)
+            if [ "$code" = "200" ] || [ "$code" = "302" ] || [ "$code" = "307" ]; then
+              echo "app answered on native arm64 (attempt $i, HTTP $code)"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::app did not answer within 120s on arm64"
+          exit 1
+
+      - name: Assert the admin UI loads
+        run: |
+          set -euo pipefail
+          code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/admin/)
+          echo "/admin/ -> HTTP $code"
+          test "$code" = "200"
+
+      - name: Assert the encryption key was persisted, not ephemeral
+        # This is the regression guard for the quick-start trap: a first start with
+        # no CALNODE_ENCRYPTION_KEY must write a key beside the database, so stored
+        # credentials survive a restart instead of becoming unreadable.
+        run: |
+          set -euo pipefail
+          docker exec calnode cat /data/calnode.key >/dev/null
+          docker run --rm -v calnode-data:/data alpine:3 sh -c 'test -s /data/calnode.key' \
+            && echo "key persisted beside the database"
+
+      - name: Show app logs
+        if: always()
+        run: docker logs calnode 2>&1 | tail -30
 
   release:
     # Only on a version tag, and only once the image built + pushed.
