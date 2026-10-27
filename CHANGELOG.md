@@ -11,6 +11,19 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
 
 ## [Unreleased]
 
+### Fixed
+- **An NS8 module release can no longer mix architectures.** The module build pushes each
+  architecture to a fixed staging tag (`:build-amd64`, `:build-arm64`) and then assembles the
+  multi-arch index from them. The workflow's concurrency group included the git ref, so a
+  push to `main` and a release tag — which are cut seconds apart — ran concurrently and
+  overwrote each other's staging images, publishing a manifest whose amd64 and arm64 came
+  from different releases. This is exactly what happened while cutting 0.11.2: `:edge`
+  carried amd64 from the tag (app `0.11.2`) and arm64 from `main` (app `edge`). The release
+  tags themselves were coherent; `:edge` was rebuilt. All module publishes now share one
+  concurrency group and serialise, with `cancel-in-progress` off so a release build cannot be
+  cancelled by an unrelated push. The post-publish architecture assertion is what caught it
+  and remains in place.
+
 ## [0.11.2] - 2026-10-28
 
 ### Added
