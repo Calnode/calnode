@@ -47,6 +47,33 @@ func (s *Service) Create(ctx context.Context, p CreateParams) (*Booking, error) 
 	defer tx.Rollback() //nolint:errcheck
 
 	now := time.Now().UTC().Format(time.RFC3339Nano)
+	if p.SchedulingInvitationID != "" {
+		var claimable bool
+		if err := tx.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM scheduling_invitations i
+			JOIN scheduling_invitation_tokens t ON t.invitation_id = i.id
+			WHERE i.id = ? AND i.status = 'active' AND i.booking_id IS NULL
+			AND t.token_hash = ? AND t.consumed_at IS NULL
+			AND julianday(i.expires_at) > julianday(?) AND julianday(t.expires_at) > julianday(?))`,
+			p.SchedulingInvitationID, p.InvitationTokenHash, now, now).Scan(&claimable); err != nil {
+			return nil, err
+		}
+		if !claimable {
+			return nil, ErrInvitationUnavailable
+		}
+		if err := validateInvitationCreate(ctx, tx, &p); err != nil {
+			return nil, err
+		}
+	}
+	if p.ValidateTx != nil {
+		if err := p.ValidateTx(ctx, tx, &p); err != nil {
+			return nil, err
+		}
+	}
+	if len(p.HostIDs) == 0 {
+		return nil, ErrDoubleBooked
+	}
+	checkStart := p.StartAt.UTC().Add(-time.Duration(p.BufferAfterMinutes) * time.Minute).Format(time.RFC3339Nano)
+	checkEnd := p.EndAt.UTC().Add(time.Duration(p.BufferBeforeMinutes) * time.Minute).Format(time.RFC3339Nano)
 
 	// Select hosts. Round-robin picks one *free* candidate from the rotation pool
 	// per p.RRStrategy (free candidates stay in priority order). Any
@@ -58,7 +85,7 @@ func (s *Service) Create(ctx context.Context, p CreateParams) (*Booking, error) 
 	if p.RoutingMode == "round_robin" {
 		// Fixed hosts always attend — all must be free.
 		for _, hostID := range p.RequiredHosts {
-			busy, err := hostBusy(ctx, tx, hostID, startStr, endStr, "")
+			busy, err := hostBusy(ctx, tx, hostID, checkStart, checkEnd, "")
 			if err != nil {
 				return nil, fmt.Errorf("booking: overlap check: %w", err)
 			}
@@ -70,7 +97,7 @@ func (s *Service) Create(ctx context.Context, p CreateParams) (*Booking, error) 
 		// Rotation pool — pick exactly one free host by strategy.
 		var free []string
 		for _, hostID := range p.HostIDs {
-			busy, err := hostBusy(ctx, tx, hostID, startStr, endStr, "")
+			busy, err := hostBusy(ctx, tx, hostID, checkStart, checkEnd, "")
 			if err != nil {
 				return nil, fmt.Errorf("booking: overlap check: %w", err)
 			}
@@ -89,7 +116,7 @@ func (s *Service) Create(ctx context.Context, p CreateParams) (*Booking, error) 
 		assigned = append(assigned, chosen)
 	} else {
 		for _, hostID := range p.HostIDs {
-			busy, err := hostBusy(ctx, tx, hostID, startStr, endStr, "")
+			busy, err := hostBusy(ctx, tx, hostID, checkStart, checkEnd, "")
 			if err != nil {
 				return nil, fmt.Errorf("booking: overlap check: %w", err)
 			}
@@ -106,7 +133,7 @@ func (s *Service) Create(ctx context.Context, p CreateParams) (*Booking, error) 
 		if slices.Contains(assigned, hostID) {
 			continue
 		}
-		busy, err := hostBusy(ctx, tx, hostID, startStr, endStr, "")
+		busy, err := hostBusy(ctx, tx, hostID, checkStart, checkEnd, "")
 		if err != nil {
 			return nil, fmt.Errorf("booking: optional overlap check: %w", err)
 		}
@@ -160,10 +187,10 @@ func (s *Service) Create(ctx context.Context, p CreateParams) (*Booking, error) 
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO bookings
 		  (id, event_type_id, host_id, start_at, end_at, status, location_value, location_type,
-		   invite_delivery, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, 'confirmed', ?, ?, ?, ?, ?)`,
+		   invite_delivery, created_at, updated_at, scheduling_invitation_id)
+		VALUES (?, ?, ?, ?, ?, 'confirmed', ?, ?, ?, ?, ?, NULLIF(?, ''))`,
 		bookingID, p.EventTypeID, chosenHost, startStr, endStr, p.LocationValue, p.LocationType,
-		inviteDelivery, now, now)
+		inviteDelivery, now, now, p.SchedulingInvitationID)
 	if err != nil {
 		if db.IsUniqueViolation(err) {
 			return nil, ErrDoubleBooked
@@ -211,23 +238,42 @@ func (s *Service) Create(ctx context.Context, p CreateParams) (*Booking, error) 
 		}
 	}
 
+	if p.SchedulingInvitationID != "" {
+		res, err := tx.ExecContext(ctx, `UPDATE scheduling_invitations SET status = 'booked', booking_id = ?, updated_at = ?
+			WHERE id = ? AND status = 'active' AND booking_id IS NULL AND julianday(expires_at) > julianday(?)`, bookingID, now, p.SchedulingInvitationID, now)
+		if err != nil {
+			return nil, err
+		}
+		if n, _ := res.RowsAffected(); n != 1 {
+			return nil, ErrInvitationUnavailable
+		}
+		res, err = tx.ExecContext(ctx, `UPDATE scheduling_invitation_tokens SET consumed_at = ?
+			WHERE invitation_id = ? AND token_hash = ? AND consumed_at IS NULL AND julianday(expires_at) > julianday(?)`, now, p.SchedulingInvitationID, p.InvitationTokenHash, now)
+		if err != nil {
+			return nil, err
+		}
+		if n, _ := res.RowsAffected(); n != 1 {
+			return nil, ErrInvitationUnavailable
+		}
+	}
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("booking: commit: %w", err)
 	}
 
 	nowT, _ := time.Parse(time.RFC3339Nano, now)
 	return &Booking{
-		ID:             bookingID,
-		EventTypeID:    p.EventTypeID,
-		HostID:         chosenHost,
-		StartAt:        p.StartAt.UTC(),
-		EndAt:          p.EndAt.UTC(),
-		Status:         "confirmed",
-		LocationValue:  p.LocationValue,
-		LocationType:   p.LocationType,
-		InviteDelivery: inviteDelivery,
-		CreatedAt:      nowT,
-		UpdatedAt:      nowT,
+		SchedulingInvitationID: p.SchedulingInvitationID,
+		ID:                     bookingID,
+		EventTypeID:            p.EventTypeID,
+		HostID:                 chosenHost,
+		StartAt:                p.StartAt.UTC(),
+		EndAt:                  p.EndAt.UTC(),
+		Status:                 "confirmed",
+		LocationValue:          p.LocationValue,
+		LocationType:           p.LocationType,
+		InviteDelivery:         inviteDelivery,
+		CreatedAt:              nowT,
+		UpdatedAt:              nowT,
 	}, nil
 }
 
@@ -307,7 +353,7 @@ const bookingColumns = `id, event_type_id, host_id, start_at, end_at, status,
 	       COALESCE(cancellation_reason, ''), COALESCE(location_value, ''),
 	       created_at, updated_at,
 	       payment_status, amount_paid_cents, amount_paid_currency, location_type,
-	       confirm_failed, invite_delivery`
+	       confirm_failed, invite_delivery, COALESCE(scheduling_invitation_id, '')`
 
 // hostBusy reports whether hostID has any non-cancelled booking overlapping
 // [start, end) — the double-booking invariant every write path (Create, Reschedule,
@@ -478,6 +524,12 @@ func leastLoadedHost(ctx context.Context, tx *sql.Tx, eventTypeID string, candid
 // it is cancelled, and ErrDoubleBooked if the new slot overlaps another
 // confirmed booking for the same host.
 func (s *Service) Reschedule(ctx context.Context, bookingID string, newStart, newEnd time.Time) (*Booking, error) {
+	return s.RescheduleValidated(ctx, bookingID, newStart, newEnd, nil)
+}
+
+// RescheduleValidated accepts a local transaction recheck after the caller has
+// completed external calendar checks. Invitation moves require this recheck.
+func (s *Service) RescheduleValidated(ctx context.Context, bookingID string, newStart, newEnd time.Time, validate func(context.Context, *sql.Tx) error) (*Booking, error) {
 	startStr := newStart.UTC().Format(time.RFC3339Nano)
 	endStr := newEnd.UTC().Format(time.RFC3339Nano)
 
@@ -493,6 +545,23 @@ func (s *Service) Reschedule(ctx context.Context, bookingID string, newStart, ne
 	}
 	if b.Status == "cancelled" {
 		return nil, ErrAlreadyCancelled
+	}
+	checkStart, checkEnd := startStr, endStr
+	if b.SchedulingInvitationID != "" {
+		if validate == nil {
+			return nil, ErrInvitationUnavailable
+		}
+		before, after, err := invitationRescheduleBounds(ctx, tx, b, newStart, newEnd)
+		if err != nil {
+			return nil, err
+		}
+		checkStart = newStart.UTC().Add(-time.Duration(after) * time.Minute).Format(time.RFC3339Nano)
+		checkEnd = newEnd.UTC().Add(time.Duration(before) * time.Minute).Format(time.RFC3339Nano)
+	}
+	if validate != nil {
+		if err := validate(ctx, tx); err != nil {
+			return nil, err
+		}
 	}
 
 	// Every host on this booking keeps their seat through a reschedule, so each
@@ -516,7 +585,7 @@ func (s *Service) Reschedule(ctx context.Context, bookingID string, newStart, ne
 		hostIDs = []string{b.HostID}
 	}
 	for _, hid := range hostIDs {
-		busy, err := hostBusy(ctx, tx, hid, startStr, endStr, bookingID)
+		busy, err := hostBusy(ctx, tx, hid, checkStart, checkEnd, bookingID)
 		if err != nil {
 			return nil, fmt.Errorf("booking: reschedule overlap: %w", err)
 		}
@@ -568,6 +637,10 @@ func (s *Service) ReassignHost(ctx context.Context, bookingID, newHostID string)
 	}
 	if b.HostID == newHostID {
 		return b, nil // already this host — nothing to do
+	}
+	// An invitation's assigned hosts are retained through its booking lifecycle.
+	if b.SchedulingInvitationID != "" {
+		return nil, ErrInvitationUnavailable
 	}
 
 	startStr := b.StartAt.UTC().Format(time.RFC3339Nano)
@@ -677,6 +750,7 @@ func scanBooking(s scanner) (*Booking, error) {
 		&createdStr, &updatedStr,
 		&b.PaymentStatus, &b.AmountPaidCents, &b.AmountPaidCurrency, &b.LocationType,
 		&confirmFailed, &b.InviteDelivery,
+		&b.SchedulingInvitationID,
 	)
 	if err == sql.ErrNoRows {
 		return nil, ErrNotFound
