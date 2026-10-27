@@ -27,10 +27,13 @@ docker run -p 3000:3000 -v ./data:/data ghcr.io/calnode/calnode:latest
 ```
 
 The whole app — booking pages, admin UI, SQLite — in one container, with data in
-`./data`. With no encryption key set it runs on an ephemeral one (fine for a look;
-stored credentials won't survive a restart). **Deploying for real** — HTTPS, a
-persistent encryption key, backups — see **[Deploy for real](#deploy-for-real)** below,
-or the full **[DEPLOY.md](DEPLOY.md)**.
+`./data`. The first start generates an encryption key and writes it to
+`./data/calnode.key`, so stored credentials survive a restart. **Back that file up
+with the database**: it is the only thing that can decrypt them, and Litestream
+replicates the database, not the key.
+
+**Deploying for real** — HTTPS, backups, and managing the key yourself — see
+**[Deploy for real](#deploy-for-real)** below, or the full **[DEPLOY.md](DEPLOY.md)**.
 
 ---
 

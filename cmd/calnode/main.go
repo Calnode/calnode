@@ -79,11 +79,31 @@ func main() {
 	}
 	logger.Info("database migrations applied")
 
-	// Open the key vault. devMode allows an ephemeral DEK when no secret is set
-	// (handy for local development); production deployments must set
-	// CALNODE_ENCRYPTION_KEY or the vault will refuse to start.
+	// Resolve the platform secret BEFORE opening the vault. A missing
+	// CALNODE_ENCRYPTION_KEY no longer falls back to an ephemeral key chosen by
+	// guessing from the BASE_URL scheme: a secret is generated once and persisted
+	// beside the database, so a plain `docker run` survives a restart and a
+	// deployment behind a TLS-terminating proxy does not silently take the
+	// "development" path. An explicit CALNODE_ENCRYPTION_KEY still wins.
+	platformSecret, secretSource, secretPath, err := keyvault.ResolvePlatformSecret(
+		cfg.EncryptionKey, db.FilePath(cfg.DatabaseURL))
+	if err != nil {
+		logger.Error("keyvault: cannot determine the platform secret", "error", err)
+		os.Exit(1)
+	}
+	switch secretSource {
+	case keyvault.SecretFromGenerated:
+		logger.Warn("keyvault: CALNODE_ENCRYPTION_KEY is not set; generated a platform secret and persisted it",
+			"path", secretPath,
+			"note", "back it up together with the database: without it the encrypted columns cannot be read")
+	case keyvault.SecretFromFile:
+		logger.Info("keyvault: platform secret loaded from file", "path", secretPath)
+	}
+
+	// devMode still governs non-secret behaviour elsewhere; the vault no longer
+	// uses it to invent a key.
 	devMode := !strings.HasPrefix(cfg.BaseURL, "https://")
-	vault, err := keyvault.Open(database, cfg.EncryptionKey, cfg.RecoverySecret, devMode)
+	vault, err := keyvault.Open(database, platformSecret, cfg.RecoverySecret, devMode)
 	if err != nil {
 		logger.Error("keyvault: failed to open", "error", err)
 		os.Exit(1)
