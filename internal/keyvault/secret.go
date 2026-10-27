@@ -34,10 +34,14 @@ import (
 )
 
 // KeyFileName is the persisted platform secret written next to the database.
+//
+// #nosec G101 -- this is a file NAME, not a credential. The secret it names is
+// generated at runtime and never appears in source.
 const KeyFileName = "calnode.key"
 
 // Where the platform secret came from, for logging and for tests.
 const (
+	// #nosec G101 -- the NAME of an environment variable, not a credential.
 	SecretFromEnv       = "CALNODE_ENCRYPTION_KEY"
 	SecretFromFile      = "file"
 	SecretFromGenerated = "generated"
@@ -67,6 +71,8 @@ func ResolvePlatformSecret(explicit, dbPath string) (secret, source, path string
 	// An unreadable-but-present file must not silently fall through to
 	// generating a new secret: that would replace a working key with one that
 	// cannot decrypt the existing database.
+	// #nosec G304 -- path is derived from the operator's DATABASE_URL, not from
+	// request data. Where the key lives is deployment configuration.
 	if raw, readErr := os.ReadFile(path); readErr == nil {
 		existing := strings.TrimSpace(string(raw))
 		if existing == "" {
@@ -91,8 +97,10 @@ func ResolvePlatformSecret(explicit, dbPath string) (secret, source, path string
 
 	// O_EXCL so two processes starting at once cannot overwrite each other; the
 	// loser re-reads the winner's file rather than proceeding with its own.
+	// #nosec G304 -- same operator-controlled path as above.
 	f, createErr := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if errors.Is(createErr, fs.ErrExist) {
+		// #nosec G304 -- same operator-controlled path.
 		if existing, readErr := os.ReadFile(path); readErr == nil {
 			if s := strings.TrimSpace(string(existing)); s != "" {
 				return s, SecretFromFile, path, nil
@@ -104,12 +112,19 @@ func ResolvePlatformSecret(explicit, dbPath string) (secret, source, path string
 		return "", "", "", fmt.Errorf("keyvault: create %s: %w", path, createErr)
 	}
 	if _, writeErr := f.WriteString(generated + "\n"); writeErr != nil {
-		f.Close()
-		os.Remove(path)
+		// Join rather than discard: a close or cleanup failure is worth reporting
+		// alongside the write failure, and a half-written key file must not be
+		// left behind looking usable.
+		writeErr = errors.Join(writeErr, f.Close())
+		if rmErr := os.Remove(path); rmErr != nil && !errors.Is(rmErr, fs.ErrNotExist) {
+			writeErr = errors.Join(writeErr, rmErr)
+		}
 		return "", "", "", fmt.Errorf("keyvault: write %s: %w", path, writeErr)
 	}
 	if closeErr := f.Close(); closeErr != nil {
-		os.Remove(path)
+		if rmErr := os.Remove(path); rmErr != nil && !errors.Is(rmErr, fs.ErrNotExist) {
+			closeErr = errors.Join(closeErr, rmErr)
+		}
 		return "", "", "", fmt.Errorf("keyvault: close %s: %w", path, closeErr)
 	}
 
