@@ -11,6 +11,74 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
 
 ## [Unreleased]
 
+## [0.11.2] - 2026-10-28
+
+### Added
+- **Calnode now ships as a standalone Linux binary, not only a container image.** Every
+  tagged release also publishes `calnode_<version>_linux_amd64.tar.gz` and
+  `calnode_<version>_linux_arm64.tar.gz`, with `checksums.txt` and the licence, on the same
+  GitHub release as the images. Each archive is the exact executable that is inside the
+  corresponding image: statically linked, with the admin UI and the IANA timezone database
+  compiled in, so it needs no Go, Node or Docker on the host. It is the same build, so the
+  binary and the image cannot drift apart. Two things to know before using it: the archive
+  does **not** include Litestream, so setting `LITESTREAM_REPLICA_URL` alone starts neither
+  backups nor restore — arrange backups separately or use the container — and the host needs
+  a CA certificate store for outbound HTTPS.
+
+### Fixed
+- **Reminder emails show the workspace logo and banner again** (#168). Confirmations,
+  cancellations and reschedules had always displayed them, but reminders did not: the worker
+  built the email from `server_settings` directly and skipped the relative-to-absolute step
+  the handler performs, leaving `<img src="/branding/logo?v=…">`. Mail clients cannot resolve
+  a relative path, so the logo disappeared and the banner never loaded at all. The cause was
+  structural — the branding helpers were methods on the HTTP handler, which a separate
+  package cannot call — so the brand identity now lives in `internal/branding` and both
+  senders use it.
+- **The booking page no longer pushes host avatars into the calendar** (#169). With several
+  hosts the info panel drew every face, and six hosts overflowed the 240px panel border into
+  the calendar column. At most three faces are drawn now, matching the "Wynne, Bob, Cara &
+  3 others" wording that already named only three, with a `+N` chip for the rest. Applied to
+  both surfaces that draw faces, the booking page and the embed widget.
+- **ChatGPT and other MCP clients that require protocol `2026-07-28` can discover the
+  server** (#171). `/mcp` answered `server/discover` with supported versions ending at
+  `2025-11-25`; a client that asks for the newer version and does not fall back stopped at
+  action discovery. The cause was transport mode rather than the SDK, which already knew the
+  version but only offers it on a stateless transport. Calnode holds no MCP session state —
+  every request is authenticated independently — so the transport is now stateless. Clients
+  that negotiate down were never affected.
+
+### Changed
+- **Container images build roughly five times faster, with no emulation** (#165). The
+  multi-arch build compiled both the frontend and the Go binary under QEMU for arm64, which
+  took 11-13 minutes and occasionally hung until the job's six-hour timeout. Neither stage
+  needed emulation: the frontend output is architecture-independent and CGO is disabled, so
+  both now build on the build platform and Go cross-compiles to the target. A release build
+  fell from about 700-800s to about 160s, and the job now has a 60-minute ceiling so a hang
+  fails visibly instead of holding for six hours.
+- **Security scanning runs on pull requests, not only after merge** (#164). `govulncheck`,
+  `gosec` and `gitleaks` ran only on push to `main`, weekly, and manually, so the Go standard
+  library advisory that broke the clean-scan claim was already on `main` before anything
+  reported it. They now run on every pull request. The OpenSSF Scorecard job is gated to
+  `main`, since it refuses any other ref and was producing a red result that meant nothing.
+- **Merged pull requests are no longer locked** (#161). The CLA action's default locks every
+  merged PR, which silently blocks any later comment or bot action and made a healthy review
+  run look broken. The signature record is the committed `cla.json` ledger, which the action
+  only ever appends to, so the lock was protecting a duplicate; a new CI check now fails any
+  pull request that removes an already-signed contributor.
+- **The Go toolchain is 1.26.10** (#163), closing GO-2026-6809 in `crypto/x509`. The
+  vulnerability was reachable through the SMTP transport's TLS dial.
+
+### Fixed (NS8)
+- **A cloned NS8 instance releases the source's hostname** (#157). The core clone copies the
+  volumes and `state/`, which meant a clone arrived holding the original hostname but with no
+  route of its own — the route belongs to the source instance — and configuring it with that
+  hostname was refused because the source still answered for it. The clone now comes up
+  unconfigured, exactly like a freshly added instance, and keeps its encryption key: dropping
+  that would have left it with a database it cannot decrypt.
+- **The NS8 install guidance no longer claims `:latest` is amd64-only** (#156). Since 0.11.1
+  it is a genuine multi-arch index, so pinning a version is recommended for reproducibility
+  rather than because `:latest` fails on a Pi.
+
 ## [0.11.1] - 2026-10-16
 
 ### Fixed
