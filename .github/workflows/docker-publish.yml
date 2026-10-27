@@ -128,19 +128,25 @@ jobs:
   arm64-smoke:
     # Proves the arm64 half of the multi-arch image actually runs on an ARM CPU,
     # not under QEMU. The build job cross-builds both arches under emulation,
-    # which cannot demonstrate native execution; this pulls the just-published
-    # digest onto a real arm64 runner and starts it.
+    # which cannot demonstrate native execution.
+    #
+    # Two paths, because the image is not always in the registry:
+    #   push (main/dev/tag) -> pull the exact digest the build job just pushed
+    #   pull request        -> build the image natively here, so a PR is checked
+    #                          too and this job is proven BEFORE it reaches main
+    # The pull-request path matters as much as the assertion itself: a gate that
+    # cannot run until it is merged has not been tested at all.
     #
     # Free and unmetered: standard arm64 runners cost nothing on public repos.
-    # Skipped on pull requests, where nothing is pushed to pull.
     needs: build
-    if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 15
+    timeout-minutes: 30
     permissions:
       contents: read
       packages: read
     steps:
+      - uses: actions/checkout@v7
+
       - name: Prove this runner is genuinely arm64
         run: |
           set -euo pipefail
@@ -149,6 +155,7 @@ jobs:
           test "$(uname -m)" = "aarch64"
 
       - name: Pull the image this build just published
+        if: github.event_name != 'pull_request'
         env:
           IMAGE_REF: "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.build.outputs.digest }}"
         run: |
@@ -158,11 +165,30 @@ jobs:
             exit 1
           fi
           docker pull "$IMAGE_REF"
+
+      - name: Build for arm64 natively (pull requests only)
+        if: github.event_name == 'pull_request'
+        run: docker build --platform linux/arm64 -t calnode-pr:arm64 .
+
+      - name: Resolve the image under test
+        id: img
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "ref=calnode-pr:arm64" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.build.outputs.digest }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Confirm the image is arm64
+        env:
+          IMAGE_REF: ${{ steps.img.outputs.ref }}
+        run: |
           docker image inspect "$IMAGE_REF" --format 'image arch: {{.Architecture}} / {{.Os}}'
 
       - name: Run it natively, as a deployment would
         env:
-          IMAGE_REF: "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.build.outputs.digest }}"
+          IMAGE_REF: ${{ steps.img.outputs.ref }}
         run: |
           set -euo pipefail
           docker run -d --name calnode \
@@ -196,14 +222,31 @@ jobs:
           test "$code" = "200"
 
       - name: Assert the encryption key was persisted, not ephemeral
-        # This is the regression guard for the quick-start trap: a first start with
-        # no CALNODE_ENCRYPTION_KEY must write a key beside the database, so stored
+        # Regression guard for the quick-start trap: a first start with no
+        # CALNODE_ENCRYPTION_KEY must write a key beside the database, so stored
         # credentials survive a restart instead of becoming unreadable.
         run: |
           set -euo pipefail
-          docker exec calnode cat /data/calnode.key >/dev/null
           docker run --rm -v calnode-data:/data alpine:3 sh -c 'test -s /data/calnode.key' \
             && echo "key persisted beside the database"
+
+      - name: Assert a restart still finds the key
+        run: |
+          set -euo pipefail
+          docker restart calnode
+          for i in $(seq 1 60); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/ || true)
+            if [ "$code" = "200" ] || [ "$code" = "302" ] || [ "$code" = "307" ]; then
+              echo "still serving after restart (HTTP $code)"
+              docker logs calnode 2>&1 | grep -q "DEK unwrapped from keystore" \
+                && echo "restart reused the persisted key" \
+                || { echo "::error::restart did not reuse the persisted key"; exit 1; }
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::app did not come back after restart"
+          exit 1
 
       - name: Show app logs
         if: always()
