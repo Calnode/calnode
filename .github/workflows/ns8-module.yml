@@ -17,8 +17,23 @@ on:
   pull_request:
 
 concurrency:
-  group: ns8-module-${{ github.ref }}
-  cancel-in-progress: true
+  # Deliberately NOT keyed on github.ref. build-images.sh pushes each architecture
+  # to a fixed staging tag (:build-amd64 / :build-arm64) and push-manifest.sh
+  # assembles the multi-arch index from whatever is on those tags. Two runs on
+  # different refs therefore share that staging state: a push to main and a
+  # release tag start seconds apart (the tag is cut right after the release
+  # commit lands) and are different groups when the ref is in the key, so they
+  # ran concurrently and overwrote each other's staging images. The result was a
+  # published manifest whose architectures came from different releases —
+  # observed on v0.11.2, where :edge carried amd64 from the tag (app 0.11.2) and
+  # arm64 from main (app edge). One group for all module publishes serialises
+  # them and removes the shared-state race.
+  #
+  # cancel-in-progress stays false: a release build must never be cancelled
+  # because an unrelated push to main arrived. Module publishes take ~1-2
+  # minutes, so queueing is cheap.
+  group: ns8-module-publish
+  cancel-in-progress: false
 
 jobs:
   validate:
