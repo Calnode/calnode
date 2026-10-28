@@ -75,6 +75,7 @@ microVM with HTTPS and a persistent volume. No Docker image or local build is ne
    | `BASE_URL` | `https://${NIBRUN_HOSTNAME}` |
    | `DATABASE_URL` | `sqlite://${NIBRUN_DATA_DIR}/calnode.db` |
    | `DATA_DIR` | `${NIBRUN_DATA_DIR}` |
+   | `TRUSTED_PROXY_CIDRS` | `127.0.0.1` |
 
    nibrun expands the runtime references when starting the binary. The database
    and uploaded assets live under `/app/data`, which survives redeploys.
@@ -86,9 +87,29 @@ microVM with HTTPS and a persistent volume. No Docker image or local build is ne
 For a custom domain, add it in nibrun, update `BASE_URL` to the full HTTPS URL,
 and update the registered OAuth redirect URIs to match.
 
+`TRUSTED_PROXY_CIDRS` trusts nibrun's loopback Caddy proxy, so Calnode reads its
+`X-Forwarded-For` header instead of putting every visitor in one rate-limit bucket.
+The current nibrun proxy replaces the incoming forwarded chain with the Cloudflare
+edge address: visitors routed through the same edge address still share rate
+limits. Adding Cloudflare CIDRs to Calnode's trust list alone cannot recover the
+visitor address; the proxy would also need to preserve that chain.
+
 The standalone binary does **not** include Litestream or the container entrypoint;
 setting `LITESTREAM_REPLICA_URL` alone does not enable database backup or restore.
-Use a SQLite-aware backup method as described under [Standalone binary](#standalone-binary).
+For an on-demand backup, use **Export** in nibrun's dashboard, or run this with the
+`nib` CLI installed and signed in:
+
+```bash
+nib apps export ./calnode-backup.tar.gz --app calnode
+```
+
+Replace `calnode` with the app name you chose. The archive contains `data/`
+(including the SQLite database and uploaded assets), the deployed binary, and a
+`.env` with its environment variables. Keep it private and store a copy outside
+nibrun: the bundle includes credentials. To restore, extract the archive and
+deploy its binary with `data/` as initial data and the original environment
+variables from `.env`, including the encryption key. Exports are point-in-time
+backups; they do not provide Litestream's continuous replication or automatic restore.
 
 nibrun suspends idle apps and wakes them on an incoming request. Calnode's
 in-process reminder, webhook-retry and calendar-reconciliation workers pause while

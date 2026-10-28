@@ -159,7 +159,7 @@ differences from the container.
 **On nibrun:** deploy the standalone binary with HTTPS and persistent storage.
 See the [nibrun setup guide](DEPLOY.md#nibrun) for secrets and first-run setup.
 
-[![Deploy on nibrun](https://nibrun.com/button.svg)](https://app.nibrun.com/deploy?name=calnode&binary=https%3A%2F%2Fgithub.com%2FCalnode%2Fcalnode%2Freleases%2Fdownload%2Fv0.11.2%2Fcalnode_0.11.2_linux_amd64.tar.gz&sha256=dc69723becc79ab23125e6e8ff2c030c8fc268b54ec5de4313684702c7b2c03b&port=3000&env=%5B%22BASE_URL%3Dhttps%3A%2F%2F%24%7BNIBRUN_HOSTNAME%7D%22%2C%22DATABASE_URL%3Dsqlite%3A%2F%2F%24%7BNIBRUN_DATA_DIR%7D%2Fcalnode.db%22%2C%22DATA_DIR%3D%24%7BNIBRUN_DATA_DIR%7D%22%2C%22CALNODE_ENCRYPTION_KEY%22%2C%22CALNODE_RECOVERY_SECRET%22%5D&minimal=true)
+[![Deploy on nibrun](https://nibrun.com/button.svg)](https://app.nibrun.com/deploy?name=calnode&binary=https%3A%2F%2Fgithub.com%2FCalnode%2Fcalnode%2Freleases%2Fdownload%2Fv0.11.2%2Fcalnode_0.11.2_linux_amd64.tar.gz&sha256=dc69723becc79ab23125e6e8ff2c030c8fc268b54ec5de4313684702c7b2c03b&port=3000&env=%5B%22BASE_URL%3Dhttps%3A%2F%2F%24%7BNIBRUN_HOSTNAME%7D%22%2C%22DATABASE_URL%3Dsqlite%3A%2F%2F%24%7BNIBRUN_DATA_DIR%7D%2Fcalnode.db%22%2C%22DATA_DIR%3D%24%7BNIBRUN_DATA_DIR%7D%22%2C%22TRUSTED_PROXY_CIDRS%3D127.0.0.1%22%2C%22CALNODE_ENCRYPTION_KEY%22%2C%22CALNODE_RECOVERY_SECRET%22%5D&minimal=true)
 
 ```bash
 docker run -d -p 3000:3000 \
