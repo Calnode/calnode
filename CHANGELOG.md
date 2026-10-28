@@ -12,6 +12,23 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
 ## [Unreleased]
 
 ### Fixed
+- **A plain `docker run` no longer loses stored credentials on restart.** The documented
+  first install starts Calnode with no `CALNODE_ENCRYPTION_KEY`. With `BASE_URL` on
+  `http://`, the vault treated that as development mode and generated an ephemeral data key,
+  so every credential stored in the database — the SMTP password, Stripe keys, Zoom and
+  LiveKit secrets, OAuth client secrets — became unreadable at the next restart, while the
+  volume made the data look persisted. The only signal was the `BASE_URL` scheme, so a
+  production deployment behind a TLS-terminating proxy (`BASE_URL http`, TLS at the edge)
+  took the same silent path. A secret is now resolved before the vault opens: an explicit
+  `CALNODE_ENCRYPTION_KEY` still wins and writes nothing, an existing key file beside the
+  database is reused, and only a genuinely fresh install generates one, written `0600` with
+  `O_EXCL` so two starts cannot overwrite each other. An empty key file is now an error
+  rather than a cue to generate a replacement.
+- **A restore that is missing the encryption key now fails instead of starting fresh over an
+  encrypted database.** If the database already holds a wrapped data key but no key file is
+  present, Calnode generates one and then refuses to start, because it cannot unwrap the
+  existing data key — it never re-keys the data. The generated file is useless: replace it
+  with the real key, or set `CALNODE_ENCRYPTION_KEY`, before retrying the restore.
 - **An NS8 module release can no longer mix architectures.** The module build pushes each
   architecture to a fixed staging tag (`:build-amd64`, `:build-arm64`) and then assembles the
   multi-arch index from them. The workflow's concurrency group included the git ref, so a
@@ -23,6 +40,22 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
   concurrency group and serialise, with `cancel-in-progress` off so a release build cannot be
   cancelled by an unrelated push. The post-publish architecture assertion is what caught it
   and remains in place.
+
+### Changed
+- **The encryption key is persisted beside the database, and must be backed up with it.**
+  When Calnode generates the platform secret itself it writes `calnode.key` next to the
+  database (`/data/calnode.key` in the container). Litestream replicates the database, not
+  that file, so the two must be kept together: restoring the database alone will not start.
+  Deployments that set `CALNODE_ENCRYPTION_KEY` in the environment are unchanged and write
+  no key file.
+
+### Added
+- **The published arm64 image is now exercised on native hardware on every PR and every
+  publish.** A new `arm64-smoke` job runs on an ARM runner, asserts the image and the
+  container really are `aarch64`, checks the app serves over HTTP, and — the part that
+  matters for this release — verifies the key file is persisted and that a restart unwraps
+  the existing data key rather than generating a new one. On a publish it pulls the exact
+  digest the build job produced, so it cannot pass against a stale tag.
 
 ## [0.11.2] - 2026-10-28
 
