@@ -244,6 +244,52 @@ func (s *SMTP) Send(ctx context.Context, msg Message) error {
 // caller-supplied, may carry CR/LF, and this error is logged.
 var ErrInvalidRecipient = errors.New("mailer: invalid recipient address")
 
+// messageIDDomain returns the right-hand side of the Message-ID header.
+//
+// The sender's own domain is the natural choice, but it cannot simply be sliced off
+// s.from: email_from is a free-text setting that the settings endpoint does not validate
+// and the settings form does not require, so it reaches here empty, or as something that
+// is not an address at all. Slicing an empty value yields "<id@>" - a malformed
+// Message-ID, which is worse for deliverability than the missing header this change set
+// out to fix. So the address is parsed, and the SMTP host stands in when it yields no
+// usable domain.
+//
+// Both candidates are operator-supplied and are written into a header line verbatim, so
+// each must pass messageIDDomainOK first; "localhost" is the last resort, valid by
+// construction.
+func (s *SMTP) messageIDDomain() string {
+	if a, err := mail.ParseAddress(s.from); err == nil {
+		if i := strings.LastIndex(a.Address, "@"); i >= 0 {
+			if d := strings.ToLower(a.Address[i+1:]); messageIDDomainOK(d) {
+				return d
+			}
+		}
+	}
+	if d := strings.ToLower(s.host); messageIDDomainOK(d) {
+		return d
+	}
+	return "localhost"
+}
+
+// messageIDDomainOK reports whether d can be written into a Message-ID as it stands: a
+// non-empty run of letters, digits, dots and hyphens. That is narrower than RFC 5322's
+// dot-atom, deliberately - it keeps out the CR/LF that would end the header line and the
+// angle brackets that would end the identifier, without needing to reason about which of
+// the remaining atom characters are harmless here.
+func messageIDDomainOK(d string) bool {
+	if d == "" {
+		return false
+	}
+	for _, r := range d {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9', r == '.', r == '-':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
 func (s *SMTP) buildRaw(msg Message) ([]byte, error) {
 	from := mail.Address{Name: s.fromName, Address: s.from}
 
@@ -277,8 +323,7 @@ func (s *SMTP) buildRaw(msg Message) ([]byte, error) {
 	fmt.Fprintf(&buf, "Date: %s\r\n",
 		time.Now().Format(time.RFC1123Z))
 	// RFC 5322: Globally unique message identifier.
-	fmt.Fprintf(&buf, "Message-ID: <%s@%s>\r\n",
-		uid.New(), strings.ToLower(from.Address[strings.LastIndex(from.Address, "@")+1:]))
+	fmt.Fprintf(&buf, "Message-ID: <%s@%s>\r\n", uid.New(), s.messageIDDomain())
 	fmt.Fprintf(&buf, "From: %s\r\n", from.String())
 	fmt.Fprintf(&buf, "To: %s\r\n", strings.Join(toFormatted, ", "))
 	fmt.Fprintf(&buf, "Subject: %s\r\n", subject)

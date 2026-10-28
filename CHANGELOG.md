@@ -12,6 +12,13 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
 ## [Unreleased]
 
 ### Fixed
+- **Mail sent over SMTP carries `Date` and `Message-ID`.** Messages went out with only
+  `From`, `To` and `Subject`. RFC 5322 requires an origination date on every message and
+  expects a message identifier; some relays add what is missing, but not all do, and
+  receiving servers and spam filters score mail without them as suspicious — so
+  confirmations and reminders could land in spam. The identifier's domain comes from the
+  configured sender address, falling back to the SMTP host when that address is unset or
+  unusable. The Resend transport was unaffected; it sets both headers itself.
 - **A plain `docker run` no longer loses stored credentials on restart.** The documented
   first install starts Calnode with no `CALNODE_ENCRYPTION_KEY`. With `BASE_URL` on
   `http://`, the vault treated that as development mode and generated an ephemeral data key,

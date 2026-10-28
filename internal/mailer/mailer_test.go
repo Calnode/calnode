@@ -3,7 +3,9 @@ package mailer
 import (
 	"context"
 	"errors"
+	"net/mail"
 	"net/url"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -387,6 +389,127 @@ func TestBuildRaw_recipientAddresses(t *testing.T) {
 			}
 			if got != tc.want {
 				t.Errorf("To: header = %q; want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// buildRaw — RFC 5322 Date and Message-ID
+// ---------------------------------------------------------------------------
+
+// headerLine returns the value of the first occurrence of the named header in a raw
+// message, or "" when it is absent.
+func headerLine(raw, name string) string {
+	prefix := name + ": "
+	for _, line := range strings.Split(raw, "\r\n") {
+		if line == "" {
+			break // end of the header block
+		}
+		if strings.HasPrefix(line, prefix) {
+			return strings.TrimPrefix(line, prefix)
+		}
+	}
+	return ""
+}
+
+// TestBuildRaw_dateHeader checks the header against the parser receiving servers use
+// rather than against the layout string that produced it: RFC 5322 requires a date-time
+// a reader can actually parse, and a format change that stops satisfying mail.ParseDate
+// would otherwise only show up as mail scoring badly at the far end.
+func TestBuildRaw_dateHeader(t *testing.T) {
+	before := time.Now().Truncate(time.Second)
+	raw := string(mustBuildRaw(t, smtpForTest(), Message{
+		To: []string{"user@example.com"}, Subject: "Hi", Text: "body",
+	}))
+
+	got := headerLine(raw, "Date")
+	if got == "" {
+		t.Fatal("Date: header missing")
+	}
+	parsed, err := mail.ParseDate(got)
+	if err != nil {
+		t.Fatalf("mail.ParseDate(%q): %v", got, err)
+	}
+	if parsed.Before(before) || parsed.After(time.Now().Add(time.Minute)) {
+		t.Errorf("Date: header = %q; want the time of sending", got)
+	}
+	// A numeric zone ("+0000"), not "UTC" or another alphabetic abbreviation: RFC 5322
+	// moved those to the obsolete syntax, and time.RFC1123 - one character away from the
+	// layout used here - produces exactly that.
+	if !regexp.MustCompile(`[+-]\d{4}$`).MatchString(got) {
+		t.Errorf("Date: header = %q; want it to end in a numeric zone offset", got)
+	}
+}
+
+func TestBuildRaw_messageIDHeader(t *testing.T) {
+	raw := string(mustBuildRaw(t, smtpForTest(), Message{
+		To: []string{"user@example.com"}, Subject: "Hi", Text: "body",
+	}))
+
+	got := headerLine(raw, "Message-ID")
+	if !strings.HasPrefix(got, "<") || !strings.HasSuffix(got, ">") {
+		t.Fatalf("Message-ID: header = %q; want it wrapped in angle brackets", got)
+	}
+	id := strings.Trim(got, "<>")
+	local, domain, ok := strings.Cut(id, "@")
+	if !ok {
+		t.Fatalf("Message-ID %q has no @; want id@domain", id)
+	}
+	if local == "" {
+		t.Errorf("Message-ID %q has an empty local part", id)
+	}
+	if domain != "example.com" {
+		t.Errorf("Message-ID domain = %q; want the From domain %q", domain, "example.com")
+	}
+
+	// Two messages must not share an identifier — threading clients collapse messages
+	// that do.
+	other := string(mustBuildRaw(t, smtpForTest(), Message{
+		To: []string{"user@example.com"}, Subject: "Hi", Text: "body",
+	}))
+	if headerLine(other, "Message-ID") == got {
+		t.Errorf("two messages share the Message-ID %q", got)
+	}
+}
+
+// TestBuildRaw_messageIDDomain covers the From values that reach buildRaw unvalidated -
+// the settings endpoint does not require email_from, let alone check it. Each must still
+// produce a well-formed right-hand side, since a malformed Message-ID works against the
+// deliverability the header exists for.
+func TestBuildRaw_messageIDDomain(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		from string
+		host string
+		want string
+	}{
+		{"plain address", "noreply@example.com", "smtp.example.net", "example.com"},
+		{"address with a display name", "Calnode <noreply@example.com>", "smtp.example.net", "example.com"},
+		{"uppercase domain is normalised", "noreply@EXAMPLE.COM", "", "example.com"},
+		{"subdomain is kept", "noreply@mail.team.example.com", "", "mail.team.example.com"},
+		{"empty From falls back to the host", "", "smtp.example.net", "smtp.example.net"},
+		{"unparseable From falls back to the host", "not-an-address", "smtp.example.net", "smtp.example.net"},
+		{"no From and no host", "", "", "localhost"},
+		{"unusable host is not written through", "", "smtp example net", "localhost"},
+		{"CRLF in the host cannot start a header", "", "smtp.example.net\r\nBcc: attacker@evil.example", "localhost"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := &SMTP{from: tc.from, fromName: "Calnode", host: tc.host}
+			if got := s.messageIDDomain(); got != tc.want {
+				t.Fatalf("messageIDDomain() = %q; want %q", got, tc.want)
+			}
+
+			raw := string(mustBuildRaw(t, s, Message{
+				To: []string{"user@example.com"}, Subject: "Hi", Text: "body",
+			}))
+			if got := headerLine(raw, "Message-ID"); !strings.HasSuffix(got, "@"+tc.want+">") {
+				t.Errorf("Message-ID: header = %q; want it to end in @%s>", got, tc.want)
+			}
+			for _, line := range strings.Split(raw, "\r\n") {
+				if strings.HasPrefix(line, "Bcc:") {
+					t.Errorf("header injected through the Message-ID domain: %q", line)
+				}
 			}
 		})
 	}
