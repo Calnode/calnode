@@ -14,8 +14,8 @@ small Alpine runtime) and published to GHCR:
 
 Or build it yourself with `docker build -t calnode .`.
 
-This guide covers a standalone binary, a generic Docker deploy and a step-by-step **Railway** deploy
-(the current reference host).
+This guide covers a standalone binary, a **nibrun** deploy, a generic Docker deploy
+and a step-by-step **Railway** deploy (the current reference host).
 
 ## Standalone binary
 
@@ -48,6 +48,51 @@ The archive does **not** include Litestream or the container entrypoint. Setting
 `LITESTREAM_REPLICA_URL` alone will not start backups or restore a database when running
 the binary directly; configure Litestream separately or use another SQLite-aware
 backup method. The email, calendar and other integration settings below still apply.
+
+---
+
+## nibrun
+
+[nibrun](https://nibrun.com) runs the standalone Linux amd64 binary in an isolated
+microVM with HTTPS and a persistent volume. No Docker image or local build is needed.
+
+1. Generate two separate secrets:
+
+   ```bash
+   openssl rand -hex 32 # CALNODE_ENCRYPTION_KEY
+   openssl rand -hex 32 # CALNODE_RECOVERY_SECRET
+   ```
+
+   Save both securely and keep the recovery secret separately. Reuse them on
+   redeploys; changing the encryption key requires Calnode's key-rotation procedure.
+2. Click **Deploy on nibrun** in the [README](README.md#deploy-for-real), sign in to
+   nibrun, and paste the secrets into the corresponding fields. The button pins
+   **v0.11.2** and its SHA-256 checksum and prefills:
+
+   | Setting | Value |
+   |---|---|
+   | HTTP port | `3000` (also supplied to the binary as `PORT`) |
+   | `BASE_URL` | `https://${NIBRUN_HOSTNAME}` |
+   | `DATABASE_URL` | `sqlite://${NIBRUN_DATA_DIR}/calnode.db` |
+   | `DATA_DIR` | `${NIBRUN_DATA_DIR}` |
+
+   nibrun expands the runtime references when starting the binary. The database
+   and uploaded assets live under `/app/data`, which survives redeploys.
+3. Deploy, open the returned HTTPS URL, and complete first-run setup immediately
+   to claim the owner account. On a fresh database, the first visitor can claim it.
+4. Configure email and calendar integrations in Calnode's Settings, then create
+   an event type and availability. The integration instructions below still apply.
+
+For a custom domain, add it in nibrun, update `BASE_URL` to the full HTTPS URL,
+and update the registered OAuth redirect URIs to match.
+
+The standalone binary does **not** include Litestream or the container entrypoint;
+setting `LITESTREAM_REPLICA_URL` alone does not enable database backup or restore.
+Use a SQLite-aware backup method as described under [Standalone binary](#standalone-binary).
+
+nibrun suspends idle apps and wakes them on an incoming request. Calnode's
+in-process reminder, webhook-retry and calendar-reconciliation workers pause while
+the app is suspended, so scheduled background work can be delayed until it wakes.
 
 ---
 
