@@ -369,14 +369,34 @@ func (s *Service) InvitesGuests(ctx context.Context, userID string) bool {
 	return false
 }
 
+// FreeBusy unions the user's busy intervals across every configured provider. The
+// providers are queried concurrently: a host with Google and Microsoft both connected
+// used to wait for one round-trip after the other, which counts twice against the
+// booking-time check's deadline. Any provider error still fails the whole call — a
+// partial union would read the unchecked provider's meetings as free time.
 func (s *Service) FreeBusy(ctx context.Context, userID string, from, to time.Time) ([]slots.Interval, error) {
-	var out []slots.Interval
+	type result struct {
+		busy []slots.Interval
+		err  error
+	}
+	results := make(chan result, len(s.providers))
 	for _, p := range s.providers {
-		iv, err := p.FreeBusy(ctx, userID, from, to)
-		if err != nil {
-			return nil, err
+		go func(p Provider) {
+			iv, err := p.FreeBusy(ctx, userID, from, to)
+			results <- result{iv, err}
+		}(p)
+	}
+	var out []slots.Interval
+	var firstErr error
+	for range s.providers {
+		r := <-results
+		if r.err != nil && firstErr == nil {
+			firstErr = r.err
 		}
-		out = append(out, iv...)
+		out = append(out, r.busy...)
+	}
+	if firstErr != nil {
+		return nil, firstErr
 	}
 	return out, nil
 }
