@@ -1,6 +1,7 @@
 package slots_test
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -897,5 +898,32 @@ func assertSlotStarts(t *testing.T, got []slots.Slot, wantUTC []time.Time) {
 		if !gotUTC.Equal(want) {
 			t.Errorf("[%d] start: got %v; want %v", i, gotUTC, want)
 		}
+	}
+}
+
+// A Tehran (+03:30) host working 09:00-12:00 with hourly slots must be offered 09:00,
+// 10:00 and 11:00 local. On the old UTC/epoch grid the same day offered only 09:30 and
+// 10:30, because every UTC hour boundary falls on :30 in Tehran.
+func TestGenerate_halfHourOffsetHostGetsWholeHourSlots(t *testing.T) {
+	tehran, err := time.LoadLocation("Asia/Tehran")
+	if err != nil {
+		t.Skip(err)
+	}
+	day := time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC) // a Monday
+	got, err := slots.Generate(slots.Request{
+		Event: slots.EventConfig{DurationMinutes: 60, SlotIntervalMinutes: 60, RoutingMode: "fixed"},
+		Hosts: []slots.HostAvailability{{HostID: "h", Location: tehran,
+			Rules: []slots.AvailabilityRule{{DayOfWeek: time.Monday, StartTime: "09:00", EndTime: "12:00"}}}},
+		DateFrom: day, DateTo: day, BookerTZ: tehran, Now: day.Add(-48 * time.Hour),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var starts []string
+	for _, s := range got {
+		starts = append(starts, s.Start.In(tehran).Format("15:04"))
+	}
+	if want := []string{"09:00", "10:00", "11:00"}; strings.Join(starts, ",") != strings.Join(want, ",") {
+		t.Fatalf("starts = %v, want %v", starts, want)
 	}
 }
