@@ -273,6 +273,12 @@ func (s *SMTP) buildRaw(msg Message) ([]byte, error) {
 	}
 
 	var buf bytes.Buffer
+	// RFC 5322: Required origination date.
+	fmt.Fprintf(&buf, "Date: %s\r\n",
+		time.Now().Format(time.RFC1123Z))
+	// RFC 5322: Globally unique message identifier.
+	fmt.Fprintf(&buf, "Message-ID: <%s@%s>\r\n",
+		uid.New(), strings.ToLower(from.Address[strings.LastIndex(from.Address, "@")+1:]))
 	fmt.Fprintf(&buf, "From: %s\r\n", from.String())
 	fmt.Fprintf(&buf, "To: %s\r\n", strings.Join(toFormatted, ", "))
 	fmt.Fprintf(&buf, "Subject: %s\r\n", subject)
