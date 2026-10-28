@@ -12,6 +12,10 @@ var (
 	ErrTokenNotFound       = errors.New("booking: manage token not found or expired")
 	ErrBookingLimitReached = errors.New("booking: active booking limit reached for this invitee")
 	ErrEmailThrottled      = errors.New("booking: too many bookings from this email address")
+	// ErrHostAlreadyAssigned: a reassign targeted a host who already attends the booking
+	// (e.g. a collective's co-host). Moving the primary seat onto them would collapse two
+	// seats into one, which booking_hosts' UNIQUE(booking_id, user_id) rightly refuses.
+	ErrHostAlreadyAssigned = errors.New("booking: host already attends this booking")
 )
 
 // Who sends a booking's calendar invite to the booker (event_types/bookings.invite_delivery,
