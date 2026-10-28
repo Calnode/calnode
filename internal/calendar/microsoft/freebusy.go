@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/calnode/calnode/internal/slots"
@@ -26,8 +27,13 @@ func (g graphDateTime) parse() (time.Time, error) {
 
 type calendarViewResp struct {
 	Value []struct {
-		Start graphDateTime `json:"start"`
-		End   graphDateTime `json:"end"`
+		Start          graphDateTime `json:"start"`
+		End            graphDateTime `json:"end"`
+		ShowAs         string        `json:"showAs"`
+		IsCancelled    bool          `json:"isCancelled"`
+		ResponseStatus *struct {
+			Response string `json:"response"`
+		} `json:"responseStatus"`
 	} `json:"value"`
 	NextLink string `json:"@odata.nextLink"`
 }
@@ -73,7 +79,9 @@ func (c *Client) calendarView(ctx context.Context, hc *http.Client, base string,
 	q := url.Values{}
 	q.Set("startDateTime", from.UTC().Format(time.RFC3339))
 	q.Set("endDateTime", to.UTC().Format(time.RFC3339))
-	q.Set("$select", "start,end")
+	// showAs/isCancelled/responseStatus decide whether an entry blocks time at all; see
+	// blocksTime. Graph omits any property not $select-ed, so they must be asked for.
+	q.Set("$select", "start,end,showAs,isCancelled,responseStatus")
 	q.Set("$top", "200")
 	next := base + "?" + q.Encode()
 
@@ -101,6 +109,13 @@ func (c *Client) calendarView(ctx context.Context, hc *http.Client, base string,
 			return nil, fmt.Errorf("microsoft: calendarView decode: %w", derr)
 		}
 		for _, ev := range cv.Value {
+			response := ""
+			if ev.ResponseStatus != nil {
+				response = ev.ResponseStatus.Response
+			}
+			if !blocksTime(ev.ShowAs, ev.IsCancelled, response) {
+				continue
+			}
 			s, err1 := ev.Start.parse()
 			e, err2 := ev.End.parse()
 			if err1 != nil || err2 != nil {
@@ -112,4 +127,19 @@ func (c *Client) calendarView(ctx context.Context, hc *http.Client, base string,
 		next = cv.NextLink
 	}
 	return out, nil
+}
+
+// blocksTime reports whether a calendarView entry makes its owner busy. calendarView lists
+// every entry, unlike Google's freeBusy (which already applies transparency), so the
+// filter is ours: an entry shown as "free" (reminders, all-day holidays from subscribed
+// calendars, an OOO notice someone else sent), a cancelled meeting still on the calendar,
+// and an invitation the owner declined all leave them available. Without this a single
+// all-day "free" entry blocked a collective's whole day for every other host. Tentative,
+// busy, out-of-office and working-elsewhere still block, as Outlook's own scheduling
+// assistant treats them.
+func blocksTime(showAs string, cancelled bool, response string) bool {
+	if cancelled || strings.EqualFold(response, "declined") {
+		return false
+	}
+	return !strings.EqualFold(showAs, "free")
 }
