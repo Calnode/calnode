@@ -42,10 +42,23 @@ func runMCPStdio(_ []string) {
 		os.Exit(1)
 	}
 
+	// Resolve the platform secret the same way the server does, so `calnode mcp`
+	// and `calnode serve` always agree on which key unlocks the vault. Diverging
+	// here would let one process read what the other wrote only by accident.
+	platformSecret, secretSource, secretPath, err := keyvault.ResolvePlatformSecret(
+		cfg.EncryptionKey, db.FilePath(cfg.DatabaseURL))
+	if err != nil {
+		logger.Error("mcp: cannot determine the platform secret", "error", err)
+		os.Exit(1)
+	}
+	if secretSource == keyvault.SecretFromGenerated {
+		logger.Warn("mcp: generated and persisted a platform secret", "path", secretPath)
+	}
+
 	// Open the key vault (same dev-mode rule as the server) and swap the real DEK into
 	// cfg so calendar/webhook token crypto works.
 	devMode := !strings.HasPrefix(cfg.BaseURL, "https://")
-	vault, err := keyvault.Open(database, cfg.EncryptionKey, cfg.RecoverySecret, devMode)
+	vault, err := keyvault.Open(database, platformSecret, cfg.RecoverySecret, devMode)
 	if err != nil {
 		logger.Error("mcp: keyvault failed to open", "error", err)
 		os.Exit(1)

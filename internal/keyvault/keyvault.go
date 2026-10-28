@@ -69,6 +69,14 @@ func (v *Vault) DEKHex() string { return hex.EncodeToString(v.dek[:]) }
 //     working; wrap and store it.
 //  4. platformSecret empty + devMode → ephemeral random DEK; warn; never stored.
 //  5. platformSecret empty + !devMode → fatal error.
+//
+// Cases 4 and 5 are the library's last-resort behaviour for a caller that hands
+// over no secret. The CLI entry points no longer reach them: main and mcp call
+// ResolvePlatformSecret first, which reads or generates a secret persisted beside
+// the database. That is deliberate, because choosing between 4 and 5 by guessing
+// from the BASE_URL scheme gave a plain `docker run` an ephemeral DEK (secrets
+// unreadable after a restart) and refused to boot behind a TLS-terminating proxy.
+// Any new caller should resolve the secret the same way rather than pass "".
 func Open(db *sql.DB, platformSecret, recoverySecret string, devMode bool) (*Vault, error) {
 	if platformSecret == "" {
 		if devMode {

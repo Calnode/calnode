@@ -130,6 +130,13 @@ func SchemaReady(ctx context.Context, db *sql.DB) (bool, error) {
 	return applied >= target, nil
 }
 
+// FilePath returns the on-disk database file path for a connection URL, e.g.
+// sqlite:///data/calnode.db -> /data/calnode.db. Used to place companion files,
+// like the keyvault key, beside the database they belong to.
+func FilePath(databaseURL string) string {
+	return parseDSN(databaseURL)
+}
+
 func parseDSN(url string) string {
 	// Strip scheme prefix: sqlite:// → remainder
 	dsn := strings.TrimPrefix(url, "sqlite://")
