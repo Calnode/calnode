@@ -308,6 +308,22 @@ latest replica from object storage before starting the app. To **prove the
 round-trip without touching the live DB**, restore to a scratch path (never
 `/data/calnode.db`) and confirm it's a valid SQLite file.
 
+> **The replica holds the database, not the encryption key.** If you deployed
+> without setting `CALNODE_ENCRYPTION_KEY`, the app generated a key at first start
+> and wrote it to `calnode.key` next to the database (`/data/calnode.key` in the
+> container). Litestream does not replicate that file, so restoring the database
+> from the replica on its own will not start: the restored rows are sealed under a
+> key that is gone, and the app exits rather than re-keying your data. Back that
+> file up separately, and restore it beside the database.
+>
+> If a restore does fail this way, delete the `calnode.key` that the failed start
+> generated before restoring the real one — the process writes a new key on first
+> start, and that file will not unlock the restored database.
+>
+> Deployments that set `CALNODE_ENCRYPTION_KEY` in the environment (the recommended
+> production path, and what the NS8 module does) are unaffected: the key comes from
+> the environment, survives a volume loss with it, and no key file is written.
+
 **Non-destructive drill, in the container (zero setup — litestream + creds + config are already there):**
 ```bash
 railway ssh --service calnode sh -lc '
