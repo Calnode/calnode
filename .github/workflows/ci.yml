@@ -17,7 +17,11 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
+      # Full history, because the CLA check below needs the fork point of the pull
+      # request, not just the tip of the base branch. The repository is small.
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       # The CLA signature ledger may only grow. Signatures live in
       # signatures/version1/cla.json, committed to main, and the contributor-assistant action
@@ -30,13 +34,24 @@ jobs:
         run: |
           set -euo pipefail
           ledger=signatures/version1/cla.json
-          git fetch --no-tags --depth=1 origin "${{ github.base_ref }}"
-          # Bootstrap case: if the base branch has no ledger yet, there is nothing to protect.
-          if ! git cat-file -e "FETCH_HEAD:${ledger}" 2>/dev/null; then
-            echo "No CLA ledger at base; nothing to protect yet."
+          base="origin/${{ github.base_ref }}"
+          git fetch --no-tags origin "${{ github.base_ref }}"
+          # Compare against the FORK POINT, not the tip of the base branch. Signatures
+          # are committed to main by the CLA bot, so any signature added after a pull
+          # request was opened is absent from its head by construction. Comparing with
+          # today's main tip calls that "removed" and fails every older PR; comparing
+          # with the merge base only sees entries the PR's own branch had.
+          merge_base=$(git merge-base HEAD "$base" 2>/dev/null || true)
+          if [ -z "$merge_base" ]; then
+            echo "::warning::no merge base with $base (shallow clone?); skipping the append-only check"
             exit 0
           fi
-          git show "FETCH_HEAD:${ledger}" > /tmp/cla-base.json
+          # Bootstrap case: if the fork point has no ledger yet, there is nothing to protect.
+          if ! git cat-file -e "${merge_base}:${ledger}" 2>/dev/null; then
+            echo "No CLA ledger at the fork point; nothing to protect yet."
+            exit 0
+          fi
+          git show "${merge_base}:${ledger}" > /tmp/cla-base.json
           python3 - <<'PY'
           import json, sys
 
