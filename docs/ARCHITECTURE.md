@@ -564,10 +564,24 @@ instance sender from Settings → Email (`applyInviteDelivery`, `BookingData.Hid
 No sender address means no `ORGANIZER` line, never a fallback to the host. Host copies keep
 the host as organizer and, for a `calnode` booking, leave the booker out entirely and go out as
 `METHOD:PUBLISH` (`applyHostInvite`, `ICSWithoutAttendee`), so no host calendar holds them as
-a guest it could re-invite. Reschedule, cancel, reassign and the reconciler read the mode from
-the **booking**, not the event type, so a booking is always updated through the channel
-its invite went out on. Switching an event type to `calnode` requires email to be set up
-(validated on change).
+a guest it could re-invite. `none` (migration 00071) is for integrations that deliver the
+invite themselves: the hosts' events are written guestless exactly as for `calnode`
+(`hostEventsGuestless`) and host copies behave the same, but no Calnode email to the booker
+carries an `.ics`, whatever the host's calendar (`applyInviteDelivery`). The booker's emails
+themselves still go out when email is set up; whether Calnode emails at all stays with the
+mailer and the notification settings. Reschedule, cancel, reassign and the reconciler read
+the mode from the **booking**, not the event type, so a booking is always updated through
+the channel its invite went out on. Switching an event type to `calnode` requires email to
+be set up (validated on change); `none` does not. The booking JSON carries the mode as
+`invite_delivery`, and webhooks can select it as a payload field (not in the default set),
+so an integration can tell per booking whether the booker already holds an invite.
+
+00071 widened the 00068 `CHECK` without a table rebuild: SQLite cannot alter a `CHECK`, and
+rebuilding `bookings` would mean carrying its foreign-key children and the double-booking
+index through a `NO TRANSACTION` migration (compare 00042, which rebuilt only
+`event_types`). Because the `CHECK` belongs to the `invite_delivery` column alone, the
+migration adds a widened copy, fills it, drops the old column and renames the copy, inside
+goose's normal transaction. The column now sits last in both tables.
 
 **RSVPs to Calnode-sent invites (migration 00069, `rsvp_inbound.go`).** A booker's
 Yes/No/Maybe is an iTIP `REPLY` their mail client emails to the invite's `ORGANIZER`. Each
@@ -794,7 +808,8 @@ as the desired state:
 - **Per-webhook payload fields:** each webhook chooses which fields land in the `data`
   object (`webhooks.fields` JSON, migration 00027) — incl. attendee PII + intake
   answers. NULL ⇒ the original default set (so existing webhooks are unchanged and
-  never start leaking PII). The payload is enriched (`enrich`) + filtered per-webhook
+  never start leaking PII; fields added later that every booking carries, such as
+  `invite_delivery`, stay out of that set for the same reason). The payload is enriched (`enrich`) + filtered per-webhook
   (`buildData`) at enqueue time, so each subscriber gets its own `data`. New webhooks
   default to all fields ticked (self-hoster unticks what they don't want); a
   delivery-log view (status/HTTP/attempts) is in the admin webhooks page.

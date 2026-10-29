@@ -39,6 +39,7 @@
 			{ key: 'previous_start_at', label: 'Previous start (reschedule)' },
 			{ key: 'previous_end_at', label: 'Previous end (reschedule)' },
 			{ key: 'rsvp_status', label: 'RSVP answer (booking.rsvp)' },
+			{ key: 'invite_delivery', label: 'Invite sent by (calendar, calnode, none)' },
 		] },
 		{ group: 'Payment', fields: [
 			{ key: 'payment_status', label: 'Payment status' },
