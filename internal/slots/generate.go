@@ -142,6 +142,9 @@ type params struct {
 	minNotice        time.Time
 	maxFuture        time.Time
 	dateFrom, dateTo time.Time
+	// alignLoc is the clock slot starts are aligned to. One shared clock for every host,
+	// because collective/round-robin routing joins hosts on identical start instants.
+	alignLoc *time.Location
 }
 
 func newParams(req Request) params {
@@ -155,6 +158,12 @@ func newParams(req Request) params {
 		// consistent regardless of what time-of-day the caller passes.
 		dateFrom: req.DateFrom.UTC().Truncate(24 * time.Hour),
 		dateTo:   req.DateTo.UTC().Truncate(24 * time.Hour),
+		alignLoc: time.UTC,
+	}
+	if len(req.Hosts) > 0 && req.Hosts[0].Location != nil {
+		// The first pool host is the primary (priority order), so the grid follows the
+		// team's lead host. A UTC host keeps the old epoch grid exactly.
+		p.alignLoc = req.Hosts[0].Location
 	}
 	if req.Event.MaxFutureDays > 0 {
 		p.maxFuture = req.Now.Add(time.Duration(req.Event.MaxFutureDays) * 24 * time.Hour)
@@ -249,8 +258,8 @@ func hostsByStart(req Request, p params, applyBusy bool, belowNotice map[time.Ti
 
 			for _, f := range avail {
 				// Align the first slot start up to the nearest interval boundary
-				// (epoch-aligned so slots land on :00/:15/:30/:45 etc.).
-				t := alignUp(f.Start, p.interval)
+				// on the shared wall clock, so slots land on :00/:15/:30/:45 etc.
+				t := alignUp(f.Start, p.interval, p.alignLoc)
 				for ; !t.Add(p.dur).After(f.End); t = t.Add(p.interval) {
 					if t.Before(p.minNotice) {
 						// !t.Before(req.Now) is what keeps the attribution honest: a start
@@ -381,21 +390,35 @@ func pickHosts(hosts []HostAvailability, available map[string]bool, mode string)
 	}
 }
 
-// alignUp rounds t up to the next epoch-aligned multiple of interval.
-// Epoch alignment means slots land on :00/:15/:30/:45 for minute-granularity
-// intervals, regardless of when the free window starts.
-func alignUp(t time.Time, interval time.Duration) time.Time {
+// alignUp rounds t up to the next multiple of interval counted from local midnight on
+// loc's wall clock, so slots land on :00/:15/:30/:45 for minute-granularity intervals,
+// regardless of when the free window starts.
+//
+// This used to count from the Unix epoch, i.e. on the UTC clock. For a host whose offset
+// is not a whole number of hours (Tehran +03:30, India +05:30, Nepal +05:45, Adelaide,
+// Newfoundland, ...) every hourly slot then started at :30 or :45 local - a 09:00-17:00
+// day offered 09:30, 10:30, ... and never 09:00. Intervals that do not divide a day (50,
+// 35 minutes) also drifted from day to day; counting from local midnight restarts the
+// grid each day. Wall-clock (not elapsed) arithmetic keeps the grid on DST change days.
+func alignUp(t time.Time, interval time.Duration, loc *time.Location) time.Time {
 	secs := int64(interval.Seconds())
 	if secs <= 0 {
 		return t
 	}
-	unix := t.Unix()
-	rem := unix % secs
-	if rem < 0 {
-		rem += secs // Go's % returns negative remainder for negative dividend
+	if loc == nil {
+		loc = time.UTC
 	}
-	if rem == 0 {
+	lt := t.In(loc)
+	wall := int64(lt.Hour()*3600 + lt.Minute()*60 + lt.Second()) // seconds past local midnight
+	frac := lt.Nanosecond() != 0
+	if wall%secs == 0 && !frac {
 		return t
 	}
-	return t.Add(time.Duration(secs-rem) * time.Second)
+	steps := wall/secs + 1
+	y, m, d := lt.Date()
+	out := time.Date(y, m, d, 0, 0, int(steps*secs), 0, loc)
+	for out.Before(t) { // a DST gap/overlap can land the wall-clock instant behind t
+		out = out.Add(interval)
+	}
+	return out.In(t.Location())
 }

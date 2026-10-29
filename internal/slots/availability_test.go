@@ -286,7 +286,7 @@ func TestResolveDay_overrideDoesNotMatchOtherDate(t *testing.T) {
 func TestAlignUp_alreadyAligned(t *testing.T) {
 	// 09:00:00 UTC is exactly on a 30-min boundary (since epoch).
 	base := time.Date(2026, 1, 1, 9, 0, 0, 0, time.UTC)
-	got := alignUp(base, 30*time.Minute)
+	got := alignUp(base, 30*time.Minute, time.UTC)
 	if !got.Equal(base) {
 		t.Errorf("got %v; want %v", got, base)
 	}
@@ -294,7 +294,7 @@ func TestAlignUp_alreadyAligned(t *testing.T) {
 
 func TestAlignUp_roundsUp(t *testing.T) {
 	base := time.Date(2026, 1, 1, 9, 5, 0, 0, time.UTC) // 09:05
-	got := alignUp(base, 30*time.Minute)
+	got := alignUp(base, 30*time.Minute, time.UTC)
 	want := time.Date(2026, 1, 1, 9, 30, 0, 0, time.UTC)
 	if !got.Equal(want) {
 		t.Errorf("got %v; want %v", got, want)
@@ -303,7 +303,7 @@ func TestAlignUp_roundsUp(t *testing.T) {
 
 func TestAlignUp_15minInterval(t *testing.T) {
 	base := time.Date(2026, 1, 1, 9, 7, 0, 0, time.UTC)
-	got := alignUp(base, 15*time.Minute)
+	got := alignUp(base, 15*time.Minute, time.UTC)
 	want := time.Date(2026, 1, 1, 9, 15, 0, 0, time.UTC)
 	if !got.Equal(want) {
 		t.Errorf("got %v; want %v", got, want)
@@ -312,9 +312,49 @@ func TestAlignUp_15minInterval(t *testing.T) {
 
 func TestAlignUp_hourInterval(t *testing.T) {
 	base := time.Date(2026, 1, 1, 9, 1, 0, 0, time.UTC)
-	got := alignUp(base, 60*time.Minute)
+	got := alignUp(base, 60*time.Minute, time.UTC)
 	want := time.Date(2026, 1, 1, 10, 0, 0, 0, time.UTC)
 	if !got.Equal(want) {
 		t.Errorf("got %v; want %v", got, want)
+	}
+}
+
+func TestAlignUp_halfHourOffsetZone(t *testing.T) {
+	tehran, err := time.LoadLocation("Asia/Tehran") // +03:30, no DST since 2022
+	if err != nil {
+		t.Skip(err)
+	}
+	// 09:00 local is 05:30 UTC: on the old epoch grid an hourly interval moved it to 10:00.
+	base := time.Date(2026, 6, 15, 9, 0, 0, 0, tehran)
+	if got := alignUp(base, time.Hour, tehran); !got.Equal(base) {
+		t.Errorf("09:00 Tehran: got %v; want unchanged", got.In(tehran))
+	}
+	if got, want := alignUp(base.Add(time.Minute), time.Hour, tehran), time.Date(2026, 6, 15, 10, 0, 0, 0, tehran); !got.Equal(want) {
+		t.Errorf("09:01 Tehran: got %v; want %v", got.In(tehran), want)
+	}
+}
+
+func TestAlignUp_nonDividingIntervalRestartsDaily(t *testing.T) {
+	// 50 minutes does not divide a day; the epoch grid drifted day to day.
+	for day := 1; day <= 3; day++ {
+		base := time.Date(2026, 6, day, 9, 0, 0, 0, time.UTC)
+		got := alignUp(base, 50*time.Minute, time.UTC)
+		want := time.Date(2026, 6, day, 9, 10, 0, 0, time.UTC) // 00:00 + 11*50m
+		if !got.Equal(want) {
+			t.Errorf("day %d: got %v; want %v", day, got, want)
+		}
+	}
+}
+
+func TestAlignUp_dstDayKeepsWallClockGrid(t *testing.T) {
+	ny, err := time.LoadLocation("America/New_York")
+	if err != nil {
+		t.Skip(err)
+	}
+	// 2026-03-08 springs forward at 02:00. 45 minutes does not divide the lost hour, so an
+	// elapsed-time grid would put 09:00 off-grid; the wall clock keeps it on.
+	base := time.Date(2026, 3, 8, 9, 0, 0, 0, ny)
+	if got := alignUp(base, 45*time.Minute, ny); !got.Equal(base) {
+		t.Errorf("got %v; want 09:00 unchanged", got.In(ny))
 	}
 }
