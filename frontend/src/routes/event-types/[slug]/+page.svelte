@@ -17,6 +17,7 @@
 	import { saveOnCmdS } from '$lib/save-shortcut';
 	import QuestionsPanel from '$lib/components/event-types/QuestionsPanel.svelte';
 	import EmbedPanel from '$lib/components/event-types/EmbedPanel.svelte';
+	import { ConfirmDialog } from '$lib/components/ui/confirm-dialog';
 
 	// Ordered by expected usage. 'custom_video' is retired from the picker but the
 	// backend still renders any legacy event types that use it.
@@ -43,7 +44,7 @@
 	const INVITE_DELIVERY = [
 		{ value: 'calendar', label: "The host's calendar" },
 		{ value: 'calnode',  label: 'Calnode, from your workspace' },
-		{ value: 'none',     label: 'No one (you send your own)' },
+		{ value: 'none',     label: 'Your own system' },
 	];
 
 	// ── Event type ───────────────────────────────────────────────────────────────
@@ -70,6 +71,8 @@
 	// Which connected provider can natively mint each online platform's link.
 	const PLATFORM_PROVIDER: Record<string, string> = { google_meet: 'google', teams: 'microsoft' };
 	const isOnlineMeeting = (t: string) => t === 'google_meet' || t === 'teams';
+	// Any location that produces a join link the booker has to receive somehow.
+	const isOnlineLocation = (t: string) => isOnlineMeeting(t) || t === 'zoom' || t === 'livekit';
 
 	let form = $state({
 		display_order: 0,
@@ -82,6 +85,28 @@
 		max_active_bookings: 1,
 		price_cents: 0, currency: 'usd',
 	});
+
+	// "Your own system" means Calnode sends the booker nothing at all. When email is not
+	// configured that is easy to pick by accident and impossible to notice later, so it is
+	// confirmed once rather than applied silently.
+	let confirmNoneOpen = $state(false);
+	let noneAcknowledged = $state(false);
+	// Remounts the Select when a choice is declined. bits-ui keeps the clicked option as its
+	// internal selection even though the bound value did not change, so re-picking it fires no
+	// change event and the dialog would never reopen.
+	let inviteSelectReset = $state(0);
+
+	function requestInviteDelivery(v: string | undefined) {
+		if (!v) return;
+		const mode = v as EventType['invite_delivery'];
+		if (mode === 'none' && et?.invite_sender_ready === false && !noneAcknowledged) {
+			confirmNoneOpen = true;
+			inviteSelectReset += 1;
+			return;
+		}
+		form.invite_delivery = mode;
+		if (mode !== 'none') noneAcknowledged = false;
+	}
 
 	// Price is edited in major units (e.g. dollars); stored as integer cents.
 	let priceMajor = $state('0');
@@ -758,16 +783,18 @@
 			<div class="grid grid-cols-2 gap-4">
 				<div class="space-y-1.5">
 					<Label for="et-invite">Sent by</Label>
-					<Select.Root type="single" bind:value={form.invite_delivery}>
-						<Select.Trigger id="et-invite" class="w-full">
-							{INVITE_DELIVERY.find((o) => o.value === form.invite_delivery)?.label ?? 'Select…'}
-						</Select.Trigger>
-						<Select.Content>
-							{#each INVITE_DELIVERY as o}
-								<Select.Item value={o.value} label={o.label}>{o.label}</Select.Item>
-							{/each}
-						</Select.Content>
-					</Select.Root>
+					{#key inviteSelectReset}
+						<Select.Root type="single" value={form.invite_delivery} onValueChange={requestInviteDelivery}>
+							<Select.Trigger id="et-invite" class="w-full">
+								{INVITE_DELIVERY.find((o) => o.value === form.invite_delivery)?.label ?? 'Select…'}
+							</Select.Trigger>
+							<Select.Content>
+								{#each INVITE_DELIVERY as o}
+									<Select.Item value={o.value} label={o.label}>{o.label}</Select.Item>
+								{/each}
+							</Select.Content>
+						</Select.Root>
+					{/key}
 				</div>
 				<p class="self-end text-xs text-muted-foreground">
 					{#if form.invite_delivery === 'calnode'}
@@ -783,10 +810,20 @@
 					{/if}
 				</p>
 			</div>
+			<p class="mt-2 text-xs text-muted-foreground">
+				Applies to new bookings only. Existing bookings keep the method they were sent with.
+			</p>
 			{#if form.invite_delivery === 'calnode' && et?.invite_sender_ready === false}
 				<p class="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
 					Email isn't set up, so bookers won't receive an invite. Add a sender in
 					<a href="{base}/settings/email" class="underline">Settings → Email</a>.
+				</p>
+			{/if}
+			{#if form.invite_delivery === 'none' && isOnlineLocation(form.location_type)}
+				<p class="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+					This event type books an online meeting, so every booking has a join link, and Calnode will
+					not send it to the booker. Pass its <code class="font-mono">location_value</code> from the
+					<code class="font-mono">booking.created</code> webhook in your own confirmation.
 				</p>
 			{/if}
 		</div>
@@ -1193,5 +1230,14 @@
 		</Button>
 	</div>
 {/if}
+
+	<ConfirmDialog
+		bind:open={confirmNoneOpen}
+		title="Send the booker no invite at all?"
+		description="Email is not set up in this workspace, so Calnode will not email the booker anything for this event type, and the host's calendar will not invite them either. The booker only hears from you if your own system sends the confirmation."
+		confirmText="Use my own system"
+		cancelText="Cancel"
+		onConfirm={() => { form.invite_delivery = 'none'; noneAcknowledged = true; }}
+	/>
 
 {/if}
