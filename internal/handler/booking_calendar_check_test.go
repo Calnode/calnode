@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -19,17 +20,31 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
+// conflictCalendar is a fake provider. FreeBusy is called concurrently (one goroutine
+// per host), so calls is atomic and the maps are read-only once the test starts.
 type conflictCalendar struct {
 	calendar.Provider
-	name  string
-	busy  map[string][]slots.Interval
-	err   error
-	calls int
+	name    string
+	busy    map[string][]slots.Interval
+	err     error
+	hostErr map[string]error // per-host error, overriding err
+	delay   time.Duration    // per-call latency, honouring ctx
+	calls   atomic.Int32
 }
 
 func (p *conflictCalendar) Name() string { return p.name }
-func (p *conflictCalendar) FreeBusy(_ context.Context, id string, from, to time.Time) ([]slots.Interval, error) {
-	p.calls++
+func (p *conflictCalendar) FreeBusy(ctx context.Context, id string, from, to time.Time) ([]slots.Interval, error) {
+	p.calls.Add(1)
+	if p.delay > 0 {
+		select {
+		case <-time.After(p.delay):
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+	if err := p.hostErr[id]; err != nil {
+		return nil, err
+	}
 	var busy []slots.Interval
 	for _, iv := range p.busy[id] {
 		if iv.Start.Before(to) && iv.End.After(from) {
@@ -61,18 +76,26 @@ func TestBookingCalendarHostSelection(t *testing.T) {
 		roles         []string
 		busy          []int
 		providerError bool
+		erroring      []int // hosts whose calendar alone fails to read
 		wantStatus    int
 		wantHosts     []int
 	}{
-		{"required_busy", "fixed", []string{"required"}, []int{0}, false, 409, nil},
-		{"provider_unavailable", "fixed", []string{"required"}, nil, true, 503, nil},
-		{"rotation_filters_busy", "round_robin", []string{"rotation", "rotation"}, []int{0}, false, 201, []int{1}},
-		{"all_rotation_busy", "round_robin", []string{"rotation", "rotation"}, []int{0, 1}, false, 409, nil},
-		{"round_robin_required_busy", "round_robin", []string{"required", "rotation"}, []int{0}, false, 409, nil},
-		{"round_robin_required_attends", "round_robin", []string{"required", "rotation"}, nil, false, 201, []int{0, 1}},
-		{"collective_required_busy", "collective", []string{"required", "required"}, []int{1}, false, 409, nil},
-		{"optional_busy_dropped", "fixed", []string{"required", "optional"}, []int{1}, false, 201, []int{0}},
-		{"optional_free_attends", "fixed", []string{"required", "optional"}, nil, false, 201, []int{0, 1}},
+		{"required_busy", "fixed", []string{"required"}, []int{0}, false, nil, 409, nil},
+		{"provider_unavailable", "fixed", []string{"required"}, nil, true, nil, 503, nil},
+		{"rotation_filters_busy", "round_robin", []string{"rotation", "rotation"}, []int{0}, false, nil, 201, []int{1}},
+		{"all_rotation_busy", "round_robin", []string{"rotation", "rotation"}, []int{0, 1}, false, nil, 409, nil},
+		{"round_robin_required_busy", "round_robin", []string{"required", "rotation"}, []int{0}, false, nil, 409, nil},
+		{"round_robin_required_attends", "round_robin", []string{"required", "rotation"}, nil, false, nil, 201, []int{0, 1}},
+		{"collective_required_busy", "collective", []string{"required", "required"}, []int{1}, false, nil, 409, nil},
+		{"optional_busy_dropped", "fixed", []string{"required", "optional"}, []int{1}, false, nil, 201, []int{0}},
+		{"optional_free_attends", "fixed", []string{"required", "optional"}, nil, false, nil, 201, []int{0, 1}},
+		// One unreadable calendar only removes that host where their seat is not mandatory.
+		{"rotation_error_skipped", "round_robin", []string{"rotation", "rotation"}, nil, false, []int{0}, 201, []int{1}},
+		{"all_rotation_error", "round_robin", []string{"rotation", "rotation"}, nil, false, []int{0, 1}, 503, nil},
+		{"rotation_error_other_busy", "round_robin", []string{"rotation", "rotation"}, []int{1}, false, []int{0}, 503, nil},
+		{"optional_error_dropped", "collective", []string{"required", "optional"}, nil, false, []int{1}, 201, []int{0}},
+		{"collective_error_fails_closed", "collective", []string{"required", "required"}, nil, false, []int{1}, 503, nil},
+		{"round_robin_required_error", "round_robin", []string{"required", "rotation"}, nil, false, []int{0}, 503, nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			h, database, key, owner := setupWorkspaceWithDB(t)
@@ -96,6 +119,12 @@ func TestBookingCalendarHostSelection(t *testing.T) {
 			if tc.providerError {
 				provider.err = errors.New("private provider diagnostic")
 			}
+			if len(tc.erroring) > 0 {
+				provider.hostErr = map[string]error{}
+				for _, i := range tc.erroring {
+					provider.hostErr[hosts[i]] = errors.New("private provider diagnostic")
+				}
+			}
 			svc := calendar.NewService(database)
 			svc.Register(provider)
 			if tc.providerError {
@@ -106,10 +135,10 @@ func TestBookingCalendarHostSelection(t *testing.T) {
 			if rec.Code != tc.wantStatus {
 				t.Fatalf("status %d, want %d: %s", rec.Code, tc.wantStatus, rec.Body)
 			}
-			if provider.calls == 0 {
+			if provider.calls.Load() == 0 {
 				t.Fatal("booking did not check the provider")
 			}
-			if tc.providerError && (!strings.Contains(rec.Body.String(), "try again") || strings.Contains(rec.Body.String(), "private provider")) {
+			if tc.wantStatus == 503 && (!strings.Contains(rec.Body.String(), "try again") || strings.Contains(rec.Body.String(), "private provider")) {
 				t.Fatalf("provider error not safely mapped: %s", rec.Body)
 			}
 			var count int
@@ -258,7 +287,7 @@ func TestMCPBookingCalendarErrors(t *testing.T) {
 			if !result.IsError || !strings.Contains(string(body), want) || strings.Contains(string(body), "private provider") {
 				t.Fatalf("MCP error: %s", body)
 			}
-			if provider.calls == 0 {
+			if provider.calls.Load() == 0 {
 				t.Fatal("MCP booking did not check the provider")
 			}
 			var count int
@@ -269,5 +298,43 @@ func TestMCPBookingCalendarErrors(t *testing.T) {
 				t.Fatalf("created %d bookings", count)
 			}
 		})
+	}
+}
+
+// A collective whose hosts' calendars are each slow used to fail with 503: the hosts
+// were checked one after another under a single deadline. Three hosts at 300ms each
+// fit a 600ms deadline only when checked concurrently.
+func TestBookingCalendarCheckHostsConcurrently(t *testing.T) {
+	defer handler.SetCalendarCheckTimeout(600 * time.Millisecond)()
+	start := time.Date(2026, 6, 15, 9, 0, 0, 0, time.UTC)
+	h, database, key, owner := setupWorkspaceWithDB(t)
+	slug, etID := seedEventTypeHTTP(t, h, key)
+	calendarCheckExec(t, database, `UPDATE event_types SET routing_mode = 'collective' WHERE id = ?`, etID)
+	calendarCheckExec(t, database, `DELETE FROM event_type_hosts WHERE event_type_id = ?`, etID)
+	hosts := []string{owner, "host-1", "host-2"}
+	for i, id := range hosts {
+		if i > 0 {
+			calendarCheckExec(t, database, `INSERT INTO users (id,email,name,iana_timezone) VALUES (?,?,?,'UTC')`, id, id+"@example.com", id)
+			seedFullAvailabilityDB(t, database, id)
+		}
+		calendarCheckExec(t, database, `INSERT INTO event_type_hosts (id,event_type_id,user_id,role,priority) VALUES (?,?,?,'required',?)`, fmt.Sprintf("seat-%d", i), etID, id, i)
+	}
+	provider := &conflictCalendar{name: "google", delay: 300 * time.Millisecond}
+	svc := calendar.NewService(database)
+	svc.Register(provider)
+	h.SetCalendar(svc)
+
+	if rec := calendarCheckRequest(h, slug, start); rec.Code != http.StatusCreated {
+		t.Fatalf("status %d, want 201: %s", rec.Code, rec.Body)
+	}
+	if got := provider.calls.Load(); got != int32(len(hosts)) {
+		t.Fatalf("provider called %d times, want once per host (%d)", got, len(hosts))
+	}
+	var seats int
+	if err := database.QueryRow(`SELECT COUNT(*) FROM booking_hosts`).Scan(&seats); err != nil {
+		t.Fatal(err)
+	}
+	if seats != len(hosts) {
+		t.Fatalf("booked %d hosts, want all %d", seats, len(hosts))
 	}
 }
