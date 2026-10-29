@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -102,6 +103,49 @@ func TestFreeBusy_parsesCalendarView(t *testing.T) {
 	want := time.Date(2026, 6, 22, 21, 0, 0, 0, time.UTC)
 	if !iv[0].Start.Equal(want) {
 		t.Errorf("start=%v; want %v", iv[0].Start, want)
+	}
+}
+
+// calendarView lists entries that leave their owner available; only real busy time may
+// block a slot. The request must also $select the fields the filter reads.
+func TestFreeBusy_skipsEntriesThatDoNotBlockTime(t *testing.T) {
+	c := newTestClient(t)
+	connect(t, c, "u1")
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sel := r.URL.Query().Get("$select")
+		for _, f := range []string{"showAs", "isCancelled", "responseStatus"} {
+			if !strings.Contains(sel, f) {
+				t.Errorf("$select=%q omits %s", sel, f)
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		ev := func(hour int, extra string) string {
+			return fmt.Sprintf(`{"start":{"dateTime":"2026-06-22T%02d:00:00.0000000","timeZone":"UTC"},`+
+				`"end":{"dateTime":"2026-06-22T%02d:30:00.0000000","timeZone":"UTC"}%s}`, hour, hour, extra)
+		}
+		_, _ = w.Write([]byte(`{"value":[` + strings.Join([]string{
+			ev(9, `,"showAs":"busy"`),
+			ev(10, `,"showAs":"free"`),
+			ev(11, `,"showAs":"busy","isCancelled":true`),
+			ev(12, `,"showAs":"tentative","responseStatus":{"response":"declined"}`),
+			ev(13, `,"showAs":"tentative"`),
+			ev(14, `,"showAs":"oof"`),
+		}, ",") + `]}`))
+	}))
+	defer srv.Close()
+	c.apiBase = srv.URL
+
+	iv, err := c.FreeBusy(context.Background(), "u1", time.Now(), time.Now().Add(24*time.Hour))
+	if err != nil {
+		t.Fatalf("FreeBusy: %v", err)
+	}
+	var hours []int
+	for _, i := range iv {
+		hours = append(hours, i.Start.Hour())
+	}
+	if fmt.Sprint(hours) != "[9 13 14]" {
+		t.Errorf("busy hours = %v; want [9 13 14] (busy, tentative, out of office)", hours)
 	}
 }
 
