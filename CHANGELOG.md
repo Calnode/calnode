@@ -11,7 +11,41 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-10-30
+
 ### Fixed
+- **Microsoft calendars stop treating free and cancelled entries as busy.** Outlook's calendar
+  view lists entries that leave the owner available: reminders, all-day holidays from
+  subscribed calendars, cancelled meetings still on the calendar, and invitations that were
+  declined. Calnode counted all of them, so a single all-day "free" entry could block a
+  collective's whole day. None of those block now; tentative, busy, out-of-office and
+  working-elsewhere still do, which matches Outlook's own scheduling assistant.
+- **The notetaker enqueues jobs again.** Migration 00065 replaced the jobs table's full unique
+  index with a partial one over live jobs, and SQLite only accepts a partial index as an
+  upsert target when the `ON CONFLICT` clause repeats its predicate. The bare target matched
+  no constraint, so every transcribe and summarize enqueue failed. A pending duplicate is
+  still pulled forward to run now, a running job is left alone rather than run twice, and a
+  finished one starts a fresh run.
+- **Slots align to the host's wall clock, not the UTC epoch.** In a timezone offset by half an
+  hour or 45 minutes, hourly slots started at :30 or :45 local, so a 09:00-17:00 day never
+  offered 09:00; intervals that do not divide a day also drifted from day to day. Alignment
+  now counts from local midnight on the lead host's clock, on one shared clock because
+  collective and round-robin routing joins hosts on identical instants, and wall-clock
+  arithmetic keeps the grid stable across DST changes.
+- **A slow mail server no longer drops other hosts' calendar events or the webhook.**
+  Post-booking work shared a single 30-second deadline, so a stalled SMTP server could spend
+  it before the remaining hosts were handled. Reminders are queued first because they are
+  durable and need no calendar, the calendar phase has its own budget, the webhook is
+  enqueued after it on an uncancelled context so it still carries the minted link, and email
+  runs under a separate budget.
+- **Booking checks host calendars concurrently.** Hosts were read in sequence, so the budget
+  covered one provider round trip per host and a multi-host event could fail with a calendar
+  availability error. Checks now run concurrently and remain all-or-nothing, because a
+  partial union would read an unchecked provider's meetings as free time.
+- **Reassigning a booking moves the primary seat atomically.** The new host could end up with
+  two seats on the same booking. The seat now moves in the same transaction as `host_id`, a
+  legacy booking without a seat gets one, and reassigning onto an existing co-host returns
+  409 instead of creating a duplicate.
 - **Mail sent over SMTP carries `Date` and `Message-ID`.** Messages went out with only
   `From`, `To` and `Subject`. RFC 5322 requires an origination date on every message and
   expects a message identifier; some relays add what is missing, but not all do, and
@@ -55,6 +89,8 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
   that file, so the two must be kept together: restoring the database alone will not start.
   Deployments that set `CALNODE_ENCRYPTION_KEY` in the environment are unchanged and write
   no key file.
+
+### Added
 - **Admins can manage every event type, not just their own.** Until now only an event
   type's owner could edit or delete it; admins and the instance owner got the same
   read-only view as an assigned host. A shared round-robin event type owned by a shared
@@ -67,8 +103,6 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
   admin's. Members and hosts see exactly what they did before. Event types in API
   responses gain `can_edit` and `owner_id`; `owned` keeps its meaning (the caller is the
   owner). Changes an admin makes to someone else's event type are logged.
-
-### Added
 - **The published arm64 image is now exercised on native hardware on every PR and every
   publish.** A new `arm64-smoke` job runs on an ARM runner, asserts the image and the
   container really are `aarch64`, checks the app serves over HTTP, and — the part that
@@ -76,7 +110,7 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
   the existing data key rather than generating a new one. On a publish it pulls the exact
   digest the build job produced, so it cannot pass against a stale tag.
 - **Calendar invites can be left to your own system.** *Calendar invite → Sent by* gains a
-  third choice, *No one*. Hosts still get the meeting, with its Meet/Teams link, on their
+  third choice, *Your own system*. Hosts still get the meeting, with its Meet/Teams link, on their
   own calendar, but the booker is not a guest there, so their calendar provider sends no
   invite, and Calnode attaches none to its emails. For setups that send their own
   confirmation and invite. It needs no email setup; if email is set up, the booker's
@@ -86,6 +120,14 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
   `GET /v1/bookings/{id}` and the MCP tools) now includes `invite_delivery` (`calendar`,
   `calnode` or `none`), and webhooks can add it as a payload field. It is not in the
   default field set, so existing webhooks are unchanged.
+
+### Upgrade notes
+- **Back up before upgrading.** This release adds migration `00071`, which rebuilds the
+  `invite_delivery` column on `bookings` and `event_types` because SQLite cannot alter a
+  `CHECK` constraint in place. It is a table rewrite: milliseconds at ordinary data sizes
+  (18ms against a small production database), but take a restore point first. The down
+  migration maps `none` to `calnode`, so lowering the version after using the new mode is
+  lossy for that value.
 
 ## [0.11.2] - 2026-10-28
 
