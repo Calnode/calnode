@@ -42,28 +42,56 @@ func (h *Handler) resolveEventTypeHosts(ctx context.Context, eventTypeID string)
 	return out, rows.Err()
 }
 
-// eventTypeIDForOwner resolves an event type's id from its slug, scoped to the
-// authenticated owner. Returns "" (and writes the response) if not found.
-func (h *Handler) eventTypeIDForOwner(w http.ResponseWriter, r *http.Request, slug, userID string) string {
-	var id string
+// canManageEventType is the one rule for who may change an event type: its owner, or
+// any admin (the instance owner is always an admin). Assigned hosts are not on the
+// list - they see the event type read-only. Admins get every event type for the same
+// reason they get every booking (§6): with only the owner able to edit, a shared
+// round-robin event type owned by a shared account could be changed only by signing
+// in as that account (discussion #155).
+func canManageEventType(user AuthUser, ownerID string) bool {
+	return ownerID == user.ID || user.IsAdmin
+}
+
+// eventTypeForEditor resolves an event type the caller may manage from its slug and
+// returns its id and its owner's id. Returns "" (and writes the response) if there is
+// no such event type or the caller may not manage it; both are a 404, as before, so a
+// member cannot probe for slugs they have no access to.
+//
+// The owner id is what per-owner checks must use when an admin edits someone else's
+// event type: location validation, for one, asks whether the OWNER's calendar or Zoom
+// account can mint links, the same rule as when the owner edits it. At booking time a
+// Meet, Teams or Zoom link is minted by the primary host's account, and the primary
+// host need not be the owner.
+func (h *Handler) eventTypeForEditor(w http.ResponseWriter, r *http.Request, slug string, user AuthUser) (id, ownerID string) {
 	err := h.db.QueryRowContext(r.Context(),
-		`SELECT id FROM event_types WHERE slug = ? AND user_id = ?`, slug, userID).Scan(&id)
-	if errors.Is(err, sql.ErrNoRows) {
+		`SELECT id, user_id FROM event_types WHERE slug = ?`, slug).Scan(&id, &ownerID)
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && !canManageEventType(user, ownerID)) {
 		h.writeError(w, http.StatusNotFound, "event type not found")
-		return ""
+		return "", ""
 	}
 	if err != nil {
-		h.logger.ErrorContext(r.Context(), "event type hosts: resolve id", "error", err)
+		h.logger.ErrorContext(r.Context(), "event type: resolve for editor", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal error")
-		return ""
+		return "", ""
 	}
-	return id
+	return id, ownerID
+}
+
+// logForeignEventTypeChange records a change an admin made to an event type they do
+// not own. There is no audit table; this follows TransferEventType, which logs
+// ownership changes the same way, so the line can be found next to it.
+func (h *Handler) logForeignEventTypeChange(ctx context.Context, action, etID, ownerID string, actor AuthUser) {
+	if ownerID == actor.ID {
+		return
+	}
+	h.logger.InfoContext(ctx, "event type changed by admin",
+		"action", action, "event_type_id", etID, "owner", ownerID, "actor", actor.ID)
 }
 
 // ListEventTypeHosts handles GET /v1/event-types/{slug}/hosts.
 func (h *Handler) ListEventTypeHosts(w http.ResponseWriter, r *http.Request) {
 	user, _ := userFromContext(r.Context())
-	etID := h.eventTypeIDForOwner(w, r, r.PathValue("slug"), user.ID)
+	etID, _ := h.eventTypeForEditor(w, r, r.PathValue("slug"), user)
 	if etID == "" {
 		return
 	}
@@ -107,7 +135,7 @@ func (h *Handler) ListEventTypeHosts(w http.ResponseWriter, r *http.Request) {
 // entire host list. Body: {"hosts":[{"user_id","role","priority"}]}.
 func (h *Handler) SetEventTypeHosts(w http.ResponseWriter, r *http.Request) {
 	user, _ := userFromContext(r.Context())
-	etID := h.eventTypeIDForOwner(w, r, r.PathValue("slug"), user.ID)
+	etID, ownerID := h.eventTypeForEditor(w, r, r.PathValue("slug"), user)
 	if etID == "" {
 		return
 	}
@@ -207,6 +235,7 @@ func (h *Handler) SetEventTypeHosts(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
+	h.logForeignEventTypeChange(r.Context(), "set_hosts", etID, ownerID, user)
 
 	h.ListEventTypeHosts(w, r)
 }
