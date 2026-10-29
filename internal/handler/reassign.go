@@ -98,16 +98,17 @@ func (h *Handler) ReassignBooking(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Capture the old host + calendar event + summary fields before the move.
-	var oldHostID, extEventID, extProvider, etName, orgName, orgEmail, orgLocale string
+	var oldHostID, extEventID, extCalendarID, extProvider, etName, orgName, orgEmail, orgLocale string
 	err = h.db.QueryRowContext(r.Context(), `
-		SELECT b.host_id, COALESCE(b.external_event_id,''), COALESCE(bh.external_provider,''),
+		SELECT b.host_id, COALESCE(b.external_event_id,''), COALESCE(bh.external_calendar_id,''),
+		       COALESCE(bh.external_provider,''),
 		       et.name, COALESCE(a.name,''), COALESCE(a.email,''), COALESCE(a.locale,'')
 		FROM bookings b
 		JOIN event_types et ON et.id = b.event_type_id
 		LEFT JOIN booking_attendees a ON a.booking_id = b.id AND a.is_organizer = 1
 		LEFT JOIN booking_hosts bh ON bh.booking_id = b.id AND bh.user_id = b.host_id
 		WHERE b.id = ?`, id).
-		Scan(&oldHostID, &extEventID, &extProvider, &etName, &orgName, &orgEmail, &orgLocale)
+		Scan(&oldHostID, &extEventID, &extCalendarID, &extProvider, &etName, &orgName, &orgEmail, &orgLocale)
 	if errors.Is(err, sql.ErrNoRows) {
 		h.writeError(w, http.StatusNotFound, "booking not found")
 		return
@@ -127,6 +128,10 @@ func (h *Handler) ReassignBooking(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusConflict, "this booking has been cancelled")
 		return
 	}
+	if errors.Is(err, booking.ErrHostAlreadyAssigned) {
+		h.writeError(w, http.StatusConflict, "the chosen host already attends this booking")
+		return
+	}
 	if errors.Is(err, booking.ErrNotFound) {
 		h.writeError(w, http.StatusNotFound, "booking not found")
 		return
@@ -135,15 +140,6 @@ func (h *Handler) ReassignBooking(w http.ResponseWriter, r *http.Request) {
 		h.logger.ErrorContext(r.Context(), "reassign: update", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal error")
 		return
-	}
-
-	// Keep the multi-host record in sync — the primary host row follows the
-	// booking's host_id so later cancel/notify fan-out targets the right person.
-	// (Reassign is single-host; the primary row is the one being moved.)
-	if _, err := h.db.ExecContext(r.Context(),
-		`UPDATE booking_hosts SET user_id = ?, external_event_id = NULL WHERE booking_id = ? AND is_primary = 1`,
-		req.HostID, updated.ID); err != nil {
-		h.logger.ErrorContext(r.Context(), "reassign: sync booking_hosts", "error", err)
 	}
 
 	h.writeJSON(w, http.StatusOK, toBookingJSON(updated))
@@ -163,7 +159,7 @@ func (h *Handler) ReassignBooking(w http.ResponseWriter, r *http.Request) {
 			if extEventID != "" {
 				// Reassignment cancels on the OLD host's calendar. Their stamped provider
 				// routes it ("" falls back to id recognition, then their destination).
-				if err := gc.CancelEvent(ctx, oldHostID, "", extEventID, extProvider); err != nil {
+				if err := gc.CancelEvent(ctx, oldHostID, extCalendarID, extEventID, extProvider); err != nil {
 					h.logger.Error("reassign: delete old calendar event", "error", err, "booking_id", bCopy.ID)
 				}
 			}

@@ -582,6 +582,16 @@ func (s *Service) ReassignHost(ctx context.Context, bookingID, newHostID string)
 		return nil, ErrDoubleBooked
 	}
 
+	var seated int
+	if err := tx.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM booking_hosts WHERE booking_id = ? AND user_id = ? AND is_primary = 0`,
+		bookingID, newHostID).Scan(&seated); err != nil {
+		return nil, fmt.Errorf("booking: reassign seat check: %w", err)
+	}
+	if seated > 0 {
+		return nil, ErrHostAlreadyAssigned
+	}
+
 	now := time.Now().UTC().Format(time.RFC3339Nano)
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE bookings SET host_id = ?, updated_at = ? WHERE id = ?`,
@@ -590,6 +600,26 @@ func (s *Service) ReassignHost(ctx context.Context, bookingID, newHostID string)
 			return nil, ErrDoubleBooked
 		}
 		return nil, fmt.Errorf("booking: reassign update: %w", err)
+	}
+
+	// Move the primary seat in the same transaction. hostBusy reads booking_hosts, so a
+	// booking whose host_id moved while its seat did not left the new host looking free
+	// (bookable twice at this time) and the old host blocked; this used to run after the
+	// commit, with a failure only logged. The calendar event belonged to the old host, so
+	// its ids go too - the caller cancels it and writes the new host's.
+	res, err := tx.ExecContext(ctx, `
+		UPDATE booking_hosts SET user_id = ?, external_event_id = NULL,
+		       external_calendar_id = NULL, external_provider = '', needs_sync = 0
+		WHERE booking_id = ? AND is_primary = 1`, newHostID, bookingID)
+	if err != nil {
+		return nil, fmt.Errorf("booking: reassign seat: %w", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 { // legacy booking with no booking_hosts rows
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO booking_hosts (id, booking_id, user_id, is_primary) VALUES (?, ?, ?, 1)`,
+			uid.New(), bookingID, newHostID); err != nil {
+			return nil, fmt.Errorf("booking: reassign seat insert: %w", err)
+		}
 	}
 
 	if err := tx.Commit(); err != nil {
