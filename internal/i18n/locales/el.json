@@ -92,7 +92,7 @@
   "booking_cancelled_title": "Η κράτηση ακυρώθηκε",
   "booking_cancelled_text": "Η κράτησή σας έχει ακυρωθεί.",
   "slot_no_longer_available_error": "Αυτή η ώρα δεν είναι πλέον διαθέσιμη. Παρακαλούμε επιλέξτε μια άλλη.",
-  "reschedule_failed_error": "Ο Επαναπρογραμμάτισμός απέτυχε. Παρακαλούμε δοκιμάστε ξανά.",
+  "reschedule_failed_error": "Ο επαναπρογραμματισμός απέτυχε. Παρακαλούμε δοκιμάστε ξανά.",
   "already_cancelled_error": "Αυτή η κράτηση έχει ήδη ακυρωθεί.",
   "cancellation_failed_error": "Η ακύρωση απέτυχε. Παρακαλούμε δοκιμάστε ξανά.",
 
