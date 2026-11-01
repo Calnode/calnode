@@ -196,7 +196,7 @@ jobs:
       # The UI build is the slow part; cache the dependency tree the way the
       # upstream NS8 publish workflow does, so branch and PR runs do not
       # re-download the whole Vue/Carbon tree every time.
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: packaging/ns8/ui/node_modules
           key: "yarn-${{ hashFiles('packaging/ns8/ui/yarn.lock') }}"
