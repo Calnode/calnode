@@ -238,10 +238,23 @@ jobs:
             code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/ || true)
             if [ "$code" = "200" ] || [ "$code" = "302" ] || [ "$code" = "307" ]; then
               echo "still serving after restart (HTTP $code)"
-              docker logs calnode 2>&1 | grep -q "DEK unwrapped from keystore" \
-                && echo "restart reused the persisted key" \
-                || { echo "::error::restart did not reuse the persisted key"; exit 1; }
-              exit 0
+              # Read the logs into a file before searching them. `docker logs | grep -q`
+              # fails under `set -o pipefail` as soon as grep matches: grep exits, docker
+              # logs takes SIGPIPE, and the pipeline returns non-zero even though the line
+              # was found. It is timing dependent, which is why this assertion failed
+              # intermittently while the log dump below clearly contained the line.
+              # The retry also covers Docker's log flush lagging the first HTTP response.
+              for attempt in $(seq 1 20); do
+                docker logs calnode > /tmp/restart.log 2>&1 || true
+                if grep -q "DEK unwrapped from keystore" /tmp/restart.log; then
+                  echo "restart reused the persisted key"
+                  exit 0
+                fi
+                sleep 1
+              done
+              echo "::error::restart did not reuse the persisted key"
+              tail -20 /tmp/restart.log
+              exit 1
             fi
             sleep 2
           done
