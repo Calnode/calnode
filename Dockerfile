@@ -24,7 +24,7 @@ RUN pnpm build
 # target arch; there is no reason for this stage to run under QEMU. Running it
 # emulated is what made a multi-arch build stall: the arm64 leg spent its time
 # interpreting the compiler instead of compiling.
-FROM --platform=$BUILDPLATFORM golang:1.27.2-alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:1.27.3-alpine AS builder
 
 RUN apk add --no-cache ca-certificates wget
 
