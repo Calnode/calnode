@@ -19,6 +19,7 @@ dist/
 /graphify-out/
 
 # Data (local dev DB)
+calnode-data/
 data/
 data-demo/
 *.db
