@@ -10,7 +10,7 @@
 	import { Badge } from '$lib/components/ui/badge';
 	import * as Select from '$lib/components/ui/select';
 	import { toast } from 'svelte-sonner';
-	import { t, tr } from '$lib/i18n';
+	import { t, tr, localeTag } from '$lib/i18n';
 
 	let members: TeamMember[] = $state([]);
 	let invites: Invite[] = $state([]);
@@ -281,10 +281,10 @@
 	}
 
 	function fmtDate(iso: string) {
-		return new Date(iso).toLocaleDateString(undefined, { dateStyle: 'medium' });
+		return new Date(iso).toLocaleDateString(localeTag(), { dateStyle: 'medium' });
 	}
 	function fmtDateTime(iso: string) {
-		return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+		return new Date(iso).toLocaleString(localeTag(), { dateStyle: 'medium', timeStyle: 'short' });
 	}
 	function daysLeft(iso: string) {
 		const diff = new Date(iso).getTime() - Date.now();

@@ -4,8 +4,11 @@ import fr from './fr.json';
 import {
 	isAdminLocale,
 	matchAdminLocale,
+	pluralForm,
 	resolveInitialLocale,
-	translate
+	translate,
+	translatePlural,
+	translatePluralPair
 } from './catalog';
 
 function flatten(obj: unknown, prefix = ''): Record<string, string> {
@@ -41,6 +44,14 @@ describe('admin i18n catalogs', () => {
 			}
 		}
 		expect(mismatches).toEqual([]);
+	});
+
+	test('catalogs do not bake "(s)" plurals', () => {
+		const baked: string[] = [];
+		for (const [key, value] of Object.entries({ ...flatten(en), ...flatten(fr) })) {
+			if (/\w\(s\)/.test(value) && !value.includes('http(s)')) baked.push(key);
+		}
+		expect(baked).toEqual([]);
 	});
 });
 
@@ -95,5 +106,41 @@ describe('locale matching', () => {
 	test('unknown stored value falls through to the browser, then English', () => {
 		expect(resolveInitialLocale('pt-BR', ['fr'])).toBe('fr');
 		expect(resolveInitialLocale('nope', ['ja'])).toBe('en');
+	});
+});
+
+describe('pluralForm', () => {
+	test('English: 1 is one; 0 and >1 are other', () => {
+		expect(pluralForm('en', 1)).toBe('one');
+		expect(pluralForm('en', 0)).toBe('other');
+		expect(pluralForm('en', 2)).toBe('other');
+	});
+
+	test('French: 0 and 1 are one; >1 is other (Intl.PluralRules)', () => {
+		expect(pluralForm('fr', 0)).toBe('one');
+		expect(pluralForm('fr', 1)).toBe('one');
+		expect(pluralForm('fr', 2)).toBe('other');
+	});
+});
+
+describe('translatePlural', () => {
+	test('picks singular and plural member counts per locale', () => {
+		expect(translatePlural('en', 'teams.memberCount', 1)).toBe('1 member');
+		expect(translatePlural('en', 'teams.memberCount', 0)).toBe('0 members');
+		expect(translatePlural('fr', 'teams.memberCount', 0)).toBe('0 membre');
+		expect(translatePlural('fr', 'teams.memberCount', 3)).toBe('3 membres');
+	});
+
+	test('translate() with {count} selects .one / .other', () => {
+		expect(translate('en', 'teams.memberCount', { count: 1 })).toBe('1 member');
+		expect(translate('fr', 'recordings.toast.deleteAll', { count: 2 })).toBe(
+			'2 enregistrements supprimés.'
+		);
+	});
+
+	test('translatePluralPair selects both counts', () => {
+		expect(
+			translatePluralPair('fr', 'recordings.toast.deletePartial', 1, 2, { deleted: 1, failed: 2 })
+		).toBe("1 supprimé ; 2 n'ont pas pu l'être.");
 	});
 });

@@ -450,7 +450,10 @@
 		"expiresDaysLeft": "({days} j restants)",
 		"resolve": {
 			"title": "Résoudre les réunions à venir de {name}",
-			"description": "{count} réunion(s) à venir restante(s). Réassignez chacune à un autre membre ou annulez-la. Lorsque toutes sont résolues, le membre est archivé automatiquement.",
+			"description": {
+				"one": "{count} réunion à venir restante. Réassignez-la à un autre membre ou annulez-la. Lorsque toutes sont résolues, le membre est archivé automatiquement.",
+				"other": "{count} réunions à venir restantes. Réassignez chacune à un autre membre ou annulez-la. Lorsque toutes sont résolues, le membre est archivé automatiquement."
+			},
 			"reassignTo": "Réassigner à…",
 			"reassign": "Réassigner",
 			"cancelMeeting": "Annuler la réunion",
@@ -525,7 +528,10 @@
 		"add": "Ajouter",
 		"allMembersInTeam": "Tous les membres actifs sont déjà dans cette équipe.",
 		"routingHint": "Une priorité de routage plus basse = préféré en premier (utilisé par le routage Priorité ; les égalités sont départagées par la charge pour le tourniquet).",
-		"memberCount": "{count} membre(s)",
+		"memberCount": {
+			"one": "{count} membre",
+			"other": "{count} membres"
+		},
 		"confirm": {
 			"delete": {
 				"title": "Supprimer « {name} » ?",
@@ -667,7 +673,10 @@
 			},
 			"deleteAll": {
 				"title": "Supprimer tous les enregistrements ?",
-				"description": "Cela supprime définitivement {count} enregistrement(s) — fichiers, transcriptions et notes. Les enregistrements en cours sont conservés. Cette action est irréversible.",
+				"description": {
+					"one": "Cela supprime définitivement {count} enregistrement — fichiers, transcriptions et notes. Les enregistrements en cours sont conservés. Cette action est irréversible.",
+					"other": "Cela supprime définitivement {count} enregistrements — fichiers, transcriptions et notes. Les enregistrements en cours sont conservés. Cette action est irréversible."
+				},
 				"confirm": "Tout supprimer"
 			}
 		},
@@ -677,8 +686,20 @@
 			"notesRegenerated": "Notes régénérées",
 			"notesEmpty": "Le résumé est revenu vide — consultez la transcription.",
 			"nothingToDelete": "Rien à supprimer (les enregistrements en cours sont conservés).",
-			"deletePartial": "{deleted} supprimé(s) ; {failed} n'ont pas pu l'être.",
-			"deleteAll": "{count} enregistrement(s) supprimé(s)."
+			"deletePartial": {
+				"one": {
+					"one": "{deleted} supprimé ; {failed} n'a pas pu l'être.",
+					"other": "{deleted} supprimé ; {failed} n'ont pas pu l'être."
+				},
+				"other": {
+					"one": "{deleted} supprimés ; {failed} n'a pas pu l'être.",
+					"other": "{deleted} supprimés ; {failed} n'ont pas pu l'être."
+				}
+			},
+			"deleteAll": {
+				"one": "{count} enregistrement supprimé.",
+				"other": "{count} enregistrements supprimés."
+			}
 		},
 		"error": {
 			"load": "Impossible de charger les enregistrements",
@@ -1258,7 +1279,7 @@
 			"clientSecret": "Client Secret",
 			"clientSecretPlaceholder": "Saisissez le client secret",
 			"redirectUris": {
-				"title": "Authorised redirect URIs",
+				"title": "URI de redirection autorisées",
 				"hint": "Ils doivent être enregistrés sur votre client OAuth dans Google Cloud (Credentials → votre client → Authorised redirect URIs).",
 				"localhostHint": "Si vous faites aussi tourner Calnode en local, ajoutez également les variantes http://localhost:3000/…."
 			},
@@ -1370,7 +1391,7 @@
 			},
 			"recordings": {
 				"title": "Enregistrements de réunions",
-				"subtitle": "Les enregistrements vidéo LiveKit sont envoyés dans le bucket de sauvegardes sous un préfixe recordings/.",
+				"subtitle": "Les enregistrements vidéo LiveKit sont envoyés dans le bucket de sauvegardes sous un préfixe {prefix}.",
 				"badge": {
 					"ready": "Stockage prêt",
 					"noBucket": "Aucun bucket"

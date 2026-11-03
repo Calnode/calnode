@@ -8,7 +8,7 @@
 	import { Checkbox } from '$lib/components/ui/checkbox';
 	import { Badge } from '$lib/components/ui/badge';
 	import * as Tooltip from '$lib/components/ui/tooltip';
-	import { t, tr } from '$lib/i18n';
+	import { t, tr, localeTag } from '$lib/i18n';
 
 	let items: Webhook[] = $state([]);
 	let loading = $state(true);
@@ -135,7 +135,7 @@
 	}
 
 	function fmtDate(iso: string) {
-		return new Date(iso).toLocaleDateString(undefined, { dateStyle: 'medium' });
+		return new Date(iso).toLocaleDateString(localeTag(), { dateStyle: 'medium' });
 	}
 
 	function toggleEvent(ev: string) {
@@ -321,7 +321,7 @@
 														</td>
 														<td class="py-1 pr-4">{d.response_status ?? $t('common.emDash')}</td>
 														<td class="py-1 pr-4">{d.attempt_count}</td>
-														<td class="py-1 text-muted-foreground">{d.last_attempted_at ? new Date(d.last_attempted_at).toLocaleString() : $t('common.emDash')}</td>
+														<td class="py-1 text-muted-foreground">{d.last_attempted_at ? new Date(d.last_attempted_at).toLocaleString(localeTag()) : $t('common.emDash')}</td>
 													</tr>
 												{/each}
 											</tbody>

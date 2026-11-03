@@ -113,7 +113,7 @@
 			<div class="mb-3 flex items-start justify-between gap-2">
 				<div>
 					<h2 class="text-sm font-semibold">{$t('settings.storage.recordings.title')}</h2>
-					<p class="mt-0.5 text-xs text-muted-foreground">{$t('settings.storage.recordings.subtitle')}</p>
+					<p class="mt-0.5 text-xs text-muted-foreground">{$t('settings.storage.recordings.subtitle', { prefix: settings?.recordings_prefix || 'recordings/' })}</p>
 				</div>
 				{#if settings}
 					{@const b = badge(settings.recordings_storage_ready, $t('settings.storage.recordings.badge.ready'), $t('settings.storage.recordings.badge.noBucket'))}

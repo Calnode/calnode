@@ -7,7 +7,7 @@
 	import { Input } from '$lib/components/ui/input';
 	import * as Tooltip from '$lib/components/ui/tooltip';
 	import { toast } from 'svelte-sonner';
-	import { t, tr, localeTag } from '$lib/i18n';
+	import { t, tr, trp2, localeTag } from '$lib/i18n';
 
 	type Recording = {
 		id: string;
@@ -235,7 +235,7 @@
 			const reloaded = await api.get<{ recordings: Recording[] }>('/v1/recordings');
 			recordings = reloaded.recordings ?? [];
 			openNotes = null; openConsent = null; openTranscript = null;
-			if (res.failed) toast.error(tr('recordings.toast.deletePartial', { deleted: res.deleted, failed: res.failed }));
+			if (res.failed) toast.error(trp2('recordings.toast.deletePartial', res.deleted, res.failed, { deleted: res.deleted, failed: res.failed }));
 			else toast.success(tr('recordings.toast.deleteAll', { count: res.deleted }));
 		} catch (e: any) {
 			toast.error(e.message || tr('recordings.error.deleteAll'));

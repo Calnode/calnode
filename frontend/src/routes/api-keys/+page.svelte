@@ -6,7 +6,7 @@
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
 	import * as Tooltip from '$lib/components/ui/tooltip';
-	import { t, tr } from '$lib/i18n';
+	import { t, tr, localeTag } from '$lib/i18n';
 
 	let items: APIKey[] = $state([]);
 	let loading = $state(true);
@@ -65,7 +65,7 @@
 	}
 
 	function fmtDate(iso: string) {
-		return new Date(iso).toLocaleDateString(undefined, { dateStyle: 'medium' });
+		return new Date(iso).toLocaleDateString(localeTag(), { dateStyle: 'medium' });
 	}
 
 	function copyKey() {

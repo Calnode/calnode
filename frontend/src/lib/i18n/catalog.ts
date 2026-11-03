@@ -72,13 +72,47 @@ function interpolate(template: string, vars?: Record<string, string | number>): 
 	);
 }
 
+/** Collapse Intl.PluralRules to the two forms we ship (`one` / `other`). */
+export function pluralForm(code: AdminLocale, count: number): 'one' | 'other' {
+	return new Intl.PluralRules(code).select(count) === 'one' ? 'one' : 'other';
+}
+
 export function translate(
 	code: AdminLocale,
 	key: string,
 	vars?: Record<string, string | number>
 ): string {
-	const hit = lookup(catalogs[code], key) ?? lookup(catalogs.en, key) ?? key;
-	return interpolate(hit, vars);
+	let hit: string | undefined;
+	if (vars && typeof vars.count === 'number') {
+		const form = pluralForm(code, vars.count);
+		hit = lookup(catalogs[code], `${key}.${form}`) ?? lookup(catalogs.en, `${key}.${form}`);
+	}
+	hit ??= lookup(catalogs[code], key) ?? lookup(catalogs.en, key);
+	// A plural object with no usable count still has an `.other` leaf.
+	hit ??= lookup(catalogs[code], `${key}.other`) ?? lookup(catalogs.en, `${key}.other`);
+	return interpolate(hit ?? key, vars);
+}
+
+/** Look up `key.one` / `key.other` from `count` via Intl.PluralRules. */
+export function translatePlural(
+	code: AdminLocale,
+	key: string,
+	count: number,
+	vars?: Record<string, string | number>
+): string {
+	return translate(code, `${key}.${pluralForm(code, count)}`, { count, ...vars });
+}
+
+/** Two-count lookup: `key.<formA>.<formB>` (e.g. deleted + failed). */
+export function translatePluralPair(
+	code: AdminLocale,
+	key: string,
+	first: number,
+	second: number,
+	vars?: Record<string, string | number>
+): string {
+	const form = `${pluralForm(code, first)}.${pluralForm(code, second)}`;
+	return translate(code, `${key}.${form}`, vars);
 }
 
 export const WEEKDAY_KEYS = [

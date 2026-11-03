@@ -450,7 +450,10 @@
 		"expiresDaysLeft": "({days}d left)",
 		"resolve": {
 			"title": "Resolve {name}'s upcoming meetings",
-			"description": "{count} upcoming meeting(s) remaining. Reassign each to another member or cancel it. When all are resolved, the member is archived automatically.",
+			"description": {
+				"one": "{count} upcoming meeting remaining. Reassign it to another member or cancel it. When all are resolved, the member is archived automatically.",
+				"other": "{count} upcoming meetings remaining. Reassign each to another member or cancel it. When all are resolved, the member is archived automatically."
+			},
 			"reassignTo": "Reassign to…",
 			"reassign": "Reassign",
 			"cancelMeeting": "Cancel meeting",
@@ -525,7 +528,10 @@
 		"add": "Add",
 		"allMembersInTeam": "All active members are already in this team.",
 		"routingHint": "Lower routing priority = preferred earlier (used by Priority routing; ties broken by load for round-robin).",
-		"memberCount": "{count} member(s)",
+		"memberCount": {
+			"one": "{count} member",
+			"other": "{count} members"
+		},
 		"confirm": {
 			"delete": {
 				"title": "Delete \"{name}\"?",
@@ -667,7 +673,10 @@
 			},
 			"deleteAll": {
 				"title": "Delete all recordings?",
-				"description": "This permanently deletes {count} recording(s) — files, transcripts and notes. In-progress recordings are kept. This cannot be undone.",
+				"description": {
+					"one": "This permanently deletes {count} recording — files, transcripts and notes. In-progress recordings are kept. This cannot be undone.",
+					"other": "This permanently deletes {count} recordings — files, transcripts and notes. In-progress recordings are kept. This cannot be undone."
+				},
 				"confirm": "Delete all"
 			}
 		},
@@ -677,8 +686,20 @@
 			"notesRegenerated": "Notes regenerated",
 			"notesEmpty": "The summary came back empty — see the transcript.",
 			"nothingToDelete": "Nothing to delete (any in-progress recordings are kept).",
-			"deletePartial": "Deleted {deleted}; {failed} could not be deleted.",
-			"deleteAll": "Deleted {count} recording(s)."
+			"deletePartial": {
+				"one": {
+					"one": "Deleted {deleted}; {failed} could not be deleted.",
+					"other": "Deleted {deleted}; {failed} could not be deleted."
+				},
+				"other": {
+					"one": "Deleted {deleted}; {failed} could not be deleted.",
+					"other": "Deleted {deleted}; {failed} could not be deleted."
+				}
+			},
+			"deleteAll": {
+				"one": "Deleted {count} recording.",
+				"other": "Deleted {count} recordings."
+			}
 		},
 		"error": {
 			"load": "Could not load recordings",
@@ -1370,7 +1391,7 @@
 			},
 			"recordings": {
 				"title": "Meeting recordings",
-				"subtitle": "LiveKit video recordings upload to the backups bucket under a recordings/ prefix.",
+				"subtitle": "LiveKit video recordings upload to the backups bucket under a {prefix} prefix.",
 				"badge": {
 					"ready": "Storage ready",
 					"noBucket": "No bucket"

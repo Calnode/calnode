@@ -6,7 +6,7 @@
 	import { ConfirmDialog } from '$lib/components/ui/confirm-dialog';
 	import * as Tooltip from '$lib/components/ui/tooltip';
 	import { toast } from 'svelte-sonner';
-	import { t, tr } from '$lib/i18n';
+	import { t, tr, localeTag } from '$lib/i18n';
 
 	let items: OAuthConnection[] = $state([]);
 	let loading = $state(true);
@@ -70,7 +70,7 @@
 	}
 
 	function fmtDate(iso: string) {
-		return new Date(iso).toLocaleDateString(undefined, { dateStyle: 'medium' });
+		return new Date(iso).toLocaleDateString(localeTag(), { dateStyle: 'medium' });
 	}
 </script>
 

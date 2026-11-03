@@ -8,6 +8,8 @@ import {
 	STORAGE_KEY,
 	resolveInitialLocale,
 	translate,
+	translatePlural,
+	translatePluralPair,
 	weekdayName as weekdayNameFromCatalog
 } from './catalog';
 
@@ -18,7 +20,10 @@ export {
 	isAdminLocale,
 	matchAdminLocale,
 	resolveInitialLocale,
-	translate
+	pluralForm,
+	translate,
+	translatePlural,
+	translatePluralPair
 } from './catalog';
 
 function readStoredLocale(): string | null {
@@ -75,6 +80,25 @@ export const t = derived(
 /** Non-reactive lookup for event handlers and toasts. */
 export function tr(key: string, vars?: Record<string, string | number>): string {
 	return translate(get(locale), key, vars);
+}
+
+/** Non-reactive plural lookup (`key.one` / `key.other`). */
+export function trp(
+	key: string,
+	count: number,
+	vars?: Record<string, string | number>
+): string {
+	return translatePlural(get(locale), key, count, vars);
+}
+
+/** Non-reactive two-count plural lookup (`key.one.other`, …). */
+export function trp2(
+	key: string,
+	first: number,
+	second: number,
+	vars?: Record<string, string | number>
+): string {
+	return translatePluralPair(get(locale), key, first, second, vars);
 }
 
 export { WEEKDAY_KEYS } from './catalog';
