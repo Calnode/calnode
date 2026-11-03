@@ -92,6 +92,19 @@ jobs:
         working-directory: frontend
         run: pnpm build
 
+      # The unit tests above the browser do not exist: this suite mounts components in
+      # a real Chromium and asserts COMPUTED STYLES, which is the only thing that
+      # catches a bits-ui data-state that lost its @custom-variant remap. Logic stays
+      # green while the component renders unstyled, so a type check and a build cannot
+      # see it. It needs the browser binary, which is not in the pnpm store.
+      - name: Install the browser for visual tests
+        working-directory: frontend
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Visual smoke tests (computed styles in a real browser)
+        working-directory: frontend
+        run: pnpm test:visual
+
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
