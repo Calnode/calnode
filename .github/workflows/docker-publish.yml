@@ -19,6 +19,16 @@ on:
     branches: [main, dev]
     tags: ['v*.*.*']
   pull_request:
+  # A rehearsal: build everything and run the release job's packaging and download
+  # steps, then stop before publishing a GitHub Release. It exists so the release
+  # path can be executed without cutting a tag, which is otherwise the only way to
+  # find out whether it still works.
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Exercise the release job without creating a GitHub Release'
+        type: boolean
+        default: true
 
 concurrency:
   group: docker-publish-${{ github.ref }}
@@ -87,7 +97,7 @@ jobs:
         with:
           context: .
           platforms: ${{ env.BUILD_PLATFORMS }}
-          push: ${{ github.event_name != 'pull_request' }}
+          push: ${{ github.event_name == 'push' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
@@ -266,8 +276,8 @@ jobs:
         run: docker logs calnode 2>&1 | tail -30
 
   release:
-    # Only on a version tag, and only once the image built + pushed.
-    if: startsWith(github.ref, 'refs/tags/v')
+    # On a version tag, and on a dry-run dispatch, where it stops before publishing.
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.dry_run)
     needs: build
     runs-on: ubuntu-latest
     permissions:
@@ -303,6 +313,7 @@ jobs:
       # Preinstalled gh CLI + GITHUB_TOKEN (no third-party action — keeps the
       # supply-chain surface small).
       - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
