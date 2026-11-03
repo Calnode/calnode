@@ -11,6 +11,29 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-11-03
+
+### Added
+- **Greek.** The public surfaces now ship an `el` locale: the booking and manage pages, the
+  embed widget, the booking emails and calendar invite text. Locale resolution is unchanged,
+  so it is chosen from `Accept-Language`, a `?lang=el` override, or the operator's fallback
+  setting, and the switcher lists it automatically. Like every non-English locale here it is
+  a contribution rather than a reviewed translation, so the wording is worth a native check
+  before it is advertised.
+
+### Changed
+- **Dependency maintenance.** Go 1.27.3 build image, `modernc.org/sqlite` 1.61.0,
+  `goose` 3.29.0, `x/crypto` 0.58.0, `x/text`, `x/image`, Svelte 5.57.3, Lucide,
+  shadcn-svelte, Playwright and vitest-browser-svelte, plus the GitHub Actions majors
+  (`setup-go` 7, `cache` 6, `codeql-action` 4, `upload`/`download-artifact` 7/8). No
+  application behaviour changed, and there are no database migrations in this release.
+- **The visual smoke tests run in CI.** They mount components in a real browser and assert
+  computed styles, which is what catches a shadcn `data-state` that lost its variant remap.
+  They were previously a manual step and had been skipped for these dependency bumps.
+- **The release job can be rehearsed without a tag.** A `workflow_dispatch` with
+  `dry_run=true` builds and runs the release steps, then stops before publishing, so a change
+  to the release path is no longer first exercised by a real release.
+
 ## [0.12.0] - 2026-10-30
 
 ### Fixed
