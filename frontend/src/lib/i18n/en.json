@@ -1,0 +1,1889 @@
+{
+	"common": {
+		"loading": "Loading…",
+		"saving": "Saving…",
+		"save": "Save",
+		"cancel": "Cancel",
+		"close": "Close",
+		"confirm": "Confirm",
+		"remove": "Remove",
+		"delete": "Delete",
+		"copy": "Copy",
+		"copied": "Copied!",
+		"copiedShort": "Copied",
+		"failed": "Failed",
+		"refresh": "Refresh",
+		"previous": "Previous",
+		"next": "Next",
+		"clear": "Clear",
+		"clearFilters": "Clear filters",
+		"never": "Never",
+		"adminRequired": "Admin access required.",
+		"or": "or",
+		"yes": "Yes",
+		"no": "No",
+		"emDash": "—",
+		"attendeeFallback": "attendee",
+		"storedSecretPlaceholder": "•••••••• (stored)",
+		"leaveBlankKeep": "Stored — leave blank to keep it.",
+		"notConfigured": "Not configured",
+		"configured": "Configured",
+		"active": "Active",
+		"inactive": "Inactive",
+		"select": "Select…",
+		"search": "Search…",
+		"noResults": "No results.",
+		"confirmDialog": {
+			"defaultTitle": "Are you sure?",
+			"defaultConfirm": "Confirm",
+			"defaultCancel": "Cancel"
+		},
+		"datePicker": {
+			"pickDate": "Pick a date",
+			"sameDay": "Same day"
+		},
+		"combobox": {
+			"searchPlaceholder": "Search…"
+		},
+		"copyClipboardError": "Could not copy to clipboard",
+		"copyManualHint": "Could not copy. Select the URL and copy it manually.",
+		"optional": "(optional)",
+		"minutesShort": "{n} min",
+		"undo": "Undo",
+		"uploading": "Uploading…",
+		"sending": "Sending…",
+		"testing": "Testing…"
+	},
+	"layout": {
+		"loading": "Loading…",
+		"signOut": "Sign out",
+		"reportIssue": "Report an issue",
+		"nav": {
+			"section": {
+				"scheduling": "Scheduling",
+				"team": "Team",
+				"developer": "Developer"
+			},
+			"home": "Home",
+			"eventTypes": "Event Types",
+			"availability": "Availability",
+			"bookings": "Bookings",
+			"calendar": "Calendar",
+			"recordings": "Recordings",
+			"members": "Members",
+			"teams": "Teams",
+			"apiKeys": "API Keys",
+			"connectedApps": "Connected apps",
+			"webhooks": "Webhooks",
+			"settings": "Settings"
+		},
+		"reportDialog": {
+			"title": "Report an issue",
+			"description": "Please search the existing issues first — it may already be reported or being worked on. The tracker is for reproducible bugs in Calnode; for setup help or \"how do I…\" questions, please use Discussions instead.",
+			"searchIssues": "Search existing issues",
+			"reportBug": "Report a bug",
+			"descriptionHtml": "Please <strong>search the existing issues first</strong> — it may already be reported or being worked on. The tracker is for <strong>reproducible bugs</strong> in Calnode; for setup help or “how do I…” questions, please use Discussions instead."
+		},
+		"headTitleSuffix": "Calnode"
+	},
+	"demo": {
+		"banner": {
+			"title": "Public demo",
+			"body": "data here is visible to everyone and resets automatically. Don't enter anything private.",
+			"viewSource": "View source"
+		},
+		"resetButton": "Reset demo now",
+		"resetting": "Resetting…",
+		"confirm": {
+			"title": "Reset the demo now?",
+			"description": "Every event type, booking, and setting is wiped and replaced with fresh sample data. This also happens automatically on a timer.",
+			"confirm": "Reset demo"
+		},
+		"toast": {
+			"resetSuccess": "Demo reset — reloading…",
+			"resetFailed": "Reset failed"
+		}
+	},
+	"dashboard": {
+		"headTitle": "Dashboard — Calnode",
+		"title": "Dashboard",
+		"subtitleReady": "Your booking page is live and ready to share.",
+		"bookingLinkSingular": "Your booking link",
+		"bookingLinksPlural": "Your booking links",
+		"profilePage": "Your profile page",
+		"gettingStarted": {
+			"title": "Getting started",
+			"subtitle": "Complete these steps and you'll be ready to take bookings."
+		},
+		"checklist": {
+			"connectCalendar": "Connect your calendar",
+			"connectCalendarHintConfigured": "Calnode checks your calendar to prevent double-bookings.",
+			"connectCalendarHintUnconfigured": "Google Calendar setup required — see the Calendar page for details.",
+			"availability": "Set your availability",
+			"availabilityHint": "Define the hours when people can book time with you.",
+			"eventType": "Create your first event type",
+			"eventTypeHint": "An event type defines the duration, location, and availability for a booking.",
+			"shareLink": "Share your booking link",
+			"shareLinkHintReady": "Your page is live. Share it and start taking bookings.",
+			"shareLinkHintWaiting": "Available once you've created an event type."
+		}
+	},
+	"bookings": {
+		"headTitle": "Bookings — Calnode",
+		"title": "Bookings",
+		"subtitle": {
+			"mine": "Meetings you are hosting.",
+			"all": "All meetings across the workspace."
+		},
+		"refresh": "Refresh",
+		"refreshAria": "Refresh bookings",
+		"scope": {
+			"mine": "My bookings",
+			"all": "All bookings"
+		},
+		"empty": {
+			"title": "No bookings yet",
+			"description": "Bookings will appear here once attendees schedule time with you.",
+			"noUpcoming": "No upcoming bookings.",
+			"noPast": "No past bookings."
+		},
+		"filter": {
+			"upcoming": "Upcoming ({count})",
+			"past": "Past ({count})",
+			"allEventTypes": "All event types",
+			"allHosts": "All hosts",
+			"allTeams": "All teams",
+			"anyStatus": "Any status",
+			"status": {
+				"confirmed": "Confirmed",
+				"rescheduled": "Rescheduled",
+				"cancelled": "Cancelled"
+			},
+			"noMatch": "No bookings match these filters.",
+			"noTimeFilter": "No {when} bookings.",
+			"eventTypeAria": "Filter by event type",
+			"hostAria": "Filter by host",
+			"teamAria": "Filter by team",
+			"statusAria": "Filter by status"
+		},
+		"table": {
+			"attendee": "Attendee",
+			"host": "Host",
+			"event": "Event",
+			"startTime": "Start time",
+			"status": "Status"
+		},
+		"payment": {
+			"paid": "Paid",
+			"refunded": "Refunded",
+			"pending": "Pending payment"
+		},
+		"badge": {
+			"refunded": "refunded",
+			"unpaid": "unpaid",
+			"guestAccepted": "guest accepted",
+			"guestMaybe": "guest maybe",
+			"guestDeclined": "guest declined"
+		},
+		"tooltip": {
+			"hideResponses": "Hide responses",
+			"showResponses": "Show responses",
+			"reschedule": "Reschedule",
+			"cancel": "Cancel booking"
+		},
+		"cancelReschedule": "Cancel reschedule",
+		"details": {
+			"title": "Details",
+			"bookedOn": "Booked on",
+			"payment": "Payment",
+			"location": "Location"
+		},
+		"intake": {
+			"title": "Intake responses",
+			"empty": "No intake responses for this booking.",
+			"loading": "Loading…"
+		},
+		"reschedule": {
+			"title": "Reschedule — {name}",
+			"newDate": "New date",
+			"pickDate": "Pick a date",
+			"loadingSlots": "Loading slots…",
+			"noSlots": "No available slots on this date.",
+			"confirm": "Confirm — {time}",
+			"inProgress": "Rescheduling…"
+		},
+		"pagination": "Showing {start}–{end} of {total}",
+		"confirmCancel": {
+			"title": "Cancel this booking?",
+			"description": "The attendee will be notified and the slot will free up. This can't be undone.",
+			"confirm": "Cancel booking",
+			"cancel": "Keep booking"
+		},
+		"status": {
+			"confirmed": "confirmed",
+			"cancelled": "cancelled"
+		}
+	},
+	"availability": {
+		"headTitle": "Availability — Calnode",
+		"title": "Availability",
+		"subtitle": "Set your weekly hours and block off specific dates.",
+		"weeklyHours": "Weekly Hours",
+		"days": {
+			"sunday": "Sunday",
+			"monday": "Monday",
+			"tuesday": "Tuesday",
+			"wednesday": "Wednesday",
+			"thursday": "Thursday",
+			"friday": "Friday",
+			"saturday": "Saturday"
+		},
+		"noHours": "No hours set",
+		"addHours": "+ Add hours",
+		"addBlock": "Add block",
+		"saving": "saving…",
+		"blockError": {
+			"endAfterStart": "End must be after start"
+		},
+		"override": {
+			"type": {
+				"dayOff": "Day off",
+				"outOfOffice": "Out of office",
+				"customHours": "Custom hours"
+			}
+		},
+		"confirmRemoveOverride": {
+			"title": "Remove date override?",
+			"description": "Your default weekly hours will apply to this date again."
+		},
+		"confirmRemoveSpan": {
+			"title": "Remove this out-of-office span?",
+			"description": "All days in this range will become bookable again."
+		},
+		"overrides": {
+			"title": "Date Overrides",
+			"subtitle": "Block out a specific date, or set custom hours for it.",
+			"overlapWarning": "Overlapping blocks on {dates} merge into one window — trim them if that wasn't the intent.",
+			"table": {
+				"date": "Date",
+				"type": "Type",
+				"duration": "Duration"
+			},
+			"empty": "No overrides yet.",
+			"form": {
+				"date": "Date",
+				"toOptional": "To (optional)",
+				"type": "Type",
+				"from": "From",
+				"to": "To"
+			},
+			"adding": "Adding…",
+			"add": "Add override",
+			"splitHint": "Split day? Add one block, then add another on the same date.",
+			"duration": {
+				"oneDay": "1 day",
+				"days": "{count} days"
+			}
+		},
+		"tooltip": {
+			"remove": "Remove",
+			"delete": "Delete",
+			"deleteSpan": "Delete span"
+		},
+		"validation": {
+			"dateRequired": "Date is required.",
+			"customHoursTimes": "Start and end time are required for custom hours.",
+			"endAfterStart": "End time must be after start time.",
+			"endDate": "End date must be on or after the start date."
+		}
+	},
+	"calendar": {
+		"headTitle": "Calendar — Calnode",
+		"title": "Calendar",
+		"subtitle": "Connect one or more accounts. Choose which calendars are checked for conflicts, and which single calendar bookings are written into.",
+		"connectedSuccess": "Calendar connected successfully.",
+		"noProvider": {
+			"title": "No calendar provider configured",
+			"body": "Add Google OAuth credentials in Settings → Google OAuth, or set the Microsoft (Outlook) credentials via environment variables, then restart the server."
+		},
+		"provider": {
+			"google": "Google Calendar",
+			"microsoft": "Microsoft 365 (Outlook)",
+			"caldav": "CalDAV (Apple iCloud, Fastmail, Nextcloud)"
+		},
+		"setup": {
+			"google": "Set up in Settings → Google OAuth",
+			"microsoft": "See setup docs"
+		},
+		"checkedForConflicts": "checked for conflicts",
+		"reconnectNeeded": "Reconnect needed — disconnect and connect again.",
+		"addBookingsHere": "Add bookings here",
+		"disconnect": "Disconnect",
+		"manageCalendars": "Manage calendars",
+		"hideCalendars": "Hide calendars",
+		"loadingCalendars": "Loading calendars…",
+		"noCalendars": "No calendars found for this account.",
+		"picker": {
+			"instructions": "Tick the calendars to check for conflicts, and choose the one bookings are written into (select it again to clear the choice).",
+			"check": "Check",
+			"destination": "Destination",
+			"calendar": "Calendar",
+			"primary": "(primary)",
+			"readOnly": "(read-only)",
+			"checkAria": "Check {name} for conflicts",
+			"destinationAria": "Write bookings into {name} (select again to clear)"
+		},
+		"saving": "Saving…",
+		"confirmDisconnect": {
+			"title": "Disconnect this calendar?",
+			"description": "Calnode will stop checking it for conflicts. If it was your booking calendar, another connected calendar is promoted automatically.",
+			"confirm": "Disconnect"
+		},
+		"confirmZoomDisconnect": {
+			"title": "Disconnect Zoom?",
+			"description": "New Zoom-located bookings assigned to you won't get an auto-generated meeting link."
+		},
+		"demoDisabled": "Calendar connect is disabled in the demo.",
+		"connectAnother": "Connect another calendar",
+		"connect": "Connect a calendar",
+		"connectButton": "Connect",
+		"connecting": "Connecting…",
+		"connectCalendar": "Connect calendar",
+		"caldav": {
+			"provider": "Provider",
+			"icloud": "Apple iCloud",
+			"fastmail": "Fastmail",
+			"custom": "Nextcloud / other (custom URL)",
+			"serverUrl": "Server URL",
+			"serverPlaceholder": "https://cloud.example.com/remote.php/dav",
+			"username": "Username / email",
+			"usernamePlaceholder": "you@icloud.com",
+			"appPassword": "App-specific password",
+			"icloudHelp": "Create an app-specific password at appleid.apple.com",
+			"fastmailHelp": "Create an app password in Fastmail settings",
+			"passwordHint": "Use an app password from your provider, not your login password.",
+			"passwordSuffix": "— your normal password won't work.",
+			"err": {
+				"server": "Enter your CalDAV server URL.",
+				"credentials": "Username and app password are both required.",
+				"connect": "Could not connect. Check the server, username and app password."
+			}
+		},
+		"unconfigured": "Not set up on this instance",
+		"hint": {
+			"multiCalendar": "Connect a personal + work calendar (or both providers) so nothing double-books."
+		},
+		"footer": {
+			"manageHint": "Use Manage calendars on each account to choose which of its calendars are checked for conflicts. Confirmed bookings (and any auto-generated meeting links) are written to the account marked \"Add bookings here\"."
+		},
+		"zoom": {
+			"title": "Zoom",
+			"subtitle": "Connect your Zoom account so bookings with a Zoom location get a real meeting link minted under your account.",
+			"connectedSuccess": "Zoom connected successfully.",
+			"connected": "Connected",
+			"disconnecting": "Disconnecting…"
+		}
+	},
+	"members": {
+		"headTitle": "Members — Calnode",
+		"title": "Members",
+		"subtitle": "Manage workspace members, roles, and invites.",
+		"invite": {
+			"toggleCancel": "Cancel",
+			"toggleOpen": "Invite member",
+			"formTitle": "Invite a member",
+			"linkGenerated": "Invite link generated",
+			"emailSent": "An invite email has been sent to {email}.",
+			"smtpManual": "SMTP is not configured — share this link directly with {email}.",
+			"emailLabel": "Email address",
+			"emailPlaceholder": "teammate@example.com",
+			"generating": "Generating…",
+			"generate": "Generate invite link",
+			"noteManual": "Email is not configured — copy this link and send it manually.",
+			"validation": {
+				"email": "Email is required."
+			}
+		},
+		"section": {
+			"members": "Members",
+			"pendingInvites": "Pending Invites"
+		},
+		"showArchived": "Show archived",
+		"hideArchived": "Hide archived",
+		"empty": "No members yet.",
+		"table": {
+			"name": "Name",
+			"role": "Role",
+			"teams": "Teams",
+			"page": "Page",
+			"auth": "Auth",
+			"joined": "Joined",
+			"email": "Email",
+			"expires": "Expires"
+		},
+		"role": {
+			"owner": "Owner",
+			"admin": "Admin",
+			"member": "Member"
+		},
+		"badge": {
+			"archived": "Archived",
+			"google": "Google",
+			"microsoft": "Microsoft",
+			"email": "Email"
+		},
+		"you": "(you)",
+		"noPublicPageTitle": "No public page — set a handle in their profile",
+		"archivedBy": "Archived by {name}",
+		"restore": "Restore",
+		"passwordUpdated": "Password updated",
+		"passwordPlaceholder": "New password",
+		"setPassword": "Set",
+		"makeMember": "Make member",
+		"makeAdmin": "Make admin",
+		"transferOwnership": "Transfer ownership",
+		"resetPassword": "Reset password",
+		"archive": "Archive",
+		"resend": "Resend",
+		"revoke": "Revoke",
+		"resendHint": "Resend mints a fresh link, resets the 7-day expiry, and re-emails it — the previous link stops working.",
+		"expiresDaysLeft": "({days}d left)",
+		"resolve": {
+			"title": "Resolve {name}'s upcoming meetings",
+			"description": "{count} upcoming meeting(s) remaining. Reassign each to another member or cancel it. When all are resolved, the member is archived automatically.",
+			"reassignTo": "Reassign to…",
+			"reassign": "Reassign",
+			"cancelMeeting": "Cancel meeting",
+			"noTargets": "No other active members to reassign to — meetings can only be cancelled.",
+			"cancelAll": "Cancel all remaining",
+			"doneLater": "Done later"
+		},
+		"confirm": {
+			"revoke": {
+				"title": "Revoke invite?",
+				"description": "The link will stop working immediately.",
+				"confirm": "Revoke"
+			},
+			"archive": {
+				"title": "Archive {name}?",
+				"description": "They lose access immediately and their event types are deactivated. Their record and history are kept — you can restore them later.",
+				"confirm": "Archive"
+			},
+			"transfer": {
+				"title": "Transfer ownership to {name}?",
+				"description": "You will become an admin and they become the workspace owner. Only the owner can do this.",
+				"confirm": "Transfer ownership"
+			}
+		},
+		"toast": {
+			"inviteResent": "Invite re-sent to {email}",
+			"newLink": "New link generated for {email}",
+			"roleAdmin": "{name} is now an admin",
+			"roleMember": "{name} is now a member",
+			"newOwner": "{name} is now the owner",
+			"archived": "Member archived",
+			"restored": "{name} restored",
+			"errors": {
+				"resend": "Could not resend invite",
+				"role": "Could not change role",
+				"transfer": "Could not transfer ownership",
+				"archive": "Could not archive member",
+				"restore": "Could not restore member"
+			}
+		},
+		"validation": {
+			"password": "Password is required."
+		}
+	},
+	"teams": {
+		"headTitle": "Teams — Calnode",
+		"title": "Teams",
+		"subtitle": "Group members for round-robin and group event types.",
+		"newTeam": "New team",
+		"newTeamForm": {
+			"title": "New team"
+		},
+		"nameLabel": "Team name",
+		"namePlaceholder": "e.g. Sales",
+		"creating": "Creating…",
+		"create": "Create team",
+		"empty": {
+			"title": "No teams yet",
+			"description": "Create a team to group members for round-robin or group scheduling."
+		},
+		"manage": "Manage",
+		"close": "Close",
+		"rename": "Rename",
+		"members": {
+			"title": "Members",
+			"empty": "No members in this team yet.",
+			"column": "Member",
+			"routingPriority": "Routing priority",
+			"remove": "Remove"
+		},
+		"addMember": "Add a member…",
+		"add": "Add",
+		"allMembersInTeam": "All active members are already in this team.",
+		"routingHint": "Lower routing priority = preferred earlier (used by Priority routing; ties broken by load for round-robin).",
+		"memberCount": "{count} member(s)",
+		"confirm": {
+			"delete": {
+				"title": "Delete \"{name}\"?",
+				"description": "The team is removed and its members are unassigned. Members themselves and their bookings are not affected. Event types using this team for routing fall back to no team.",
+				"confirm": "Delete"
+			}
+		},
+		"toast": {
+			"nameRequired": "Team name is required",
+			"nameEmpty": "Name cannot be empty"
+		}
+	},
+	"eventTypes": {
+		"headTitle": "Event Types — Calnode",
+		"title": "Event Types",
+		"subtitle": {
+			"mine": "Manage the types of meetings people can book with you.",
+			"all": "Every event type in the workspace. As an admin you can edit any of them."
+		},
+		"scope": {
+			"mine": "My event types",
+			"all": "All event types"
+		},
+		"new": {
+			"toggleCancel": "Cancel",
+			"toggleOpen": "New event type",
+			"title": "New event type",
+			"name": "Name",
+			"namePlaceholder": "30-Minute Call",
+			"slug": "Slug (URL)",
+			"slugPlaceholder": "30-min-call",
+			"duration": "Duration (minutes)",
+			"description": "Description (optional)",
+			"descriptionPlaceholder": "Brief description…",
+			"creating": "Creating…",
+			"create": "Create event type"
+		},
+		"empty": {
+			"title": "No event types yet",
+			"description": "Create your first event type to start accepting bookings."
+		},
+		"filter": {
+			"active": "Active ({count})",
+			"archived": "Archived ({count})",
+			"none": "No {filter} event types."
+		},
+		"table": {
+			"name": "Name",
+			"owner": "Owner",
+			"duration": "Duration",
+			"bookingLink": "Booking link",
+			"active": "Active"
+		},
+		"badge": {
+			"youHost": "You host"
+		},
+		"owner": {
+			"you": "You"
+		},
+		"tooltip": {
+			"settings": "Settings",
+			"duplicate": "Duplicate",
+			"restore": "Restore",
+			"archive": "Archive",
+			"delete": "Delete"
+		},
+		"confirm": {
+			"delete": {
+				"title": "Delete event type?",
+				"description": "This will permanently remove the event type and its booking link. Existing bookings are not affected."
+			}
+		},
+		"toast": {
+			"validation": "Slug, name, and duration are required.",
+			"duplicated": "Duplicated as \"{slug}\". Inactive until you turn it on.",
+			"archived": "Event type archived",
+			"restored": "Event type restored",
+			"errors": {
+				"load": "Could not load event types",
+				"create": "Could not create event type",
+				"status": "Could not update status",
+				"update": "Could not update event type",
+				"duplicate": "Could not duplicate event type",
+				"delete": "Could not delete event type"
+			}
+		}
+	},
+	"recordings": {
+		"headTitle": "Recordings — Calnode",
+		"title": "Recordings",
+		"subtitle": "Meeting recordings captured from Calnode video calls. Files live in your storage bucket; links below are short-lived. Download filenames use the meeting's date in UTC.",
+		"deleteAll": "Delete all",
+		"deleting": "Deleting…",
+		"empty": {
+			"title": "No recordings yet",
+			"description": "When a host records a video meeting, it'll appear here."
+		},
+		"searchPlaceholder": "Search by booker, room, or date…",
+		"noMatch": "No recordings match \"{query}\".",
+		"notes": {
+			"aiSummary": "Notes (AI summary)",
+			"regenerate": "Regenerate",
+			"checking": "Checking…",
+			"refresh": "Refresh",
+			"loading": "Loading notes…",
+			"emptyAi": "The AI summary came back empty (the model returned no usable notes). Try Regenerate, or open the Transcript for the raw record.",
+			"blocked": {
+				"notetakerOff": "The notetaker is turned off.",
+				"noDeepgram": "No Deepgram API key is set.",
+				"noLlm": "No LLM is configured — notes are generated by summarizing the transcript with one."
+			},
+			"pending": "No notes yet — they appear a few minutes after a recorded meeting. Use Refresh to check again.",
+			"label": "Notes"
+		},
+		"hideNotes": "Hide notes",
+		"transcript": {
+			"deepgram": "Transcript (Deepgram)",
+			"loading": "Loading transcript…",
+			"empty": "No transcript yet — it's created right after a recorded meeting (needs the notetaker enabled + a Deepgram key in Settings → Video).",
+			"label": "Transcript"
+		},
+		"hideTranscript": "Hide transcript",
+		"consent": {
+			"title": "Recording notice — who acknowledged",
+			"loading": "Loading consent log…",
+			"empty": "No consent responses recorded for this meeting. Acknowledgements are captured only while recording is on.",
+			"guest": "Guest",
+			"left": "Left",
+			"continued": "Continued",
+			"label": "Consent"
+		},
+		"hideConsent": "Hide consent",
+		"download": "Download",
+		"notReady": "Not ready",
+		"confirm": {
+			"deleteOne": {
+				"title": "Delete recording?",
+				"description": "This permanently removes the video file, its transcript, and the booking's notes. This cannot be undone."
+			},
+			"deleteAll": {
+				"title": "Delete all recordings?",
+				"description": "This permanently deletes {count} recording(s) — files, transcripts and notes. In-progress recordings are kept. This cannot be undone.",
+				"confirm": "Delete all"
+			}
+		},
+		"toast": {
+			"copied": "{label} copied",
+			"deleted": "Recording deleted",
+			"notesRegenerated": "Notes regenerated",
+			"notesEmpty": "The summary came back empty — see the transcript.",
+			"nothingToDelete": "Nothing to delete (any in-progress recordings are kept).",
+			"deletePartial": "Deleted {deleted}; {failed} could not be deleted.",
+			"deleteAll": "Deleted {count} recording(s)."
+		},
+		"error": {
+			"load": "Could not load recordings",
+			"loadNotes": "Could not load notes",
+			"regen": "Could not regenerate notes",
+			"loadTranscript": "Could not load transcript",
+			"loadConsent": "Could not load consent log",
+			"deleteOne": "Could not delete recording",
+			"deleteAll": "Could not delete recordings"
+		},
+		"link": {
+			"settingsVideo": "Settings → Video",
+			"settingsAi": "Settings → AI"
+		}
+	},
+	"webhooks": {
+		"headTitle": "Webhooks — Calnode",
+		"title": "Webhooks",
+		"subtitle": "Receive real-time notifications for booking events.",
+		"new": {
+			"toggleCancel": "Cancel",
+			"toggleOpen": "New webhook",
+			"title": "New webhook",
+			"urlLabel": "Endpoint URL",
+			"urlPlaceholder": "https://your-server.com/hooks/calnode",
+			"eventsTitle": "Events to send",
+			"fieldsTitle": "Data to send — untick anything you don't want delivered",
+			"fieldsPii": "· personal data",
+			"piiBadge": "PII",
+			"creating": "Creating…",
+			"create": "Create webhook"
+		},
+		"empty": {
+			"title": "No webhooks",
+			"description": "Add a webhook to receive real-time notifications for booking events."
+		},
+		"table": {
+			"url": "URL",
+			"events": "Events",
+			"fields": "Fields",
+			"status": "Status",
+			"created": "Created"
+		},
+		"fieldsCount": "{count} fields",
+		"tooltip": {
+			"deliveries": "Recent deliveries",
+			"hideDeliveries": "Hide deliveries",
+			"delete": "Delete webhook"
+		},
+		"deliveries": {
+			"loading": "Loading deliveries…",
+			"empty": "No deliveries yet for this webhook.",
+			"event": "Event",
+			"http": "HTTP",
+			"attempts": "Attempts",
+			"lastAttempt": "Last attempt",
+			"status": "Status"
+		},
+		"confirm": {
+			"delete": {
+				"title": "Delete webhook?",
+				"description": "The endpoint will stop receiving events immediately."
+			}
+		},
+		"validation": {
+			"url": "URL is required.",
+			"https": "URL must start with https://",
+			"events": "Select at least one event."
+		},
+		"fieldGroup": {
+			"booking": "Booking",
+			"payment": "Payment",
+			"eventType": "Event type",
+			"host": "Host",
+			"attendee": "Attendee",
+			"intake": "Intake"
+		},
+		"fields": {
+			"booking": {
+				"id": "Booking reference",
+				"status": "Status",
+				"start_at": "Start time",
+				"end_at": "End time",
+				"created_at": "Created at",
+				"location_value": "Location",
+				"cancellation_reason": "Cancellation reason",
+				"previous_start_at": "Previous start (reschedule)",
+				"previous_end_at": "Previous end (reschedule)",
+				"rsvp_status": "RSVP answer (booking.rsvp)",
+				"invite_delivery": "Invite sent by (calendar, calnode, none)"
+			},
+			"payment": {
+				"payment_status": "Payment status",
+				"amount_paid_cents": "Amount paid (cents)",
+				"amount_paid_currency": "Currency"
+			},
+			"eventType": {
+				"event_type_slug": "Event type slug",
+				"event_type_name": "Event type name"
+			},
+			"host": {
+				"host_id": "Host ID",
+				"host_name": "Host name",
+				"host_email": "Host email"
+			},
+			"attendee": {
+				"attendee_name": "Attendee name",
+				"attendee_email": "Attendee email",
+				"attendee_timezone": "Attendee timezone"
+			},
+			"intake": {
+				"answers": "Intake answers"
+			}
+		},
+		"badge": {
+			"personalData": "· personal data"
+		}
+	},
+	"connections": {
+		"headTitle": "Connected apps — Calnode",
+		"title": "Connected apps",
+		"subtitle": "AI agents and other apps you've connected to your scheduling tools (MCP) via sign-in.",
+		"connect": {
+			"title": "Connect an app",
+			"description": "Add this URL as a custom connector in any MCP-capable app, then sign in when it asks. The app appears below once you approve it."
+		},
+		"mcpUrlAria": "MCP connector URL",
+		"claudeHint": "In Claude: Settings → Connectors → Add custom connector, paste the URL, then sign in with your Calnode account to authorize it. Access is scoped to your own role, and you can revoke it here at any time.",
+		"empty": {
+			"title": "No connected apps",
+			"description": "Use the URL above to add Calnode to an MCP-capable app. Once you approve it, it shows up here."
+		},
+		"table": {
+			"app": "App",
+			"connected": "Connected",
+			"lastUsed": "Last used"
+		},
+		"tooltip": {
+			"disconnect": "Disconnect"
+		},
+		"confirm": {
+			"title": "Disconnect app?",
+			"description": "Disconnect \"{name}\"? It will immediately lose access to your scheduling tools and must reconnect to regain it."
+		}
+	},
+	"apiKeys": {
+		"headTitle": "API Keys — Calnode",
+		"title": "API Keys",
+		"subtitle": "Authenticate CLI tools and integrations.",
+		"new": {
+			"toggleCancel": "Cancel",
+			"toggleOpen": "New key",
+			"title": "New API key",
+			"nameLabel": "Key name",
+			"namePlaceholder": "e.g. CI/CD pipeline",
+			"creating": "Creating…",
+			"create": "Create key"
+		},
+		"created": {
+			"banner": "Key created — copy it now. It won't be shown again."
+		},
+		"copyToClipboard": "Copy to clipboard",
+		"empty": {
+			"title": "No API keys",
+			"description": "Create a key to authenticate CLI tools and integrations."
+		},
+		"table": {
+			"name": "Name",
+			"created": "Created",
+			"lastUsed": "Last used"
+		},
+		"tooltip": {
+			"revoke": "Revoke key"
+		},
+		"confirm": {
+			"title": "Revoke API key?",
+			"description": "Revoke \"{name}\"? Any integrations using it will stop working immediately.",
+			"confirm": "Revoke"
+		},
+		"validation": {
+			"name": "Name is required."
+		}
+	},
+	"auth": {
+		"login": {
+			"headTitle": "Sign in — Calnode",
+			"title": "Sign in to Calnode",
+			"google": "Sign in with Google",
+			"microsoft": "Sign in with Microsoft",
+			"email": "Email",
+			"password": "Password",
+			"forgotPassword": "Forgot password?",
+			"submit": "Sign in",
+			"submitting": "Signing in…",
+			"magicEmail": "Email",
+			"magicPlaceholder": "you@example.com",
+			"magicSubmit": "Email me a login link",
+			"magicSending": "Sending…",
+			"magicHint": "A one-time sign-in link, no password needed.",
+			"magicDefaultMessage": "If an account with that email exists, a login link is on its way.",
+			"magicInvalidEmail": "Enter a valid email address first.",
+			"loading": "Loading…",
+			"enteringDemo": "Entering demo…",
+			"noMethods": "No login methods are configured. Contact your administrator.",
+			"error": {
+				"generic": "An error occurred. Please try again.",
+				"loginFailed": "Login failed. Please try again."
+			},
+			"oauth": {
+				"state": "Login failed: invalid session state. Please try again.",
+				"denied": "You denied access. Sign in is required to use the admin.",
+				"oauth": "OAuth error. Please try again.",
+				"userinfo": "Could not fetch your profile. Please try again.",
+				"noAccount": "No Calnode account found for your email. Contact your admin.",
+				"archived": "Your account has been archived. If you think this is an error, please contact your workspace admin.",
+				"session": "Could not create a session. Please try again.",
+				"link": "This login link is invalid or has expired. Request a new one below."
+			}
+		},
+		"claim": {
+			"headTitle": "Set up Calnode",
+			"title": "Welcome to Calnode",
+			"subtitle": "You're the first here — create your owner account.",
+			"name": "Full name",
+			"email": "Email",
+			"password": "Password",
+			"passwordHint": "Minimum 8 characters",
+			"submit": "Create owner account",
+			"submitting": "Creating account…",
+			"error": "Setup failed. Please try again."
+		},
+		"invite": {
+			"headTitle": "Accept invite — Calnode",
+			"title": "You've been invited",
+			"checking": "Checking your invite…",
+			"invalid": "This invite link has expired or already been used. Ask your admin to send a new one.",
+			"forEmail": "This invite is for {email}. It cannot be used by anyone else.",
+			"name": "Full name",
+			"email": "Email",
+			"password": "Password",
+			"passwordHint": "Minimum 8 characters",
+			"submit": "Create account",
+			"submitting": "Creating account…",
+			"error": "Could not complete setup. Please try again."
+		},
+		"forgot": {
+			"headTitle": "Forgot password — Calnode",
+			"title": "Forgot your password?",
+			"subtitle": "Enter your account email and we'll send you a link to set a new password.",
+			"email": "Email",
+			"placeholder": "you@example.com",
+			"submit": "Send reset link",
+			"submitting": "Sending…",
+			"back": "Back to sign in",
+			"defaultMessage": "If an account with that email exists, a password-reset link is on its way.",
+			"invalidEmail": "Enter a valid email address first."
+		},
+		"reset": {
+			"headTitle": "Set a new password — Calnode",
+			"title": "Set a new password",
+			"subtitle": "Choose a password of at least 8 characters.",
+			"password": "New password",
+			"confirm": "Confirm new password",
+			"submit": "Set new password",
+			"submitting": "Setting…",
+			"missingToken": "This reset link is missing its token. Request a new one below.",
+			"requestNew": "Request a new reset link",
+			"tooShort": "Password must be at least 8 characters.",
+			"mismatch": "The two passwords do not match.",
+			"failed": "Could not reset your password. The link may have expired.",
+			"retry": "Could not reset your password. Please try again."
+		}
+	},
+	"settings": {
+		"headTitle": "Settings — Calnode",
+		"title": "Settings",
+		"subtitle": "Manage your profile, preferences, and integrations.",
+		"nav": {
+			"section": {
+				"account": "Your account",
+				"workspace": "Workspace"
+			},
+			"profile": "Profile",
+			"notifications": "Notifications",
+			"branding": "Branding",
+			"email": "Email",
+			"google": "Google OAuth",
+			"zoom": "Zoom",
+			"video": "Video",
+			"storage": "Storage",
+			"payments": "Payments",
+			"ai": "AI",
+			"tracking": "Tracking"
+		},
+		"profile": {
+			"loading": "Loading…",
+			"section": {
+				"profile": "Profile",
+				"preferences": "Preferences"
+			},
+			"photo": {
+				"title": "Profile photo",
+				"hint": "Click your avatar to {action} · shown at 400×400, so square works best · JPEG, PNG, GIF or WebP, max 5 MB · saved as JPEG",
+				"actionUpload": "upload",
+				"actionReplace": "replace",
+				"replaceTitle": "Replace photo",
+				"uploadTitle": "Upload photo",
+				"remove": "Remove photo"
+			},
+			"accent": {
+				"label": "Booking accent color",
+				"hint": "Used on your booking pages."
+			},
+			"name": {
+				"label": "Name",
+				"placeholder": "Your name",
+				"hint": "Your personal name, shown as the meeting host. Your business brand (logo, business name) is set separately in Settings → Branding."
+			},
+			"handle": {
+				"label": "Booking handle",
+				"placeholder": "e.g. wynne",
+				"publicPage": "Your public booking page:",
+				"noPage": "Leave blank for no page."
+			},
+			"email": {
+				"label": "Email"
+			},
+			"timezone": {
+				"label": "Timezone",
+				"placeholder": "Select timezone…",
+				"searchPlaceholder": "Search timezones…",
+				"hint": "Used when computing available slots for your booking pages."
+			},
+			"timeFormat": {
+				"label": "Time format",
+				"12h": "12-hour",
+				"12hHint": "1:30 PM",
+				"24h": "24-hour",
+				"24hHint": "13:30"
+			},
+			"weekStart": {
+				"label": "First day of week"
+			},
+			"dateFormat": {
+				"label": "Date format",
+				"dmy": "DD/MM/YYYY",
+				"mdy": "MM/DD/YYYY",
+				"ymd": "YYYY-MM-DD"
+			},
+			"crop": {
+				"replaceTitle": "Replace photo",
+				"uploadTitle": "Upload photo",
+				"description": "Drag or pinch to adjust. The cropped area will be saved.",
+				"previewAlt": "Crop preview",
+				"uploading": "Uploading…",
+				"save": "Save photo"
+			},
+			"toast": {
+				"avatarUpdated": "Avatar updated",
+				"settingsSaved": "Settings saved"
+			},
+			"error": {
+				"load": "Could not load profile",
+				"upload": "Could not upload avatar",
+				"removeAvatar": "Could not remove avatar",
+				"save": "Could not save settings"
+			},
+			"language": {
+				"label": "Language",
+				"hint": "The admin interface language. Public booking pages still follow each visitor’s browser.",
+				"en": "English",
+				"fr": "Français"
+			}
+		},
+		"notifications": {
+			"loading": "Loading…",
+			"title": "Notifications",
+			"subtitle": "Control which emails you and your attendees receive.",
+			"section": {
+				"attendees": "Emails sent to your attendees",
+				"host": "Emails sent to you"
+			},
+			"attendee": {
+				"confirmation": "Booking confirmation",
+				"cancellation": "Cancellation notice",
+				"reschedule": "Reschedule notice",
+				"reminder": "Reminder emails"
+			},
+			"host": {
+				"newBooking": "New booking received",
+				"cancelled": "Booking cancelled",
+				"rescheduled": "Booking rescheduled"
+			},
+			"toast": {
+				"saved": "Preferences saved"
+			},
+			"error": {
+				"load": "Could not load preferences",
+				"save": "Could not save preferences"
+			}
+		},
+		"branding": {
+			"title": "Branding",
+			"intro": "Your logo appears at the top of booking confirmation emails and on your public booking and manage pages. The business name is the wordmark where there's no logo.",
+			"businessName": {
+				"label": "Business name",
+				"placeholder": "Orchestratr",
+				"hint": "Used where there's no logo. Falls back to \"Calnode\" if left blank."
+			},
+			"logo": {
+				"label": "Logo",
+				"replaceTitle": "Replace logo",
+				"uploadTitle": "Upload logo",
+				"clickUpload": "Click to upload a logo",
+				"alt": "Logo",
+				"size": "Size",
+				"opacity": "Opacity",
+				"remove": "Remove logo",
+				"hint": "Click the box to upload. Shown at up to 600×160, so anything wider than it is tall works best. PNG with a transparent background looks best on a light background. Any shape — you can crop it next. JPEG, PNG, GIF or WebP, max 5 MB; it is re-encoded as a PNG. Adjust size and opacity (preview updates live), then Save."
+			},
+			"banner": {
+				"label": "Banner",
+				"replaceTitle": "Replace banner",
+				"uploadTitle": "Upload banner",
+				"clickUpload": "Click to upload a banner",
+				"alt": "Banner",
+				"remove": "Remove banner",
+				"hint": "Shown full-width below your logo on booking emails and your public booking/manage pages — hidden entirely if not set. Displayed at up to 1600×800, so wide images work best. JPEG, PNG, GIF or WebP, max 5 MB; it is re-encoded as a PNG."
+			},
+			"legal": {
+				"title": "Legal links",
+				"intro": "Links to your own privacy policy and terms. They appear in your public booking page footer, and your privacy policy is linked from the cookie-consent banner. You're the data controller for bookings made through your Calnode — these just point visitors to your policies.",
+				"privacy": {
+					"label": "Privacy policy URL",
+					"placeholder": "https://example.com/privacy"
+				},
+				"terms": {
+					"label": "Terms URL",
+					"placeholder": "https://example.com/terms"
+				},
+				"blankHint": "Leave a field blank to hide that link. Must be a full http(s):// URL."
+			},
+			"language": {
+				"title": "Language",
+				"intro": "Your public booking pages and emails are translated per visitor — most see their browser's language automatically. This sets what a visitor sees when their browser asks for a language you don't support (e.g. an operator serving mostly Spanish-speaking customers might prefer Spanish here instead of English).",
+				"fallback": {
+					"label": "Fallback language"
+				}
+			},
+			"crop": {
+				"logoTitle": "Crop logo",
+				"bannerTitle": "Crop banner",
+				"description": "Drag to adjust, or just save to use the whole image.",
+				"previewAlt": "Crop preview",
+				"saveLogo": "Save logo",
+				"saveBanner": "Save banner"
+			},
+			"toast": {
+				"logoUploaded": "Logo uploaded",
+				"bannerUploaded": "Banner uploaded",
+				"logoRemoved": "Logo removed",
+				"bannerRemoved": "Banner removed",
+				"saved": "Branding saved"
+			},
+			"error": {
+				"load": "Could not load branding settings",
+				"save": "Could not save branding settings",
+				"upload": "Could not upload {target}",
+				"removeLogo": "Could not remove logo",
+				"removeBanner": "Could not remove banner"
+			}
+		},
+		"email": {
+			"title": "Email",
+			"subtitle": "How Calnode sends booking emails.",
+			"transport": {
+				"resend": "Sending via Resend API",
+				"smtp": "Sending via SMTP",
+				"none": "Not configured"
+			},
+			"resend": {
+				"title": "Resend API key",
+				"hint": "Sends over HTTPS instead of SMTP. Use this if your host blocks SMTP.",
+				"removeKey": "Remove key",
+				"willRemove": "Will be removed on save; SMTP will be used instead.",
+				"railwayHint": "Many hosts (including Railway below Pro) block outbound SMTP entirely, which looks identical to a wrong password. An API key avoids that path."
+			},
+			"smtp": {
+				"dimmedHint": "Mail is being sent through the Resend API, so these SMTP settings are not in use. They are kept so you can switch back by removing the key above.",
+				"host": "SMTP host",
+				"hostPlaceholder": "smtp.gmail.com",
+				"port": "Port",
+				"portPlaceholder": "587",
+				"username": "Username",
+				"usernamePlaceholder": "you@example.com",
+				"password": "Password",
+				"passwordPlaceholder": "Enter password",
+				"fromAddress": "From address",
+				"fromAddressPlaceholder": "bookings@example.com",
+				"fromName": "From name",
+				"fromNamePlaceholder": "Calnode",
+				"tlsSection": "TLS / encryption",
+				"starttls": "STARTTLS",
+				"starttlsHint": "Recommended for port 587",
+				"implicitTls": "Implicit TLS",
+				"implicitTlsHint": "For port 465 (SSL)"
+			},
+			"sendTest": "Send test email",
+			"rsvp": {
+				"title": "RSVP tracking",
+				"subtitle": "For event types whose invites Calnode sends. Bookers' Yes / No / Maybe comes back through Resend and shows on the booking.",
+				"on": "On",
+				"off": "Off",
+				"fullAccessKey": "Needs a Full access Resend API key above: Calnode uses it to set up the webhook and to read replies. A sending-only key can't do either.",
+				"address": {
+					"label": "RSVP address",
+					"placeholder": "rsvp@reply.example.com",
+					"hint": "An address on a subdomain you receive email on in Resend (Resend → Domains → enable receiving, then add its MX record). Each invite gets its own private variant of it, so answers find their booking."
+				},
+				"webhook": {
+					"title": "Resend webhook",
+					"connected": "Connected: Resend delivers replies to {url}.",
+					"rerun": "Re-run setup",
+					"removeSecret": "Remove secret",
+					"clearOnSave": "The stored secret will be removed on save; RSVP tracking turns off.",
+					"autoSetupHint": "Calnode can create the webhook in your Resend account and store its signing secret.",
+					"setupButton": "Set up webhook in Resend",
+					"checking": "Checking…",
+					"settingUp": "Setting up…",
+					"hideManual": "Hide manual steps",
+					"showManual": "Set it up by hand",
+					"manual": {
+						"step1": "In Resend, open Webhooks and choose Add webhook.",
+						"endpointLabel": "Endpoint URL:",
+						"step3": "Event: email.received.",
+						"step4": "Copy the webhook's signing secret, paste it here and save:"
+					},
+					"secretPlaceholder": "whsec_..."
+				}
+			},
+			"toast": {
+				"saved": "Email settings saved",
+				"webhookCreated": "Webhook created in Resend",
+				"webhookExisting": "Connected to your existing Resend webhook",
+				"testSent": "Test email sent to {email}"
+			},
+			"error": {
+				"load": "Could not load email settings",
+				"save": "Could not save email settings",
+				"webhook": "Could not set up the webhook in Resend.",
+				"testSaveFirst": "Save your settings first, then try again.",
+				"test": "Could not send test email"
+			}
+		},
+		"google": {
+			"originMismatch": {
+				"title": "This page is being viewed at a different domain than Calnode is configured for",
+				"body": "You're browsing {browserOrigin}, but this server's BASE_URL is set to {baseUrl}. The redirect URIs below are built from BASE_URL — if {browserOrigin} is your real domain (for example, after pointing a custom domain at this instance), update the BASE_URL environment variable/secret with your hosting provider and redeploy, then reload this page."
+			},
+			"setup": {
+				"title": "Setup instructions",
+				"step1": "Go to console.cloud.google.com. If you don't have a project, create one — any name works.",
+				"step2": "Go to APIs & Services → Library, search for Google Calendar API, and enable it.",
+				"step3": "Go to APIs & Services → OAuth consent screen. Choose External (or Internal if you have Google Workspace). Fill in the app name and your email, then save.",
+				"step3Testing": "While the app is in Testing, only Google accounts added as test users can connect, and Google caps this at 100 users. Once your team members are ready to connect their calendars, click Publish app to lift the limit (Internal / Workspace apps have no cap). See Google's guide.",
+				"step4": "Go to Credentials → Create Credentials → OAuth client ID. Set application type to Web application.",
+				"step5": "Under Authorised redirect URIs, add both redirect URLs shown below. Click Create. Copy the Client ID and Client Secret shown.",
+				"step5Localhost": "If you also run Calnode locally, add the http://localhost:3000/… variants of both URIs too.",
+				"step6": "Paste them into the form below and save."
+			},
+			"oauth": {
+				"title": "Google OAuth",
+				"subtitle": "Enables Google sign-in and Google Calendar integration."
+			},
+			"clientId": "Client ID",
+			"clientIdPlaceholder": "123456789-abc.apps.googleusercontent.com",
+			"clientSecret": "Client Secret",
+			"clientSecretPlaceholder": "Enter client secret",
+			"redirectUris": {
+				"title": "Authorised redirect URIs",
+				"hint": "These must be registered on your OAuth client in Google Cloud (Credentials → your client → Authorised redirect URIs).",
+				"localhostHint": "If you also run Calnode locally, add the http://localhost:3000/… variants too."
+			},
+			"toast": {
+				"saved": "Saved — go to Calendar to connect your account"
+			},
+			"error": {
+				"load": "Could not load Google settings",
+				"save": "Could not save Google settings"
+			}
+		},
+		"zoom": {
+			"setup": {
+				"title": "Setup instructions",
+				"step1": "Go to the Zoom App Marketplace and sign in with your Zoom account. Click Develop → Build App.",
+				"step2": "Choose a General App (User-managed OAuth). While it is unpublished, Zoom only lets users inside the Zoom account that owns the app connect; hosts with their own separate Zoom accounts need a published app (see DEPLOY.md, \"Zoom meeting links\"). If that rules Zoom out, built-in video needs no Zoom app at all — see docs/VIDEO.md.",
+				"step3": "Under OAuth, set the Redirect URL for OAuth (and add it to the allow list) to the URL shown below.",
+				"step4": "Under Scopes, add meeting:write (create/update/delete meetings on the user's behalf).",
+				"step5": "Copy the Client ID and Client Secret from the app's Basic Information, paste them below, and save."
+			},
+			"title": "Zoom",
+			"subtitle": "Lets each host connect their own Zoom account so Zoom-located bookings get a real meeting link minted automatically.",
+			"clientId": "Client ID",
+			"clientIdPlaceholder": "abcdEFGhij-KLmnOPqrS",
+			"clientSecret": "Client Secret",
+			"clientSecretPlaceholder": "Enter client secret",
+			"redirect": {
+				"title": "Redirect URL",
+				"hint": "This must be registered on your Zoom app (OAuth → Redirect URL + OAuth allow list)."
+			},
+			"multiMemberWarning": "Multi-member limit: only Zoom users on the same Zoom account as this app's owner can connect an unpublished app — members elsewhere are refused by Zoom before Calnode is involved. Options: docs/ZOOM.md (built-in video needs no Zoom app at all).",
+			"toast": {
+				"saved": "Saved — each host can now connect Zoom from the Calendar page"
+			},
+			"error": {
+				"load": "Could not load Zoom settings",
+				"save": "Could not save Zoom settings"
+			}
+		},
+		"video": {
+			"setup": {
+				"title": "Setup instructions",
+				"step1": "Create a free project at cloud.livekit.io (or run your own self-hosted server — same fields).",
+				"step2": "Copy the project's WebSocket URL (looks like wss://yourproject.livekit.cloud) and an API key + secret.",
+				"step3": "Paste them below and save. Bookings using \"Calnode Video (LiveKit)\" then get a built-in room — no per-host connection needed."
+			},
+			"livekit": {
+				"title": "Calnode Video (LiveKit)",
+				"subtitle": "Built-in video meetings hosted on your LiveKit server. Each booking gets a room link; guests join in the browser — no account or app required."
+			},
+			"serverUrl": "Server URL",
+			"serverUrlPlaceholder": "wss://yourproject.livekit.cloud",
+			"apiKey": "API Key",
+			"apiKeyPlaceholder": "APIxxxxxxxx",
+			"apiSecret": "API Secret",
+			"apiSecretPlaceholder": "Enter API secret",
+			"disconnect": "Disconnect",
+			"recording": {
+				"needStorage": "Meeting recordings need object storage set up first.",
+				"enableHint": "Object storage is ready — turn recordings on to let hosts record meetings.",
+				"goStorage": "Go to Settings → Storage"
+			},
+			"webhook": {
+				"title": "Webhook (recommended)",
+				"subtitle": "Register this URL in LiveKit so recordings finalize with accurate duration and end cleanly when a meeting closes. Recordings still work without it — this just makes them reliable.",
+				"step1": "1. In LiveKit Cloud, open Project → Settings → Webhooks (docs).",
+				"step2": "2. Add a webhook with the URL above, and attach the same API key you entered here — it signs the events so Calnode can verify them.",
+				"step3": "3. Save. LiveKit sends all project events to this one URL; Calnode verifies each signature and uses the recording-related ones."
+			},
+			"notetaker": {
+				"title": "AI meeting notes (notetaker)",
+				"subtitle": "After a meeting is recorded, transcribe it and summarize it into notes on the booking (using your configured LLM). Needs recording on, an LLM configured, and a Deepgram key.",
+				"deepgram": {
+					"label": "Deepgram API key",
+					"placeholder": "Enter Deepgram API key",
+					"hint": "Get one at console.deepgram.com."
+				}
+			},
+			"toast": {
+				"saved": "Saved — \"Calnode Video (LiveKit)\" is now selectable as an event location",
+				"webhookCopied": "Webhook URL copied",
+				"copyFailed": "Could not copy — select and copy manually",
+				"disconnected": "LiveKit disconnected",
+				"notetakerSaved": "Notetaker settings saved"
+			},
+			"error": {
+				"load": "Could not load video settings",
+				"save": "Could not save video settings",
+				"notetakerSave": "Could not save notetaker settings",
+				"disconnect": "Could not disconnect"
+			}
+		},
+		"storage": {
+			"intro": "Object storage is used in two places — database backups and meeting recordings. They share one bucket.",
+			"setup": {
+				"title": "Setup instructions",
+				"step1": "Create a bucket with any S3-compatible object storage provider — for example Cloudflare R2, Backblaze B2, or AWS S3. This is the same bucket both database backups and meeting recordings write to.",
+				"step2": "Generate an access key ID and secret access key for that bucket.",
+				"step3": "There's no form for this — set Litestream environment variables/secrets with your hosting provider, then redeploy.",
+				"step3EndpointHint": "For any provider other than AWS S3 (R2, B2, MinIO, etc.), also set LITESTREAM_ENDPOINT to that provider's S3-compatible endpoint URL. LITESTREAM_REGION is optional — only some providers need it.",
+				"step4": "Reload this page — once it shows Configured below, meeting recordings can be turned on beneath it."
+			},
+			"backups": {
+				"title": "Database backups (Litestream)",
+				"subtitle": "Continuous SQLite replication to your bucket. Configured via environment at deploy.",
+				"bucket": "Bucket",
+				"endpoint": "Endpoint",
+				"notConfiguredHint": "Set LITESTREAM_REPLICA_URL and credentials to enable backups — see setup instructions above."
+			},
+			"recordings": {
+				"title": "Meeting recordings",
+				"subtitle": "LiveKit video recordings upload to the backups bucket under a recordings/ prefix.",
+				"badge": {
+					"ready": "Storage ready",
+					"noBucket": "No bucket"
+				},
+				"allow": "Allow hosts to record meetings",
+				"allowHint": "The host gets a Record button in the call; everyone sees a \"Recording\" banner.",
+				"needBucket": "Configure backups first (see setup instructions above) — recordings need a bucket."
+			},
+			"toast": {
+				"saved": "Saved"
+			},
+			"error": {
+				"load": "Could not load storage settings",
+				"save": "Could not save"
+			}
+		},
+		"payments": {
+			"setup": {
+				"title": "Setup instructions",
+				"step1": "In your Stripe Dashboard → Developers → API keys, copy the Secret key and Publishable key.",
+				"step2": "Go to Developers → Webhooks → Add endpoint and set the URL to the endpoint shown below. Subscribe to checkout.session.completed and checkout.session.expired.",
+				"step3": "Copy the endpoint's Signing secret (whsec_…), paste all three values below, and save."
+			},
+			"stripe": {
+				"title": "Stripe",
+				"subtitle": "Lets you charge for bookings. An event type with a price sends the booker to Stripe Checkout before the slot is confirmed."
+			},
+			"secretKey": "Secret key",
+			"secretKeyPlaceholder": "sk_live_… or sk_test_…",
+			"publishableKey": "Publishable key",
+			"publishableKeyPlaceholder": "pk_live_… or pk_test_…",
+			"webhookSecret": "Webhook signing secret",
+			"webhookSecretPlaceholder": "whsec_…",
+			"webhookEndpoint": {
+				"title": "Webhook endpoint",
+				"hint": "Register this in Stripe → Developers → Webhooks."
+			},
+			"disconnect": "Disconnect",
+			"confirmDisconnect": {
+				"title": "Remove Stripe credentials?",
+				"description": "Paid event types will stop being bookable.",
+				"confirm": "Remove"
+			},
+			"toast": {
+				"saved": "Saved — set a price on an event type to start charging",
+				"disconnected": "Stripe disconnected"
+			},
+			"error": {
+				"load": "Could not load payment settings",
+				"save": "Could not save payment settings",
+				"disconnect": "Could not disconnect"
+			}
+		},
+		"ai": {
+			"assistant": {
+				"title": "AI assistant",
+				"subtitle": "Powers conversational booking on your booking pages. Bring your own model — any OpenAI-compatible endpoint (a hosted model, or one you run yourself). Off by default; if it's unavailable, bookers just use the calendar."
+			},
+			"status": {
+				"active": "Active",
+				"configuredOff": "Configured (off)"
+			},
+			"endpoint": {
+				"label": "API endpoint",
+				"placeholder": "https://api.openai.com/v1",
+				"hint": "OpenAI-compatible base URL; the client appends /chat/completions."
+			},
+			"model": {
+				"label": "Model",
+				"placeholder": "gpt-4o-mini / claude-haiku-4-5 / gemini-flash …"
+			},
+			"apiKey": {
+				"label": "API key",
+				"placeholder": "Enter API key (optional for local endpoints)"
+			},
+			"enable": {
+				"label": "Enable AI features",
+				"hint": "Turn conversational booking on for your booking pages."
+			},
+			"testConnection": "Test connection",
+			"instructions": {
+				"title": "Assistant instructions",
+				"subtitle": "Extra guidance — tone, business context, do's and don'ts. Appended to the built-in instructions (which handle the booking flow + safety and can't be edited).",
+				"label": "Additional instructions",
+				"placeholder": "e.g. Keep a warm, professional tone. We're a law firm — mention that consultations are confidential.",
+				"languageHint": "The assistant replies in each visitor's own language automatically. Writing these instructions in a different language than your visitors works, but is somewhat less reliable — for best results, write them in whichever language most of your visitors use."
+			},
+			"basePrompt": {
+				"summary": "View built-in base instructions (read-only)"
+			},
+			"privacy": "Privacy: the assistant only ever receives computed availability windows and public event details — never your calendar event titles, attendees, or other private data. For strict data-residency needs, point the endpoint at inference you control.",
+			"toast": {
+				"savedOn": "Saved — AI is on",
+				"saved": "Saved",
+				"testOk": "Connection OK ({ms} ms)",
+				"testFailed": "Test failed: {error}",
+				"needEndpointModel": "Enter an endpoint and model first"
+			},
+			"error": {
+				"load": "Could not load AI settings",
+				"save": "Could not save AI settings",
+				"test": "Test request failed"
+			}
+		},
+		"tracking": {
+			"ga": {
+				"title": "Google Analytics & Tag Manager",
+				"subtitle": "Enter an ID and Calnode loads the official tag on your booking page automatically — no snippet to paste, and the page's CSP is handled for you. Leave a field blank to turn that tag off."
+			},
+			"gtm": {
+				"label": "GTM Container ID",
+				"placeholder": "GTM-XXXXXXX",
+				"hint": "Recommended — manages GA4 + Ads tags. Trigger them on the calnode_booking_confirmed dataLayer event below."
+			},
+			"ga4": {
+				"label": "GA4 Measurement ID",
+				"placeholder": "G-XXXXXXXXXX",
+				"hint": "Loads GA4 directly. Bookings fire a purchase / generate_lead event with revenue."
+			},
+			"inject": {
+				"title": "Code injection (head)",
+				"subtitle": "Raw HTML/JS injected into the <head> of your public booking and manage pages — for any tag not covered above (Meta Pixel, Plausible, custom). It runs on visitors' browsers; only admins can set it.",
+				"headHtml": "<head> HTML",
+				"headPlaceholder": "<!-- Paste your GTM / GA4 / Meta Pixel snippet here -->"
+			},
+			"csp": {
+				"label": "Allowed origins",
+				"optional": "(optional)",
+				"placeholder": "https://www.googletagmanager.com https://*.google-analytics.com",
+				"hint": "Leave blank to allow any https: origin while injection is active — simplest, and GTM-managed tags just work. Fill in to lock the page's CSP to only these origins (space-separated); tags from other domains will then be blocked."
+			},
+			"datalayer": {
+				"title": "dataLayer events",
+				"subtitle": "Push calnode_booking_confirmed / _cancelled / _rescheduled into window.dataLayer so GTM can trigger on them.",
+				"fieldsHint": "Fields to include — untick anything you don't want exposed to the browser / GTM."
+			},
+			"fields": {
+				"booking_id": "Booking reference",
+				"event_type_slug": "Event type slug",
+				"event_type_name": "Event type name",
+				"start_at": "Start time",
+				"end_at": "End time",
+				"status": "Status",
+				"location": "Location",
+				"host_name": "Host name",
+				"attendee_name": "Attendee name",
+				"attendee_email": "Attendee email",
+				"attendee_timezone": "Attendee timezone",
+				"answers": "Intake answers",
+				"value": "Revenue / amount",
+				"currency": "Currency",
+				"is_paid": "Paid flag",
+				"transaction_id": "Transaction ID"
+			},
+			"piiBadge": "PII",
+			"toast": {
+				"saved": "Tracking settings saved"
+			},
+			"error": {
+				"load": "Could not load tracking settings",
+				"save": "Could not save tracking settings"
+			}
+		}
+	},
+	"eventTypeEditor": {
+		"headTitle": "{name} — Event Type — Calnode",
+		"back": "Event Types",
+		"previewTooltip": "Preview booking page",
+		"tabs": {
+			"general": "General",
+			"hosts": "Hosts",
+			"notifications": "Notifications",
+			"questions": "Questions",
+			"embed": "Embed"
+		},
+		"readOnly": {
+			"banner": "created this event type.",
+			"messageThem": "Message them",
+			"messageRequest": "to request changes.",
+			"managedByOwner": "This event type is managed by its owner. Contact them to request changes.",
+			"labels": {
+				"name": "Name",
+				"description": "Description",
+				"duration": "Duration",
+				"slotInterval": "Slot interval",
+				"location": "Location",
+				"routing": "Routing",
+				"status": "Status",
+				"bookingPage": "Booking page"
+			},
+			"status": {
+				"active": "Active",
+				"inactive": "Inactive",
+				"listed": "Listed",
+				"unlisted": "Unlisted (link only)"
+			},
+			"durationSuffix": " min"
+		},
+		"adminEditing": {
+			"banner": "You're editing {owner}'s event type as an admin. It stays theirs, and your own calendar and Zoom connections play no part in it."
+		},
+		"general": {
+			"section": "General",
+			"name": "Name",
+			"directoryOrder": "Directory order",
+			"directoryOrderHint": "Orders this event on the public person and team pages only — not on the admin list or the booking page. Lower numbers come first; equal numbers sort by name.",
+			"bookingLink": "Booking link",
+			"bookingLinkPrefix": "/book/",
+			"slugHint": "Editable until the first booking, after which the links are already in circulation. Mainly useful right after duplicating, where the copy arrives with -copy on the end.",
+			"duration": "Duration (minutes)",
+			"durationHint": "How long the meeting runs.",
+			"slotInterval": "Slot interval (minutes)",
+			"slotIntervalHint": "How often a booking can start. Usually the same as the duration. Set it lower to offer more start times, or higher to keep slots on the hour.",
+			"description": "Description",
+			"descriptionPlaceholder": "Optional — supports **bold** and *italic* markdown",
+			"status": "Status",
+			"active": "Active (accepting bookings)",
+			"visibility": "Visibility",
+			"public": "Public (visible in booking page)",
+			"showTaken": "Show booked times as unavailable",
+			"showTakenHint": "Booked times appear struck through on the booking page instead of being hidden, so visitors can see the calendar filling up. Only times inside your working hours are shown, never the rest of your day.",
+			"showTakenWarning": "Anyone with the booking link can see which hours are taken.",
+			"allowPhoneCall": "Let invitees choose a phone call by entering their number"
+		},
+		"location": {
+			"section": "Location",
+			"type": "Type",
+			"types": {
+				"zoom": "Zoom",
+				"teams": "Microsoft Teams",
+				"googleMeet": "Google Meet",
+				"livekit": "Calnode Video (LiveKit)",
+				"phone": "Phone call",
+				"link": "Video link",
+				"inPerson": "In person"
+			},
+			"labels": {
+				"meetingUrl": "Meeting URL",
+				"zoomLink": "Zoom link",
+				"meetLink": "Meet link",
+				"teamsLink": "Teams link",
+				"phone": "Phone number",
+				"address": "Address",
+				"details": "Details",
+				"videoRoom": "Video room"
+			},
+			"placeholder": {
+				"optional": "Optional",
+				"zoomRequired": "https://…zoom.us/j/… (required)",
+				"linkRequired": "https://… (required)",
+				"phoneRequired": "+1 555 123 4567 (required)",
+				"addressOptional": "Address (optional)",
+				"optionalFallback": "Optional fallback link",
+				"pasteMeet": "Paste a {platform} link",
+				"pasteZoom": "https://…zoom.us/j/…"
+			},
+			"hint": {
+				"meet": {
+					"ownerEditing": "A {platform} link is generated for each booking if {owner}'s connected calendar can create one. Otherwise paste a link below; saving checks this against their account.",
+					"autoGen": "A {platform} link is generated automatically for each booking from your connected calendar.",
+					"autoGenTeamsFallback": " Personal Microsoft accounts can't generate Teams links — add one below as a fallback.",
+					"manualGoogle": "Your connected calendar is Google, so a {platform} link won't be generated automatically.",
+					"manualMicrosoft": "Your connected calendar is Microsoft, so a {platform} link won't be generated automatically.",
+					"noCalendar": "No calendar is connected, so a {platform} link can't be generated automatically.",
+					"pasteFallback": "Paste a link below and it'll be used for every booking."
+				},
+				"zoom": {
+					"ownerEditing": "A Zoom meeting is created for each booking if the host has connected Zoom. Without a link below, saving checks that {owner} has.",
+					"autoGen": "A Zoom meeting is created automatically for each booking under the assigned host's connected Zoom account.",
+					"connectCalendar": "Connect your Zoom account on the Calendar page to auto-generate meeting links,",
+					"notConfigured": "Zoom isn't set up for this workspace (an admin can add it in Settings → Zoom),",
+					"pasteFallback": "or paste a Zoom link below to use for every booking."
+				},
+				"livekit": "A secure video room is created automatically for each booking — no link needed. Guests join in the browser. (Set up the server in Settings → Video.)"
+			}
+		},
+		"invite": {
+			"section": "Calendar invite",
+			"sentBy": "Sent by",
+			"delivery": {
+				"calendar": "The host's calendar",
+				"calnode": "Calnode, from your workspace",
+				"none": "Your own system"
+			},
+			"hint": {
+				"calnode": "Invitees get the invite from your workspace's email sender (Settings → Email), never from a host's own address. Hosts still see the meeting on their own calendar, with the meeting link.",
+				"none": "Neither the host's calendar nor Calnode sends the booker an invite, for when your own system does. Hosts still see the meeting on their own calendar, with the meeting link.",
+				"calendar": "The host's connected calendar invites the booker, so the invite shows the host's own email address. Choose Calnode to keep hosts' addresses private or to book as a team."
+			},
+			"appliesNewOnly": "Applies to new bookings only. Existing bookings keep the method they were sent with.",
+			"emailNotSetup": "Email isn't set up, so bookers won't receive an invite. Add a sender in Settings → Email.",
+			"onlineNoneWarning": "This event type books an online meeting, so every booking has a join link, and Calnode will not send it to the booker. Pass its location_value from the booking.created webhook in your own confirmation.",
+			"settingsEmailLink": "Settings → Email"
+		},
+		"confirmNone": {
+			"title": "Send the booker no invite at all?",
+			"description": "Email is not set up in this workspace, so Calnode will not email the booker anything for this event type, and the host's calendar will not invite them either. The booker only hears from you if your own system sends the confirmation.",
+			"confirm": "Use my own system"
+		},
+		"price": {
+			"section": "Price",
+			"amount": "Amount",
+			"currency": "Currency",
+			"currencyPlaceholder": "usd",
+			"hint": "Leave at 0 for a free event. A price sends bookers to Stripe Checkout before the slot is confirmed — requires Stripe to be connected.",
+			"stripeLink": "Stripe"
+		},
+		"scheduling": {
+			"section": "Scheduling",
+			"bufferBefore": "Buffer before (min)",
+			"bufferBeforeHint": "Blocked time before each meeting",
+			"bufferAfter": "Buffer after (min)",
+			"bufferAfterHint": "Blocked time after each meeting",
+			"minNotice": "Minimum notice (min)",
+			"minNoticeHint": "e.g. 60 = bookings must be 1h+ in future",
+			"bookingWindow": "Booking window (days)",
+			"bookingWindowHint": "How far ahead people can book. 0 = unlimited",
+			"maxActive": "Max active bookings per person",
+			"maxActiveHint": "Upcoming bookings one attendee (by email) can hold. 0 = unlimited"
+		},
+		"hosts": {
+			"intro": "Who can host this event, and how meetings are staffed.",
+			"who": "Who can host this event?",
+			"justMe": "Just me",
+			"justOwner": "Just {owner}",
+			"specificPeople": "Specific people",
+			"staffing": "How should the meeting be staffed?",
+			"rotate": "Rotate between them",
+			"together": "Everyone attends",
+			"rrStrategy": "Who gets picked",
+			"rr": {
+				"even": "Even — fewest upcoming bookings",
+				"priority": "Priority — top of the list first",
+				"soonest": "Soonest availability"
+			},
+			"rotationPeople": "People in the rotation",
+			"whoAttends": "Who attends",
+			"required": "Required",
+			"optional": "Optional",
+			"addMember": "Add member",
+			"addTeam": "Add team",
+			"selectMember": "Select a member…",
+			"selectTeam": "Select a team…",
+			"noMembers": "No members available",
+			"noTeams": "No teams",
+			"moveUp": "Move up",
+			"moveDown": "Move down",
+			"justMeHint": "Every booking goes to you.",
+			"justOwnerHint": "Every booking goes to {owner}.",
+			"peopleHint": "Pick who can take these bookings — add members individually or pull in a whole team.",
+			"rotateHint": "One available person is booked per slot, spreading bookings across the group.",
+			"togetherHint": "Everyone joins the same meeting. A slot is offered only when all required people are free.",
+			"rrHint": {
+				"even": "Spreads bookings evenly — whoever has the fewest upcoming meetings is booked.",
+				"priority": "The highest person in the list who's free is booked; fall down the list when they're busy.",
+				"soonest": "Offers the earliest slot anyone in the group has free."
+			},
+			"rotationEmpty": "Add people or a team to the rotation.",
+			"togetherEmpty": "Add the people who attend this meeting.",
+			"requiredExplain": "Required hosts always attend and must be free for a slot to open.",
+			"optionalExplain": "Optional hosts join only when they're free — they never block a slot."
+		},
+		"notifications": {
+			"reminders": "Reminders",
+			"remindersHint": "Send attendees a reminder email before the meeting. Defaults to 24 hours before if none are set.",
+			"addReminder": "+ Add reminder",
+			"customMessages": "Custom messages",
+			"customMessagesHint": "Add an optional note appended to each email type.",
+			"msg": {
+				"confirmation": "Booking confirmation",
+				"cancellation": "Cancellation notice",
+				"reschedule": "Reschedule notice",
+				"reminder": "Reminder email"
+			},
+			"subjectOptional": "Subject line (optional — blank uses the default)",
+			"notePlaceholder": "Add a custom note for attendees…",
+			"hidePreview": "Hide preview",
+			"showPreview": "Show email preview",
+			"sendTest": "Send test email",
+			"sendingTest": "Sending…",
+			"testSent": "Test email sent to your inbox.",
+			"smtpNotConfigured": "SMTP is not configured — configure it in Settings.",
+			"assistantGreeting": "Assistant greeting",
+			"assistantGreetingHint": "The chat assistant's opening line on this event's booking page. Leave blank to use the built-in greeting, which is automatically translated for the visitor's language; a custom greeting is shown exactly as written, in every language.",
+			"greetingPlaceholder": "Hi! Tell me roughly when you'd like to meet…",
+			"subjectPlaceholder": {
+				"confirmation": "Booking confirmed: {name}",
+				"cancellation": "Booking cancelled: {name}",
+				"reschedule": "Booking rescheduled: {name}",
+				"reminder": "Reminder: {name} is coming up"
+			},
+			"smtpNotConfiguredLink": "configure it in Settings"
+		},
+		"transfer": {
+			"title": "Transfer ownership",
+			"hint": "Choose a saved required host. The booking URL stays the same. Transfer is available only when there are no upcoming bookings. Calendar connections and global availability stay with each account.",
+			"select": "Select new owner",
+			"button": "Transfer ownership",
+			"inProgress": "Transferring…"
+		},
+		"save": "Save changes",
+		"saveInProgress": "Saving…",
+		"toast": {
+			"saved": "Changes saved",
+			"transferred": "Event transferred",
+			"saveFailed": "Could not save changes"
+		},
+		"validation": {
+			"directoryOrder": "Directory order must be a whole number.",
+			"name": "Name is required.",
+			"duration": "Duration must be at least 5 minutes.",
+			"slotInterval": "Slot interval must be at least 1 minute.",
+			"maxActive": "Max active bookings cannot be negative (0 = unlimited).",
+			"rotation": "Add at least one person to the rotation",
+			"collective": "Add at least one required host (someone who always attends)"
+		},
+		"questions": {
+			"title": "Intake Questions",
+			"subtitle": "Collect information from attendees when they book.",
+			"empty": "No questions yet.",
+			"table": {
+				"number": "#",
+				"question": "Question",
+				"type": "Type",
+				"required": "Required"
+			},
+			"types": {
+				"text": "Text",
+				"checkbox": "Checkbox (yes/no)",
+				"select": "Dropdown"
+			},
+			"label": "Label",
+			"options": "Options (one per line)",
+			"optionsPlaceholder": "Option A\nOption B\nOption C",
+			"labelPlaceholder": "e.g. What's the meeting about?",
+			"add": "Add question",
+			"adding": "Adding…",
+			"tooltip": {
+				"edit": "Edit",
+				"remove": "Remove"
+			},
+			"confirm": {
+				"title": "Remove question?",
+				"description": "\"{label}\" will be removed from this event type's booking form."
+			},
+			"validation": {
+				"label": "Label is required.",
+				"options": "At least one option is required for dropdown questions.",
+				"optionsShort": "At least one option is required."
+			},
+			"error": {
+				"load": "Could not load questions",
+				"add": "Could not add question",
+				"save": "Could not save question",
+				"delete": "Could not delete question"
+			}
+		},
+		"embed": {
+			"title": "Embed",
+			"subtitle": "Drop this booking widget on your website — it renders inline, no iframe. Paste before </body>.",
+			"inline": {
+				"label": "Inline",
+				"hint": "Embeds the booking calendar directly in the page."
+			},
+			"popup": {
+				"label": "Popup button",
+				"hint": "A button that opens the booking widget in a modal."
+			},
+			"footer": "The widget calls this instance's public booking API. To restrict which sites may embed it, set EMBED_ALLOWED_ORIGINS.",
+			"buttonText": "Book a call"
+		},
+		"reminders": {
+			"option": {
+				"1h": "1 hour before",
+				"2h": "2 hours before",
+				"4h": "4 hours before",
+				"8h": "8 hours before",
+				"12h": "12 hours before",
+				"24h": "24 hours before",
+				"48h": "2 days before",
+				"72h": "3 days before",
+				"168h": "1 week before"
+			}
+		},
+		"preview": {
+			"sampleAttendee": "Alex Johnson",
+			"sampleHost": "Host",
+			"sampleEventFallback": "My Event",
+			"locationLine": "Location: {value}",
+			"confirmation": {
+				"body": "Hi {attendee},\n\nYour booking has been confirmed.\n\nEvent:    {event}\nWith:     {host}\nStart:    {start}\nEnd:      {end}{location}\n\nBooking reference: preview-test\n\nTo cancel, visit:\n[booking page]{note}\n— Calnode"
+			},
+			"cancellation": {
+				"body": "Hi {attendee},\n\nYour booking has been cancelled.\n\nEvent:    {event}\nWith:     {host}\nStart:    {start}\nEnd:      {end}\n\nTo rebook, visit:\n[booking page]{note}\n— Calnode"
+			},
+			"reschedule": {
+				"body": "Hi {attendee},\n\nYour booking has been rescheduled.\n\nEvent:    {event}\nWith:     {host}\nWas:      {prev}\nNow:      {start}\nEnd:      {end}{location}\n\nBooking reference: preview-test{note}\n— Calnode"
+			},
+			"reminder": {
+				"body": "Hi {attendee},\n\nThis is a reminder that your booking is coming up.\n\nEvent:    {event}\nWith:     {host}\nStart:    {start}\nEnd:      {end}{location}\n\nBooking reference: preview-test{note}\n— Calnode"
+			},
+			"sampleStart": "Tomorrow, 2:00 PM UTC",
+			"samplePrev": "Today, 2:00 PM UTC",
+			"sampleEnd": "Tomorrow, {time} UTC",
+			"signature": "— Calnode"
+		},
+		"ownerFallback": "the owner",
+		"error": {
+			"transfer": "Could not transfer event",
+			"loadHosts": "Could not load hosts",
+			"loadMembers": "Could not load members",
+			"loadTeams": "Could not load teams",
+			"loadTeamMembers": "Could not load team members"
+		}
+	}
+}

@@ -4,6 +4,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
+	import { t, tr } from '$lib/i18n';
 
 	type AuthStatus = {
 		claimed: boolean;
@@ -23,19 +24,19 @@
 	let magicError = $state('');
 	let magicEmail = $state('');
 
-	const oauthErrorMessages: Record<string, string> = {
-		state: 'Login failed: invalid session state. Please try again.',
-		denied: 'You denied access. Sign in is required to use the admin.',
-		oauth: 'OAuth error. Please try again.',
-		userinfo: 'Could not fetch your profile. Please try again.',
-		no_account: 'No Calnode account found for your email. Contact your admin.',
-		archived: 'Your account has been archived. If you think this is an error, please contact your workspace admin.',
-		session: 'Could not create a session. Please try again.',
-		link: 'This login link is invalid or has expired. Request a new one below.'
-	};
+	const oauthErrorMessages = $derived<Record<string, string>>({
+		state: $t('auth.login.oauth.state'),
+		denied: $t('auth.login.oauth.denied'),
+		oauth: $t('auth.login.oauth.oauth'),
+		userinfo: $t('auth.login.oauth.userinfo'),
+		no_account: $t('auth.login.oauth.noAccount'),
+		archived: $t('auth.login.oauth.archived'),
+		session: $t('auth.login.oauth.session'),
+		link: $t('auth.login.oauth.link')
+	});
 
 	const errorKey = $derived($page.url.searchParams.get('error') ?? '');
-	const oauthError = $derived(errorKey ? (oauthErrorMessages[errorKey] ?? 'An error occurred. Please try again.') : '');
+	const oauthError = $derived(errorKey ? (oauthErrorMessages[errorKey] ?? $t('auth.login.error.generic')) : '');
 
 	onMount(async () => {
 		const res = await fetch('/v1/auth/status');
@@ -65,7 +66,7 @@
 				window.location.href = '/admin';
 			} else {
 				const data = await res.json().catch(() => ({}));
-				loginError = data.error || 'Login failed. Please try again.';
+				loginError = data.error || tr('auth.login.error.loginFailed');
 			}
 		} finally {
 			submitting = false;
@@ -79,7 +80,7 @@
 		// Require a valid address up front — otherwise the request silently no-ops (the
 		// endpoint returns the same generic message), which looks like nothing happened.
 		if (!isValidEmail(addr)) {
-			magicError = 'Enter a valid email address first.';
+			magicError = tr('auth.login.magicInvalidEmail');
 			return;
 		}
 		magicError = '';
@@ -92,9 +93,9 @@
 				body: JSON.stringify({ email: addr })
 			});
 			const data = await res.json().catch(() => ({}));
-			magicMessage = data.message || 'If an account with that email exists, a login link is on its way.';
+			magicMessage = data.message || tr('auth.login.magicDefaultMessage');
 		} catch {
-			magicMessage = 'If an account with that email exists, a login link is on its way.';
+			magicMessage = tr('auth.login.magicDefaultMessage');
 		} finally {
 			magicSubmitting = false;
 		}
@@ -108,7 +109,7 @@
 	const showDivider = $derived((showGoogle || showMicrosoft) && showEmail);
 </script>
 
-<svelte:head><title>Sign in — Calnode</title></svelte:head>
+<svelte:head><title>{$t('auth.login.headTitle')}</title></svelte:head>
 
 <div class="flex min-h-screen items-center justify-center bg-muted/30 p-6">
 	<div class="w-full max-w-sm">
@@ -119,7 +120,7 @@
 					<path fill="#ffffff" d="M 13.529898,23.489202 c 0.41676,-0.42858 2.30921,-2.34577 4.20548,-4.26044 3.89443,-3.93222 3.79896,-3.77881 2.93494,-4.71617 -0.86333,-0.9366 -0.70987,-1.03489 -4.7574,3.04728 -2.01816,2.03542 -3.63135,3.56753 -3.70704,3.52074 -0.0737,-0.0455 -0.86549,-0.83379 -1.759495,-1.7516 -1.7365396,-1.78282 -2.1646795,-2.10404 -2.5380305,-1.90423 -0.40259,0.21546 -1.13741,1.12099 -1.13741,1.40162 0,0.18848 0.79327,1.06899 2.5741409,2.85723 3.0861346,3.09893 2.9741146,3.05059 4.1848146,1.80557 z"/>
 				</svg>
 			</div>
-			<h1 class="text-xl font-semibold tracking-tight">Sign in to Calnode</h1>
+			<h1 class="text-xl font-semibold tracking-tight">{$t('auth.login.title')}</h1>
 		</div>
 
 		{#if oauthError}
@@ -131,7 +132,7 @@
 
 		{#if status === null || status.demo_mode}
 			<div class="text-center text-sm text-muted-foreground">
-				{status?.demo_mode ? 'Entering demo…' : 'Loading…'}
+				{status?.demo_mode ? $t('auth.login.enteringDemo') : $t('auth.login.loading')}
 			</div>
 		{:else}
 			{#if showGoogle}
@@ -142,7 +143,7 @@
 						<path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
 						<path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.29-8.16 2.29-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
 					</svg>
-					Sign in with Google
+					{$t('auth.login.google')}
 				</Button>
 			{/if}
 
@@ -154,14 +155,14 @@
 						<path fill="#00A4EF" d="M1 12h10v10H1z"/>
 						<path fill="#FFB900" d="M12 12h10v10H12z"/>
 					</svg>
-					Sign in with Microsoft
+					{$t('auth.login.microsoft')}
 				</Button>
 			{/if}
 
 			{#if showDivider}
 				<div class="my-4 flex items-center gap-3 text-xs text-muted-foreground">
 					<div class="h-px flex-1 bg-border"></div>
-					or
+					{$t('common.or')}
 					<div class="h-px flex-1 bg-border"></div>
 				</div>
 			{/if}
@@ -169,20 +170,20 @@
 			{#if showEmail}
 				<form onsubmit={loginEmail} class="space-y-4">
 					<div class="space-y-1.5">
-						<Label for="email">Email</Label>
+						<Label for="email">{$t('auth.login.email')}</Label>
 						<Input id="email" type="email" autocomplete="email" bind:value={email} required />
 					</div>
 					<div class="space-y-1.5">
 						<div class="flex items-center justify-between">
-							<Label for="password">Password</Label>
+							<Label for="password">{$t('auth.login.password')}</Label>
 							{#if showForgot}
-								<a href="/admin/forgot-password" class="text-xs text-muted-foreground hover:underline">Forgot password?</a>
+								<a href="/admin/forgot-password" class="text-xs text-muted-foreground hover:underline">{$t('auth.login.forgotPassword')}</a>
 							{/if}
 						</div>
 						<Input id="password" type="password" autocomplete="current-password" bind:value={password} required />
 					</div>
 					<Button type="submit" class="h-11 w-full" disabled={submitting}>
-						{submitting ? 'Signing in…' : 'Sign in'}
+						{submitting ? $t('auth.login.submitting') : $t('auth.login.submit')}
 					</Button>
 				</form>
 			{/if}
@@ -191,7 +192,7 @@
 				{#if showGoogle || showMicrosoft || showEmail}
 					<div class="my-4 flex items-center gap-3 text-xs text-muted-foreground">
 						<div class="h-px flex-1 bg-border"></div>
-						or
+						{$t('common.or')}
 						<div class="h-px flex-1 bg-border"></div>
 					</div>
 				{/if}
@@ -200,23 +201,23 @@
 				{:else}
 					<form onsubmit={(e) => { e.preventDefault(); sendMagicLink(); }} class="space-y-3">
 						<div class="space-y-1.5">
-							<Label for="magic-email">Email</Label>
-							<Input id="magic-email" type="email" autocomplete="email" placeholder="you@example.com"
+							<Label for="magic-email">{$t('auth.login.magicEmail')}</Label>
+							<Input id="magic-email" type="email" autocomplete="email" placeholder={$t('auth.login.magicPlaceholder')}
 								bind:value={magicEmail} oninput={() => (magicError = '')} aria-invalid={magicError ? 'true' : undefined} />
 							{#if magicError}
 								<p class="text-xs text-destructive">{magicError}</p>
 							{/if}
 						</div>
 						<Button type="submit" variant="outline" class="h-11 w-full" disabled={magicSubmitting}>
-							{magicSubmitting ? 'Sending…' : 'Email me a login link'}
+							{magicSubmitting ? $t('auth.login.magicSending') : $t('auth.login.magicSubmit')}
 						</Button>
-						<p class="text-center text-xs text-muted-foreground">A one-time sign-in link, no password needed.</p>
+						<p class="text-center text-xs text-muted-foreground">{$t('auth.login.magicHint')}</p>
 					</form>
 				{/if}
 			{/if}
 
 			{#if !showGoogle && !showMicrosoft && !showEmail && !showMagic}
-				<p class="text-center text-sm text-muted-foreground">No login methods are configured. Contact your administrator.</p>
+				<p class="text-center text-sm text-muted-foreground">{$t('auth.login.noMethods')}</p>
 			{/if}
 		{/if}
 	</div>

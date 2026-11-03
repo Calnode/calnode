@@ -7,25 +7,26 @@
 	import { Label } from '$lib/components/ui/label';
 	import { ConfirmDialog } from '$lib/components/ui/confirm-dialog';
 	import { authStatus } from '$lib/stores';
+	import { t, tr } from '$lib/i18n';
 
 	// Display names for known calendar providers.
-	const PROVIDER_LABELS: Record<string, string> = {
-		google: 'Google Calendar',
-		microsoft: 'Microsoft 365 (Outlook)',
-		caldav: 'CalDAV (Apple iCloud, Fastmail, Nextcloud)'
-	};
+	const PROVIDER_LABELS = $derived<Record<string, string>>({
+		google: $t('calendar.provider.google'),
+		microsoft: $t('calendar.provider.microsoft'),
+		caldav: $t('calendar.provider.caldav')
+	});
 
 	// Where to send an admin for each provider Calnode supports but this instance hasn't
 	// been given credentials for. Google is self-serve (a settings page); Microsoft is
 	// currently env-var-only, so it points at the docs instead of a form.
-	const UNCONFIGURED_SETUP: Record<string, { text: string; href: string; external?: boolean }> = {
-		google: { text: 'Set up in Settings → Google OAuth', href: '/admin/settings/google' },
+	const UNCONFIGURED_SETUP = $derived<Record<string, { text: string; href: string; external?: boolean }>>({
+		google: { text: $t('calendar.setup.google'), href: '/admin/settings/google' },
 		microsoft: {
-			text: 'See setup docs',
+			text: $t('calendar.setup.microsoft'),
 			href: 'https://github.com/Calnode/calnode/blob/main/.env.example',
 			external: true
 		}
-	};
+	});
 
 	// CalDAV is credential-based (no OAuth redirect): an inline form collects a server + an
 	// app-specific password and POSTs to the dedicated connect endpoint.
@@ -37,19 +38,19 @@
 	let caldavBusy = $state(false);
 	let caldavErr = $state('');
 
-	const appPwHelp: Record<string, { label: string; href: string }> = {
-		icloud: { label: 'Create an app-specific password at appleid.apple.com', href: 'https://support.apple.com/102654' },
-		fastmail: { label: 'Create an app password in Fastmail settings', href: 'https://www.fastmail.help/hc/en-us/articles/360058752854' }
-	};
+	const appPwHelp = $derived<Record<string, { label: string; href: string }>>({
+		icloud: { label: $t('calendar.caldav.icloudHelp'), href: 'https://support.apple.com/102654' },
+		fastmail: { label: $t('calendar.caldav.fastmailHelp'), href: 'https://www.fastmail.help/hc/en-us/articles/360058752854' }
+	});
 
 	async function connectCaldav() {
 		caldavErr = '';
 		if (caldavPreset === 'custom' && !caldavServer.trim()) {
-			caldavErr = 'Enter your CalDAV server URL.';
+			caldavErr = tr('calendar.caldav.err.server');
 			return;
 		}
 		if (!caldavUser.trim() || !caldavPass) {
-			caldavErr = 'Username and app password are both required.';
+			caldavErr = tr('calendar.caldav.err.credentials');
 			return;
 		}
 		caldavBusy = true;
@@ -66,12 +67,12 @@
 			justConnected = true;
 			await load();
 		} catch (e: any) {
-			caldavErr = e.message || 'Could not connect. Check the server, username and app password.';
+			caldavErr = e.message || tr('calendar.caldav.err.connect');
 		} finally {
 			caldavBusy = false;
 		}
 	}
-	const label = (p?: string) => (p ? PROVIDER_LABELS[p] ?? p : 'calendar');
+	const label = (p?: string) => (p ? PROVIDER_LABELS[p] ?? p : $t('calendar.picker.calendar'));
 
 	let status = $state<CalendarStatus | null>(null);
 	let loading = $state(true);
@@ -153,7 +154,7 @@
 			}
 		} catch (e: any) {
 			if (e?.status === 409) reauthNeeded = new Set(reauthNeeded).add(c.id);
-			pickerErr = e.message || 'Could not load calendars for this account.';
+			pickerErr = e.message || tr('common.failed');
 		} finally {
 			pickerLoading = false;
 		}
@@ -188,7 +189,7 @@
 			pickerConnId = null;
 			await load();
 		} catch (e: any) {
-			pickerErr = e.message || 'Could not save calendar selection.';
+			pickerErr = e.message || tr('common.failed');
 		} finally {
 			pickerSaving = false;
 		}
@@ -246,44 +247,43 @@
 
 <ConfirmDialog
 	bind:open={disconnectOpen}
-	title="Disconnect this calendar?"
-	description="Calnode will stop checking it for conflicts. If it was your booking calendar, another connected calendar is promoted automatically."
-	confirmText="Disconnect"
+	title={$t('calendar.confirmDisconnect.title')}
+	description={$t('calendar.confirmDisconnect.description')}
+	confirmText={$t('calendar.confirmDisconnect.confirm')}
 	destructive
 	onConfirm={doDisconnect}
 />
 
 <ConfirmDialog
 	bind:open={zoomDisconnectOpen}
-	title="Disconnect Zoom?"
-	description="New Zoom-located bookings assigned to you won't get an auto-generated meeting link."
-	confirmText="Disconnect"
+	title={$t('calendar.confirmZoomDisconnect.title')}
+	description={$t('calendar.confirmZoomDisconnect.description')}
+	confirmText={$t('calendar.disconnect')}
 	destructive
 	onConfirm={doZoomDisconnect}
 />
 
-<svelte:head><title>Calendar — Calnode</title></svelte:head>
+<svelte:head><title>{$t('calendar.headTitle')}</title></svelte:head>
 
 <div class="mb-8">
-	<h1 class="text-2xl font-semibold tracking-tight">Calendar</h1>
-	<p class="mt-1 text-sm text-muted-foreground">Connect one or more accounts. Choose which calendars are checked for conflicts, and which single calendar bookings are written into.</p>
+	<h1 class="text-2xl font-semibold tracking-tight">{$t('calendar.title')}</h1>
+	<p class="mt-1 text-sm text-muted-foreground">{$t('calendar.subtitle')}</p>
 </div>
 
 {#if error}
 	<p class="mb-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>
 {/if}
 {#if justConnected && status?.connected}
-	<p class="mb-4 rounded-md bg-green-50 px-3 py-2 text-sm text-green-700">Calendar connected successfully.</p>
+	<p class="mb-4 rounded-md bg-green-50 px-3 py-2 text-sm text-green-700">{$t('calendar.connectedSuccess')}</p>
 {/if}
 
 {#if loading}
-	<p class="py-8 text-sm text-muted-foreground">Loading…</p>
+	<p class="py-8 text-sm text-muted-foreground">{$t('common.loading')}</p>
 {:else if status?.configured === false}
 	<div class="max-w-md rounded-md bg-amber-50 px-3 py-2.5 text-sm text-amber-800 ring-1 ring-inset ring-amber-200">
-		<p class="font-medium">No calendar provider configured</p>
+		<p class="font-medium">{$t('calendar.noProvider.title')}</p>
 		<p class="mt-1 text-amber-700">
-			Add Google OAuth credentials in <a href="/admin/settings/google" class="font-medium underline">Settings → Google OAuth</a>,
-			or set the Microsoft (Outlook) credentials via environment variables, then restart the server.
+			{$t('calendar.noProvider.body')}
 		</p>
 	</div>
 {:else}
@@ -300,49 +300,48 @@
 							</svg>
 							<div class="min-w-0">
 								<p class="truncate font-medium">{c.account_email || label(c.provider)}</p>
-								<p class="text-xs text-muted-foreground">{label(c.provider)} · checked for conflicts</p>
+								<p class="text-xs text-muted-foreground">{label(c.provider)} · {$t('calendar.checkedForConflicts')}</p>
 								{#if reauthNeeded.has(c.id)}
-									<p class="text-xs font-medium text-destructive">Reconnect needed — disconnect and connect again.</p>
+									<p class="text-xs font-medium text-destructive">{$t('calendar.reconnectNeeded')}</p>
 								{/if}
 							</div>
 						</div>
 						<div class="flex shrink-0 items-center gap-4">
 							<label class="flex cursor-pointer items-center gap-1.5 text-sm text-muted-foreground">
 								<input type="radio" name="destination" checked={c.is_destination} disabled={busy} onchange={() => setDestination(c)} />
-								Add bookings here
+								{$t('calendar.addBookingsHere')}
 							</label>
-							<Button variant="ghost" size="sm" onclick={() => askDisconnect(c)} disabled={busy}>Disconnect</Button>
+							<Button variant="ghost" size="sm" onclick={() => askDisconnect(c)} disabled={busy}>{$t('calendar.disconnect')}</Button>
 						</div>
 						</div>
 						<div class="mt-2 pl-8">
 							<button type="button" class="text-xs font-medium text-muted-foreground underline-offset-2 hover:underline" onclick={() => togglePicker(c)}>
-								{pickerConnId === c.id ? 'Hide calendars' : 'Manage calendars'}
+								{pickerConnId === c.id ? $t('calendar.hideCalendars') : $t('calendar.manageCalendars')}
 							</button>
 						</div>
 						{#if pickerConnId === c.id}
 							<div class="mt-3 space-y-3 rounded-md border bg-muted/30 p-3">
 								{#if pickerLoading}
-									<p class="text-xs text-muted-foreground">Loading calendars…</p>
+									<p class="text-xs text-muted-foreground">{$t('calendar.loadingCalendars')}</p>
 								{:else if pickerErr}
 									<p class="text-xs text-destructive">{pickerErr}</p>
 								{:else if pickerCals.length === 0}
-									<p class="text-xs text-muted-foreground">No calendars found for this account.</p>
+									<p class="text-xs text-muted-foreground">{$t('calendar.noCalendars')}</p>
 								{:else}
 									<p class="text-xs text-muted-foreground">
-										Tick the calendars to check for conflicts, and choose the one bookings are
-										written into (select it again to clear the choice).
+										{$t('calendar.picker.instructions')}
 									</p>
 									<div class="space-y-1.5">
 										<div class="flex items-center gap-2 pb-1 text-xs font-medium text-muted-foreground">
-											<span class="w-10 shrink-0 text-center">Check</span>
-											<span class="w-20 shrink-0 text-center">Destination</span>
-											<span>Calendar</span>
+											<span class="w-10 shrink-0 text-center">{$t('calendar.picker.check')}</span>
+											<span class="w-20 shrink-0 text-center">{$t('calendar.picker.destination')}</span>
+											<span>{$t('calendar.picker.calendar')}</span>
 										</div>
 										{#each pickerCals as cal (cal.id)}
 											<div class="flex items-center gap-2 text-sm">
 												<span class="w-10 shrink-0 text-center">
 													<input type="checkbox" bind:checked={cal.check_conflicts} disabled={pickerSaving}
-														aria-label="Check {cal.name} for conflicts" />
+														aria-label={$t('calendar.picker.checkAria', { name: cal.name })} />
 												</span>
 												<span class="w-20 shrink-0 text-center">
 													<!-- One destination per account in the UI; the API enforces one per user
@@ -351,21 +350,21 @@
 													<input type="checkbox" disabled={pickerSaving || !cal.writable}
 														checked={cal.is_destination}
 														onchange={() => toggleDestination(cal)}
-														aria-label="Write bookings into {cal.name} (select again to clear)" />
+														aria-label={$t('calendar.picker.destinationAria', { name: cal.name })} />
 												</span>
 												<span class="truncate">
 													{cal.name}
-													{#if cal.primary}<span class="ml-1 text-xs text-muted-foreground">(primary)</span>{/if}
-													{#if !cal.writable}<span class="ml-1 text-xs text-muted-foreground">(read-only)</span>{/if}
+													{#if cal.primary}<span class="ml-1 text-xs text-muted-foreground">{$t('calendar.picker.primary')}</span>{/if}
+													{#if !cal.writable}<span class="ml-1 text-xs text-muted-foreground">{$t('calendar.picker.readOnly')}</span>{/if}
 												</span>
 											</div>
 										{/each}
 									</div>
 									<div class="flex items-center gap-2 pt-1">
 										<Button size="sm" onclick={() => savePicker(c)} disabled={pickerSaving}>
-											{pickerSaving ? 'Saving…' : 'Save'}
+											{pickerSaving ? $t('calendar.saving') : $t('common.save')}
 										</Button>
-										<Button variant="ghost" size="sm" onclick={() => (pickerConnId = null)} disabled={pickerSaving}>Cancel</Button>
+										<Button variant="ghost" size="sm" onclick={() => (pickerConnId = null)} disabled={pickerSaving}>{$t('common.cancel')}</Button>
 									</div>
 								{/if}
 							</div>
@@ -374,18 +373,16 @@
 				{/each}
 			</div>
 			<p class="text-xs text-muted-foreground">
-				Use <span class="font-medium">Manage calendars</span> on each account to choose which of its
-				calendars are checked for conflicts. Confirmed bookings (and any auto-generated meeting links)
-				are written to the account marked <span class="font-medium">“Add bookings here”</span>.
+				{$t('calendar.footer.manageHint')}
 			</p>
 		{/if}
 
 		<!-- Connect (another) calendar -->
 		{#if $authStatus.demo_mode}
-			<p class="text-sm text-muted-foreground">Calendar connect is disabled in the demo.</p>
+			<p class="text-sm text-muted-foreground">{$t('calendar.demoDisabled')}</p>
 		{:else}
 		<div class="space-y-2">
-			<p class="text-sm font-medium">{connections.length > 0 ? 'Connect another calendar' : 'Connect a calendar'}</p>
+			<p class="text-sm font-medium">{connections.length > 0 ? $t('calendar.connectAnother') : $t('calendar.connect')}</p>
 			{#each providers as p}
 				{#if p === 'caldav'}
 					<div class="rounded-lg border bg-card p-4">
@@ -397,45 +394,45 @@
 								<p class="font-medium">{label('caldav')}</p>
 							</div>
 							<Button variant={connections.length > 0 ? 'outline' : 'default'} onclick={() => (caldavOpen = !caldavOpen)}>
-								{caldavOpen ? 'Cancel' : 'Connect'}
+								{caldavOpen ? $t('common.cancel') : $t('calendar.connectButton')}
 							</Button>
 						</div>
 						{#if caldavOpen}
 							<form class="mt-4 space-y-3 border-t pt-4" onsubmit={(e) => { e.preventDefault(); connectCaldav(); }}>
 								<div class="space-y-1.5">
-									<Label for="caldav-preset">Provider</Label>
+									<Label for="caldav-preset">{$t('calendar.caldav.provider')}</Label>
 									<select id="caldav-preset" bind:value={caldavPreset}
 										class="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm">
-										<option value="icloud">Apple iCloud</option>
-										<option value="fastmail">Fastmail</option>
-										<option value="custom">Nextcloud / other (custom URL)</option>
+										<option value="icloud">{$t('calendar.caldav.icloud')}</option>
+										<option value="fastmail">{$t('calendar.caldav.fastmail')}</option>
+										<option value="custom">{$t('calendar.caldav.custom')}</option>
 									</select>
 								</div>
 								{#if caldavPreset === 'custom'}
 									<div class="space-y-1.5">
-										<Label for="caldav-server">Server URL</Label>
-										<Input id="caldav-server" type="url" placeholder="https://cloud.example.com/remote.php/dav" bind:value={caldavServer} />
+										<Label for="caldav-server">{$t('calendar.caldav.serverUrl')}</Label>
+										<Input id="caldav-server" type="url" placeholder={$t('calendar.caldav.serverPlaceholder')} bind:value={caldavServer} />
 									</div>
 								{/if}
 								<div class="space-y-1.5">
-									<Label for="caldav-user">Username / email</Label>
-									<Input id="caldav-user" type="text" autocomplete="username" placeholder="you@icloud.com" bind:value={caldavUser} />
+									<Label for="caldav-user">{$t('calendar.caldav.username')}</Label>
+									<Input id="caldav-user" type="text" autocomplete="username" placeholder={$t('calendar.caldav.usernamePlaceholder')} bind:value={caldavUser} />
 								</div>
 								<div class="space-y-1.5">
-									<Label for="caldav-pass">App-specific password</Label>
+									<Label for="caldav-pass">{$t('calendar.caldav.appPassword')}</Label>
 									<Input id="caldav-pass" type="password" autocomplete="off" bind:value={caldavPass} />
 									{#if appPwHelp[caldavPreset]}
 										<p class="text-xs text-muted-foreground">
-											<a class="underline" href={appPwHelp[caldavPreset].href} target="_blank" rel="noopener noreferrer">{appPwHelp[caldavPreset].label}</a> — your normal password won't work.
+											<a class="underline" href={appPwHelp[caldavPreset].href} target="_blank" rel="noopener noreferrer">{appPwHelp[caldavPreset].label}</a> {$t('calendar.caldav.passwordSuffix')}
 										</p>
 									{:else}
-										<p class="text-xs text-muted-foreground">Use an app password from your provider, not your login password.</p>
+										<p class="text-xs text-muted-foreground">{$t('calendar.caldav.passwordHint')}</p>
 									{/if}
 								</div>
 								{#if caldavErr}
 									<p class="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{caldavErr}</p>
 								{/if}
-								<Button type="submit" disabled={caldavBusy}>{caldavBusy ? 'Connecting…' : 'Connect calendar'}</Button>
+								<Button type="submit" disabled={caldavBusy}>{caldavBusy ? $t('calendar.connecting') : $t('calendar.connectCalendar')}</Button>
 							</form>
 						{/if}
 					</div>
@@ -447,7 +444,7 @@
 							</svg>
 							<p class="font-medium">{label(p)}</p>
 						</div>
-						<Button variant={connections.length > 0 ? 'outline' : 'default'} onclick={() => (window.location.href = `/v1/calendar/connect?provider=${p}`)}>Connect</Button>
+						<Button variant={connections.length > 0 ? 'outline' : 'default'} onclick={() => (window.location.href = `/v1/calendar/connect?provider=${p}`)}>{$t('calendar.connectButton')}</Button>
 					</div>
 				{/if}
 			{/each}
@@ -459,7 +456,7 @@
 						</svg>
 						<div>
 							<p class="font-medium text-muted-foreground">{label(p)}</p>
-							<p class="text-xs text-muted-foreground">Not set up on this instance</p>
+							<p class="text-xs text-muted-foreground">{$t('calendar.unconfigured')}</p>
 						</div>
 					</div>
 					{#if UNCONFIGURED_SETUP[p]}
@@ -473,7 +470,7 @@
 				</div>
 			{/each}
 			{#if connections.length > 0}
-				<p class="text-xs text-muted-foreground">Connect a personal + work calendar (or both providers) so nothing double-books.</p>
+				<p class="text-xs text-muted-foreground">{$t('calendar.hint.multiCalendar')}</p>
 			{/if}
 		</div>
 		{/if}
@@ -483,12 +480,12 @@
 <!-- Zoom — per-host meeting links (independent of the calendar) -->
 {#if zoom?.configured && !$authStatus.demo_mode}
 	<div class="mt-10">
-		<h2 class="text-lg font-semibold tracking-tight">Zoom</h2>
+		<h2 class="text-lg font-semibold tracking-tight">{$t('calendar.zoom.title')}</h2>
 		<p class="mt-1 text-sm text-muted-foreground">
-			Connect your Zoom account so bookings with a Zoom location get a real meeting link minted under your account.
+			{$t('calendar.zoom.subtitle')}
 		</p>
 		{#if zoomJustConnected && zoom.connected}
-			<p class="mt-3 max-w-md rounded-md bg-green-50 px-3 py-2 text-sm text-green-700">Zoom connected successfully.</p>
+			<p class="mt-3 max-w-md rounded-md bg-green-50 px-3 py-2 text-sm text-green-700">{$t('calendar.zoom.connectedSuccess')}</p>
 		{/if}
 		<div class="mt-3 max-w-md">
 			{#if zoom.connected}
@@ -496,24 +493,24 @@
 					<div class="flex items-center gap-3">
 						<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="shrink-0 text-muted-foreground"><path d="m22 8-6 4 6 4V8Z"/><rect x="2" y="6" width="14" height="12" rx="2"/></svg>
 						<div>
-							<p class="font-medium">Zoom</p>
+							<p class="font-medium">{$t('calendar.zoom.title')}</p>
 							<p class="mt-0.5 inline-flex items-center gap-1.5 text-sm text-green-700">
 								<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-								Connected
+								{$t('calendar.zoom.connected')}
 							</p>
 						</div>
 					</div>
 					<Button variant="outline" onclick={() => (zoomDisconnectOpen = true)} disabled={zoomDisconnecting}>
-						{zoomDisconnecting ? 'Disconnecting…' : 'Disconnect'}
+						{zoomDisconnecting ? $t('calendar.zoom.disconnecting') : $t('calendar.disconnect')}
 					</Button>
 				</div>
 			{:else}
 				<div class="flex items-center justify-between rounded-lg border bg-card p-5">
 					<div class="flex items-center gap-3">
 						<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="shrink-0 text-muted-foreground"><path d="m22 8-6 4 6 4V8Z"/><rect x="2" y="6" width="14" height="12" rx="2"/></svg>
-						<p class="font-medium">Zoom</p>
+						<p class="font-medium">{$t('calendar.zoom.title')}</p>
 					</div>
-					<Button onclick={() => (window.location.href = '/v1/zoom/connect')}>Connect</Button>
+					<Button onclick={() => (window.location.href = '/v1/zoom/connect')}>{$t('calendar.connectButton')}</Button>
 				</div>
 			{/if}
 		</div>

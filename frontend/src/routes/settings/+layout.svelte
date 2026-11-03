@@ -2,32 +2,33 @@
 	import { page } from '$app/stores';
 	import { base } from '$app/paths';
 	import { currentUser } from '$lib/stores';
+	import { t } from '$lib/i18n';
 	import type { Snippet } from 'svelte';
 
 	let { children }: { children: Snippet } = $props();
 
-	const navItems = [
-		{ section: 'Your account', href: `${base}/settings/profile`, label: 'Profile' },
-		{ section: 'Your account', href: `${base}/settings/notifications`, label: 'Notifications' },
-		{ section: 'Workspace', href: `${base}/settings/branding`, label: 'Branding', adminOnly: true },
-		{ section: 'Workspace', href: `${base}/settings/email`, label: 'Email', adminOnly: true },
-		{ section: 'Workspace', href: `${base}/settings/google`, label: 'Google OAuth', adminOnly: true },
-		{ section: 'Workspace', href: `${base}/settings/zoom`, label: 'Zoom', adminOnly: true },
-		{ section: 'Workspace', href: `${base}/settings/video`, label: 'Video', adminOnly: true },
-		{ section: 'Workspace', href: `${base}/settings/storage`, label: 'Storage', adminOnly: true },
-		{ section: 'Workspace', href: `${base}/settings/payments`, label: 'Payments', adminOnly: true },
-		{ section: 'Workspace', href: `${base}/settings/ai`, label: 'AI', adminOnly: true },
-		{ section: 'Workspace', href: `${base}/settings/tracking`, label: 'Tracking', adminOnly: true },
-	];
+	const navItems = $derived([
+		{ section: $t('settings.nav.section.account'), href: `${base}/settings/profile`, label: $t('settings.nav.profile') },
+		{ section: $t('settings.nav.section.account'), href: `${base}/settings/notifications`, label: $t('settings.nav.notifications') },
+		{ section: $t('settings.nav.section.workspace'), href: `${base}/settings/branding`, label: $t('settings.nav.branding'), adminOnly: true },
+		{ section: $t('settings.nav.section.workspace'), href: `${base}/settings/email`, label: $t('settings.nav.email'), adminOnly: true },
+		{ section: $t('settings.nav.section.workspace'), href: `${base}/settings/google`, label: $t('settings.nav.google'), adminOnly: true },
+		{ section: $t('settings.nav.section.workspace'), href: `${base}/settings/zoom`, label: $t('settings.nav.zoom'), adminOnly: true },
+		{ section: $t('settings.nav.section.workspace'), href: `${base}/settings/video`, label: $t('settings.nav.video'), adminOnly: true },
+		{ section: $t('settings.nav.section.workspace'), href: `${base}/settings/storage`, label: $t('settings.nav.storage'), adminOnly: true },
+		{ section: $t('settings.nav.section.workspace'), href: `${base}/settings/payments`, label: $t('settings.nav.payments'), adminOnly: true },
+		{ section: $t('settings.nav.section.workspace'), href: `${base}/settings/ai`, label: $t('settings.nav.ai'), adminOnly: true },
+		{ section: $t('settings.nav.section.workspace'), href: `${base}/settings/tracking`, label: $t('settings.nav.tracking'), adminOnly: true },
+	]);
 
 	const visibleNavItems = $derived(navItems.filter((item) => !item.adminOnly || $currentUser?.is_admin));
 </script>
 
-<svelte:head><title>Settings — Calnode</title></svelte:head>
+<svelte:head><title>{$t('settings.headTitle')}</title></svelte:head>
 
 <div class="mb-8">
-	<h1 class="text-2xl font-semibold tracking-tight">Settings</h1>
-	<p class="mt-1 text-sm text-muted-foreground">Manage your profile, preferences, and integrations.</p>
+	<h1 class="text-2xl font-semibold tracking-tight">{$t('settings.title')}</h1>
+	<p class="mt-1 text-sm text-muted-foreground">{$t('settings.subtitle')}</p>
 </div>
 
 <div class="flex gap-8">

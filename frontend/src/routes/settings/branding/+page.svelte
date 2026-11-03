@@ -11,6 +11,7 @@
 	import { saveOnCmdS } from '$lib/save-shortcut';
 	import { createAsyncFlag } from '$lib/async-action.svelte';
 	import type CropperType from 'cropperjs';
+	import { t, tr } from '$lib/i18n';
 
 	type Branding = {
 		business_name: string;
@@ -83,7 +84,7 @@
 		termsUrl = b.terms_url ?? '';
 		fallbackLocale = b.fallback_locale || 'en';
 		supportedLocales = b.supported_locales ?? [];
-	}, 'Could not load branding settings'));
+	}, tr('settings.branding.error.load')));
 
 	async function onFileChange(target: CropTarget) {
 		const input = target === 'logo' ? fileInput : bannerFileInput;
@@ -133,17 +134,17 @@
 			cropSrc = '';
 			if (fileInput) fileInput.value = '';
 			if (bannerFileInput) bannerFileInput.value = '';
-			toast.success(target === 'logo' ? 'Logo uploaded' : 'Banner uploaded');
-		}, `Could not upload ${target}`);
+			toast.success(tr(target === 'logo' ? 'settings.branding.toast.logoUploaded' : 'settings.branding.toast.bannerUploaded'));
+		}, tr('settings.branding.error.upload', { target }));
 	}
 
 	async function removeLogo() {
 		try {
 			await api.del('/v1/settings/branding/logo');
 			logoUrl = '';
-			toast.success('Logo removed');
+			toast.success(tr('settings.branding.toast.logoRemoved'));
 		} catch (e: any) {
-			toast.error(e.message || 'Could not remove logo');
+			toast.error(e.message || tr('settings.branding.error.removeLogo'));
 		}
 	}
 
@@ -151,9 +152,9 @@
 		try {
 			await api.del('/v1/settings/branding/banner');
 			bannerUrl = '';
-			toast.success('Banner removed');
+			toast.success(tr('settings.branding.toast.bannerRemoved'));
 		} catch (e: any) {
-			toast.error(e.message || 'Could not remove banner');
+			toast.error(e.message || tr('settings.branding.error.removeBanner'));
 		}
 	}
 
@@ -175,46 +176,43 @@
 			privacyUrl = b.privacy_url ?? '';
 			termsUrl = b.terms_url ?? '';
 			fallbackLocale = b.fallback_locale || 'en';
-			toast.success('Branding saved');
-		}, 'Could not save branding settings');
+			toast.success(tr('settings.branding.toast.saved'));
+		}, tr('settings.branding.error.save'));
 	}
 </script>
 
 <svelte:window onkeydown={saveOnCmdS(save, () => !savingFlag.active)} />
 
 {#if !$currentUser?.is_admin}
-	<p class="text-sm text-muted-foreground">Admin access required.</p>
+	<p class="text-sm text-muted-foreground">{$t('common.adminRequired')}</p>
 {:else if loadingFlag.active}
-	<p class="py-8 text-sm text-muted-foreground">Loading…</p>
+	<p class="py-8 text-sm text-muted-foreground">{$t('common.loading')}</p>
 {:else}
 	<div class="max-w-2xl space-y-6">
 		<div class="rounded-lg border bg-card p-6">
-			<h2 class="text-sm font-semibold">Branding</h2>
-			<p class="mt-0.5 text-xs text-muted-foreground">
-				Your logo appears at the top of booking confirmation emails and on your public booking and manage
-				pages. The business name is the wordmark where there's no logo.
-			</p>
+			<h2 class="text-sm font-semibold">{$t('settings.branding.title')}</h2>
+			<p class="mt-0.5 text-xs text-muted-foreground">{$t('settings.branding.intro')}</p>
 
 			<div class="mt-4 space-y-1.5">
-				<Label for="business-name">Business name</Label>
-				<Input id="business-name" bind:value={businessName} placeholder="Orchestratr" maxlength={200} />
-				<p class="text-xs text-muted-foreground">Used where there's no logo. Falls back to “Calnode” if left blank.</p>
+				<Label for="business-name">{$t('settings.branding.businessName.label')}</Label>
+				<Input id="business-name" bind:value={businessName} placeholder={$t('settings.branding.businessName.placeholder')} maxlength={200} />
+				<p class="text-xs text-muted-foreground">{$t('settings.branding.businessName.hint')}</p>
 			</div>
 
 			<div class="mt-5 space-y-3">
-				<Label>Logo</Label>
+				<Label>{$t('settings.branding.logo.label')}</Label>
 				<input bind:this={fileInput} type="file" accept="image/jpeg,image/png,image/gif,image/webp" class="hidden" onchange={() => onFileChange('logo')} />
 				<button
 					type="button"
 					onclick={() => fileInput?.click()}
 					disabled={uploadingFlag.active}
-					title={logoUrl ? 'Replace logo' : 'Upload logo'}
+					title={logoUrl ? $t('settings.branding.logo.replaceTitle') : $t('settings.branding.logo.uploadTitle')}
 					class="group relative flex min-h-[88px] w-full max-w-md cursor-pointer items-center justify-center overflow-hidden rounded-md border bg-white px-4 py-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-wait"
 				>
 					{#if logoUrl}
-						<img src={logoUrl} alt="Logo" style="height:{logoHeight}px;width:auto;opacity:{logoOpacity / 100};" />
+						<img src={logoUrl} alt={$t('settings.branding.logo.alt')} style="height:{logoHeight}px;width:auto;opacity:{logoOpacity / 100};" />
 					{:else}
-						<span class="text-sm text-muted-foreground">Click to upload a logo</span>
+						<span class="text-sm text-muted-foreground">{$t('settings.branding.logo.clickUpload')}</span>
 					{/if}
 					<div class="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
 						<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
@@ -224,41 +222,36 @@
 				{#if logoUrl}
 					<div class="max-w-md space-y-3">
 						<div class="flex items-center gap-3">
-							<span class="w-14 text-xs font-medium text-muted-foreground">Size</span>
+							<span class="w-14 text-xs font-medium text-muted-foreground">{$t('settings.branding.logo.size')}</span>
 							<input type="range" min="16" max="64" step="1" bind:value={logoHeight} class="flex-1 accent-primary" />
 							<span class="w-10 text-right text-xs tabular-nums text-muted-foreground">{logoHeight}px</span>
 						</div>
 						<div class="flex items-center gap-3">
-							<span class="w-14 text-xs font-medium text-muted-foreground">Opacity</span>
+							<span class="w-14 text-xs font-medium text-muted-foreground">{$t('settings.branding.logo.opacity')}</span>
 							<input type="range" min="20" max="100" step="1" bind:value={logoOpacity} class="flex-1 accent-primary" />
 							<span class="w-10 text-right text-xs tabular-nums text-muted-foreground">{logoOpacity}%</span>
 						</div>
-						<Button type="button" variant="ghost" size="sm" onclick={removeLogo} class="text-destructive hover:text-destructive">Remove logo</Button>
+						<Button type="button" variant="ghost" size="sm" onclick={removeLogo} class="text-destructive hover:text-destructive">{$t('settings.branding.logo.remove')}</Button>
 					</div>
 				{/if}
 
-				<p class="text-xs text-muted-foreground">
-					Click the box to upload. Shown at up to 600×160, so anything wider than it is tall works
-					best. PNG with a transparent background looks best on a light background. Any shape — you
-					can crop it next. JPEG, PNG, GIF or WebP, max 5 MB; it is re-encoded as a PNG. Adjust size
-					and opacity (preview updates live), then Save.
-				</p>
+				<p class="text-xs text-muted-foreground">{$t('settings.branding.logo.hint')}</p>
 			</div>
 
 			<div class="mt-6 space-y-3 border-t pt-5">
-				<Label>Banner</Label>
+				<Label>{$t('settings.branding.banner.label')}</Label>
 				<input bind:this={bannerFileInput} type="file" accept="image/jpeg,image/png,image/gif,image/webp" class="hidden" onchange={() => onFileChange('banner')} />
 				<button
 					type="button"
 					onclick={() => bannerFileInput?.click()}
 					disabled={uploadingFlag.active}
-					title={bannerUrl ? 'Replace banner' : 'Upload banner'}
+					title={bannerUrl ? $t('settings.branding.banner.replaceTitle') : $t('settings.branding.banner.uploadTitle')}
 					class="group relative flex min-h-[88px] w-full max-w-md cursor-pointer items-center justify-center overflow-hidden rounded-md border bg-white px-4 py-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-wait"
 				>
 					{#if bannerUrl}
-						<img src={bannerUrl} alt="Banner" style="width:100%;height:auto;opacity:{bannerOpacity / 100};" />
+						<img src={bannerUrl} alt={$t('settings.branding.banner.alt')} style="width:100%;height:auto;opacity:{bannerOpacity / 100};" />
 					{:else}
-						<span class="text-sm text-muted-foreground">Click to upload a banner</span>
+						<span class="text-sm text-muted-foreground">{$t('settings.branding.banner.clickUpload')}</span>
 					{/if}
 					<div class="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
 						<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
@@ -268,60 +261,47 @@
 				{#if bannerUrl}
 					<div class="max-w-md space-y-3">
 						<div class="flex items-center gap-3">
-							<span class="w-14 text-xs font-medium text-muted-foreground">Opacity</span>
+							<span class="w-14 text-xs font-medium text-muted-foreground">{$t('settings.branding.logo.opacity')}</span>
 							<input type="range" min="20" max="100" step="1" bind:value={bannerOpacity} class="flex-1 accent-primary" />
 							<span class="w-10 text-right text-xs tabular-nums text-muted-foreground">{bannerOpacity}%</span>
 						</div>
-						<Button type="button" variant="ghost" size="sm" onclick={removeBanner} class="text-destructive hover:text-destructive">Remove banner</Button>
+						<Button type="button" variant="ghost" size="sm" onclick={removeBanner} class="text-destructive hover:text-destructive">{$t('settings.branding.banner.remove')}</Button>
 					</div>
 				{/if}
 
-				<p class="text-xs text-muted-foreground">
-					Shown full-width below your logo on booking emails and your public booking/manage pages — hidden
-					entirely if not set. Displayed at up to 1600×800, so wide images work best. JPEG, PNG, GIF or
-					WebP, max 5 MB; it is re-encoded as a PNG.
-				</p>
+				<p class="text-xs text-muted-foreground">{$t('settings.branding.banner.hint')}</p>
 			</div>
 		</div>
 
 		<div class="rounded-lg border bg-card p-6">
-			<h2 class="text-sm font-semibold">Legal links</h2>
-			<p class="mt-0.5 text-xs text-muted-foreground">
-				Links to your own privacy policy and terms. They appear in your public booking page footer, and
-				your privacy policy is linked from the cookie-consent banner. You're the data controller for
-				bookings made through your Calnode — these just point visitors to your policies.
-			</p>
+			<h2 class="text-sm font-semibold">{$t('settings.branding.legal.title')}</h2>
+			<p class="mt-0.5 text-xs text-muted-foreground">{$t('settings.branding.legal.intro')}</p>
 
 			<div class="mt-4 space-y-1.5">
-				<Label for="privacy-url">Privacy policy URL</Label>
-				<Input id="privacy-url" type="url" bind:value={privacyUrl} placeholder="https://example.com/privacy" maxlength={500} />
+				<Label for="privacy-url">{$t('settings.branding.legal.privacy.label')}</Label>
+				<Input id="privacy-url" type="url" bind:value={privacyUrl} placeholder={$t('settings.branding.legal.privacy.placeholder')} maxlength={500} />
 			</div>
 
 			<div class="mt-4 space-y-1.5">
-				<Label for="terms-url">Terms URL</Label>
-				<Input id="terms-url" type="url" bind:value={termsUrl} placeholder="https://example.com/terms" maxlength={500} />
-				<p class="text-xs text-muted-foreground">Leave a field blank to hide that link. Must be a full http(s):// URL.</p>
+				<Label for="terms-url">{$t('settings.branding.legal.terms.label')}</Label>
+				<Input id="terms-url" type="url" bind:value={termsUrl} placeholder={$t('settings.branding.legal.terms.placeholder')} maxlength={500} />
+				<p class="text-xs text-muted-foreground">{$t('settings.branding.legal.blankHint')}</p>
 			</div>
 		</div>
 
 		{#if supportedLocales.length > 1}
 			<div class="rounded-lg border bg-card p-6">
-				<h2 class="text-sm font-semibold">Language</h2>
-				<p class="mt-0.5 text-xs text-muted-foreground">
-					Your public booking pages and emails are translated per visitor — most see their
-					browser's language automatically. This sets what a visitor sees when their browser
-					asks for a language you don't support (e.g. an operator serving mostly Spanish-speaking
-					customers might prefer Spanish here instead of English).
-				</p>
+				<h2 class="text-sm font-semibold">{$t('settings.branding.language.title')}</h2>
+				<p class="mt-0.5 text-xs text-muted-foreground">{$t('settings.branding.language.intro')}</p>
 				<div class="mt-4 max-w-xs space-y-1.5">
-					<Label for="fallback-locale">Fallback language</Label>
+					<Label for="fallback-locale">{$t('settings.branding.language.fallback.label')}</Label>
 					<Select.Root
 						type="single"
 						value={fallbackLocale}
 						onValueChange={(v) => { if (v) fallbackLocale = v; }}
 					>
 						<Select.Trigger id="fallback-locale" class="w-full">
-							{supportedLocales.find((l) => l.code === fallbackLocale)?.name ?? 'Select…'}
+							{supportedLocales.find((l) => l.code === fallbackLocale)?.name ?? $t('common.select')}
 						</Select.Trigger>
 						<Select.Content>
 							{#each supportedLocales as loc}
@@ -333,23 +313,23 @@
 			</div>
 		{/if}
 
-		<Button onclick={save} disabled={savingFlag.active}>{savingFlag.active ? 'Saving…' : 'Save'}</Button>
+		<Button onclick={save} disabled={savingFlag.active}>{savingFlag.active ? $t('common.saving') : $t('common.save')}</Button>
 	</div>
 
 	<Dialog.Root bind:open={cropOpen} onOpenChange={(o) => { if (!o) cancelCrop(); }}>
 		<Dialog.Content class="max-w-lg">
 			<Dialog.Header>
-				<Dialog.Title>{cropTarget === 'logo' ? 'Crop logo' : 'Crop banner'}</Dialog.Title>
-				<Dialog.Description>Drag to adjust, or just save to use the whole image.</Dialog.Description>
+				<Dialog.Title>{cropTarget === 'logo' ? $t('settings.branding.crop.logoTitle') : $t('settings.branding.crop.bannerTitle')}</Dialog.Title>
+				<Dialog.Description>{$t('settings.branding.crop.description')}</Dialog.Description>
 			</Dialog.Header>
 			<div class="mt-2 overflow-hidden rounded-md bg-muted" style="max-height: 360px;">
 				{#if cropSrc}
-					<img bind:this={cropperEl} src={cropSrc} alt="Crop preview" class="block max-w-full" />
+					<img bind:this={cropperEl} src={cropSrc} alt={$t('settings.branding.crop.previewAlt')} class="block max-w-full" />
 				{/if}
 			</div>
 			<Dialog.Footer class="mt-4">
-				<Button variant="outline" onclick={cancelCrop} disabled={uploadingFlag.active}>Cancel</Button>
-				<Button onclick={cropAndUpload} disabled={uploadingFlag.active}>{uploadingFlag.active ? 'Uploading…' : cropTarget === 'logo' ? 'Save logo' : 'Save banner'}</Button>
+				<Button variant="outline" onclick={cancelCrop} disabled={uploadingFlag.active}>{$t('common.cancel')}</Button>
+				<Button onclick={cropAndUpload} disabled={uploadingFlag.active}>{uploadingFlag.active ? $t('common.uploading') : cropTarget === 'logo' ? $t('settings.branding.crop.saveLogo') : $t('settings.branding.crop.saveBanner')}</Button>
 			</Dialog.Footer>
 		</Dialog.Content>
 	</Dialog.Root>

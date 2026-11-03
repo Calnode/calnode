@@ -8,6 +8,7 @@
 	import { toast } from 'svelte-sonner';
 	import { saveOnCmdS } from '$lib/save-shortcut';
 	import { createAsyncFlag } from '$lib/async-action.svelte';
+	import { t, tr } from '$lib/i18n';
 
 	const loadingFlag = createAsyncFlag(true);
 	const savingFlag = createAsyncFlag();
@@ -37,7 +38,7 @@
 	onMount(() => loadingFlag.run(async () => {
 		googleSettings = await api.get<GoogleSettings>('/v1/settings/google');
 		clientID = googleSettings.client_id;
-	}, 'Could not load Google settings'));
+	}, tr('settings.google.error.load')));
 
 	async function save() {
 		await savingFlag.run(async () => {
@@ -45,93 +46,68 @@
 			if (clientSecret) body.client_secret = clientSecret;
 			googleSettings = await api.patch<GoogleSettings>('/v1/settings/google', body);
 			clientSecret = '';
-			toast.success('Saved — go to Calendar to connect your account');
-		}, 'Could not save Google settings');
+			toast.success(tr('settings.google.toast.saved'));
+		}, tr('settings.google.error.save'));
 	}
 </script>
 
 <svelte:window onkeydown={saveOnCmdS(save, () => !savingFlag.active)} />
 
 {#if !$currentUser?.is_admin}
-	<p class="text-sm text-muted-foreground">Admin access required.</p>
+	<p class="text-sm text-muted-foreground">{$t('common.adminRequired')}</p>
 {:else}
 
 {#if loadingFlag.active}
-	<p class="py-8 text-sm text-muted-foreground">Loading…</p>
+	<p class="py-8 text-sm text-muted-foreground">{$t('common.loading')}</p>
 {:else}
 	<div class="max-w-lg space-y-4">
 
 		{#if originMismatch}
 			<div class="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-				<p class="font-medium">This page is being viewed at a different domain than Calnode is configured for</p>
+				<p class="font-medium">{$t('settings.google.originMismatch.title')}</p>
 				<p class="mt-1 text-amber-800">
-					You're browsing <code class="rounded bg-amber-100 px-1 font-mono">{browserOrigin}</code>, but this
-					server's <code class="rounded bg-amber-100 px-1 font-mono">BASE_URL</code> is set to
-					<code class="rounded bg-amber-100 px-1 font-mono">{googleSettings?.base_url}</code>. The redirect
-					URIs below are built from <code class="rounded bg-amber-100 px-1 font-mono">BASE_URL</code> —
-					if <code class="rounded bg-amber-100 px-1 font-mono">{browserOrigin}</code> is your real domain
-					(for example, after pointing a custom domain at this instance), update the
-					<code class="rounded bg-amber-100 px-1 font-mono">BASE_URL</code> environment variable/secret with
-					your hosting provider and redeploy, then reload this page.
+					{$t('settings.google.originMismatch.body', { browserOrigin, baseUrl: googleSettings?.base_url ?? '' })}
 				</p>
 			</div>
 		{/if}
 
 		{#if !googleSettings?.configured}
 		<div class="rounded-lg border bg-card p-6">
-			<h2 class="mb-4 text-sm font-semibold">Setup instructions</h2>
+			<h2 class="mb-4 text-sm font-semibold">{$t('settings.google.setup.title')}</h2>
 			<ol class="space-y-4 text-sm">
 				<li class="flex gap-3">
 					<span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">1</span>
-					<div>
-						Go to <a href="https://console.cloud.google.com" target="_blank" rel="noopener noreferrer" class="font-medium text-primary underline">console.cloud.google.com</a>.
-						If you don't have a project, create one — any name works.
-					</div>
+					<div>{$t('settings.google.setup.step1')}</div>
 				</li>
 				<li class="flex gap-3">
 					<span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">2</span>
-					<div>
-						Go to <span class="font-medium">APIs &amp; Services → Library</span>, search for
-						<span class="font-medium">Google Calendar API</span>, and enable it.
-					</div>
+					<div>{$t('settings.google.setup.step2')}</div>
 				</li>
 				<li class="flex gap-3">
 					<span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">3</span>
 					<div>
-						Go to <span class="font-medium">APIs &amp; Services → OAuth consent screen</span>.
-						Choose <span class="font-medium">External</span> (or Internal if you have Google Workspace).
-						Fill in the app name and your email, then save.
-						<p class="mt-1.5 text-xs text-muted-foreground">
-							While the app is in <span class="font-medium">Testing</span>, only Google accounts added as test users can connect, and Google caps this at 100 users. Once your team members are ready to connect their calendars, click <span class="font-medium">Publish app</span> to lift the limit (Internal / Workspace apps have no cap). See
-							<a href="https://support.google.com/cloud/answer/15549945" target="_blank" rel="noopener noreferrer" class="text-primary underline">Google's guide</a>.
-						</p>
+						{$t('settings.google.setup.step3')}
+						<p class="mt-1.5 text-xs text-muted-foreground">{$t('settings.google.setup.step3Testing')}</p>
 					</div>
 				</li>
 				<li class="flex gap-3">
 					<span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">4</span>
-					<div>
-						Go to <span class="font-medium">Credentials → Create Credentials → OAuth client ID</span>.
-						Set application type to <span class="font-medium">Web application</span>.
-					</div>
+					<div>{$t('settings.google.setup.step4')}</div>
 				</li>
 				<li class="flex gap-3">
 					<span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">5</span>
 					<div>
-						Under <span class="font-medium">Authorised redirect URIs</span>, add both:
+						{$t('settings.google.setup.step5')}
 						<code class="mt-1 block rounded bg-muted px-2 py-1 text-xs font-mono break-all">{redirectBase}/v1/calendar/callback</code>
 						<code class="mt-1 block rounded bg-muted px-2 py-1 text-xs font-mono break-all">{redirectBase}/v1/auth/callback</code>
-						Click <span class="font-medium">Create</span>. Copy the Client ID and Client Secret shown.
 						{#if !isLocal}
-							<p class="mt-1.5 text-xs text-muted-foreground">
-								If you also run Calnode locally, add the
-								<code class="rounded bg-muted px-1">http://localhost:3000/…</code> variants of both URIs too.
-							</p>
+							<p class="mt-1.5 text-xs text-muted-foreground">{$t('settings.google.setup.step5Localhost')}</p>
 						{/if}
 					</div>
 				</li>
 				<li class="flex gap-3">
 					<span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">6</span>
-					<div>Paste them into the form below and save.</div>
+					<div>{$t('settings.google.setup.step6')}</div>
 				</li>
 			</ol>
 		</div>
@@ -140,53 +116,48 @@
 		<div class="rounded-lg border bg-card p-6">
 			<div class="mb-4 flex items-start justify-between gap-2">
 				<div>
-					<h2 class="text-sm font-semibold">Google OAuth</h2>
-					<p class="mt-0.5 text-xs text-muted-foreground">Enables Google sign-in and Google Calendar integration.</p>
+					<h2 class="text-sm font-semibold">{$t('settings.google.oauth.title')}</h2>
+					<p class="mt-0.5 text-xs text-muted-foreground">{$t('settings.google.oauth.subtitle')}</p>
 				</div>
 				{#if googleSettings !== null}
 					<span class="flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium {googleSettings.configured ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'}">
 						<span class="h-1.5 w-1.5 rounded-full {googleSettings.configured ? 'bg-green-500' : 'bg-amber-400'}"></span>
-						{googleSettings.configured ? 'Configured' : 'Not configured'}
+						{googleSettings.configured ? $t('common.configured') : $t('common.notConfigured')}
 					</span>
 				{/if}
 			</div>
 
 			<div class="space-y-3">
 				<div class="space-y-1.5">
-					<Label for="g-client-id">Client ID</Label>
-					<Input id="g-client-id" type="text" placeholder="123456789-abc.apps.googleusercontent.com" bind:value={clientID} />
+					<Label for="g-client-id">{$t('settings.google.clientId')}</Label>
+					<Input id="g-client-id" type="text" placeholder={$t('settings.google.clientIdPlaceholder')} bind:value={clientID} />
 				</div>
 				<div class="space-y-1.5">
-					<Label for="g-client-secret">Client Secret</Label>
+					<Label for="g-client-secret">{$t('settings.google.clientSecret')}</Label>
 					<Input id="g-client-secret" type="password"
-						placeholder={googleSettings?.client_secret_set ? '•••••••• (stored)' : 'Enter client secret'}
+						placeholder={googleSettings?.client_secret_set ? $t('common.storedSecretPlaceholder') : $t('settings.google.clientSecretPlaceholder')}
 						bind:value={clientSecret} />
 					{#if googleSettings?.client_secret_set && !clientSecret}
-						<p class="text-xs text-muted-foreground">Stored — leave blank to keep it.</p>
+						<p class="text-xs text-muted-foreground">{$t('common.leaveBlankKeep')}</p>
 					{/if}
 				</div>
 			</div>
 
 			{#if googleSettings?.configured}
 				<div class="mt-5 border-t pt-4">
-					<p class="text-xs font-medium text-muted-foreground">Authorised redirect URIs</p>
-					<p class="mt-0.5 text-xs text-muted-foreground">
-						These must be registered on your OAuth client in Google Cloud (Credentials → your client → Authorised redirect URIs).
-					</p>
+					<p class="text-xs font-medium text-muted-foreground">{$t('settings.google.redirectUris.title')}</p>
+					<p class="mt-0.5 text-xs text-muted-foreground">{$t('settings.google.redirectUris.hint')}</p>
 					<code class="mt-2 block rounded bg-muted px-2 py-1 text-xs font-mono break-all">{redirectBase}/v1/calendar/callback</code>
 					<code class="mt-1 block rounded bg-muted px-2 py-1 text-xs font-mono break-all">{redirectBase}/v1/auth/callback</code>
 					{#if !isLocal}
-						<p class="mt-1.5 text-xs text-muted-foreground">
-							If you also run Calnode locally, add the
-							<code class="rounded bg-muted px-1">http://localhost:3000/…</code> variants too.
-						</p>
+						<p class="mt-1.5 text-xs text-muted-foreground">{$t('settings.google.redirectUris.localhostHint')}</p>
 					{/if}
 				</div>
 			{/if}
 
 			<div class="mt-5">
 				<Button onclick={save} disabled={savingFlag.active}>
-					{savingFlag.active ? 'Saving…' : 'Save'}
+					{savingFlag.active ? $t('common.saving') : $t('common.save')}
 				</Button>
 			</div>
 		</div>
