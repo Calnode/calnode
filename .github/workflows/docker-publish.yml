@@ -65,7 +65,7 @@ jobs:
       - uses: docker/setup-buildx-action@v4
 
       - name: Log in to GHCR
-        if: github.event_name != 'pull_request'
+        if: github.event_name == 'push'
         uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
@@ -165,7 +165,7 @@ jobs:
           test "$(uname -m)" = "aarch64"
 
       - name: Pull the image this build just published
-        if: github.event_name != 'pull_request'
+        if: github.event_name == 'push'
         env:
           IMAGE_REF: "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.build.outputs.digest }}"
         run: |
@@ -176,18 +176,20 @@ jobs:
           fi
           docker pull "$IMAGE_REF"
 
-      - name: Build for arm64 natively (pull requests only)
-        if: github.event_name == 'pull_request'
+      - name: Build for arm64 natively (anything that did not publish an image)
+        if: github.event_name != 'push'
         run: docker build --platform linux/arm64 -t calnode-pr:arm64 .
 
       - name: Resolve the image under test
         id: img
         run: |
           set -euo pipefail
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            echo "ref=calnode-pr:arm64" >> "$GITHUB_OUTPUT"
-          else
+          # A push published an image, so verify that exact digest. Anything else
+          # (pull request, dry-run dispatch) built locally and is verified as-is.
+          if [ "${{ github.event_name }}" = "push" ]; then
             echo "ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.build.outputs.digest }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=calnode-pr:arm64" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Confirm the image is arm64
