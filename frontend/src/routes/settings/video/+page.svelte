@@ -10,6 +10,7 @@
 	import { saveOnCmdS } from '$lib/save-shortcut';
 	import { createAsyncFlag } from '$lib/async-action.svelte';
 	import { t, tr } from '$lib/i18n';
+	import LinkedText from '$lib/i18n/linked-text.svelte';
 
 	type LiveKitSettings = {
 		url: string;
@@ -102,7 +103,27 @@
 				<ol class="space-y-4 text-sm">
 					<li class="flex gap-3">
 						<span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">1</span>
-						<div>{$t('settings.video.setup.step1')}</div>
+						<div>
+							<LinkedText
+								text={$t('settings.video.setup.step1')}
+								links={{
+									cloud: {
+										href: 'https://cloud.livekit.io',
+										text: $t('settings.video.setup.cloud'),
+										target: '_blank',
+										rel: 'noopener noreferrer',
+										class: 'font-medium text-primary underline'
+									},
+									selfHosted: {
+										href: 'https://docs.livekit.io/home/self-hosting/local/',
+										text: $t('settings.video.setup.selfHosted'),
+										target: '_blank',
+										rel: 'noopener noreferrer',
+										class: 'font-medium text-primary underline'
+									}
+								}}
+							/>
+						</div>
 					</li>
 					<li class="flex gap-3">
 						<span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">2</span>
@@ -180,7 +201,20 @@
 					<Button variant="outline" size="sm" onclick={copyWebhook}>{$t('common.copy')}</Button>
 				</div>
 				<ol class="mt-4 space-y-2 text-xs text-muted-foreground">
-					<li>{$t('settings.video.webhook.step1')}</li>
+					<li>
+						<LinkedText
+							text={$t('settings.video.webhook.step1')}
+							links={{
+								docs: {
+									href: 'https://docs.livekit.io/home/server/webhooks/',
+									text: $t('settings.video.webhook.docs'),
+									target: '_blank',
+									rel: 'noopener noreferrer',
+									class: 'text-primary underline'
+								}
+							}}
+						/>
+					</li>
 					<li>{$t('settings.video.webhook.step2')}</li>
 					<li>{$t('settings.video.webhook.step3')}</li>
 				</ol>
@@ -200,7 +234,18 @@
 						placeholder={notetaker?.stt_api_key_set ? $t('common.storedSecretPlaceholder') : $t('settings.video.notetaker.deepgram.placeholder')}
 						bind:value={deepgramKey} />
 					<p class="text-xs text-muted-foreground">
-						{$t('settings.video.notetaker.deepgram.hint')}{#if notetaker?.stt_api_key_set} {$t('common.leaveBlankKeep')}{/if}
+						<LinkedText
+							text={$t('settings.video.notetaker.deepgram.hint')}
+							links={{
+								deepgram: {
+									href: 'https://console.deepgram.com',
+									text: $t('settings.video.notetaker.deepgram.console'),
+									target: '_blank',
+									rel: 'noopener noreferrer',
+									class: 'text-primary underline'
+								}
+							}}
+						/>{#if notetaker?.stt_api_key_set} {$t('common.leaveBlankKeep')}{/if}
 					</p>
 				</div>
 				<div class="mt-5">

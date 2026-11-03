@@ -126,8 +126,9 @@ one.
 **Adding an admin-UI language** is a small frontend change (the catalogs are not globbed):
 
 1. Copy `frontend/src/lib/i18n/en.json` to `<code>.json` and translate the values. Keep
-   every key and any `{placeholders}`. English is the source of truth; missing keys fall
-   back to English at runtime.
+   every key and any `{placeholders}` (including `{console}` / `{email}`-style link
+   slots rendered by `LinkedText` — do not turn catalog values into HTML). English is
+   the source of truth; missing keys fall back to English at runtime.
 2. Register the new file in `frontend/src/lib/i18n/catalog.ts` (`catalogs` + `ADMIN_LOCALES`).
 3. Name the code the same way as booker locales: BCP-47 primary tag (`fr`, `de`).
 4. The operator picks the language in Settings → Profile → Preferences (stored in

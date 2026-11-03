@@ -8,6 +8,7 @@
 	import { ConfirmDialog } from '$lib/components/ui/confirm-dialog';
 	import { authStatus } from '$lib/stores';
 	import { t, tr } from '$lib/i18n';
+	import LinkedText from '$lib/i18n/linked-text.svelte';
 
 	// Display names for known calendar providers.
 	const PROVIDER_LABELS = $derived<Record<string, string>>({
@@ -283,7 +284,16 @@
 	<div class="max-w-md rounded-md bg-amber-50 px-3 py-2.5 text-sm text-amber-800 ring-1 ring-inset ring-amber-200">
 		<p class="font-medium">{$t('calendar.noProvider.title')}</p>
 		<p class="mt-1 text-amber-700">
-			{$t('calendar.noProvider.body')}
+			<LinkedText
+				text={$t('calendar.noProvider.body')}
+				links={{
+					google: {
+						href: '/admin/settings/google',
+						text: $t('calendar.noProvider.googleLink'),
+						class: 'font-medium underline'
+					}
+				}}
+			/>
 		</p>
 	</div>
 {:else}

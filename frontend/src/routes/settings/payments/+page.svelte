@@ -10,6 +10,7 @@
 	import { saveOnCmdS } from '$lib/save-shortcut';
 	import { createAsyncFlag } from '$lib/async-action.svelte';
 	import { t, tr } from '$lib/i18n';
+	import LinkedText from '$lib/i18n/linked-text.svelte';
 
 	const loadingFlag = createAsyncFlag(true);
 	const savingFlag = createAsyncFlag();
@@ -65,7 +66,20 @@
 			<ol class="space-y-4 text-sm">
 				<li class="flex gap-3">
 					<span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">1</span>
-					<div>{$t('settings.payments.setup.step1')}</div>
+					<div>
+						<LinkedText
+							text={$t('settings.payments.setup.step1')}
+							links={{
+								dashboard: {
+									href: 'https://dashboard.stripe.com/apikeys',
+									text: $t('settings.payments.setup.dashboard'),
+									target: '_blank',
+									rel: 'noopener noreferrer',
+									class: 'font-medium text-primary underline'
+								}
+							}}
+						/>
+					</div>
 				</li>
 				<li class="flex gap-3">
 					<span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">2</span>

@@ -304,7 +304,8 @@
 		"connectedSuccess": "Calendrier connecté avec succès.",
 		"noProvider": {
 			"title": "Aucun fournisseur de calendrier configuré",
-			"body": "Ajoutez les identifiants OAuth Google dans Paramètres → Google OAuth, ou définissez les identifiants Microsoft (Outlook) via les variables d'environnement, puis redémarrez le serveur."
+			"body": "Ajoutez les identifiants OAuth Google dans {google}, ou définissez les identifiants Microsoft (Outlook) via les variables d'environnement, puis redémarrez le serveur.",
+			"googleLink": "Paramètres → Google OAuth"
 		},
 		"provider": {
 			"google": "Google Calendar",
@@ -1261,10 +1262,12 @@
 			},
 			"setup": {
 				"title": "Instructions de configuration",
-				"step1": "Rendez-vous sur console.cloud.google.com. Si vous n'avez pas de projet, créez-en un — n'importe quel nom convient.",
+				"step1": "Rendez-vous sur {console}. Si vous n'avez pas de projet, créez-en un — n'importe quel nom convient.",
+				"console": "console.cloud.google.com",
 				"step2": "Allez dans APIs & Services → Library, recherchez Google Calendar API et activez-la.",
 				"step3": "Allez dans APIs & Services → OAuth consent screen. Choisissez External (ou Internal si vous avez Google Workspace). Renseignez le nom de l'application et votre e-mail, puis enregistrez.",
-				"step3Testing": "Tant que l'application est en mode Testing, seuls les comptes Google ajoutés comme utilisateurs de test peuvent se connecter, et Google limite cela à 100 utilisateurs. Lorsque les membres de votre équipe sont prêts à connecter leurs calendriers, cliquez sur Publish app pour lever la limite (les applications Internal / Workspace n'ont pas de plafond). Consultez le guide de Google.",
+				"step3Testing": "Tant que l'application est en mode Testing, seuls les comptes Google ajoutés comme utilisateurs de test peuvent se connecter, et Google limite cela à 100 utilisateurs. Lorsque les membres de votre équipe sont prêts à connecter leurs calendriers, cliquez sur Publish app pour lever la limite (les applications Internal / Workspace n'ont pas de plafond). Consultez {guide}.",
+				"guide": "le guide de Google",
 				"step4": "Allez dans Credentials → Create Credentials → OAuth client ID. Définissez le type d'application sur Web application.",
 				"step5": "Sous Authorised redirect URIs, ajoutez les deux URL de redirection indiquées ci-dessous. Cliquez sur Create. Copiez le Client ID et le Client Secret affichés.",
 				"step5Localhost": "Si vous faites aussi tourner Calnode en local, ajoutez également les variantes http://localhost:3000/… des deux URI.",
@@ -1294,8 +1297,10 @@
 		"zoom": {
 			"setup": {
 				"title": "Instructions de configuration",
-				"step1": "Rendez-vous sur le Zoom App Marketplace et connectez-vous avec votre compte Zoom. Cliquez sur Develop → Build App.",
-				"step2": "Choisissez une General App (User-managed OAuth). Tant qu'elle n'est pas publiée, Zoom n'autorise que les utilisateurs du compte Zoom propriétaire de l'application à se connecter ; les hôtes disposant de leur propre compte Zoom distinct ont besoin d'une application publiée (voir DEPLOY.md, « Zoom meeting links »). Si cela écarte Zoom, la vidéo intégrée n'a besoin d'aucune application Zoom — voir docs/VIDEO.md.",
+				"step1": "Rendez-vous sur le {marketplace} et connectez-vous avec votre compte Zoom. Cliquez sur Develop → Build App.",
+				"marketplace": "Zoom App Marketplace",
+				"step2": "Choisissez une General App (User-managed OAuth). Tant qu'elle n'est pas publiée, Zoom n'autorise que les utilisateurs du compte Zoom propriétaire de l'application à se connecter ; les hôtes disposant de leur propre compte Zoom distinct ont besoin d'une application publiée (voir DEPLOY.md, « Zoom meeting links »). Si cela écarte Zoom, la vidéo intégrée n'a besoin d'aucune application Zoom — voir {videoDocs}.",
+				"videoDocs": "docs/VIDEO.md",
 				"step3": "Sous OAuth, définissez le Redirect URL for OAuth (et ajoutez-le à la liste d'autorisation) sur l'URL indiquée ci-dessous.",
 				"step4": "Sous Scopes, ajoutez meeting:write (créer/mettre à jour/supprimer des réunions au nom de l'utilisateur).",
 				"step5": "Copiez le Client ID et le Client Secret depuis Basic Information de l'application, collez-les ci-dessous et enregistrez."
@@ -1310,7 +1315,8 @@
 				"title": "Redirect URL",
 				"hint": "Elle doit être enregistrée sur votre application Zoom (OAuth → Redirect URL + liste d'autorisation OAuth)."
 			},
-			"multiMemberWarning": "Limite multi-membres : seuls les utilisateurs Zoom du même compte Zoom que le propriétaire de cette application peuvent connecter une application non publiée — les membres ailleurs sont refusés par Zoom avant même que Calnode n'intervienne. Options : docs/ZOOM.md (la vidéo intégrée n'a besoin d'aucune application Zoom).",
+			"multiMemberWarning": "Limite multi-membres : seuls les utilisateurs Zoom du même compte Zoom que le propriétaire de cette application peuvent connecter une application non publiée — les membres ailleurs sont refusés par Zoom avant même que Calnode n'intervienne. Options : {zoomDocs} (la vidéo intégrée n'a besoin d'aucune application Zoom).",
+			"zoomDocs": "docs/ZOOM.md",
 			"toast": {
 				"saved": "Enregistré — chaque hôte peut maintenant connecter Zoom depuis la page Agenda"
 			},
@@ -1322,7 +1328,9 @@
 		"video": {
 			"setup": {
 				"title": "Instructions de configuration",
-				"step1": "Créez un projet gratuit sur cloud.livekit.io (ou faites tourner votre propre serveur auto-hébergé — les mêmes champs).",
+				"step1": "Créez un projet gratuit sur {cloud} (ou faites tourner votre propre {selfHosted} — les mêmes champs).",
+				"cloud": "cloud.livekit.io",
+				"selfHosted": "serveur auto-hébergé",
 				"step2": "Copiez l'URL WebSocket du projet (de la forme wss://yourproject.livekit.cloud) ainsi qu'une clé d'API et un secret.",
 				"step3": "Collez-les ci-dessous et enregistrez. Les réservations utilisant « Calnode Video (LiveKit) » obtiennent alors une salle intégrée — aucune connexion par hôte n'est nécessaire."
 			},
@@ -1345,7 +1353,8 @@
 			"webhook": {
 				"title": "Webhook (recommandé)",
 				"subtitle": "Enregistrez cette URL dans LiveKit pour que les enregistrements se finalisent avec une durée exacte et se terminent proprement à la fermeture d'une réunion. Les enregistrements fonctionnent aussi sans cela — cela les rend simplement plus fiables.",
-				"step1": "1. Dans LiveKit Cloud, ouvrez Project → Settings → Webhooks (docs).",
+				"step1": "1. Dans LiveKit Cloud, ouvrez Project → Settings → Webhooks ({docs}).",
+				"docs": "docs",
 				"step2": "2. Ajoutez un webhook avec l'URL ci-dessus, et associez la même clé d'API saisie ici — elle signe les événements afin que Calnode puisse les vérifier.",
 				"step3": "3. Enregistrez. LiveKit envoie tous les événements du projet à cette unique URL ; Calnode vérifie chaque signature et utilise ceux liés à l'enregistrement."
 			},
@@ -1355,7 +1364,8 @@
 				"deepgram": {
 					"label": "Clé d'API Deepgram",
 					"placeholder": "Saisissez la clé d'API Deepgram",
-					"hint": "Obtenez-en une sur console.deepgram.com."
+					"hint": "Obtenez-en une sur {deepgram}.",
+					"console": "console.deepgram.com"
 				}
 			},
 			"toast": {
@@ -1376,7 +1386,10 @@
 			"intro": "Le stockage objet est utilisé à deux endroits — les sauvegardes de la base de données et les enregistrements de réunions. Ils partagent un seul bucket.",
 			"setup": {
 				"title": "Instructions de configuration",
-				"step1": "Créez un bucket chez n'importe quel fournisseur de stockage objet compatible S3 — par exemple Cloudflare R2, Backblaze B2 ou AWS S3. C'est le même bucket que les sauvegardes de la base et les enregistrements de réunions utilisent.",
+				"step1": "Créez un bucket chez n'importe quel fournisseur de stockage objet compatible S3 — par exemple {r2}, {b2} ou {s3}. C'est le même bucket que les sauvegardes de la base et les enregistrements de réunions utilisent.",
+				"r2": "Cloudflare R2",
+				"b2": "Backblaze B2",
+				"s3": "AWS S3",
 				"step2": "Générez un access key ID et un secret access key pour ce bucket.",
 				"step3": "Il n'y a pas de formulaire pour cela — définissez les variables d'environnement/secrets Litestream chez votre hébergeur, puis redéployez.",
 				"step3EndpointHint": "Pour tout fournisseur autre qu'AWS S3 (R2, B2, MinIO, etc.), définissez aussi LITESTREAM_ENDPOINT sur l'URL de point de terminaison compatible S3 de ce fournisseur. LITESTREAM_REGION est facultatif — seuls certains fournisseurs en ont besoin.",
@@ -1411,7 +1424,8 @@
 		"payments": {
 			"setup": {
 				"title": "Instructions de configuration",
-				"step1": "Dans votre Stripe Dashboard → Developers → API keys, copiez la Secret key et la Publishable key.",
+				"step1": "Dans votre {dashboard}, copiez la Secret key et la Publishable key.",
+				"dashboard": "Stripe Dashboard → Developers → API keys",
 				"step2": "Allez dans Developers → Webhooks → Add endpoint et définissez l'URL sur le point de terminaison indiqué ci-dessous. Abonnez-vous à checkout.session.completed et checkout.session.expired.",
 				"step3": "Copiez le Signing secret du point de terminaison (whsec_…), collez les trois valeurs ci-dessous et enregistrez."
 			},
@@ -1677,12 +1691,12 @@
 				"none": "Votre propre système"
 			},
 			"hint": {
-				"calnode": "Les invités reçoivent l'invitation depuis l'expéditeur e-mail de votre espace de travail (Paramètres → E-mail), jamais depuis l'adresse personnelle d'un hôte. Les hôtes voient tout de même la réunion sur leur propre calendrier, avec le lien de réunion.",
+				"calnode": "Les invités reçoivent l'invitation depuis l'expéditeur e-mail de votre espace de travail ({email}), jamais depuis l'adresse personnelle d'un hôte. Les hôtes voient tout de même la réunion sur leur propre calendrier, avec le lien de réunion.",
 				"none": "Ni le calendrier de l'hôte ni Calnode n'envoient d'invitation au réservataire, pour le cas où votre propre système s'en charge. Les hôtes voient tout de même la réunion sur leur propre calendrier, avec le lien de réunion.",
 				"calendar": "Le calendrier connecté de l'hôte invite le réservataire, l'invitation affiche donc l'adresse e-mail de l'hôte. Choisissez Calnode pour garder les adresses des hôtes privées ou pour réserver en équipe."
 			},
 			"appliesNewOnly": "S'applique uniquement aux nouvelles réservations. Les réservations existantes conservent la méthode avec laquelle elles ont été envoyées.",
-			"emailNotSetup": "L'e-mail n'est pas configuré, les réservataires ne recevront donc pas d'invitation. Ajoutez un expéditeur dans Paramètres → E-mail.",
+			"emailNotSetup": "L'e-mail n'est pas configuré, les réservataires ne recevront donc pas d'invitation. Ajoutez un expéditeur dans {email}.",
 			"onlineNoneWarning": "Ce type de rendez-vous réserve une réunion en ligne, chaque réservation a donc un lien de connexion, et Calnode ne l'enverra pas au réservataire. Transmettez son location_value depuis le webhook booking.created dans votre propre confirmation.",
 			"settingsEmailLink": "Paramètres → E-mail"
 		},
@@ -1696,7 +1710,7 @@
 			"amount": "Montant",
 			"currency": "Devise",
 			"currencyPlaceholder": "usd",
-			"hint": "Laissez à 0 pour un événement gratuit. Un prix envoie les réservataires vers Stripe Checkout avant que le créneau ne soit confirmé — Stripe doit être connecté.",
+			"hint": "Laissez à 0 pour un événement gratuit. Un prix envoie les réservataires vers Stripe Checkout avant que le créneau ne soit confirmé — {stripe} doit être connecté.",
 			"stripeLink": "Stripe"
 		},
 		"scheduling": {
@@ -1773,7 +1787,7 @@
 			"sendTest": "Envoyer un e-mail de test",
 			"sendingTest": "Envoi…",
 			"testSent": "E-mail de test envoyé dans votre boîte de réception.",
-			"smtpNotConfigured": "SMTP n'est pas configuré — configurez-le dans Paramètres.",
+			"smtpNotConfigured": "SMTP n'est pas configuré — {smtp}.",
 			"assistantGreeting": "Message d'accueil de l'assistant",
 			"assistantGreetingHint": "La phrase d'ouverture de l'assistant de chat sur la page de réservation de cet événement. Laissez vide pour utiliser le message intégré, traduit automatiquement dans la langue du visiteur ; un message personnalisé s'affiche tel quel, dans toutes les langues.",
 			"greetingPlaceholder": "Bonjour ! Indiquez-moi approximativement quand vous souhaitez nous rencontrer…",

@@ -9,6 +9,7 @@
 	import { saveOnCmdS } from '$lib/save-shortcut';
 	import { createAsyncFlag } from '$lib/async-action.svelte';
 	import { t, tr } from '$lib/i18n';
+	import LinkedText from '$lib/i18n/linked-text.svelte';
 
 	const loadingFlag = createAsyncFlag(true);
 	const savingFlag = createAsyncFlag();
@@ -52,11 +53,37 @@
 			<ol class="space-y-4 text-sm">
 				<li class="flex gap-3">
 					<span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">1</span>
-					<div>{$t('settings.zoom.setup.step1')}</div>
+					<div>
+						<LinkedText
+							text={$t('settings.zoom.setup.step1')}
+							links={{
+								marketplace: {
+									href: 'https://marketplace.zoom.us',
+									text: $t('settings.zoom.setup.marketplace'),
+									target: '_blank',
+									rel: 'noopener noreferrer',
+									class: 'font-medium text-primary underline'
+								}
+							}}
+						/>
+					</div>
 				</li>
 				<li class="flex gap-3">
 					<span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">2</span>
-					<div>{$t('settings.zoom.setup.step2')}</div>
+					<div>
+						<LinkedText
+							text={$t('settings.zoom.setup.step2')}
+							links={{
+								videoDocs: {
+									href: 'https://github.com/Calnode/calnode/blob/main/docs/VIDEO.md',
+									text: $t('settings.zoom.setup.videoDocs'),
+									target: '_blank',
+									rel: 'noopener noreferrer',
+									class: 'font-medium text-primary underline'
+								}
+							}}
+						/>
+					</div>
 				</li>
 				<li class="flex gap-3">
 					<span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">3</span>
@@ -114,7 +141,18 @@
 					<code class="mt-2 block rounded bg-muted px-2 py-1 text-xs font-mono break-all">{redirectURI}</code>
 				</div>
 				<div class="mt-4 rounded-md bg-amber-50 px-3 py-2.5 text-xs text-amber-800 ring-1 ring-inset ring-amber-200">
-					{$t('settings.zoom.multiMemberWarning')}
+					<LinkedText
+						text={$t('settings.zoom.multiMemberWarning')}
+						links={{
+							zoomDocs: {
+								href: 'https://github.com/Calnode/calnode/blob/main/docs/ZOOM.md',
+								text: $t('settings.zoom.zoomDocs'),
+								target: '_blank',
+								rel: 'noopener noreferrer',
+								class: 'font-medium underline'
+							}
+						}}
+					/>
 				</div>
 			{/if}
 

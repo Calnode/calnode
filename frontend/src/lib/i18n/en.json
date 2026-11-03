@@ -304,7 +304,8 @@
 		"connectedSuccess": "Calendar connected successfully.",
 		"noProvider": {
 			"title": "No calendar provider configured",
-			"body": "Add Google OAuth credentials in Settings → Google OAuth, or set the Microsoft (Outlook) credentials via environment variables, then restart the server."
+			"body": "Add Google OAuth credentials in {google}, or set the Microsoft (Outlook) credentials via environment variables, then restart the server.",
+			"googleLink": "Settings → Google OAuth"
 		},
 		"provider": {
 			"google": "Google Calendar",
@@ -1261,10 +1262,12 @@
 			},
 			"setup": {
 				"title": "Setup instructions",
-				"step1": "Go to console.cloud.google.com. If you don't have a project, create one — any name works.",
+				"step1": "Go to {console}. If you don't have a project, create one — any name works.",
+				"console": "console.cloud.google.com",
 				"step2": "Go to APIs & Services → Library, search for Google Calendar API, and enable it.",
 				"step3": "Go to APIs & Services → OAuth consent screen. Choose External (or Internal if you have Google Workspace). Fill in the app name and your email, then save.",
-				"step3Testing": "While the app is in Testing, only Google accounts added as test users can connect, and Google caps this at 100 users. Once your team members are ready to connect their calendars, click Publish app to lift the limit (Internal / Workspace apps have no cap). See Google's guide.",
+				"step3Testing": "While the app is in Testing, only Google accounts added as test users can connect, and Google caps this at 100 users. Once your team members are ready to connect their calendars, click Publish app to lift the limit (Internal / Workspace apps have no cap). See {guide}.",
+				"guide": "Google's guide",
 				"step4": "Go to Credentials → Create Credentials → OAuth client ID. Set application type to Web application.",
 				"step5": "Under Authorised redirect URIs, add both redirect URLs shown below. Click Create. Copy the Client ID and Client Secret shown.",
 				"step5Localhost": "If you also run Calnode locally, add the http://localhost:3000/… variants of both URIs too.",
@@ -1294,8 +1297,10 @@
 		"zoom": {
 			"setup": {
 				"title": "Setup instructions",
-				"step1": "Go to the Zoom App Marketplace and sign in with your Zoom account. Click Develop → Build App.",
-				"step2": "Choose a General App (User-managed OAuth). While it is unpublished, Zoom only lets users inside the Zoom account that owns the app connect; hosts with their own separate Zoom accounts need a published app (see DEPLOY.md, \"Zoom meeting links\"). If that rules Zoom out, built-in video needs no Zoom app at all — see docs/VIDEO.md.",
+				"step1": "Go to the {marketplace} and sign in with your Zoom account. Click Develop → Build App.",
+				"marketplace": "Zoom App Marketplace",
+				"step2": "Choose a General App (User-managed OAuth). While it is unpublished, Zoom only lets users inside the Zoom account that owns the app connect; hosts with their own separate Zoom accounts need a published app (see DEPLOY.md, \"Zoom meeting links\"). If that rules Zoom out, built-in video needs no Zoom app at all — see {videoDocs}.",
+				"videoDocs": "docs/VIDEO.md",
 				"step3": "Under OAuth, set the Redirect URL for OAuth (and add it to the allow list) to the URL shown below.",
 				"step4": "Under Scopes, add meeting:write (create/update/delete meetings on the user's behalf).",
 				"step5": "Copy the Client ID and Client Secret from the app's Basic Information, paste them below, and save."
@@ -1310,7 +1315,8 @@
 				"title": "Redirect URL",
 				"hint": "This must be registered on your Zoom app (OAuth → Redirect URL + OAuth allow list)."
 			},
-			"multiMemberWarning": "Multi-member limit: only Zoom users on the same Zoom account as this app's owner can connect an unpublished app — members elsewhere are refused by Zoom before Calnode is involved. Options: docs/ZOOM.md (built-in video needs no Zoom app at all).",
+			"multiMemberWarning": "Multi-member limit: only Zoom users on the same Zoom account as this app's owner can connect an unpublished app — members elsewhere are refused by Zoom before Calnode is involved. Options: {zoomDocs} (built-in video needs no Zoom app at all).",
+			"zoomDocs": "docs/ZOOM.md",
 			"toast": {
 				"saved": "Saved — each host can now connect Zoom from the Calendar page"
 			},
@@ -1322,7 +1328,9 @@
 		"video": {
 			"setup": {
 				"title": "Setup instructions",
-				"step1": "Create a free project at cloud.livekit.io (or run your own self-hosted server — same fields).",
+				"step1": "Create a free project at {cloud} (or run your own {selfHosted} — same fields).",
+				"cloud": "cloud.livekit.io",
+				"selfHosted": "self-hosted server",
 				"step2": "Copy the project's WebSocket URL (looks like wss://yourproject.livekit.cloud) and an API key + secret.",
 				"step3": "Paste them below and save. Bookings using \"Calnode Video (LiveKit)\" then get a built-in room — no per-host connection needed."
 			},
@@ -1345,7 +1353,8 @@
 			"webhook": {
 				"title": "Webhook (recommended)",
 				"subtitle": "Register this URL in LiveKit so recordings finalize with accurate duration and end cleanly when a meeting closes. Recordings still work without it — this just makes them reliable.",
-				"step1": "1. In LiveKit Cloud, open Project → Settings → Webhooks (docs).",
+				"step1": "1. In LiveKit Cloud, open Project → Settings → Webhooks ({docs}).",
+				"docs": "docs",
 				"step2": "2. Add a webhook with the URL above, and attach the same API key you entered here — it signs the events so Calnode can verify them.",
 				"step3": "3. Save. LiveKit sends all project events to this one URL; Calnode verifies each signature and uses the recording-related ones."
 			},
@@ -1355,7 +1364,8 @@
 				"deepgram": {
 					"label": "Deepgram API key",
 					"placeholder": "Enter Deepgram API key",
-					"hint": "Get one at console.deepgram.com."
+					"hint": "Get one at {deepgram}.",
+					"console": "console.deepgram.com"
 				}
 			},
 			"toast": {
@@ -1376,7 +1386,10 @@
 			"intro": "Object storage is used in two places — database backups and meeting recordings. They share one bucket.",
 			"setup": {
 				"title": "Setup instructions",
-				"step1": "Create a bucket with any S3-compatible object storage provider — for example Cloudflare R2, Backblaze B2, or AWS S3. This is the same bucket both database backups and meeting recordings write to.",
+				"step1": "Create a bucket with any S3-compatible object storage provider — for example {r2}, {b2}, or {s3}. This is the same bucket both database backups and meeting recordings write to.",
+				"r2": "Cloudflare R2",
+				"b2": "Backblaze B2",
+				"s3": "AWS S3",
 				"step2": "Generate an access key ID and secret access key for that bucket.",
 				"step3": "There's no form for this — set Litestream environment variables/secrets with your hosting provider, then redeploy.",
 				"step3EndpointHint": "For any provider other than AWS S3 (R2, B2, MinIO, etc.), also set LITESTREAM_ENDPOINT to that provider's S3-compatible endpoint URL. LITESTREAM_REGION is optional — only some providers need it.",
@@ -1411,7 +1424,8 @@
 		"payments": {
 			"setup": {
 				"title": "Setup instructions",
-				"step1": "In your Stripe Dashboard → Developers → API keys, copy the Secret key and Publishable key.",
+				"step1": "In your {dashboard}, copy the Secret key and Publishable key.",
+				"dashboard": "Stripe Dashboard → Developers → API keys",
 				"step2": "Go to Developers → Webhooks → Add endpoint and set the URL to the endpoint shown below. Subscribe to checkout.session.completed and checkout.session.expired.",
 				"step3": "Copy the endpoint's Signing secret (whsec_…), paste all three values below, and save."
 			},
@@ -1677,12 +1691,12 @@
 				"none": "Your own system"
 			},
 			"hint": {
-				"calnode": "Invitees get the invite from your workspace's email sender (Settings → Email), never from a host's own address. Hosts still see the meeting on their own calendar, with the meeting link.",
+				"calnode": "Invitees get the invite from your workspace's email sender ({email}), never from a host's own address. Hosts still see the meeting on their own calendar, with the meeting link.",
 				"none": "Neither the host's calendar nor Calnode sends the booker an invite, for when your own system does. Hosts still see the meeting on their own calendar, with the meeting link.",
 				"calendar": "The host's connected calendar invites the booker, so the invite shows the host's own email address. Choose Calnode to keep hosts' addresses private or to book as a team."
 			},
 			"appliesNewOnly": "Applies to new bookings only. Existing bookings keep the method they were sent with.",
-			"emailNotSetup": "Email isn't set up, so bookers won't receive an invite. Add a sender in Settings → Email.",
+			"emailNotSetup": "Email isn't set up, so bookers won't receive an invite. Add a sender in {email}.",
 			"onlineNoneWarning": "This event type books an online meeting, so every booking has a join link, and Calnode will not send it to the booker. Pass its location_value from the booking.created webhook in your own confirmation.",
 			"settingsEmailLink": "Settings → Email"
 		},
@@ -1696,7 +1710,7 @@
 			"amount": "Amount",
 			"currency": "Currency",
 			"currencyPlaceholder": "usd",
-			"hint": "Leave at 0 for a free event. A price sends bookers to Stripe Checkout before the slot is confirmed — requires Stripe to be connected.",
+			"hint": "Leave at 0 for a free event. A price sends bookers to Stripe Checkout before the slot is confirmed — requires {stripe} to be connected.",
 			"stripeLink": "Stripe"
 		},
 		"scheduling": {
@@ -1773,7 +1787,7 @@
 			"sendTest": "Send test email",
 			"sendingTest": "Sending…",
 			"testSent": "Test email sent to your inbox.",
-			"smtpNotConfigured": "SMTP is not configured — configure it in Settings.",
+			"smtpNotConfigured": "SMTP is not configured — {smtp}.",
 			"assistantGreeting": "Assistant greeting",
 			"assistantGreetingHint": "The chat assistant's opening line on this event's booking page. Leave blank to use the built-in greeting, which is automatically translated for the visitor's language; a custom greeting is shown exactly as written, in every language.",
 			"greetingPlaceholder": "Hi! Tell me roughly when you'd like to meet…",

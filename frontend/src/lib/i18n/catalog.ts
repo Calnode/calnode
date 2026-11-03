@@ -4,6 +4,8 @@
 // Adding a locale: copy en.json to <code>.json, translate the values (keep
 // every key and any {placeholders}), then register the import in `catalogs`
 // and the display name in ADMIN_LOCALES. No other code change is required.
+// Sentences that embed operator links use named {placeholders} rendered by
+// LinkedText — never {@html} catalog content.
 // Booking-page locales (internal/i18n/locales) are a separate system.
 
 import en from './en.json' with { type: 'json' };
@@ -70,6 +72,35 @@ function interpolate(template: string, vars?: Record<string, string | number>): 
 	return template.replace(/\{(\w+)\}/g, (match, name: string) =>
 		Object.prototype.hasOwnProperty.call(vars, name) ? String(vars[name]) : match
 	);
+}
+
+export type LinkedSegment = { type: 'text'; value: string } | { type: 'link'; name: string };
+
+/**
+ * Split a catalog string on named `{placeholders}` so a component can
+ * render real `<a>` tags. Placeholders that are not in `names` stay as
+ * literal `{name}` text — they are not treated as links.
+ *
+ * Catalog content is never interpreted as HTML. Callers pass href/text
+ * out of band (see `linked-text.svelte`).
+ */
+export function splitLinked(template: string, names: readonly string[] = []): LinkedSegment[] {
+	if (!template) return [];
+	if (names.length === 0) return [{ type: 'text', value: template }];
+
+	const allowed = new Set(names);
+	const segments: LinkedSegment[] = [];
+	let last = 0;
+	for (const match of template.matchAll(/\{(\w+)\}/g)) {
+		const name = match[1];
+		if (!allowed.has(name)) continue;
+		const idx = match.index ?? 0;
+		if (idx > last) segments.push({ type: 'text', value: template.slice(last, idx) });
+		segments.push({ type: 'link', name });
+		last = idx + match[0].length;
+	}
+	if (last < template.length) segments.push({ type: 'text', value: template.slice(last) });
+	return segments;
 }
 
 /** Collapse Intl.PluralRules to the two forms we ship (`one` / `other`). */

@@ -23,7 +23,8 @@ export {
 	pluralForm,
 	translate,
 	translatePlural,
-	translatePluralPair
+	translatePluralPair,
+	splitLinked
 } from './catalog';
 
 function readStoredLocale(): string | null {

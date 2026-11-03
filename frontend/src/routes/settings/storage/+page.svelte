@@ -8,6 +8,7 @@
 	import { saveOnCmdS } from '$lib/save-shortcut';
 	import { createAsyncFlag } from '$lib/async-action.svelte';
 	import { t, tr } from '$lib/i18n';
+	import LinkedText from '$lib/i18n/linked-text.svelte';
 
 	type StorageSettings = {
 		backups_configured: boolean;
@@ -60,7 +61,34 @@
 			<ol class="space-y-4 text-sm">
 				<li class="flex gap-3">
 					<span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">1</span>
-					<div>{$t('settings.storage.setup.step1')}</div>
+					<div>
+						<LinkedText
+							text={$t('settings.storage.setup.step1')}
+							links={{
+								r2: {
+									href: 'https://developers.cloudflare.com/r2/',
+									text: $t('settings.storage.setup.r2'),
+									target: '_blank',
+									rel: 'noopener noreferrer',
+									class: 'font-medium text-primary underline'
+								},
+								b2: {
+									href: 'https://www.backblaze.com/cloud-storage',
+									text: $t('settings.storage.setup.b2'),
+									target: '_blank',
+									rel: 'noopener noreferrer',
+									class: 'font-medium text-primary underline'
+								},
+								s3: {
+									href: 'https://aws.amazon.com/s3/',
+									text: $t('settings.storage.setup.s3'),
+									target: '_blank',
+									rel: 'noopener noreferrer',
+									class: 'font-medium text-primary underline'
+								}
+							}}
+						/>
+					</div>
 				</li>
 				<li class="flex gap-3">
 					<span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">2</span>

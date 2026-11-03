@@ -19,6 +19,7 @@
 	import EmbedPanel from '$lib/components/event-types/EmbedPanel.svelte';
 	import { ConfirmDialog } from '$lib/components/ui/confirm-dialog';
 	import { t, tr, localeTag } from '$lib/i18n';
+	import LinkedText from '$lib/i18n/linked-text.svelte';
 
 	// Ordered by expected usage. 'custom_video' is retired from the picker but the
 	// backend still renders any legacy event types that use it.
@@ -796,7 +797,16 @@
 				</div>
 				<p class="self-end text-xs text-muted-foreground">
 					{#if form.invite_delivery === 'calnode'}
-						{$t('eventTypeEditor.invite.hint.calnode')}
+						<LinkedText
+							text={$t('eventTypeEditor.invite.hint.calnode')}
+							links={{
+								email: {
+									href: `${base}/settings/email`,
+									text: $t('eventTypeEditor.invite.settingsEmailLink'),
+									class: 'underline'
+								}
+							}}
+						/>
 					{:else if form.invite_delivery === 'none'}
 						{$t('eventTypeEditor.invite.hint.none')}
 					{:else}
@@ -809,7 +819,16 @@
 			</p>
 			{#if form.invite_delivery === 'calnode' && et?.invite_sender_ready === false}
 				<p class="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-					{$t('eventTypeEditor.invite.emailNotSetup')}
+					<LinkedText
+						text={$t('eventTypeEditor.invite.emailNotSetup')}
+						links={{
+							email: {
+								href: `${base}/settings/email`,
+								text: $t('eventTypeEditor.invite.settingsEmailLink'),
+								class: 'underline'
+							}
+						}}
+					/>
 				</p>
 			{/if}
 			{#if form.invite_delivery === 'none' && isOnlineLocation(form.location_type)}
@@ -833,7 +852,16 @@
 				</div>
 			</div>
 			<p class="mt-2 text-xs text-muted-foreground">
-				{$t('eventTypeEditor.price.hint')}
+				<LinkedText
+					text={$t('eventTypeEditor.price.hint')}
+					links={{
+						stripe: {
+							href: '/admin/settings/payments',
+							text: $t('eventTypeEditor.price.stripeLink'),
+							class: 'underline'
+						}
+					}}
+				/>
 			</p>
 		</div>
 
@@ -1164,7 +1192,16 @@
 									{#if testError[item.key]}
 										<span class="text-xs text-destructive">
 											{#if testError[item.key] === 'Email is not configured on this server — add SMTP settings to enable sending'}
-												<a href="{base}/settings/email" class="underline">{$t('eventTypeEditor.notifications.smtpNotConfigured')}</a>
+												<LinkedText
+													text={$t('eventTypeEditor.notifications.smtpNotConfigured')}
+													links={{
+														smtp: {
+															href: `${base}/settings/email`,
+															text: $t('eventTypeEditor.notifications.smtpNotConfiguredLink'),
+															class: 'underline'
+														}
+													}}
+												/>
 											{:else}
 												{testError[item.key]}
 											{/if}

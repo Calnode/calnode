@@ -9,6 +9,7 @@
 	import { saveOnCmdS } from '$lib/save-shortcut';
 	import { createAsyncFlag } from '$lib/async-action.svelte';
 	import { t, tr } from '$lib/i18n';
+	import LinkedText from '$lib/i18n/linked-text.svelte';
 
 	const loadingFlag = createAsyncFlag(true);
 	const savingFlag = createAsyncFlag();
@@ -77,7 +78,20 @@
 			<ol class="space-y-4 text-sm">
 				<li class="flex gap-3">
 					<span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">1</span>
-					<div>{$t('settings.google.setup.step1')}</div>
+					<div>
+						<LinkedText
+							text={$t('settings.google.setup.step1')}
+							links={{
+								console: {
+									href: 'https://console.cloud.google.com',
+									text: $t('settings.google.setup.console'),
+									target: '_blank',
+									rel: 'noopener noreferrer',
+									class: 'font-medium text-primary underline'
+								}
+							}}
+						/>
+					</div>
 				</li>
 				<li class="flex gap-3">
 					<span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">2</span>
@@ -87,7 +101,20 @@
 					<span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">3</span>
 					<div>
 						{$t('settings.google.setup.step3')}
-						<p class="mt-1.5 text-xs text-muted-foreground">{$t('settings.google.setup.step3Testing')}</p>
+						<p class="mt-1.5 text-xs text-muted-foreground">
+							<LinkedText
+								text={$t('settings.google.setup.step3Testing')}
+								links={{
+									guide: {
+										href: 'https://support.google.com/cloud/answer/15549945',
+										text: $t('settings.google.setup.guide'),
+										target: '_blank',
+										rel: 'noopener noreferrer',
+										class: 'text-primary underline'
+									}
+								}}
+							/>
+						</p>
 					</div>
 				</li>
 				<li class="flex gap-3">

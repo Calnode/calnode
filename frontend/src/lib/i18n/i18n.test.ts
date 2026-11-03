@@ -6,10 +6,49 @@ import {
 	matchAdminLocale,
 	pluralForm,
 	resolveInitialLocale,
+	splitLinked,
 	translate,
 	translatePlural,
 	translatePluralPair
 } from './catalog';
+
+const LINKED_SENTENCES: Record<string, string[]> = {
+	'calendar.noProvider.body': ['google'],
+	'settings.google.setup.step1': ['console'],
+	'settings.google.setup.step3Testing': ['guide'],
+	'settings.payments.setup.step1': ['dashboard'],
+	'settings.storage.setup.step1': ['r2', 'b2', 's3'],
+	'settings.video.setup.step1': ['cloud', 'selfHosted'],
+	'settings.video.webhook.step1': ['docs'],
+	'settings.video.notetaker.deepgram.hint': ['deepgram'],
+	'settings.zoom.setup.step1': ['marketplace'],
+	'settings.zoom.setup.step2': ['videoDocs'],
+	'settings.zoom.multiMemberWarning': ['zoomDocs'],
+	'eventTypeEditor.invite.hint.calnode': ['email'],
+	'eventTypeEditor.invite.emailNotSetup': ['email'],
+	'eventTypeEditor.price.hint': ['stripe'],
+	'eventTypeEditor.notifications.smtpNotConfigured': ['smtp']
+};
+
+const LINK_TEXT_KEYS = [
+	'calendar.noProvider.googleLink',
+	'settings.google.setup.console',
+	'settings.google.setup.guide',
+	'settings.payments.setup.dashboard',
+	'settings.storage.setup.r2',
+	'settings.storage.setup.b2',
+	'settings.storage.setup.s3',
+	'settings.video.setup.cloud',
+	'settings.video.setup.selfHosted',
+	'settings.video.webhook.docs',
+	'settings.video.notetaker.deepgram.console',
+	'settings.zoom.setup.marketplace',
+	'settings.zoom.setup.videoDocs',
+	'settings.zoom.zoomDocs',
+	'eventTypeEditor.invite.settingsEmailLink',
+	'eventTypeEditor.price.stripeLink',
+	'eventTypeEditor.notifications.smtpNotConfiguredLink'
+];
 
 function flatten(obj: unknown, prefix = ''): Record<string, string> {
 	const out: Record<string, string> = {};
@@ -52,6 +91,42 @@ describe('admin i18n catalogs', () => {
 			if (/\w\(s\)/.test(value) && !value.includes('http(s)')) baked.push(key);
 		}
 		expect(baked).toEqual([]);
+	});
+
+	test('linked sentences keep the same {placeholders} in both locales', () => {
+		const ph = /\{(\w+)\}/g;
+		const names = (s: string) => [...s.matchAll(ph)].map((m) => m[1]);
+		const enFlat = flatten(en);
+		const frFlat = flatten(fr);
+		const missing: string[] = [];
+		for (const [key, expected] of Object.entries(LINKED_SENTENCES)) {
+			for (const catalog of [enFlat, frFlat]) {
+				const got = names(catalog[key] ?? '');
+				if (expected.some((n) => !got.includes(n))) missing.push(key);
+			}
+		}
+		expect(missing).toEqual([]);
+	});
+
+	test('link-text keys exist and are plain text', () => {
+		const enFlat = flatten(en);
+		const frFlat = flatten(fr);
+		const bad: string[] = [];
+		for (const key of LINK_TEXT_KEYS) {
+			for (const catalog of [enFlat, frFlat]) {
+				const value = catalog[key] ?? '';
+				if (!value || /\{(\w+)\}/.test(value) || /<\/?a[\s>]/.test(value)) bad.push(key);
+			}
+		}
+		expect(bad).toEqual([]);
+	});
+
+	test('catalogs do not embed HTML anchors', () => {
+		const html: string[] = [];
+		for (const [key, value] of Object.entries({ ...flatten(en), ...flatten(fr) })) {
+			if (/<\/?a[\s>]/i.test(value) || /href\s*=/.test(value)) html.push(key);
+		}
+		expect(html).toEqual([]);
 	});
 });
 
@@ -106,6 +181,28 @@ describe('locale matching', () => {
 	test('unknown stored value falls through to the browser, then English', () => {
 		expect(resolveInitialLocale('pt-BR', ['fr'])).toBe('fr');
 		expect(resolveInitialLocale('nope', ['ja'])).toBe('en');
+	});
+});
+
+describe('splitLinked', () => {
+	test('splits named placeholders and leaves others intact', () => {
+		expect(splitLinked('Go to {console}. See {guide}.', ['console', 'guide'])).toEqual([
+			{ type: 'text', value: 'Go to ' },
+			{ type: 'link', name: 'console' },
+			{ type: 'text', value: '. See ' },
+			{ type: 'link', name: 'guide' },
+			{ type: 'text', value: '.' }
+		]);
+		expect(splitLinked('Hello {name}, open {email}.', ['email'])).toEqual([
+			{ type: 'text', value: 'Hello {name}, open ' },
+			{ type: 'link', name: 'email' },
+			{ type: 'text', value: '.' }
+		]);
+	});
+
+	test('returns the whole string when no names are given', () => {
+		expect(splitLinked('See {docs}.')).toEqual([{ type: 'text', value: 'See {docs}.' }]);
+		expect(splitLinked('')).toEqual([]);
 	});
 });
 
