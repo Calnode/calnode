@@ -1229,7 +1229,7 @@ LLM summary) — the next build; consent-gated (§8.11/§15 of the PRD).
 
 ## 23. Languages (i18n)
 
-Calnode ships **9 locales**: `en` (source) · `es` · `fr` · `fr-CA` · `de` · `it` · `pt` · `nl` · `sv`.
+Calnode ships **11 locales**: `en` (source) · `es` · `fr` · `fr-CA` · `de` · `el` · `it` · `nl` · `pl` · `pt` · `sv`.
 
 `fr-CA` is the first **regional** locale, and it is a separate file rather than a fallback
 because the differences are real: `courriel` not `e-mail`, `reporter`/`report` not
