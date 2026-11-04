@@ -128,7 +128,16 @@ jobs:
           cd dist/release
           sha256sum ./*.tar.gz > checksums.txt
 
+      # Only upload when a release job will consume the artifact. Exporting and
+      # packaging above stay ungated on purpose: they prove the `standalone` stage
+      # still builds on every PR, so a break is caught there rather than during a
+      # release. This step is the one that costs storage for nothing on PRs and
+      # branch pushes.
+      #
+      # The condition must match the `release` job exactly, including the
+      # workflow_dispatch dry run, or the rehearsal finds no artifact to download.
       - name: Upload standalone binaries
+        if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.dry_run)
         uses: actions/upload-artifact@v7
         with:
           name: standalone-binaries
