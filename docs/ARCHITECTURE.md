@@ -987,11 +987,14 @@ Each account can set `booking_accent` in its profile. The default preserves the 
   patching. The **public** booking surfaces are unaffected and are verified on mobile;
   this is admin-only. Deferred 2026-08-22, not a regression.
 - **LiveKit room is not translated** - the booking surfaces, emails and calendar invites
-  ship in 9 languages (§23), but the in-browser meeting UI is ~45 hardcoded English
+  ship in 11 languages (§23), but the in-browser meeting UI is ~45 hardcoded English
   strings. It has its own vanilla-JS asset pipeline and shares no string plumbing with
   the Go templates, so it needs a small runtime `t()` of its own. Separate work, not hard.
-- **Plural rules are 2-form only** (§23) - shipping Polish, Russian or Arabic correctly
-  needs a real CLDR plural-category selector first.
+- **Plural rules are 2-form only** (§23) - every plural-bearing key splits on `n == 1` and
+  nothing else. Polish ships despite that because its keys dodge the missing categories:
+  durations use invariant abbreviations (`godz.`, `min`), and `hostsLabel`'s
+  `other`/`others` pair (`inny`/`innych`) is correct for every count. Russian or Arabic
+  genuinely do need a CLDR plural-category selector first.
 - **OAuth app verification** — the Google and Microsoft apps should go through
   publisher verification before wide public use to avoid "unverified app" warnings.
 
@@ -1329,8 +1332,11 @@ Two traps:
 
 ### Translation quality
 
-**Every non-English locale is an LLM draft with no native review.** The structure is
-verified by the guards above; the *wording* is not. Register was chosen per language rather
+**Most non-English locales are LLM drafts with no native review, and none has had a full
+native read.** The structure is
+verified by the guards above; the *wording* is not. `pl` is the partial exception: it was
+contributed and grammar-checked by a native speaker in #216/#220, though two developer
+edits (the CLDR date forms and `innych`) went in on top of his text. Register was chosen per language rather
 than uniformly (`fr`/`de`/`it`/`pt` formal, `es`/`nl`/`sv` informal), matching what business
 booking pages do in each market, but that too is unreviewed. Corrections via PR are welcome
 and are the expected path to improving them. Do not describe a language as production-quality

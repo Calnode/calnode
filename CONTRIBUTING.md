@@ -74,14 +74,15 @@ prefer additive, nullable/defaulted columns.
 
 ## Translations
 
-Calnode ships 9 locales (`en es fr fr-CA de it pt nl sv`) across the booker-facing surfaces:
+Calnode ships 11 locales (`en es fr fr-CA de el it nl pl pt sv`) across the booker-facing surfaces:
 booking page, manage/reschedule page, embed widget, the four emails, and the calendar
 invite. The admin UI and the built-in video room are English-only.
 
 **Translation PRs are very welcome** - both new languages and corrections to existing
-ones. **Every non-English locale is currently a machine draft with no native review**, so
-if you speak one of them, fixes are genuinely valuable and will be merged readily. Small,
-single-language PRs are easier to review than sweeping ones.
+ones. **Most non-English locales are machine drafts with no native review, and none has
+had a full native read** (Polish was contributed and grammar-checked by a native
+speaker), so if you speak one of them, fixes are genuinely valuable and will be merged
+readily. Small, single-language PRs are easier to review than sweeping ones.
 
 **Adding a language is adding one file:** `internal/i18n/locales/<code>.json`. No Go,
 template, or frontend change is needed - `init()` globs the directory, and the language
