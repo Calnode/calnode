@@ -20,7 +20,7 @@ import (
 	"github.com/calnode/calnode/internal/mailer"
 	"github.com/calnode/calnode/internal/secret"
 
-	"github.com/calnode/calnode/internal/stripe"
+	stripe "github.com/calnode/calnode/internal/makecommerce"
 	"github.com/calnode/calnode/internal/webhook"
 	"github.com/calnode/calnode/internal/worker"
 	"github.com/calnode/calnode/internal/zoom"
@@ -256,18 +256,19 @@ func BuildHandler(ctx context.Context, cfg *config.Config, db *sql.DB, logger *s
 		logger.Info("Zoom not configured — add credentials in Settings → Zoom")
 	}
 
-	// Optional Stripe payments — paid bookings. Off unless configured in Settings → Payments.
+	// Optional payments — paid bookings. Off unless configured in Settings → Payments.
+	// For MakeCommerce, this uses the API secret key.
 	if dbStripe, dbStripeErr := handler.LoadStripeSettingsFromDB(db, encKey); dbStripeErr != nil {
-		logger.Warn("stripe settings: could not load from database", "error", dbStripeErr)
+		logger.Warn("payment settings: could not load from database", "error", dbStripeErr)
 	} else if dbStripe != nil {
 		if sc, err := stripe.New(dbStripe.SecretKey, dbStripe.PublishableKey, dbStripe.WebhookSecret); err != nil {
-			logger.Error("stripe: init failed", "error", err)
+			logger.Error("payment: init failed", "error", err)
 		} else {
 			h.SetStripe(sc)
-			logger.Info("Stripe payments configured", "webhook_secret_set", dbStripe.WebhookSecret != "")
+			logger.Info("Payments configured", "webhook_secret_set", dbStripe.WebhookSecret != "")
 		}
 	} else {
-		logger.Info("Stripe not configured — add credentials in Settings → Payments")
+		logger.Info("Payments not configured — add credentials in Settings → Payments")
 	}
 
 	// Optional LiveKit video — built-in meeting rooms. Off unless configured in Settings → Video.
@@ -543,8 +544,9 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	mux.HandleFunc("GET /v1/zoom/status", h.RequireAuth(h.ZoomStatus))
 	mux.HandleFunc("DELETE /v1/zoom", h.RequireAuth(h.DisconnectZoom))
 
-	// Stripe payment webhook — public, authenticated by the signing secret (no session
+	// Payment webhook — public, authenticated by the signing secret (no session
 	// cookie, so the CSRF check doesn't apply). Must receive the raw body.
+	// For MakeCommerce, this receives transaction status notifications.
 	mux.HandleFunc("POST /v1/stripe/webhook", h.StripeWebhook)
 	// Resend inbound email (email.received): RSVPs to Calnode-sent invites. Public,
 	// authenticated by the webhook signature.

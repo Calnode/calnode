@@ -6,27 +6,31 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/calnode/calnode/internal/stripe"
+	stripe "github.com/calnode/calnode/internal/makecommerce"
 )
 
-// checkoutHoldWindow is how long the slot is held while the booker pays. Stripe requires a
-// Checkout session to expire between 30 minutes and 24 hours from creation.
+// checkoutHoldWindow is how long the slot is held while the booker pays.
+// MakeCommerce uses a fixed 30-minute expiry, but we keep 31 minutes for safety.
 const checkoutHoldWindow = 31 * time.Minute
 
-// startBookingCheckout creates a Stripe Checkout session for a held (pending) booking, marks
-// the booking pending_payment, and returns the hosted Checkout URL to redirect the booker to.
+// startBookingCheckout creates a payment transaction for a held (pending) booking, marks
+// the booking pending_payment, and returns the hosted payment URL to redirect the booker to.
+// For MakeCommerce, the transaction ID is used instead of Stripe's session ID.
 func (h *Handler) startBookingCheckout(ctx context.Context, sc *stripe.Client, bookingID string, priceCents int, currency, productName, slug, email string) (string, error) {
 	if currency == "" {
-		currency = "usd"
+		currency = "eur" // MakeCommerce primarily uses EUR
 	}
 	base := h.publicURL()
+	// For MakeCommerce, we pass the transaction reference in the customer_url
+	// The transaction ID will be returned and can be used to query status
 	sess, err := sc.CreateCheckoutSession(ctx, stripe.CheckoutParams{
 		AmountCents:   int64(priceCents),
 		Currency:      currency,
 		ProductName:   productName,
 		CustomerEmail: email,
-		// Stripe substitutes {CHECKOUT_SESSION_ID}; the page shows a "payment received" banner.
-		SuccessURL: base + "/book/" + slug + "?paid=1&session_id={CHECKOUT_SESSION_ID}",
+		// MakeCommerce doesn't use template variables like Stripe's {CHECKOUT_SESSION_ID}
+		// Instead, we include the booking_id in the reference and handle it on success
+		SuccessURL: base + "/book/" + slug + "?paid=1&session_id=" + bookingID,
 		CancelURL:  base + "/book/" + slug,
 		ExpiresAt:  time.Now().Add(checkoutHoldWindow),
 		Metadata:   map[string]string{"booking_id": bookingID},
@@ -42,8 +46,10 @@ func (h *Handler) startBookingCheckout(ctx context.Context, sc *stripe.Client, b
 	return sess.URL, nil
 }
 
-// StripeWebhook handles POST /v1/stripe/webhook — Stripe's payment notifications. Public, but
-// authenticated by the signing secret (no session cookie, so CSRF middleware doesn't apply).
+// StripeWebhook handles POST /v1/stripe/webhook — payment provider notifications.
+// For MakeCommerce, this receives transaction status updates. Public, but authenticated
+// by the signing secret (no session cookie, so CSRF middleware doesn't apply).
+// MakeCommerce sends webhook data as URL-encoded form with json and mac fields.
 func (h *Handler) StripeWebhook(w http.ResponseWriter, r *http.Request) {
 	sc := h.getStripe()
 	if sc == nil || !sc.WebhookConfigured() {
@@ -55,10 +61,14 @@ func (h *Handler) StripeWebhook(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusBadRequest, "could not read body")
 		return
 	}
-	ev, err := sc.VerifyWebhook(body, r.Header.Get("Stripe-Signature"), time.Now())
+
+	// For MakeCommerce, the MAC is in the form data itself, not in a header.
+	// We pass the raw body which contains json={...}&mac=...
+	// The VerifyWebhook implementation will parse and verify the MAC.
+	ev, err := sc.VerifyWebhook(body, "", time.Now())
 	if err != nil {
-		// Bad signature → 400 so Stripe surfaces the failure (and a forged call is rejected).
-		h.logger.WarnContext(r.Context(), "stripe webhook: verify failed", "error", err)
+		// Bad signature → 400 so the payment provider surfaces the failure.
+		h.logger.WarnContext(r.Context(), "payment webhook: verify failed", "error", err)
 		h.writeError(w, http.StatusBadRequest, "signature verification failed")
 		return
 	}
@@ -81,7 +91,7 @@ func (h *Handler) StripeWebhook(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	// Acknowledge so Stripe stops retrying (we've durably acted, or chosen to ignore).
+	// Acknowledge so the payment provider stops retrying (we've durably acted, or chosen to ignore).
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -92,13 +102,14 @@ func (h *Handler) confirmPaidBooking(ctx context.Context, bookingID, paymentInte
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 
+	// For MakeCommerce, paymentIntentID is actually the transaction ID
 	res, err := h.db.ExecContext(ctx,
 		`UPDATE bookings SET payment_status = 'paid', stripe_payment_intent_id = ?,
 		     amount_paid_cents = ?, amount_paid_currency = ?
 		 WHERE id = ? AND payment_status = 'pending'`,
 		paymentIntentID, amountCents, currency, bookingID)
 	if err != nil {
-		h.logger.ErrorContext(ctx, "stripe: mark booking paid", "error", err, "booking_id", bookingID)
+		h.logger.ErrorContext(ctx, "payment: mark booking paid", "error", err, "booking_id", bookingID)
 		return
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
@@ -107,7 +118,7 @@ func (h *Handler) confirmPaidBooking(ctx context.Context, bookingID, paymentInte
 
 	b, err := h.bookingSvc.Get(ctx, bookingID)
 	if err != nil || b == nil {
-		h.logger.ErrorContext(ctx, "stripe: load paid booking", "error", err, "booking_id", bookingID)
+		h.logger.ErrorContext(ctx, "payment: load paid booking", "error", err, "booking_id", bookingID)
 		return
 	}
 	// Reconstruct the confirmation context from the booking's event type + organizer.
@@ -119,11 +130,11 @@ func (h *Handler) confirmPaidBooking(ctx context.Context, bookingID, paymentInte
 		JOIN booking_attendees a ON a.booking_id = b.id AND a.is_organizer = 1
 		WHERE b.id = ?`, bookingID).
 		Scan(&in.EventTypeName, &in.EventTypeSlug, &in.LocationType, &in.OrganizerName, &in.OrganizerEmail, &in.OrganizerTimezone, &in.OrganizerLocale); err != nil {
-		h.logger.ErrorContext(ctx, "stripe: load confirmation input", "error", err, "booking_id", bookingID)
+		h.logger.ErrorContext(ctx, "payment: load confirmation input", "error", err, "booking_id", bookingID)
 		return
 	}
 	// Run the same side-effects a free booking gets (calendar, emails, Zoom/Meet, webhooks) in
-	// the background, so the webhook is acknowledged immediately (well under Stripe's timeout).
+	// the background, so the webhook is acknowledged immediately.
 	// dispatchBookingConfirmation manages its own context, so fire-and-forget is safe.
 	go h.dispatchBookingConfirmation(b, in) // #nosec G118 -- deliberately its own context.Background(); see dispatchBookingConfirmation's doc comment
 }
@@ -151,12 +162,14 @@ func (h *Handler) releaseUnpaidHold(ctx context.Context, bookingID string) {
 // (only one claimant wins), the Stripe call carries an idempotency key so a
 // retried request returns the original refund, and a failed Stripe call reverts
 // the claim so a later cancel retries instead of losing the refund.
+// For MakeCommerce, intentID is actually the transaction ID.
 func (h *Handler) refundBookingPayment(ctx context.Context, bookingID string) {
 	sc := h.getStripe()
 	if sc == nil {
 		return
 	}
 	var intentID string
+	// For MakeCommerce, we store the transaction ID in stripe_payment_intent_id
 	if err := h.db.QueryRowContext(ctx,
 		`SELECT COALESCE(stripe_payment_intent_id, '') FROM bookings WHERE id = ?`,
 		bookingID).Scan(&intentID); err != nil {
@@ -171,14 +184,14 @@ func (h *Handler) refundBookingPayment(ctx context.Context, bookingID string) {
 		`UPDATE bookings SET payment_status = 'refunding'
 		 WHERE id = ? AND payment_status = 'paid'`, bookingID)
 	if err != nil {
-		h.logger.ErrorContext(ctx, "stripe: claim refund", "error", err, "booking_id", bookingID)
+		h.logger.ErrorContext(ctx, "payment: claim refund", "error", err, "booking_id", bookingID)
 		return
 	}
 	if n, _ := claimed.RowsAffected(); n == 0 {
 		return // already refunded/refunding, or never paid
 	}
 	if err := sc.Refund(ctx, intentID, "refund:"+bookingID); err != nil {
-		h.logger.ErrorContext(ctx, "stripe: refund on cancel", "error", err, "booking_id", bookingID)
+		h.logger.ErrorContext(ctx, "payment: refund on cancel", "error", err, "booking_id", bookingID)
 		// Revert the claim so a later cancel retries; the money was not moved.
 		// If the revert itself fails, the row stays 'refunding' — still safe:
 		// no other cancel will claim it, and the error is logged above.
@@ -190,6 +203,6 @@ func (h *Handler) refundBookingPayment(ctx context.Context, bookingID string) {
 	if _, err := h.db.ExecContext(ctx,
 		`UPDATE bookings SET payment_status = 'refunded'
 		 WHERE id = ? AND payment_status = 'refunding'`, bookingID); err != nil {
-		h.logger.ErrorContext(ctx, "stripe: mark refunded", "error", err, "booking_id", bookingID)
+		h.logger.ErrorContext(ctx, "payment: mark refunded", "error", err, "booking_id", bookingID)
 	}
 }

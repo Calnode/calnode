@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	"github.com/calnode/calnode/internal/db"
-	"github.com/calnode/calnode/internal/stripe"
+	stripe "github.com/calnode/calnode/internal/makecommerce"
 )
 
 func newRefundTestSetup(t *testing.T) (*Handler, *sql.DB, string) {
@@ -58,26 +58,39 @@ func refundTestClient(t *testing.T, h *Handler, handler func(w http.ResponseWrit
 }
 
 // TestRefundBookingPayment_claimsOnce proves two cancels for the same paid booking
-// produce a single Stripe refund call: the conditional claim UPDATE lets exactly one
-// claimant through, and the Stripe call carries an idempotency key.
+// produce a single refund call: the conditional claim UPDATE lets exactly one
+// claimant through, and the refund call carries an idempotency key.
+// For MakeCommerce, this also requires mocking the GetCheckoutSession endpoint.
 func TestRefundBookingPayment_claimsOnce(t *testing.T) {
 	h, database, _ := newRefundTestSetup(t)
 
-	var calls atomic.Int32
+	var refundCalls atomic.Int32
 	var idemKey string
 	refundTestClient(t, h, func(w http.ResponseWriter, r *http.Request) {
-		calls.Add(1)
-		idemKey = r.Header.Get("Idempotency-Key")
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"id":"re_test"}`))
+		// Only count POST /v1/refunds requests (not GET /v1/transactions/{id})
+		if r.Method == http.MethodPost && r.URL.Path == "/v1/refunds" {
+			refundCalls.Add(1)
+			idemKey = r.Header.Get("Idempotency-Key")
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"id":"re_test"}`))
+			return
+		}
+		// For GET /v1/transactions/{id}, return a mock transaction
+		if r.Method == http.MethodGet {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"id":"pi_test_123","status":"COMPLETED","amount":"100.00","currency":"EUR"}`))
+			return
+		}
+		// For other requests, return empty
+		w.WriteHeader(http.StatusOK)
 	})
 
 	ctx := context.Background()
 	h.refundBookingPayment(ctx, "b-pay")
-	h.refundBookingPayment(ctx, "b-pay") // second cancel: must not hit Stripe again
+	h.refundBookingPayment(ctx, "b-pay") // second cancel: must not hit refund endpoint again
 
-	if calls.Load() != 1 {
-		t.Fatalf("Stripe refund called %d times; want 1", calls.Load())
+	if refundCalls.Load() != 1 {
+		t.Fatalf("refund endpoint called %d times; want 1", refundCalls.Load())
 	}
 	if idemKey != "refund:b-pay" {
 		t.Fatalf("Idempotency-Key = %q; want refund:b-pay", idemKey)
@@ -89,13 +102,20 @@ func TestRefundBookingPayment_claimsOnce(t *testing.T) {
 	}
 }
 
-// TestRefundBookingPayment_failureRevertsClaim proves a Stripe error leaves the
+// TestRefundBookingPayment_failureRevertsClaim proves a refund error leaves the
 // booking payable-again: the claim reverts to paid so a later cancel retries
 // instead of silently keeping the money.
 func TestRefundBookingPayment_failureRevertsClaim(t *testing.T) {
 	h, database, _ := newRefundTestSetup(t)
 
 	refundTestClient(t, h, func(w http.ResponseWriter, r *http.Request) {
+		// Mock GetCheckoutSession
+		if r.Method == http.MethodGet {
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"id":"pi_test_123","status":"COMPLETED","amount":"100.00","currency":"EUR"}`))
+			return
+		}
+		// Mock Refund - return error
 		w.WriteHeader(http.StatusInternalServerError)
 		_, _ = w.Write([]byte(`{"error":{"message":"boom"}}`))
 	})
@@ -104,6 +124,6 @@ func TestRefundBookingPayment_failureRevertsClaim(t *testing.T) {
 	var status string
 	database.QueryRow(`SELECT payment_status FROM bookings WHERE id='b-pay'`).Scan(&status)
 	if status != "paid" {
-		t.Fatalf("payment_status = %q after Stripe failure; want paid (claim reverted)", status)
+		t.Fatalf("payment_status = %q after refund failure; want paid (claim reverted)", status)
 	}
 }
