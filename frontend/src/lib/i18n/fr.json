@@ -1,0 +1,1924 @@
+{
+	"common": {
+		"loading": "Chargement…",
+		"saving": "Enregistrement…",
+		"save": "Enregistrer",
+		"cancel": "Annuler",
+		"close": "Fermer",
+		"confirm": "Confirmer",
+		"remove": "Retirer",
+		"delete": "Supprimer",
+		"copy": "Copier",
+		"copied": "Copié !",
+		"copiedShort": "Copié",
+		"failed": "Échec",
+		"refresh": "Actualiser",
+		"previous": "Précédent",
+		"next": "Suivant",
+		"clear": "Effacer",
+		"clearFilters": "Effacer les filtres",
+		"never": "Jamais",
+		"adminRequired": "Accès administrateur requis.",
+		"or": "ou",
+		"yes": "Oui",
+		"no": "Non",
+		"emDash": "—",
+		"attendeeFallback": "participant",
+		"storedSecretPlaceholder": "•••••••• (enregistré)",
+		"leaveBlankKeep": "Enregistré — laissez vide pour le conserver.",
+		"notConfigured": "Non configuré",
+		"configured": "Configuré",
+		"active": "Actif",
+		"inactive": "Inactif",
+		"select": "Sélectionner…",
+		"search": "Rechercher…",
+		"noResults": "Aucun résultat.",
+		"confirmDialog": {
+			"defaultTitle": "Êtes-vous sûr ?",
+			"defaultConfirm": "Confirmer",
+			"defaultCancel": "Annuler"
+		},
+		"datePicker": {
+			"pickDate": "Choisir une date",
+			"sameDay": "Le même jour"
+		},
+		"combobox": {
+			"searchPlaceholder": "Rechercher…"
+		},
+		"copyClipboardError": "Impossible de copier dans le presse-papiers",
+		"copyManualHint": "Impossible de copier. Sélectionnez l'URL et copiez-la manuellement.",
+		"optional": "(facultatif)",
+		"minutesShort": "{n} min",
+		"undo": "Défaire",
+		"uploading": "Téléversement…",
+		"sending": "Envoi…",
+		"testing": "Test…"
+	},
+	"layout": {
+		"loading": "Chargement…",
+		"signOut": "Se déconnecter",
+		"reportIssue": "Signaler un problème",
+		"nav": {
+			"section": {
+				"scheduling": "Planification",
+				"team": "Équipe",
+				"developer": "Développeur"
+			},
+			"home": "Accueil",
+			"eventTypes": "Types de rendez-vous",
+			"availability": "Disponibilités",
+			"bookings": "Réservations",
+			"calendar": "Agenda",
+			"recordings": "Enregistrements",
+			"members": "Membres",
+			"teams": "Équipes",
+			"apiKeys": "Clés d'API",
+			"connectedApps": "Applications connectées",
+			"webhooks": "Webhooks",
+			"settings": "Paramètres"
+		},
+		"reportDialog": {
+			"title": "Signaler un problème",
+			"description": "Veuillez d'abord rechercher parmi les tickets existants — le problème a peut-être déjà été signalé ou est en cours de traitement. Le suivi est réservé aux bugs reproductibles dans Calnode ; pour une aide à la configuration ou les questions du type « comment faire pour… », utilisez plutôt Discussions.",
+			"searchIssues": "Rechercher parmi les tickets existants",
+			"reportBug": "Signaler un bug",
+			"descriptionHtml": "Veuillez d'abord <strong>rechercher parmi les tickets existants</strong> — le problème a peut-être déjà été signalé ou est en cours de traitement. Le suivi est réservé aux <strong>bugs reproductibles</strong> dans Calnode ; pour une aide à la configuration ou les questions du type « comment faire pour… », utilisez plutôt Discussions."
+		},
+		"headTitleSuffix": "Calnode"
+	},
+	"demo": {
+		"banner": {
+			"title": "Démo publique",
+			"body": "les données ici sont visibles par tous et sont réinitialisées automatiquement. N'y saisissez rien de privé.",
+			"viewSource": "Voir le code source"
+		},
+		"resetButton": "Réinitialiser la démo maintenant",
+		"resetting": "Réinitialisation…",
+		"confirm": {
+			"title": "Réinitialiser la démo maintenant ?",
+			"description": "Tous les types de rendez-vous, réservations et paramètres sont effacés et remplacés par de nouvelles données d'exemple. Cela se produit aussi automatiquement à intervalle régulier.",
+			"confirm": "Réinitialiser la démo"
+		},
+		"toast": {
+			"resetSuccess": "Démo réinitialisée — rechargement…",
+			"resetFailed": "La réinitialisation a échoué"
+		}
+	},
+	"dashboard": {
+		"headTitle": "Tableau de bord — Calnode",
+		"title": "Tableau de bord",
+		"subtitleReady": "Votre page de réservation est en ligne et prête à être partagée.",
+		"bookingLinkSingular": "Votre lien de réservation",
+		"bookingLinksPlural": "Vos liens de réservation",
+		"profilePage": "Votre page de profil",
+		"gettingStarted": {
+			"title": "Premiers pas",
+			"subtitle": "Terminez ces étapes et vous pourrez recevoir des réservations."
+		},
+		"checklist": {
+			"connectCalendar": "Connectez votre calendrier",
+			"connectCalendarHintConfigured": "Calnode consulte votre calendrier pour éviter les doubles réservations.",
+			"connectCalendarHintUnconfigured": "La configuration de Google Calendar est requise — voir la page Agenda pour plus de détails.",
+			"availability": "Définissez vos disponibilités",
+			"availabilityHint": "Indiquez les horaires pendant lesquels on peut réserver un créneau avec vous.",
+			"eventType": "Créez votre premier type de rendez-vous",
+			"eventTypeHint": "Un type de rendez-vous définit la durée, le lieu et les disponibilités d'une réservation.",
+			"shareLink": "Partagez votre lien de réservation",
+			"shareLinkHintReady": "Votre page est en ligne. Partagez-la et commencez à recevoir des réservations.",
+			"shareLinkHintWaiting": "Disponible une fois que vous aurez créé un type de rendez-vous."
+		}
+	},
+	"bookings": {
+		"headTitle": "Réservations — Calnode",
+		"title": "Réservations",
+		"subtitle": {
+			"mine": "Les réunions dont vous êtes l'hôte.",
+			"all": "Toutes les réunions de l'espace de travail."
+		},
+		"refresh": "Actualiser",
+		"refreshAria": "Actualiser les réservations",
+		"scope": {
+			"mine": "Mes réservations",
+			"all": "Toutes les réservations"
+		},
+		"empty": {
+			"title": "Aucune réservation pour le moment",
+			"description": "Les réservations apparaîtront ici lorsque des participants planifieront un créneau avec vous.",
+			"noUpcoming": "Aucune réservation à venir.",
+			"noPast": "Aucune réservation passée."
+		},
+		"filter": {
+			"upcoming": "À venir ({count})",
+			"past": "Passées ({count})",
+			"allEventTypes": "Tous les types de rendez-vous",
+			"allHosts": "Tous les hôtes",
+			"allTeams": "Toutes les équipes",
+			"anyStatus": "Tous les statuts",
+			"status": {
+				"confirmed": "Confirmée",
+				"rescheduled": "Reprogrammée",
+				"cancelled": "Annulée"
+			},
+			"noMatch": "Aucune réservation ne correspond à ces filtres.",
+			"noTimeFilter": "Aucune réservation {when}.",
+			"eventTypeAria": "Filtrer par type de rendez-vous",
+			"hostAria": "Filtrer par hôte",
+			"teamAria": "Filtrer par équipe",
+			"statusAria": "Filtrer par statut"
+		},
+		"table": {
+			"attendee": "Participant",
+			"host": "Hôte",
+			"event": "Type de rendez-vous",
+			"startTime": "Heure de début",
+			"status": "Statut"
+		},
+		"payment": {
+			"paid": "Payée",
+			"refunded": "Remboursée",
+			"pending": "Paiement en attente"
+		},
+		"badge": {
+			"refunded": "remboursée",
+			"unpaid": "impayée",
+			"guestAccepted": "Invité : accepté",
+			"guestMaybe": "Invité : peut-être",
+			"guestDeclined": "Invité : refusé"
+		},
+		"tooltip": {
+			"hideResponses": "Masquer les réponses",
+			"showResponses": "Afficher les réponses",
+			"reschedule": "Reprogrammer",
+			"cancel": "Annuler la réservation"
+		},
+		"cancelReschedule": "Annuler la reprogrammation",
+		"details": {
+			"title": "Détails",
+			"bookedOn": "Réservé le",
+			"payment": "Paiement",
+			"location": "Lieu"
+		},
+		"intake": {
+			"title": "Réponses du formulaire",
+			"empty": "Aucune réponse de formulaire pour cette réservation.",
+			"loading": "Chargement…"
+		},
+		"reschedule": {
+			"title": "Reprogrammer — {name}",
+			"newDate": "Nouvelle date",
+			"pickDate": "Choisir une date",
+			"loadingSlots": "Chargement des créneaux…",
+			"noSlots": "Aucun créneau disponible à cette date.",
+			"confirm": "Confirmer — {time}",
+			"inProgress": "Reprogrammation…"
+		},
+		"pagination": "Affichage de {start}–{end} sur {total}",
+		"confirmCancel": {
+			"title": "Annuler cette réservation ?",
+			"description": "Le participant sera informé et le créneau sera libéré. Cette action est irréversible.",
+			"confirm": "Annuler la réservation",
+			"cancel": "Conserver la réservation"
+		},
+		"status": {
+			"confirmed": "confirmée",
+			"cancelled": "annulée"
+		}
+	},
+	"availability": {
+		"headTitle": "Disponibilités — Calnode",
+		"title": "Disponibilités",
+		"subtitle": "Définissez vos horaires hebdomadaires et bloquez certaines dates.",
+		"weeklyHours": "Horaires hebdomadaires",
+		"days": {
+			"sunday": "Dimanche",
+			"monday": "Lundi",
+			"tuesday": "Mardi",
+			"wednesday": "Mercredi",
+			"thursday": "Jeudi",
+			"friday": "Vendredi",
+			"saturday": "Samedi"
+		},
+		"noHours": "Aucun horaire défini",
+		"addHours": "+ Ajouter des horaires",
+		"addBlock": "Ajouter un bloc",
+		"saving": "enregistrement…",
+		"blockError": {
+			"endAfterStart": "La fin doit être après le début"
+		},
+		"override": {
+			"type": {
+				"dayOff": "Jour de congé",
+				"outOfOffice": "Absent",
+				"customHours": "Horaires personnalisés"
+			}
+		},
+		"confirmRemoveOverride": {
+			"title": "Retirer l'exception de date ?",
+			"description": "Vos horaires hebdomadaires par défaut s'appliqueront de nouveau à cette date."
+		},
+		"confirmRemoveSpan": {
+			"title": "Retirer cette période d'absence ?",
+			"description": "Tous les jours de cette plage redeviendront réservables."
+		},
+		"overrides": {
+			"title": "Exceptions de dates",
+			"subtitle": "Bloquez une date précise, ou définissez-y des horaires personnalisés.",
+			"overlapWarning": "Les blocs qui se chevauchent le {dates} sont fusionnés en une seule plage — ajustez-les si ce n'était pas l'intention.",
+			"table": {
+				"date": "Date",
+				"type": "Type",
+				"duration": "Durée"
+			},
+			"empty": "Aucune exception pour le moment.",
+			"form": {
+				"date": "Date",
+				"toOptional": "Au (facultatif)",
+				"type": "Type",
+				"from": "De",
+				"to": "À"
+			},
+			"adding": "Ajout…",
+			"add": "Ajouter une exception",
+			"splitHint": "Journée fractionnée ? Ajoutez un bloc, puis un autre pour la même date.",
+			"duration": {
+				"oneDay": "1 jour",
+				"days": "{count} jours"
+			}
+		},
+		"tooltip": {
+			"remove": "Retirer",
+			"delete": "Supprimer",
+			"deleteSpan": "Supprimer la période"
+		},
+		"validation": {
+			"dateRequired": "La date est obligatoire.",
+			"customHoursTimes": "L'heure de début et l'heure de fin sont obligatoires pour les horaires personnalisés.",
+			"endAfterStart": "L'heure de fin doit être après l'heure de début.",
+			"endDate": "La date de fin doit être égale ou postérieure à la date de début."
+		}
+	},
+	"calendar": {
+		"headTitle": "Agenda — Calnode",
+		"title": "Agenda",
+		"subtitle": "Connectez un ou plusieurs comptes. Choisissez les calendriers à vérifier pour les conflits, et le calendrier unique dans lequel les réservations sont écrites.",
+		"connectedSuccess": "Calendrier connecté avec succès.",
+		"noProvider": {
+			"title": "Aucun fournisseur de calendrier configuré",
+			"body": "Ajoutez les identifiants OAuth Google dans {google}, ou définissez les identifiants Microsoft (Outlook) via les variables d'environnement, puis redémarrez le serveur.",
+			"googleLink": "Paramètres → Google OAuth"
+		},
+		"provider": {
+			"google": "Google Calendar",
+			"microsoft": "Microsoft 365 (Outlook)",
+			"caldav": "CalDAV (Apple iCloud, Fastmail, Nextcloud)"
+		},
+		"setup": {
+			"google": "Configurer dans Paramètres → Google OAuth",
+			"microsoft": "Voir la documentation de configuration"
+		},
+		"checkedForConflicts": "vérifié pour les conflits",
+		"reconnectNeeded": "Reconnexion nécessaire — déconnectez puis reconnectez.",
+		"addBookingsHere": "Ajouter les réservations ici",
+		"disconnect": "Déconnecter",
+		"manageCalendars": "Gérer les calendriers",
+		"hideCalendars": "Masquer les calendriers",
+		"loadingCalendars": "Chargement des calendriers…",
+		"noCalendars": "Aucun calendrier trouvé pour ce compte.",
+		"picker": {
+			"instructions": "Cochez les calendriers à vérifier pour les conflits, et choisissez celui dans lequel les réservations sont écrites (sélectionnez-le à nouveau pour effacer le choix).",
+			"check": "Vérifier",
+			"destination": "Destination",
+			"calendar": "Calendrier",
+			"primary": "(principal)",
+			"readOnly": "(lecture seule)",
+			"checkAria": "Vérifier {name} pour les conflits",
+			"destinationAria": "Écrire les réservations dans {name} (sélectionnez à nouveau pour effacer)"
+		},
+		"saving": "Enregistrement…",
+		"confirmDisconnect": {
+			"title": "Déconnecter ce calendrier ?",
+			"description": "Calnode cessera de le vérifier pour les conflits. S'il s'agissait de votre calendrier de réservation, un autre calendrier connecté le remplace automatiquement.",
+			"confirm": "Déconnecter"
+		},
+		"confirmZoomDisconnect": {
+			"title": "Déconnecter Zoom ?",
+			"description": "Les nouvelles réservations dont le lieu est Zoom et qui vous sont attribuées n'obtiendront plus de lien de réunion généré automatiquement."
+		},
+		"demoDisabled": "La connexion de calendrier est désactivée dans la démo.",
+		"connectAnother": "Connecter un autre calendrier",
+		"connect": "Connecter un calendrier",
+		"connectButton": "Connecter",
+		"connecting": "Connexion…",
+		"connectCalendar": "Connecter le calendrier",
+		"caldav": {
+			"provider": "Fournisseur",
+			"icloud": "Apple iCloud",
+			"fastmail": "Fastmail",
+			"custom": "Nextcloud / autre (URL personnalisée)",
+			"serverUrl": "URL du serveur",
+			"serverPlaceholder": "https://cloud.example.com/remote.php/dav",
+			"username": "Nom d'utilisateur / e-mail",
+			"usernamePlaceholder": "vous@icloud.com",
+			"appPassword": "Mot de passe d'application",
+			"icloudHelp": "Créez un mot de passe d'application sur appleid.apple.com",
+			"fastmailHelp": "Créez un mot de passe d'application dans les paramètres Fastmail",
+			"passwordHint": "Utilisez un mot de passe d'application fourni par votre prestataire, pas votre mot de passe de connexion.",
+			"passwordSuffix": "— votre mot de passe habituel ne fonctionnera pas.",
+			"err": {
+				"server": "Saisissez l'URL de votre serveur CalDAV.",
+				"credentials": "Le nom d'utilisateur et le mot de passe d'application sont tous deux obligatoires.",
+				"connect": "Impossible de se connecter. Vérifiez le serveur, le nom d'utilisateur et le mot de passe d'application."
+			}
+		},
+		"unconfigured": "Non configuré sur cette instance",
+		"hint": {
+			"multiCalendar": "Connectez un calendrier personnel et un calendrier professionnel (ou les deux fournisseurs) pour éviter toute double réservation."
+		},
+		"footer": {
+			"manageHint": "Utilisez Gérer les calendriers sur chaque compte pour choisir lesquels de ses calendriers sont vérifiés pour les conflits. Les réservations confirmées (et les liens de réunion générés automatiquement) sont écrits dans le compte marqué « Ajouter les réservations ici »."
+		},
+		"zoom": {
+			"title": "Zoom",
+			"subtitle": "Connectez votre compte Zoom pour que les réservations avec un lieu Zoom reçoivent un véritable lien de réunion créé sous votre compte.",
+			"connectedSuccess": "Zoom connecté avec succès.",
+			"connected": "Connecté",
+			"disconnecting": "Déconnexion…"
+		}
+	},
+	"members": {
+		"headTitle": "Membres — Calnode",
+		"title": "Membres",
+		"subtitle": "Gérez les membres de l'espace de travail, les rôles et les invitations.",
+		"invite": {
+			"toggleCancel": "Annuler",
+			"toggleOpen": "Inviter un membre",
+			"formTitle": "Inviter un membre",
+			"linkGenerated": "Lien d'invitation généré",
+			"emailSent": "Un e-mail d'invitation a été envoyé à {email}.",
+			"smtpManual": "SMTP n'est pas configuré — partagez ce lien directement avec {email}.",
+			"emailLabel": "Adresse e-mail",
+			"emailPlaceholder": "collègue@exemple.com",
+			"generating": "Génération…",
+			"generate": "Générer le lien d'invitation",
+			"noteManual": "L'e-mail n'est pas configuré — copiez ce lien et envoyez-le manuellement.",
+			"validation": {
+				"email": "L'e-mail est obligatoire."
+			}
+		},
+		"section": {
+			"members": "Membres",
+			"pendingInvites": "Invitations en attente"
+		},
+		"showArchived": "Afficher les archivés",
+		"hideArchived": "Masquer les archivés",
+		"empty": "Aucun membre pour le moment.",
+		"table": {
+			"name": "Nom",
+			"role": "Rôle",
+			"teams": "Équipes",
+			"page": "Page",
+			"auth": "Authentification",
+			"joined": "Inscription",
+			"email": "E-mail",
+			"expires": "Expiration"
+		},
+		"role": {
+			"owner": "Propriétaire",
+			"admin": "Administrateur",
+			"member": "Membre"
+		},
+		"badge": {
+			"archived": "Archivé",
+			"google": "Google",
+			"microsoft": "Microsoft",
+			"email": "E-mail"
+		},
+		"you": "(vous)",
+		"noPublicPageTitle": "Aucune page publique — définissez un identifiant dans son profil",
+		"archivedBy": "Archivé par {name}",
+		"restore": "Restaurer",
+		"passwordUpdated": "Mot de passe mis à jour",
+		"passwordPlaceholder": "Nouveau mot de passe",
+		"setPassword": "Définir",
+		"makeMember": "Passer en membre",
+		"makeAdmin": "Passer en administrateur",
+		"transferOwnership": "Transférer la propriété",
+		"resetPassword": "Réinitialiser le mot de passe",
+		"archive": "Archiver",
+		"resend": "Renvoyer",
+		"revoke": "Révoquer",
+		"resendHint": "Le renvoi crée un nouveau lien, réinitialise l'expiration de 7 jours et le renvoie par e-mail — le lien précédent cesse de fonctionner.",
+		"expiresDaysLeft": "({days} j restants)",
+		"resolve": {
+			"title": "Résoudre les réunions à venir de {name}",
+			"description": {
+				"one": "{count} réunion à venir restante. Réassignez-la à un autre membre ou annulez-la. Lorsque toutes sont résolues, le membre est archivé automatiquement.",
+				"other": "{count} réunions à venir restantes. Réassignez chacune à un autre membre ou annulez-la. Lorsque toutes sont résolues, le membre est archivé automatiquement."
+			},
+			"reassignTo": "Réassigner à…",
+			"reassign": "Réassigner",
+			"cancelMeeting": "Annuler la réunion",
+			"noTargets": "Aucun autre membre actif à qui réassigner — les réunions ne peuvent qu'être annulées.",
+			"cancelAll": "Annuler toutes les restantes",
+			"doneLater": "Plus tard"
+		},
+		"confirm": {
+			"revoke": {
+				"title": "Révoquer l'invitation ?",
+				"description": "Le lien cessera de fonctionner immédiatement.",
+				"confirm": "Révoquer"
+			},
+			"archive": {
+				"title": "Archiver {name} ?",
+				"description": "Cette personne perd l'accès immédiatement et ses types de rendez-vous sont désactivés. Son dossier et son historique sont conservés — vous pourrez la restaurer plus tard.",
+				"confirm": "Archiver"
+			},
+			"transfer": {
+				"title": "Transférer la propriété à {name} ?",
+				"description": "Vous deviendrez administrateur et cette personne deviendra le propriétaire de l'espace de travail. Seul le propriétaire peut le faire.",
+				"confirm": "Transférer la propriété"
+			}
+		},
+		"toast": {
+			"inviteResent": "Invitation renvoyée à {email}",
+			"newLink": "Nouveau lien généré pour {email}",
+			"roleAdmin": "{name} est maintenant administrateur",
+			"roleMember": "{name} est maintenant membre",
+			"newOwner": "{name} est maintenant le propriétaire",
+			"archived": "Membre archivé",
+			"restored": "{name} restauré",
+			"errors": {
+				"resend": "Impossible de renvoyer l'invitation",
+				"role": "Impossible de changer le rôle",
+				"transfer": "Impossible de transférer la propriété",
+				"archive": "Impossible d'archiver le membre",
+				"restore": "Impossible de restaurer le membre"
+			}
+		},
+		"validation": {
+			"password": "Le mot de passe est obligatoire."
+		}
+	},
+	"teams": {
+		"headTitle": "Équipes — Calnode",
+		"title": "Équipes",
+		"subtitle": "Regroupez des membres pour les types de rendez-vous en tourniquet et en groupe.",
+		"newTeam": "Nouvelle équipe",
+		"newTeamForm": {
+			"title": "Nouvelle équipe"
+		},
+		"nameLabel": "Nom de l'équipe",
+		"namePlaceholder": "ex. Commercial",
+		"creating": "Création…",
+		"create": "Créer l'équipe",
+		"empty": {
+			"title": "Aucune équipe pour le moment",
+			"description": "Créez une équipe pour regrouper des membres pour la planification en tourniquet ou en groupe."
+		},
+		"manage": "Gérer",
+		"close": "Fermer",
+		"rename": "Renommer",
+		"members": {
+			"title": "Membres",
+			"empty": "Aucun membre dans cette équipe pour le moment.",
+			"column": "Membre",
+			"routingPriority": "Priorité de routage",
+			"remove": "Retirer"
+		},
+		"addMember": "Ajouter un membre…",
+		"add": "Ajouter",
+		"allMembersInTeam": "Tous les membres actifs sont déjà dans cette équipe.",
+		"routingHint": "Une priorité de routage plus basse = préféré en premier (utilisé par le routage Priorité ; les égalités sont départagées par la charge pour le tourniquet).",
+		"memberCount": {
+			"one": "{count} membre",
+			"other": "{count} membres"
+		},
+		"confirm": {
+			"delete": {
+				"title": "Supprimer « {name} » ?",
+				"description": "L'équipe est supprimée et ses membres en sont retirés. Les membres eux-mêmes et leurs réservations ne sont pas affectés. Les types de rendez-vous qui utilisent cette équipe pour le routage n'auront plus d'équipe.",
+				"confirm": "Supprimer"
+			}
+		},
+		"toast": {
+			"nameRequired": "Le nom de l'équipe est obligatoire",
+			"nameEmpty": "Le nom ne peut pas être vide"
+		}
+	},
+	"eventTypes": {
+		"headTitle": "Types de rendez-vous — Calnode",
+		"title": "Types de rendez-vous",
+		"subtitle": {
+			"mine": "Gérez les types de réunions que les gens peuvent réserver avec vous.",
+			"all": "Tous les types de rendez-vous de l'espace de travail. En tant qu'administrateur, vous pouvez tous les modifier."
+		},
+		"scope": {
+			"mine": "Mes types de rendez-vous",
+			"all": "Tous les types de rendez-vous"
+		},
+		"new": {
+			"toggleCancel": "Annuler",
+			"toggleOpen": "Nouveau type de rendez-vous",
+			"title": "Nouveau type de rendez-vous",
+			"name": "Nom",
+			"namePlaceholder": "Appel de 30 minutes",
+			"slug": "Identifiant (URL)",
+			"slugPlaceholder": "appel-30-min",
+			"duration": "Durée (minutes)",
+			"description": "Description (facultatif)",
+			"descriptionPlaceholder": "Brève description…",
+			"creating": "Création…",
+			"create": "Créer le type de rendez-vous"
+		},
+		"empty": {
+			"title": "Aucun type de rendez-vous pour le moment",
+			"description": "Créez votre premier type de rendez-vous pour commencer à accepter des réservations."
+		},
+		"filter": {
+			"active": "Actifs ({count})",
+			"archived": "Archivés ({count})",
+			"none": "Aucun type de rendez-vous {filter}."
+		},
+		"table": {
+			"name": "Nom",
+			"owner": "Propriétaire",
+			"duration": "Durée",
+			"bookingLink": "Lien de réservation",
+			"active": "Actif"
+		},
+		"badge": {
+			"youHost": "Vous êtes hôte"
+		},
+		"owner": {
+			"you": "Vous"
+		},
+		"tooltip": {
+			"settings": "Paramètres",
+			"duplicate": "Dupliquer",
+			"restore": "Restaurer",
+			"archive": "Archiver",
+			"delete": "Supprimer"
+		},
+		"confirm": {
+			"delete": {
+				"title": "Supprimer le type de rendez-vous ?",
+				"description": "Cela supprimera définitivement le type de rendez-vous et son lien de réservation. Les réservations existantes ne sont pas affectées."
+			}
+		},
+		"toast": {
+			"validation": "L'identifiant, le nom et la durée sont obligatoires.",
+			"duplicated": "Dupliqué sous « {slug} ». Inactif jusqu'à ce que vous l'activiez.",
+			"archived": "Type de rendez-vous archivé",
+			"restored": "Type de rendez-vous restauré",
+			"errors": {
+				"load": "Impossible de charger les types de rendez-vous",
+				"create": "Impossible de créer le type de rendez-vous",
+				"status": "Impossible de mettre à jour le statut",
+				"update": "Impossible de mettre à jour le type de rendez-vous",
+				"duplicate": "Impossible de dupliquer le type de rendez-vous",
+				"delete": "Impossible de supprimer le type de rendez-vous"
+			}
+		}
+	},
+	"recordings": {
+		"headTitle": "Enregistrements — Calnode",
+		"title": "Enregistrements",
+		"subtitle": "Enregistrements de réunions capturés depuis les appels vidéo Calnode. Les fichiers sont dans votre bucket de stockage ; les liens ci-dessous sont de courte durée. Les noms de fichiers de téléchargement utilisent la date de la réunion en UTC.",
+		"deleteAll": "Tout supprimer",
+		"deleting": "Suppression…",
+		"empty": {
+			"title": "Aucun enregistrement pour le moment",
+			"description": "Lorsqu'un hôte enregistre une réunion vidéo, elle apparaîtra ici."
+		},
+		"searchPlaceholder": "Rechercher par réservataire, salle ou date…",
+		"noMatch": "Aucun enregistrement ne correspond à « {query} ».",
+		"notes": {
+			"aiSummary": "Notes (résumé IA)",
+			"regenerate": "Régénérer",
+			"checking": "Vérification…",
+			"refresh": "Actualiser",
+			"loading": "Chargement des notes…",
+			"emptyAi": "Le résumé IA est revenu vide (le modèle n'a renvoyé aucune note exploitable). Essayez Régénérer, ou ouvrez la Transcription pour le relevé brut.",
+			"blocked": {
+				"notetakerOff": "La prise de notes est désactivée.",
+				"noDeepgram": "Aucune clé d'API Deepgram n'est définie.",
+				"noLlm": "Aucun LLM n'est configuré — les notes sont générées en résumant la transcription avec un modèle."
+			},
+			"pending": "Pas encore de notes — elles apparaissent quelques minutes après une réunion enregistrée. Utilisez Actualiser pour revérifier.",
+			"label": "Notes"
+		},
+		"hideNotes": "Masquer les notes",
+		"transcript": {
+			"deepgram": "Transcription (Deepgram)",
+			"loading": "Chargement de la transcription…",
+			"empty": "Pas encore de transcription — elle est créée juste après une réunion enregistrée (nécessite la prise de notes activée et une clé Deepgram dans Paramètres → Vidéo).",
+			"label": "Transcription"
+		},
+		"hideTranscript": "Masquer la transcription",
+		"consent": {
+			"title": "Avis d'enregistrement — qui a consenti",
+			"loading": "Chargement du journal de consentement…",
+			"empty": "Aucune réponse de consentement enregistrée pour cette réunion. Les consentements ne sont enregistrés que pendant l'enregistrement.",
+			"guest": "Invité",
+			"left": "Parti",
+			"continued": "Resté",
+			"label": "Consentement"
+		},
+		"hideConsent": "Masquer le consentement",
+		"download": "Télécharger",
+		"notReady": "Pas prêt",
+		"confirm": {
+			"deleteOne": {
+				"title": "Supprimer l'enregistrement ?",
+				"description": "Cela supprime définitivement le fichier vidéo, sa transcription et les notes de la réservation. Cette action est irréversible."
+			},
+			"deleteAll": {
+				"title": "Supprimer tous les enregistrements ?",
+				"description": {
+					"one": "Cela supprime définitivement {count} enregistrement — fichiers, transcriptions et notes. Les enregistrements en cours sont conservés. Cette action est irréversible.",
+					"other": "Cela supprime définitivement {count} enregistrements — fichiers, transcriptions et notes. Les enregistrements en cours sont conservés. Cette action est irréversible."
+				},
+				"confirm": "Tout supprimer"
+			}
+		},
+		"toast": {
+			"copied": "{label} copié",
+			"deleted": "Enregistrement supprimé",
+			"notesRegenerated": "Notes régénérées",
+			"notesEmpty": "Le résumé est revenu vide — consultez la transcription.",
+			"nothingToDelete": "Rien à supprimer (les enregistrements en cours sont conservés).",
+			"deletePartial": {
+				"one": {
+					"one": "{deleted} supprimé ; {failed} n'a pas pu l'être.",
+					"other": "{deleted} supprimé ; {failed} n'ont pas pu l'être."
+				},
+				"other": {
+					"one": "{deleted} supprimés ; {failed} n'a pas pu l'être.",
+					"other": "{deleted} supprimés ; {failed} n'ont pas pu l'être."
+				}
+			},
+			"deleteAll": {
+				"one": "{count} enregistrement supprimé.",
+				"other": "{count} enregistrements supprimés."
+			}
+		},
+		"error": {
+			"load": "Impossible de charger les enregistrements",
+			"loadNotes": "Impossible de charger les notes",
+			"regen": "Impossible de régénérer les notes",
+			"loadTranscript": "Impossible de charger la transcription",
+			"loadConsent": "Impossible de charger le journal de consentement",
+			"deleteOne": "Impossible de supprimer l'enregistrement",
+			"deleteAll": "Impossible de supprimer les enregistrements"
+		},
+		"link": {
+			"settingsVideo": "Paramètres → Vidéo",
+			"settingsAi": "Paramètres → IA"
+		}
+	},
+	"webhooks": {
+		"headTitle": "Webhooks — Calnode",
+		"title": "Webhooks",
+		"subtitle": "Recevez des notifications en temps réel pour les événements de réservation.",
+		"new": {
+			"toggleCancel": "Annuler",
+			"toggleOpen": "Nouveau webhook",
+			"title": "Nouveau webhook",
+			"urlLabel": "URL du point de terminaison",
+			"urlPlaceholder": "https://votre-serveur.com/hooks/calnode",
+			"eventsTitle": "Événements à envoyer",
+			"fieldsTitle": "Données à envoyer — décochez ce que vous ne voulez pas transmettre",
+			"fieldsPii": "· données personnelles",
+			"piiBadge": "PII",
+			"creating": "Création…",
+			"create": "Créer le webhook"
+		},
+		"empty": {
+			"title": "Aucun webhook",
+			"description": "Ajoutez un webhook pour recevoir des notifications en temps réel pour les événements de réservation."
+		},
+		"table": {
+			"url": "URL",
+			"events": "Événements",
+			"fields": "Champs",
+			"status": "Statut",
+			"created": "Créé"
+		},
+		"fieldsCount": "{count} champs",
+		"tooltip": {
+			"deliveries": "Envois récents",
+			"hideDeliveries": "Masquer les envois",
+			"delete": "Supprimer le webhook"
+		},
+		"deliveries": {
+			"loading": "Chargement des envois…",
+			"empty": "Aucun envoi pour le moment pour ce webhook.",
+			"event": "Événement",
+			"http": "HTTP",
+			"attempts": "Tentatives",
+			"lastAttempt": "Dernière tentative",
+			"status": "Statut"
+		},
+		"confirm": {
+			"delete": {
+				"title": "Supprimer le webhook ?",
+				"description": "Le point de terminaison cessera de recevoir des événements immédiatement."
+			}
+		},
+		"validation": {
+			"url": "L'URL est obligatoire.",
+			"https": "L'URL doit commencer par https://",
+			"events": "Sélectionnez au moins un événement."
+		},
+		"fieldGroup": {
+			"booking": "Réservation",
+			"payment": "Paiement",
+			"eventType": "Type de rendez-vous",
+			"host": "Hôte",
+			"attendee": "Participant",
+			"intake": "Formulaire"
+		},
+		"fields": {
+			"booking": {
+				"id": "Référence de la réservation",
+				"status": "Statut",
+				"start_at": "Heure de début",
+				"end_at": "Heure de fin",
+				"created_at": "Créé le",
+				"location_value": "Lieu",
+				"cancellation_reason": "Motif d'annulation",
+				"previous_start_at": "Début précédent (reprogrammation)",
+				"previous_end_at": "Fin précédente (reprogrammation)",
+				"rsvp_status": "Réponse RSVP (booking.rsvp)",
+				"invite_delivery": "Invitation envoyée par (calendar, calnode, none)"
+			},
+			"payment": {
+				"payment_status": "Statut du paiement",
+				"amount_paid_cents": "Montant payé (centimes)",
+				"amount_paid_currency": "Devise"
+			},
+			"eventType": {
+				"event_type_slug": "Identifiant du type de rendez-vous",
+				"event_type_name": "Nom du type de rendez-vous"
+			},
+			"host": {
+				"host_id": "ID de l'hôte",
+				"host_name": "Nom de l'hôte",
+				"host_email": "E-mail de l'hôte"
+			},
+			"attendee": {
+				"attendee_name": "Nom du participant",
+				"attendee_email": "E-mail du participant",
+				"attendee_timezone": "Fuseau horaire du participant"
+			},
+			"intake": {
+				"answers": "Réponses du formulaire"
+			}
+		},
+		"badge": {
+			"personalData": "· données personnelles"
+		}
+	},
+	"connections": {
+		"headTitle": "Applications connectées — Calnode",
+		"title": "Applications connectées",
+		"subtitle": "Agents IA et autres applications que vous avez connectés à vos outils de planification (MCP) via une connexion.",
+		"connect": {
+			"title": "Connecter une application",
+			"description": "Ajoutez cette URL comme connecteur personnalisé dans n'importe quelle application compatible MCP, puis connectez-vous lorsqu'elle le demande. L'application apparaît ci-dessous une fois que vous l'avez approuvée."
+		},
+		"mcpUrlAria": "URL du connecteur MCP",
+		"claudeHint": "Dans Claude : Settings → Connectors → Add custom connector, collez l'URL, puis connectez-vous avec votre compte Calnode pour l'autoriser. L'accès est limité à votre propre rôle, et vous pouvez le révoquer ici à tout moment.",
+		"empty": {
+			"title": "Aucune application connectée",
+			"description": "Utilisez l'URL ci-dessus pour ajouter Calnode à une application compatible MCP. Une fois approuvée, elle s'affiche ici."
+		},
+		"table": {
+			"app": "Application",
+			"connected": "Connectée",
+			"lastUsed": "Dernière utilisation"
+		},
+		"tooltip": {
+			"disconnect": "Déconnecter"
+		},
+		"confirm": {
+			"title": "Déconnecter l'application ?",
+			"description": "Déconnecter « {name} » ? Elle perdra immédiatement l'accès à vos outils de planification et devra se reconnecter pour le retrouver."
+		}
+	},
+	"apiKeys": {
+		"headTitle": "Clés d'API — Calnode",
+		"title": "Clés d'API",
+		"subtitle": "Authentifiez les outils CLI et les intégrations.",
+		"new": {
+			"toggleCancel": "Annuler",
+			"toggleOpen": "Nouvelle clé",
+			"title": "Nouvelle clé d'API",
+			"nameLabel": "Nom de la clé",
+			"namePlaceholder": "ex. pipeline CI/CD",
+			"creating": "Création…",
+			"create": "Créer la clé"
+		},
+		"created": {
+			"banner": "Clé créée — copiez-la maintenant. Elle ne sera plus affichée."
+		},
+		"copyToClipboard": "Copier dans le presse-papiers",
+		"empty": {
+			"title": "Aucune clé d'API",
+			"description": "Créez une clé pour authentifier les outils CLI et les intégrations."
+		},
+		"table": {
+			"name": "Nom",
+			"created": "Créée",
+			"lastUsed": "Dernière utilisation"
+		},
+		"tooltip": {
+			"revoke": "Révoquer la clé"
+		},
+		"confirm": {
+			"title": "Révoquer la clé d'API ?",
+			"description": "Révoquer « {name} » ? Toutes les intégrations qui l'utilisent cesseront de fonctionner immédiatement.",
+			"confirm": "Révoquer"
+		},
+		"validation": {
+			"name": "Le nom est obligatoire."
+		}
+	},
+	"auth": {
+		"login": {
+			"headTitle": "Connexion — Calnode",
+			"title": "Connexion à Calnode",
+			"google": "Se connecter avec Google",
+			"microsoft": "Se connecter avec Microsoft",
+			"email": "E-mail",
+			"password": "Mot de passe",
+			"forgotPassword": "Mot de passe oublié ?",
+			"submit": "Se connecter",
+			"submitting": "Connexion…",
+			"magicEmail": "E-mail",
+			"magicPlaceholder": "vous@exemple.com",
+			"magicSubmit": "Recevoir un lien de connexion par e-mail",
+			"magicSending": "Envoi…",
+			"magicHint": "Un lien de connexion à usage unique, sans mot de passe.",
+			"magicDefaultMessage": "Si un compte existe pour cette adresse e-mail, un lien de connexion est en route.",
+			"magicInvalidEmail": "Saisissez d'abord une adresse e-mail valide.",
+			"loading": "Chargement…",
+			"enteringDemo": "Entrée dans la démo…",
+			"noMethods": "Aucune méthode de connexion n'est configurée. Contactez votre administrateur.",
+			"error": {
+				"generic": "Une erreur s'est produite. Veuillez réessayer.",
+				"loginFailed": "La connexion a échoué. Veuillez réessayer."
+			},
+			"oauth": {
+				"state": "La connexion a échoué : état de session invalide. Veuillez réessayer.",
+				"denied": "Vous avez refusé l'accès. La connexion est obligatoire pour utiliser l'administration.",
+				"oauth": "Erreur OAuth. Veuillez réessayer.",
+				"userinfo": "Impossible de récupérer votre profil. Veuillez réessayer.",
+				"noAccount": "Aucun compte Calnode trouvé pour votre e-mail. Contactez votre administrateur.",
+				"archived": "Votre compte a été archivé. Si vous pensez qu'il s'agit d'une erreur, contactez l'administrateur de votre espace de travail.",
+				"session": "Impossible de créer une session. Veuillez réessayer.",
+				"link": "Ce lien de connexion est invalide ou a expiré. Demandez-en un nouveau ci-dessous."
+			}
+		},
+		"claim": {
+			"headTitle": "Configurer Calnode",
+			"title": "Bienvenue sur Calnode",
+			"subtitle": "Vous êtes le premier ici — créez votre compte propriétaire.",
+			"name": "Nom complet",
+			"email": "E-mail",
+			"password": "Mot de passe",
+			"passwordHint": "8 caractères minimum",
+			"submit": "Créer le compte propriétaire",
+			"submitting": "Création du compte…",
+			"error": "La configuration a échoué. Veuillez réessayer."
+		},
+		"invite": {
+			"headTitle": "Accepter l'invitation — Calnode",
+			"title": "Vous avez été invité",
+			"checking": "Vérification de votre invitation…",
+			"invalid": "Ce lien d'invitation a expiré ou a déjà été utilisé. Demandez à votre administrateur d'en envoyer un nouveau.",
+			"forEmail": "Cette invitation est destinée à {email}. Personne d'autre ne peut l'utiliser.",
+			"name": "Nom complet",
+			"email": "E-mail",
+			"password": "Mot de passe",
+			"passwordHint": "8 caractères minimum",
+			"submit": "Créer le compte",
+			"submitting": "Création du compte…",
+			"error": "Impossible de terminer la configuration. Veuillez réessayer."
+		},
+		"forgot": {
+			"headTitle": "Mot de passe oublié — Calnode",
+			"title": "Mot de passe oublié ?",
+			"subtitle": "Saisissez l'e-mail de votre compte et nous vous enverrons un lien pour définir un nouveau mot de passe.",
+			"email": "E-mail",
+			"placeholder": "vous@exemple.com",
+			"submit": "Envoyer le lien de réinitialisation",
+			"submitting": "Envoi…",
+			"back": "Retour à la connexion",
+			"defaultMessage": "Si un compte existe pour cette adresse e-mail, un lien de réinitialisation du mot de passe est en route.",
+			"invalidEmail": "Saisissez d'abord une adresse e-mail valide."
+		},
+		"reset": {
+			"headTitle": "Définir un nouveau mot de passe — Calnode",
+			"title": "Définir un nouveau mot de passe",
+			"subtitle": "Choisissez un mot de passe d'au moins 8 caractères.",
+			"password": "Nouveau mot de passe",
+			"confirm": "Confirmer le nouveau mot de passe",
+			"submit": "Définir le nouveau mot de passe",
+			"submitting": "Enregistrement…",
+			"missingToken": "Il manque le jeton à ce lien de réinitialisation. Demandez-en un nouveau ci-dessous.",
+			"requestNew": "Demander un nouveau lien de réinitialisation",
+			"tooShort": "Le mot de passe doit contenir au moins 8 caractères.",
+			"mismatch": "Les deux mots de passe ne correspondent pas.",
+			"failed": "Impossible de réinitialiser votre mot de passe. Le lien a peut-être expiré.",
+			"retry": "Impossible de réinitialiser votre mot de passe. Veuillez réessayer."
+		}
+	},
+	"settings": {
+		"headTitle": "Paramètres — Calnode",
+		"title": "Paramètres",
+		"subtitle": "Gérez votre profil, vos préférences et vos intégrations.",
+		"nav": {
+			"section": {
+				"account": "Votre compte",
+				"workspace": "Espace de travail"
+			},
+			"profile": "Profil",
+			"notifications": "Notifications",
+			"branding": "Image de marque",
+			"email": "E-mail",
+			"google": "Google OAuth",
+			"zoom": "Zoom",
+			"video": "Vidéo",
+			"storage": "Stockage",
+			"payments": "Paiements",
+			"ai": "IA",
+			"tracking": "Suivi"
+		},
+		"profile": {
+			"loading": "Chargement…",
+			"section": {
+				"profile": "Profil",
+				"preferences": "Préférences"
+			},
+			"photo": {
+				"title": "Photo de profil",
+				"hint": "Cliquez sur votre avatar pour {action} · affiché en 400×400, un format carré convient donc le mieux · JPEG, PNG, GIF ou WebP, 5 Mo max · enregistré en JPEG",
+				"actionUpload": "envoyer",
+				"actionReplace": "remplacer",
+				"replaceTitle": "Remplacer la photo",
+				"uploadTitle": "Envoyer une photo",
+				"remove": "Retirer la photo"
+			},
+			"accent": {
+				"label": "Couleur d'accent des réservations",
+				"hint": "Utilisée sur vos pages de réservation."
+			},
+			"name": {
+				"label": "Nom",
+				"placeholder": "Votre nom",
+				"hint": "Votre nom personnel, affiché comme hôte de la réunion. L'identité de votre entreprise (logo, nom commercial) se définit séparément dans Paramètres → Image de marque."
+			},
+			"handle": {
+				"label": "Identifiant de réservation",
+				"placeholder": "ex. wynne",
+				"publicPage": "Votre page de réservation publique :",
+				"noPage": "Laissez vide pour n'avoir aucune page."
+			},
+			"email": {
+				"label": "E-mail"
+			},
+			"timezone": {
+				"label": "Fuseau horaire",
+				"placeholder": "Sélectionner un fuseau horaire…",
+				"searchPlaceholder": "Rechercher des fuseaux horaires…",
+				"hint": "Utilisé pour calculer les créneaux disponibles sur vos pages de réservation."
+			},
+			"timeFormat": {
+				"label": "Format de l'heure",
+				"12h": "12 heures",
+				"12hHint": "1:30 PM",
+				"24h": "24 heures",
+				"24hHint": "13:30"
+			},
+			"weekStart": {
+				"label": "Premier jour de la semaine"
+			},
+			"dateFormat": {
+				"label": "Format de date",
+				"dmy": "DD/MM/YYYY",
+				"mdy": "MM/DD/YYYY",
+				"ymd": "YYYY-MM-DD"
+			},
+			"crop": {
+				"replaceTitle": "Remplacer la photo",
+				"uploadTitle": "Envoyer une photo",
+				"description": "Faites glisser ou pincez pour ajuster. La zone recadrée sera enregistrée.",
+				"previewAlt": "Aperçu du recadrage",
+				"uploading": "Envoi…",
+				"save": "Enregistrer la photo"
+			},
+			"toast": {
+				"avatarUpdated": "Avatar mis à jour",
+				"settingsSaved": "Paramètres enregistrés"
+			},
+			"error": {
+				"load": "Impossible de charger le profil",
+				"upload": "Impossible d'envoyer l'avatar",
+				"removeAvatar": "Impossible de retirer l'avatar",
+				"save": "Impossible d'enregistrer les paramètres"
+			},
+			"language": {
+				"label": "Langue",
+				"hint": "La langue de l'interface d'administration. Les pages de réservation publiques suivent toujours le navigateur de chaque visiteur.",
+				"en": "English",
+				"fr": "Français"
+			}
+		},
+		"notifications": {
+			"loading": "Chargement…",
+			"title": "Notifications",
+			"subtitle": "Contrôlez les e-mails que vous et vos participants recevez.",
+			"section": {
+				"attendees": "E-mails envoyés à vos participants",
+				"host": "E-mails qui vous sont envoyés"
+			},
+			"attendee": {
+				"confirmation": "Confirmation de réservation",
+				"cancellation": "Avis d'annulation",
+				"reschedule": "Avis de reprogrammation",
+				"reminder": "E-mails de rappel"
+			},
+			"host": {
+				"newBooking": "Nouvelle réservation reçue",
+				"cancelled": "Réservation annulée",
+				"rescheduled": "Réservation reprogrammée"
+			},
+			"toast": {
+				"saved": "Préférences enregistrées"
+			},
+			"error": {
+				"load": "Impossible de charger les préférences",
+				"save": "Impossible d'enregistrer les préférences"
+			}
+		},
+		"branding": {
+			"title": "Image de marque",
+			"intro": "Votre logo apparaît en haut des e-mails de confirmation de réservation et sur vos pages publiques de réservation et de gestion. Le nom commercial sert de signature textuelle lorsqu'il n'y a pas de logo.",
+			"businessName": {
+				"label": "Nom commercial",
+				"placeholder": "Orchestratr",
+				"hint": "Utilisé lorsqu'il n'y a pas de logo. Remplacé par « Calnode » si le champ est laissé vide."
+			},
+			"logo": {
+				"label": "Logo",
+				"replaceTitle": "Remplacer le logo",
+				"uploadTitle": "Envoyer un logo",
+				"clickUpload": "Cliquez pour envoyer un logo",
+				"alt": "Logo",
+				"size": "Taille",
+				"opacity": "Opacité",
+				"remove": "Retirer le logo",
+				"hint": "Cliquez sur la zone pour envoyer. Affiché jusqu'à 600×160 : une image plus large que haute convient le mieux. Un PNG à fond transparent rend le mieux sur un fond clair. Toute forme — vous pourrez la recadrer ensuite. JPEG, PNG, GIF ou WebP, 5 Mo max ; il est réencodé en PNG. Ajustez la taille et l'opacité (l'aperçu se met à jour en direct), puis Enregistrer."
+			},
+			"banner": {
+				"label": "Bannière",
+				"replaceTitle": "Remplacer la bannière",
+				"uploadTitle": "Envoyer une bannière",
+				"clickUpload": "Cliquez pour envoyer une bannière",
+				"alt": "Bannière",
+				"remove": "Retirer la bannière",
+				"hint": "Affichée en pleine largeur sous votre logo dans les e-mails de réservation et sur vos pages publiques de réservation et de gestion — entièrement masquée si elle n'est pas définie. Affichée jusqu'à 1600×800 : les images larges conviennent le mieux. JPEG, PNG, GIF ou WebP, 5 Mo max ; elle est réencodée en PNG."
+			},
+			"legal": {
+				"title": "Liens juridiques",
+				"intro": "Liens vers votre propre politique de confidentialité et vos conditions. Ils apparaissent dans le pied de page de votre page de réservation publique, et votre politique de confidentialité est liée depuis la bannière de consentement aux cookies. Vous êtes le responsable du traitement des réservations effectuées via votre Calnode — ces liens orientent simplement les visiteurs vers vos politiques.",
+				"privacy": {
+					"label": "URL de la politique de confidentialité",
+					"placeholder": "https://example.com/privacy"
+				},
+				"terms": {
+					"label": "URL des conditions",
+					"placeholder": "https://example.com/terms"
+				},
+				"blankHint": "Laissez un champ vide pour masquer ce lien. Doit être une URL http(s):// complète."
+			},
+			"language": {
+				"title": "Langue",
+				"intro": "Vos pages de réservation publiques et vos e-mails sont traduits pour chaque visiteur — la plupart voient automatiquement la langue de leur navigateur. Ceci définit ce qu'un visiteur voit lorsque son navigateur demande une langue que vous ne prenez pas en charge (par exemple, un prestataire servant surtout des clients hispanophones pourra préférer l'espagnol ici plutôt que l'anglais).",
+				"fallback": {
+					"label": "Langue de repli"
+				}
+			},
+			"crop": {
+				"logoTitle": "Recadrer le logo",
+				"bannerTitle": "Recadrer la bannière",
+				"description": "Faites glisser pour ajuster, ou enregistrez simplement pour utiliser l'image entière.",
+				"previewAlt": "Aperçu du recadrage",
+				"saveLogo": "Enregistrer le logo",
+				"saveBanner": "Enregistrer la bannière"
+			},
+			"toast": {
+				"logoUploaded": "Logo envoyé",
+				"bannerUploaded": "Bannière envoyée",
+				"logoRemoved": "Logo retiré",
+				"bannerRemoved": "Bannière retirée",
+				"saved": "Image de marque enregistrée"
+			},
+			"error": {
+				"load": "Impossible de charger les paramètres d'image de marque",
+				"save": "Impossible d'enregistrer les paramètres d'image de marque",
+				"upload": "Impossible de téléverser {target}",
+				"removeLogo": "Impossible de retirer le logo",
+				"removeBanner": "Impossible de retirer la bannière"
+			}
+		},
+		"email": {
+			"title": "E-mail",
+			"subtitle": "Comment Calnode envoie les e-mails de réservation.",
+			"transport": {
+				"resend": "Envoi via l'API Resend",
+				"smtp": "Envoi via SMTP",
+				"none": "Non configuré"
+			},
+			"resend": {
+				"title": "Clé d'API Resend",
+				"hint": "Envoie en HTTPS plutôt qu'en SMTP. Utilisez-la si votre hébergeur bloque SMTP.",
+				"removeKey": "Retirer la clé",
+				"willRemove": "Sera retirée à l'enregistrement ; SMTP sera utilisé à la place.",
+				"railwayHint": "De nombreux hébergeurs (y compris Railway en dessous de Pro) bloquent entièrement le SMTP sortant, ce qui ressemble à un mot de passe incorrect. Une clé d'API évite ce chemin."
+			},
+			"smtp": {
+				"dimmedHint": "Les e-mails sont envoyés via l'API Resend, ces paramètres SMTP ne sont donc pas utilisés. Ils sont conservés pour que vous puissiez revenir en arrière en retirant la clé ci-dessus.",
+				"host": "Hôte SMTP",
+				"hostPlaceholder": "smtp.gmail.com",
+				"port": "Port",
+				"portPlaceholder": "587",
+				"username": "Nom d'utilisateur",
+				"usernamePlaceholder": "vous@exemple.com",
+				"password": "Mot de passe",
+				"passwordPlaceholder": "Saisissez le mot de passe",
+				"fromAddress": "Adresse d'expéditeur",
+				"fromAddressPlaceholder": "reservations@exemple.com",
+				"fromName": "Nom d'expéditeur",
+				"fromNamePlaceholder": "Calnode",
+				"tlsSection": "TLS / chiffrement",
+				"starttls": "STARTTLS",
+				"starttlsHint": "Recommandé pour le port 587",
+				"implicitTls": "TLS implicite",
+				"implicitTlsHint": "Pour le port 465 (SSL)"
+			},
+			"sendTest": "Envoyer un e-mail de test",
+			"rsvp": {
+				"title": "Suivi RSVP",
+				"subtitle": "Pour les types de rendez-vous dont Calnode envoie les invitations. Les réponses Oui / Non / Peut-être des réservataires reviennent via Resend et s'affichent sur la réservation.",
+				"on": "Activé",
+				"off": "Désactivé",
+				"fullAccessKey": "Nécessite une clé d'API Resend « Accès complet » ci-dessus : Calnode l'utilise pour configurer le webhook et lire les réponses. Une clé limitée à l'envoi ne peut faire ni l'un ni l'autre.",
+				"address": {
+					"label": "Adresse RSVP",
+					"placeholder": "rsvp@reply.example.com",
+					"hint": "Une adresse sur un sous-domaine pour lequel vous recevez des e-mails dans Resend (Resend → Domains → activer la réception, puis ajouter son enregistrement MX). Chaque invitation reçoit sa propre variante privée, afin que les réponses retrouvent leur réservation."
+				},
+				"webhook": {
+					"title": "Webhook Resend",
+					"connected": "Connecté : Resend livre les réponses à {url}.",
+					"rerun": "Relancer la configuration",
+					"removeSecret": "Retirer le secret",
+					"clearOnSave": "Le secret enregistré sera retiré à l'enregistrement ; le suivi RSVP sera désactivé.",
+					"autoSetupHint": "Calnode peut créer le webhook dans votre compte Resend et enregistrer son secret de signature.",
+					"setupButton": "Configurer le webhook dans Resend",
+					"checking": "Vérification…",
+					"settingUp": "Configuration…",
+					"hideManual": "Masquer les étapes manuelles",
+					"showManual": "Le configurer à la main",
+					"manual": {
+						"step1": "Dans Resend, ouvrez Webhooks et choisissez Add webhook.",
+						"endpointLabel": "URL du point de terminaison :",
+						"step3": "Événement : email.received.",
+						"step4": "Copiez le secret de signature du webhook, collez-le ici et enregistrez :"
+					},
+					"secretPlaceholder": "whsec_..."
+				}
+			},
+			"toast": {
+				"saved": "Paramètres e-mail enregistrés",
+				"webhookCreated": "Webhook créé dans Resend",
+				"webhookExisting": "Connecté à votre webhook Resend existant",
+				"testSent": "E-mail de test envoyé à {email}"
+			},
+			"error": {
+				"load": "Impossible de charger les paramètres e-mail",
+				"save": "Impossible d'enregistrer les paramètres e-mail",
+				"webhook": "Impossible de configurer le webhook dans Resend.",
+				"testSaveFirst": "Enregistrez d'abord vos paramètres, puis réessayez.",
+				"test": "Impossible d'envoyer l'e-mail de test"
+			}
+		},
+		"google": {
+			"originMismatch": {
+				"title": "Cette page est consultée sur un domaine différent de celui pour lequel Calnode est configuré",
+				"body": "Vous parcourez {browserOrigin}, mais le BASE_URL de ce serveur est défini sur {baseUrl}. Les URI de redirection ci-dessous sont construits à partir de BASE_URL — si {browserOrigin} est votre véritable domaine (par exemple après avoir pointé un domaine personnalisé vers cette instance), mettez à jour la variable d'environnement/le secret BASE_URL chez votre hébergeur et redéployez, puis rechargez cette page."
+			},
+			"setup": {
+				"title": "Instructions de configuration",
+				"step1": "Rendez-vous sur {console}. Si vous n'avez pas de projet, créez-en un — n'importe quel nom convient.",
+				"console": "console.cloud.google.com",
+				"step2": "Allez dans APIs & Services → Library, recherchez Google Calendar API et activez-la.",
+				"step3": "Allez dans APIs & Services → OAuth consent screen. Choisissez External (ou Internal si vous avez Google Workspace). Renseignez le nom de l'application et votre e-mail, puis enregistrez.",
+				"step3Testing": "Tant que l'application est en mode Testing, seuls les comptes Google ajoutés comme utilisateurs de test peuvent se connecter, et Google limite cela à 100 utilisateurs. Lorsque les membres de votre équipe sont prêts à connecter leurs calendriers, cliquez sur Publish app pour lever la limite (les applications Internal / Workspace n'ont pas de plafond). Consultez {guide}.",
+				"guide": "le guide de Google",
+				"step4": "Allez dans Credentials → Create Credentials → OAuth client ID. Définissez le type d'application sur Web application.",
+				"step5": "Sous Authorised redirect URIs, ajoutez les deux URL de redirection indiquées ci-dessous. Cliquez sur Create. Copiez le Client ID et le Client Secret affichés.",
+				"step5Localhost": "Si vous faites aussi tourner Calnode en local, ajoutez également les variantes http://localhost:3000/… des deux URI.",
+				"step6": "Collez-les dans le formulaire ci-dessous et enregistrez."
+			},
+			"oauth": {
+				"title": "Google OAuth",
+				"subtitle": "Permet la connexion Google et l'intégration Google Calendar."
+			},
+			"clientId": "Client ID",
+			"clientIdPlaceholder": "123456789-abc.apps.googleusercontent.com",
+			"clientSecret": "Client Secret",
+			"clientSecretPlaceholder": "Saisissez le client secret",
+			"redirectUris": {
+				"title": "URI de redirection autorisées",
+				"hint": "Ils doivent être enregistrés sur votre client OAuth dans Google Cloud (Credentials → votre client → Authorised redirect URIs).",
+				"localhostHint": "Si vous faites aussi tourner Calnode en local, ajoutez également les variantes http://localhost:3000/…."
+			},
+			"toast": {
+				"saved": "Enregistré — allez dans Agenda pour connecter votre compte"
+			},
+			"error": {
+				"load": "Impossible de charger les paramètres Google",
+				"save": "Impossible d'enregistrer les paramètres Google"
+			}
+		},
+		"zoom": {
+			"setup": {
+				"title": "Instructions de configuration",
+				"step1": "Rendez-vous sur le {marketplace} et connectez-vous avec votre compte Zoom. Cliquez sur Develop → Build App.",
+				"marketplace": "Zoom App Marketplace",
+				"step2": "Choisissez une General App (User-managed OAuth). Tant qu'elle n'est pas publiée, Zoom n'autorise que les utilisateurs du compte Zoom propriétaire de l'application à se connecter ; les hôtes disposant de leur propre compte Zoom distinct ont besoin d'une application publiée (voir DEPLOY.md, « Zoom meeting links »). Si cela écarte Zoom, la vidéo intégrée n'a besoin d'aucune application Zoom — voir {videoDocs}.",
+				"videoDocs": "docs/VIDEO.md",
+				"step3": "Sous OAuth, définissez le Redirect URL for OAuth (et ajoutez-le à la liste d'autorisation) sur l'URL indiquée ci-dessous.",
+				"step4": "Sous Scopes, ajoutez meeting:write (créer/mettre à jour/supprimer des réunions au nom de l'utilisateur).",
+				"step5": "Copiez le Client ID et le Client Secret depuis Basic Information de l'application, collez-les ci-dessous et enregistrez."
+			},
+			"title": "Zoom",
+			"subtitle": "Permet à chaque hôte de connecter son propre compte Zoom afin que les réservations dont le lieu est Zoom reçoivent automatiquement un véritable lien de réunion.",
+			"clientId": "Client ID",
+			"clientIdPlaceholder": "abcdEFGhij-KLmnOPqrS",
+			"clientSecret": "Client Secret",
+			"clientSecretPlaceholder": "Saisissez le client secret",
+			"redirect": {
+				"title": "Redirect URL",
+				"hint": "Elle doit être enregistrée sur votre application Zoom (OAuth → Redirect URL + liste d'autorisation OAuth)."
+			},
+			"multiMemberWarning": "Limite multi-membres : seuls les utilisateurs Zoom du même compte Zoom que le propriétaire de cette application peuvent connecter une application non publiée — les membres ailleurs sont refusés par Zoom avant même que Calnode n'intervienne. Options : {zoomDocs} (la vidéo intégrée n'a besoin d'aucune application Zoom).",
+			"zoomDocs": "docs/ZOOM.md",
+			"toast": {
+				"saved": "Enregistré — chaque hôte peut maintenant connecter Zoom depuis la page Agenda"
+			},
+			"error": {
+				"load": "Impossible de charger les paramètres Zoom",
+				"save": "Impossible d'enregistrer les paramètres Zoom"
+			}
+		},
+		"video": {
+			"setup": {
+				"title": "Instructions de configuration",
+				"step1": "Créez un projet gratuit sur {cloud} (ou faites tourner votre propre {selfHosted} — les mêmes champs).",
+				"cloud": "cloud.livekit.io",
+				"selfHosted": "serveur auto-hébergé",
+				"step2": "Copiez l'URL WebSocket du projet (de la forme wss://yourproject.livekit.cloud) ainsi qu'une clé d'API et un secret.",
+				"step3": "Collez-les ci-dessous et enregistrez. Les réservations utilisant « Calnode Video (LiveKit) » obtiennent alors une salle intégrée — aucune connexion par hôte n'est nécessaire."
+			},
+			"livekit": {
+				"title": "Calnode Video (LiveKit)",
+				"subtitle": "Réunions vidéo intégrées hébergées sur votre serveur LiveKit. Chaque réservation reçoit un lien de salle ; les invités rejoignent dans le navigateur — aucun compte ni application requis."
+			},
+			"serverUrl": "URL du serveur",
+			"serverUrlPlaceholder": "wss://yourproject.livekit.cloud",
+			"apiKey": "Clé d'API",
+			"apiKeyPlaceholder": "APIxxxxxxxx",
+			"apiSecret": "Secret d'API",
+			"apiSecretPlaceholder": "Saisissez le secret d'API",
+			"disconnect": "Déconnecter",
+			"recording": {
+				"needStorage": "Les enregistrements de réunions nécessitent d'abord un stockage objet configuré.",
+				"enableHint": "Le stockage objet est prêt — activez les enregistrements pour permettre aux hôtes d'enregistrer les réunions.",
+				"goStorage": "Aller dans Paramètres → Stockage"
+			},
+			"webhook": {
+				"title": "Webhook (recommandé)",
+				"subtitle": "Enregistrez cette URL dans LiveKit pour que les enregistrements se finalisent avec une durée exacte et se terminent proprement à la fermeture d'une réunion. Les enregistrements fonctionnent aussi sans cela — cela les rend simplement plus fiables.",
+				"step1": "1. Dans LiveKit Cloud, ouvrez Project → Settings → Webhooks ({docs}).",
+				"docs": "docs",
+				"step2": "2. Ajoutez un webhook avec l'URL ci-dessus, et associez la même clé d'API saisie ici — elle signe les événements afin que Calnode puisse les vérifier.",
+				"step3": "3. Enregistrez. LiveKit envoie tous les événements du projet à cette unique URL ; Calnode vérifie chaque signature et utilise ceux liés à l'enregistrement."
+			},
+			"notetaker": {
+				"title": "Notes de réunion IA (prise de notes)",
+				"subtitle": "Après l'enregistrement d'une réunion, la transcrire et la résumer en notes sur la réservation (à l'aide de votre LLM configuré). Nécessite l'enregistrement activé, un LLM configuré et une clé Deepgram.",
+				"deepgram": {
+					"label": "Clé d'API Deepgram",
+					"placeholder": "Saisissez la clé d'API Deepgram",
+					"hint": "Obtenez-en une sur {deepgram}.",
+					"console": "console.deepgram.com"
+				}
+			},
+			"toast": {
+				"saved": "Enregistré — « Calnode Video (LiveKit) » est maintenant sélectionnable comme lieu d'événement",
+				"webhookCopied": "URL du webhook copiée",
+				"copyFailed": "Impossible de copier — sélectionnez et copiez manuellement",
+				"disconnected": "LiveKit déconnecté",
+				"notetakerSaved": "Paramètres de prise de notes enregistrés"
+			},
+			"error": {
+				"load": "Impossible de charger les paramètres vidéo",
+				"save": "Impossible d'enregistrer les paramètres vidéo",
+				"notetakerSave": "Impossible d'enregistrer les paramètres de prise de notes",
+				"disconnect": "Impossible de déconnecter"
+			}
+		},
+		"storage": {
+			"intro": "Le stockage objet est utilisé à deux endroits — les sauvegardes de la base de données et les enregistrements de réunions. Ils partagent un seul bucket.",
+			"setup": {
+				"title": "Instructions de configuration",
+				"step1": "Créez un bucket chez n'importe quel fournisseur de stockage objet compatible S3 — par exemple {r2}, {b2} ou {s3}. C'est le même bucket que les sauvegardes de la base et les enregistrements de réunions utilisent.",
+				"r2": "Cloudflare R2",
+				"b2": "Backblaze B2",
+				"s3": "AWS S3",
+				"step2": "Générez un access key ID et un secret access key pour ce bucket.",
+				"step3": "Il n'y a pas de formulaire pour cela — définissez les variables d'environnement/secrets Litestream chez votre hébergeur, puis redéployez.",
+				"step3EndpointHint": "Pour tout fournisseur autre qu'AWS S3 (R2, B2, MinIO, etc.), définissez aussi LITESTREAM_ENDPOINT sur l'URL de point de terminaison compatible S3 de ce fournisseur. LITESTREAM_REGION est facultatif — seuls certains fournisseurs en ont besoin.",
+				"step4": "Rechargez cette page — une fois qu'elle affiche Configuré ci-dessous, les enregistrements de réunions peuvent être activés en dessous."
+			},
+			"backups": {
+				"title": "Sauvegardes de la base (Litestream)",
+				"subtitle": "Réplication SQLite continue vers votre bucket. Configurée via l'environnement au déploiement.",
+				"bucket": "Bucket",
+				"endpoint": "Point de terminaison",
+				"notConfiguredHint": "Définissez LITESTREAM_REPLICA_URL et les identifiants pour activer les sauvegardes — voir les instructions de configuration ci-dessus."
+			},
+			"recordings": {
+				"title": "Enregistrements de réunions",
+				"subtitle": "Les enregistrements vidéo LiveKit sont envoyés dans le bucket de sauvegardes sous un préfixe {prefix}.",
+				"badge": {
+					"ready": "Stockage prêt",
+					"noBucket": "Aucun bucket"
+				},
+				"allow": "Autoriser les hôtes à enregistrer les réunions",
+				"allowHint": "L'hôte dispose d'un bouton Enregistrer dans l'appel ; tout le monde voit une bannière « Enregistrement ».",
+				"needBucket": "Configurez d'abord les sauvegardes (voir les instructions ci-dessus) — les enregistrements ont besoin d'un bucket."
+			},
+			"toast": {
+				"saved": "Enregistré"
+			},
+			"error": {
+				"load": "Impossible de charger les paramètres de stockage",
+				"save": "Impossible d'enregistrer"
+			}
+		},
+		"payments": {
+			"setup": {
+				"title": "Instructions de configuration",
+				"step1": "Dans votre {dashboard}, copiez la Secret key et la Publishable key.",
+				"dashboard": "Stripe Dashboard → Developers → API keys",
+				"step2": "Allez dans Developers → Webhooks → Add endpoint et définissez l'URL sur le point de terminaison indiqué ci-dessous. Abonnez-vous à checkout.session.completed et checkout.session.expired.",
+				"step3": "Copiez le Signing secret du point de terminaison (whsec_…), collez les trois valeurs ci-dessous et enregistrez."
+			},
+			"stripe": {
+				"title": "Stripe",
+				"subtitle": "Vous permet de facturer les réservations. Un type de rendez-vous avec un prix envoie le réservataire vers Stripe Checkout avant que le créneau ne soit confirmé."
+			},
+			"secretKey": "Secret key",
+			"secretKeyPlaceholder": "sk_live_… ou sk_test_…",
+			"publishableKey": "Publishable key",
+			"publishableKeyPlaceholder": "pk_live_… ou pk_test_…",
+			"webhookSecret": "Secret de signature du webhook",
+			"webhookSecretPlaceholder": "whsec_…",
+			"webhookEndpoint": {
+				"title": "Point de terminaison webhook",
+				"hint": "Enregistrez-le dans Stripe → Developers → Webhooks."
+			},
+			"disconnect": "Déconnecter",
+			"confirmDisconnect": {
+				"title": "Retirer les identifiants Stripe ?",
+				"description": "Les types de rendez-vous payants ne pourront plus être réservés.",
+				"confirm": "Retirer"
+			},
+			"toast": {
+				"saved": "Enregistré — définissez un prix sur un type de rendez-vous pour commencer à facturer",
+				"disconnected": "Stripe déconnecté"
+			},
+			"error": {
+				"load": "Impossible de charger les paramètres de paiement",
+				"save": "Impossible d'enregistrer les paramètres de paiement",
+				"disconnect": "Impossible de déconnecter"
+			}
+		},
+		"ai": {
+			"assistant": {
+				"title": "Assistant IA",
+				"subtitle": "Alimente la réservation conversationnelle sur vos pages de réservation. Apportez votre propre modèle — n'importe quel point de terminaison compatible OpenAI (un modèle hébergé, ou un que vous faites tourner vous-même). Désactivé par défaut ; s'il est indisponible, les réservataires utilisent simplement le calendrier."
+			},
+			"status": {
+				"active": "Actif",
+				"configuredOff": "Configuré (désactivé)"
+			},
+			"endpoint": {
+				"label": "Point de terminaison API",
+				"placeholder": "https://api.openai.com/v1",
+				"hint": "URL de base compatible OpenAI ; le client ajoute /chat/completions."
+			},
+			"model": {
+				"label": "Modèle",
+				"placeholder": "gpt-4o-mini / claude-haiku-4-5 / gemini-flash …"
+			},
+			"apiKey": {
+				"label": "Clé d'API",
+				"placeholder": "Saisissez la clé d'API (facultatif pour les points de terminaison locaux)"
+			},
+			"enable": {
+				"label": "Activer les fonctionnalités IA",
+				"hint": "Activez la réservation conversationnelle sur vos pages de réservation."
+			},
+			"testConnection": "Tester la connexion",
+			"instructions": {
+				"title": "Instructions de l'assistant",
+				"subtitle": "Conseils supplémentaires — ton, contexte métier, à faire et à éviter. Ajoutés aux instructions intégrées (qui gèrent le flux de réservation et la sécurité, et ne sont pas modifiables).",
+				"label": "Instructions supplémentaires",
+				"placeholder": "ex. Gardez un ton chaleureux et professionnel. Nous sommes un cabinet d'avocats — précisez que les consultations sont confidentielles.",
+				"languageHint": "L'assistant répond automatiquement dans la langue de chaque visiteur. Rédiger ces instructions dans une autre langue que celle de vos visiteurs fonctionne, mais est un peu moins fiable — pour de meilleurs résultats, rédigez-les dans la langue utilisée par la plupart de vos visiteurs."
+			},
+			"basePrompt": {
+				"summary": "Voir les instructions de base intégrées (lecture seule)"
+			},
+			"privacy": "Confidentialité : l'assistant ne reçoit jamais que des plages de disponibilités calculées et des détails d'événement publics — jamais les titres de vos événements de calendrier, les participants, ni d'autres données privées. Pour des besoins stricts de résidence des données, pointez le point de terminaison vers une inférence que vous contrôlez.",
+			"toast": {
+				"savedOn": "Enregistré — l'IA est activée",
+				"saved": "Enregistré",
+				"testOk": "Connexion OK ({ms} ms)",
+				"testFailed": "Le test a échoué : {error}",
+				"needEndpointModel": "Saisissez d'abord un point de terminaison et un modèle"
+			},
+			"error": {
+				"load": "Impossible de charger les paramètres IA",
+				"save": "Impossible d'enregistrer les paramètres IA",
+				"test": "La requête de test a échoué"
+			}
+		},
+		"tracking": {
+			"ga": {
+				"title": "Google Analytics et Tag Manager",
+				"subtitle": "Saisissez un ID et Calnode charge automatiquement la balise officielle sur votre page de réservation — aucun extrait à coller, et la CSP de la page est gérée pour vous. Laissez un champ vide pour désactiver cette balise."
+			},
+			"gtm": {
+				"label": "ID de conteneur GTM",
+				"placeholder": "GTM-XXXXXXX",
+				"hint": "Recommandé — gère les balises GA4 + Ads. Déclenchez-les sur l'événement dataLayer calnode_booking_confirmed ci-dessous."
+			},
+			"ga4": {
+				"label": "ID de mesure GA4",
+				"placeholder": "G-XXXXXXXXXX",
+				"hint": "Charge GA4 directement. Les réservations déclenchent un événement purchase / generate_lead avec le revenu."
+			},
+			"inject": {
+				"title": "Injection de code (head)",
+				"subtitle": "HTML/JS brut injecté dans le <head> de vos pages publiques de réservation et de gestion — pour toute balise non couverte ci-dessus (Meta Pixel, Plausible, personnalisée). Il s'exécute dans les navigateurs des visiteurs ; seuls les administrateurs peuvent le définir.",
+				"headHtml": "<head> HTML",
+				"headPlaceholder": "<!-- Collez ici votre extrait GTM / GA4 / Meta Pixel -->"
+			},
+			"csp": {
+				"label": "Origines autorisées",
+				"optional": "(facultatif)",
+				"placeholder": "https://www.googletagmanager.com https://*.google-analytics.com",
+				"hint": "Laissez vide pour autoriser toute origine https: tant que l'injection est active — le plus simple, et les balises gérées par GTM fonctionnent. Remplissez pour verrouiller la CSP de la page sur ces seules origines (séparées par des espaces) ; les balises d'autres domaines seront alors bloquées."
+			},
+			"datalayer": {
+				"title": "Événements dataLayer",
+				"subtitle": "Ajoute calnode_booking_confirmed / _cancelled / _rescheduled dans window.dataLayer pour que GTM puisse s'y déclencher.",
+				"fieldsHint": "Champs à inclure — décochez ce que vous ne voulez pas exposer au navigateur / à GTM."
+			},
+			"fields": {
+				"booking_id": "Référence de la réservation",
+				"event_type_slug": "Identifiant du type de rendez-vous",
+				"event_type_name": "Nom du type de rendez-vous",
+				"start_at": "Heure de début",
+				"end_at": "Heure de fin",
+				"status": "Statut",
+				"location": "Lieu",
+				"host_name": "Nom de l'hôte",
+				"attendee_name": "Nom du participant",
+				"attendee_email": "E-mail du participant",
+				"attendee_timezone": "Fuseau horaire du participant",
+				"answers": "Réponses du formulaire",
+				"value": "Revenu / montant",
+				"currency": "Devise",
+				"is_paid": "Indicateur payé",
+				"transaction_id": "ID de transaction"
+			},
+			"piiBadge": "PII",
+			"toast": {
+				"saved": "Paramètres de suivi enregistrés"
+			},
+			"error": {
+				"load": "Impossible de charger les paramètres de suivi",
+				"save": "Impossible d'enregistrer les paramètres de suivi"
+			}
+		}
+	},
+	"eventTypeEditor": {
+		"headTitle": "{name} — Type de rendez-vous — Calnode",
+		"back": "Types de rendez-vous",
+		"previewTooltip": "Aperçu de la page de réservation",
+		"tabs": {
+			"general": "Général",
+			"hosts": "Hôtes",
+			"notifications": "Notifications",
+			"questions": "Questions",
+			"embed": "Intégration"
+		},
+		"readOnly": {
+			"banner": "a créé ce type de rendez-vous.",
+			"messageThem": "Écrivez-leur",
+			"messageRequest": "pour demander des modifications.",
+			"managedByOwner": "Ce type de rendez-vous est géré par son propriétaire. Contactez-le pour demander des modifications.",
+			"labels": {
+				"name": "Nom",
+				"description": "Description",
+				"duration": "Durée",
+				"slotInterval": "Intervalle des créneaux",
+				"location": "Lieu",
+				"routing": "Routage",
+				"status": "Statut",
+				"bookingPage": "Page de réservation"
+			},
+			"status": {
+				"active": "Actif",
+				"inactive": "Inactif",
+				"listed": "Répertorié",
+				"unlisted": "Non répertorié (lien uniquement)"
+			},
+			"durationSuffix": " min"
+		},
+		"adminEditing": {
+			"banner": "Vous modifiez le type de rendez-vous de {owner} en tant qu'administrateur. Il reste le sien, et vos propres connexions de calendrier et Zoom n'y jouent aucun rôle."
+		},
+		"general": {
+			"section": "Général",
+			"name": "Nom",
+			"directoryOrder": "Ordre dans l'annuaire",
+			"directoryOrderHint": "Classe cet événement uniquement sur les pages publiques de personne et d'équipe — pas sur la liste d'administration ni sur la page de réservation. Les numéros plus bas viennent en premier ; à numéro égal, le tri se fait par nom.",
+			"bookingLink": "Lien de réservation",
+			"bookingLinkPrefix": "/book/",
+			"slugHint": "Modifiable jusqu'à la première réservation, après laquelle les liens sont déjà en circulation. Surtout utile juste après une duplication, où la copie arrive avec -copy à la fin.",
+			"duration": "Durée (minutes)",
+			"durationHint": "Durée de la réunion.",
+			"slotInterval": "Intervalle des créneaux (minutes)",
+			"slotIntervalHint": "Fréquence à laquelle une réservation peut commencer. En général égal à la durée. Réglez-le plus bas pour offrir plus d'heures de début, ou plus haut pour garder les créneaux à l'heure pile.",
+			"description": "Description",
+			"descriptionPlaceholder": "Facultatif — prend en charge le markdown **gras** et *italique*",
+			"status": "Statut",
+			"active": "Actif (accepte les réservations)",
+			"visibility": "Visibilité",
+			"public": "Public (visible sur la page de réservation)",
+			"showTaken": "Afficher les horaires réservés comme indisponibles",
+			"showTakenHint": "Les horaires réservés apparaissent barrés sur la page de réservation au lieu d'être masqués, afin que les visiteurs voient le calendrier se remplir. Seuls les horaires dans vos heures de travail sont affichés, jamais le reste de votre journée.",
+			"showTakenWarning": "Quiconque dispose du lien de réservation peut voir quels horaires sont pris.",
+			"allowPhoneCall": "Permettre aux invités de choisir un appel téléphonique en saisissant leur numéro"
+		},
+		"location": {
+			"section": "Lieu",
+			"type": "Type",
+			"types": {
+				"zoom": "Zoom",
+				"teams": "Microsoft Teams",
+				"googleMeet": "Google Meet",
+				"livekit": "Calnode Video (LiveKit)",
+				"phone": "Appel téléphonique",
+				"link": "Lien vidéo",
+				"inPerson": "En personne"
+			},
+			"labels": {
+				"meetingUrl": "URL de la réunion",
+				"zoomLink": "Lien Zoom",
+				"meetLink": "Lien Meet",
+				"teamsLink": "Lien Teams",
+				"phone": "Numéro de téléphone",
+				"address": "Adresse",
+				"details": "Détails",
+				"videoRoom": "Salle vidéo"
+			},
+			"placeholder": {
+				"optional": "Facultatif",
+				"zoomRequired": "https://…zoom.us/j/… (obligatoire)",
+				"linkRequired": "https://… (obligatoire)",
+				"phoneRequired": "+33 1 23 45 67 89 (obligatoire)",
+				"addressOptional": "Adresse (facultatif)",
+				"optionalFallback": "Lien de secours facultatif",
+				"pasteMeet": "Collez un lien {platform}",
+				"pasteZoom": "https://…zoom.us/j/…"
+			},
+			"hint": {
+				"meet": {
+					"ownerEditing": "Un lien {platform} est généré pour chaque réservation si le calendrier connecté de {owner} peut en créer un. Sinon, collez un lien ci-dessous ; l'enregistrement le vérifie par rapport à son compte.",
+					"autoGen": "Un lien {platform} est généré automatiquement pour chaque réservation à partir de votre calendrier connecté.",
+					"autoGenTeamsFallback": " Les comptes Microsoft personnels ne peuvent pas générer de liens Teams — ajoutez-en un ci-dessous comme secours.",
+					"manualGoogle": "Votre calendrier connecté est Google, un lien {platform} ne sera donc pas généré automatiquement.",
+					"manualMicrosoft": "Votre calendrier connecté est Microsoft, un lien {platform} ne sera donc pas généré automatiquement.",
+					"noCalendar": "Aucun calendrier n'est connecté, un lien {platform} ne peut donc pas être généré automatiquement.",
+					"pasteFallback": "Collez un lien ci-dessous et il sera utilisé pour chaque réservation."
+				},
+				"zoom": {
+					"ownerEditing": "Une réunion Zoom est créée pour chaque réservation si l'hôte a connecté Zoom. Sans lien ci-dessous, l'enregistrement vérifie que {owner} l'a fait.",
+					"autoGen": "Une réunion Zoom est créée automatiquement pour chaque réservation sous le compte Zoom connecté de l'hôte assigné.",
+					"connectCalendar": "Connectez votre compte Zoom sur la page Agenda pour générer automatiquement les liens de réunion,",
+					"notConfigured": "Zoom n'est pas configuré pour cet espace de travail (un administrateur peut l'ajouter dans Paramètres → Zoom),",
+					"pasteFallback": "ou collez un lien Zoom ci-dessous à utiliser pour chaque réservation."
+				},
+				"livekit": "Une salle vidéo sécurisée est créée automatiquement pour chaque réservation — aucun lien n'est nécessaire. Les invités rejoignent dans le navigateur. (Configurez le serveur dans Paramètres → Vidéo.)"
+			}
+		},
+		"invite": {
+			"section": "Invitation calendrier",
+			"sentBy": "Envoyée par",
+			"delivery": {
+				"calendar": "Le calendrier de l'hôte",
+				"calnode": "Calnode, depuis votre espace de travail",
+				"none": "Votre propre système"
+			},
+			"hint": {
+				"calnode": "Les invités reçoivent l'invitation depuis l'expéditeur e-mail de votre espace de travail ({email}), jamais depuis l'adresse personnelle d'un hôte. Les hôtes voient tout de même la réunion sur leur propre calendrier, avec le lien de réunion.",
+				"none": "Ni le calendrier de l'hôte ni Calnode n'envoient d'invitation au réservataire, pour le cas où votre propre système s'en charge. Les hôtes voient tout de même la réunion sur leur propre calendrier, avec le lien de réunion.",
+				"calendar": "Le calendrier connecté de l'hôte invite le réservataire, l'invitation affiche donc l'adresse e-mail de l'hôte. Choisissez Calnode pour garder les adresses des hôtes privées ou pour réserver en équipe."
+			},
+			"appliesNewOnly": "S'applique uniquement aux nouvelles réservations. Les réservations existantes conservent la méthode avec laquelle elles ont été envoyées.",
+			"emailNotSetup": "L'e-mail n'est pas configuré, les réservataires ne recevront donc pas d'invitation. Ajoutez un expéditeur dans {email}.",
+			"onlineNoneWarning": "Ce type de rendez-vous réserve une réunion en ligne, chaque réservation a donc un lien de connexion, et Calnode ne l'enverra pas au réservataire. Transmettez son location_value depuis le webhook booking.created dans votre propre confirmation.",
+			"settingsEmailLink": "Paramètres → E-mail"
+		},
+		"confirmNone": {
+			"title": "N'envoyer aucune invitation au réservataire ?",
+			"description": "L'e-mail n'est pas configuré dans cet espace de travail, Calnode n'enverra donc aucun e-mail au réservataire pour ce type de rendez-vous, et le calendrier de l'hôte ne l'invitera pas non plus. Le réservataire n'aura de vos nouvelles que si votre propre système envoie la confirmation.",
+			"confirm": "Utiliser mon propre système"
+		},
+		"price": {
+			"section": "Prix",
+			"amount": "Montant",
+			"currency": "Devise",
+			"currencyPlaceholder": "usd",
+			"hint": "Laissez à 0 pour un événement gratuit. Un prix envoie les réservataires vers Stripe Checkout avant que le créneau ne soit confirmé — {stripe} doit être connecté.",
+			"stripeLink": "Stripe"
+		},
+		"scheduling": {
+			"section": "Planification",
+			"bufferBefore": "Marge avant (min)",
+			"bufferBeforeHint": "Temps bloqué avant chaque réunion",
+			"bufferAfter": "Marge après (min)",
+			"bufferAfterHint": "Temps bloqué après chaque réunion",
+			"minNotice": "Préavis minimum (min)",
+			"minNoticeHint": "ex. 60 = les réservations doivent être à 1 h ou plus dans le futur",
+			"bookingWindow": "Fenêtre de réservation (jours)",
+			"bookingWindowHint": "Jusqu'à quelle échéance on peut réserver. 0 = illimité",
+			"maxActive": "Réservations actives max par personne",
+			"maxActiveHint": "Réservations à venir qu'un participant (par e-mail) peut détenir. 0 = illimité"
+		},
+		"hosts": {
+			"intro": "Qui peut être l'hôte de cet événement, et comment les réunions sont pourvues.",
+			"who": "Qui peut être l'hôte de cet événement ?",
+			"justMe": "Uniquement moi",
+			"justOwner": "{owner} seulement",
+			"specificPeople": "Des personnes précises",
+			"staffing": "Comment la réunion doit-elle être pourvue ?",
+			"rotate": "Tourner entre eux",
+			"together": "Tout le monde participe",
+			"rrStrategy": "Qui est choisi",
+			"rr": {
+				"even": "Équilibré — le moins de réservations à venir",
+				"priority": "Priorité — le haut de la liste d'abord",
+				"soonest": "Disponibilité la plus proche"
+			},
+			"rotationPeople": "Personnes dans la rotation",
+			"whoAttends": "Qui participe",
+			"required": "Obligatoire",
+			"optional": "Facultatif",
+			"addMember": "Ajouter un membre",
+			"addTeam": "Ajouter une équipe",
+			"selectMember": "Sélectionner un membre…",
+			"selectTeam": "Sélectionner une équipe…",
+			"noMembers": "Aucun membre disponible",
+			"noTeams": "Aucune équipe",
+			"moveUp": "Monter",
+			"moveDown": "Descendre",
+			"justMeHint": "Chaque réservation vous est attribuée.",
+			"justOwnerHint": "Chaque réservation est attribuée à {owner}.",
+			"peopleHint": "Choisissez qui peut prendre ces réservations — ajoutez des membres un par un ou toute une équipe.",
+			"rotateHint": "Une personne disponible est réservée par créneau, en répartissant les rendez-vous dans le groupe.",
+			"togetherHint": "Tout le monde rejoint la même réunion. Un créneau n'est proposé que lorsque toutes les personnes obligatoires sont libres.",
+			"rrHint": {
+				"even": "Répartit les réservations équitablement — la personne avec le moins de rendez-vous à venir est choisie.",
+				"priority": "La personne la plus haute dans la liste qui est libre est réservée ; on descend la liste quand elle est occupée.",
+				"soonest": "Propose le créneau le plus tôt que quelqu'un du groupe a de libre."
+			},
+			"rotationEmpty": "Ajoutez des personnes ou une équipe à la rotation.",
+			"togetherEmpty": "Ajoutez les personnes qui participent à cette réunion.",
+			"requiredExplain": "Les hôtes obligatoires participent toujours et doivent être libres pour qu'un créneau s'ouvre.",
+			"optionalExplain": "Les hôtes facultatifs ne rejoignent que s'ils sont libres — ils ne bloquent jamais un créneau."
+		},
+		"notifications": {
+			"reminders": "Rappels",
+			"remindersHint": "Envoyer aux participants un e-mail de rappel avant la réunion. Par défaut 24 heures avant si aucun n'est défini.",
+			"addReminder": "+ Ajouter un rappel",
+			"customMessages": "Messages personnalisés",
+			"customMessagesHint": "Ajoutez une note facultative à la fin de chaque type d'e-mail.",
+			"msg": {
+				"confirmation": "Confirmation de réservation",
+				"cancellation": "Avis d'annulation",
+				"reschedule": "Avis de reprogrammation",
+				"reminder": "E-mail de rappel"
+			},
+			"subjectOptional": "Objet (facultatif — vide utilise la valeur par défaut)",
+			"notePlaceholder": "Ajouter une note personnalisée pour les participants…",
+			"hidePreview": "Masquer l'aperçu",
+			"showPreview": "Afficher l'aperçu de l'e-mail",
+			"sendTest": "Envoyer un e-mail de test",
+			"sendingTest": "Envoi…",
+			"testSent": "E-mail de test envoyé dans votre boîte de réception.",
+			"smtpNotConfigured": "SMTP n'est pas configuré — {smtp}.",
+			"assistantGreeting": "Message d'accueil de l'assistant",
+			"assistantGreetingHint": "La phrase d'ouverture de l'assistant de chat sur la page de réservation de cet événement. Laissez vide pour utiliser le message intégré, traduit automatiquement dans la langue du visiteur ; un message personnalisé s'affiche tel quel, dans toutes les langues.",
+			"greetingPlaceholder": "Bonjour ! Indiquez-moi approximativement quand vous souhaitez nous rencontrer…",
+			"subjectPlaceholder": {
+				"confirmation": "Réservation confirmée : {name}",
+				"cancellation": "Réservation annulée : {name}",
+				"reschedule": "Réservation reprogrammée : {name}",
+				"reminder": "Rappel : {name} approche"
+			},
+			"smtpNotConfiguredLink": "configurez-le dans Paramètres"
+		},
+		"transfer": {
+			"title": "Transférer la propriété",
+			"hint": "Choisissez un hôte obligatoire enregistré. L'URL de réservation reste la même. Le transfert n'est possible que s'il n'y a aucune réservation à venir. Les connexions de calendrier et les disponibilités globales restent attachées à chaque compte.",
+			"select": "Sélectionner le nouveau propriétaire",
+			"button": "Transférer la propriété",
+			"inProgress": "Transfert…"
+		},
+		"save": "Enregistrer les modifications",
+		"saveInProgress": "Enregistrement…",
+		"toast": {
+			"saved": "Modifications enregistrées",
+			"transferred": "Type de rendez-vous transféré",
+			"saveFailed": "Impossible d'enregistrer les modifications"
+		},
+		"validation": {
+			"directoryOrder": "L'ordre dans l'annuaire doit être un nombre entier.",
+			"name": "Le nom est obligatoire.",
+			"duration": "La durée doit être d'au moins 5 minutes.",
+			"slotInterval": "L'intervalle des créneaux doit être d'au moins 1 minute.",
+			"maxActive": "Le nombre maximal de réservations actives ne peut pas être négatif (0 = illimité).",
+			"rotation": "Ajoutez au moins une personne à la rotation",
+			"collective": "Ajoutez au moins un hôte obligatoire (quelqu'un qui participe toujours)"
+		},
+		"questions": {
+			"title": "Questions du formulaire",
+			"subtitle": "Recueillez des informations auprès des participants lors de la réservation.",
+			"empty": "Aucune question pour le moment.",
+			"table": {
+				"number": "#",
+				"question": "Question",
+				"type": "Type",
+				"required": "Obligatoire"
+			},
+			"types": {
+				"text": "Texte",
+				"checkbox": "Case à cocher (oui/non)",
+				"select": "Liste déroulante"
+			},
+			"label": "Libellé",
+			"options": "Options (une par ligne)",
+			"optionsPlaceholder": "Option A\nOption B\nOption C",
+			"labelPlaceholder": "ex. Quel est l'objet de la réunion ?",
+			"add": "Ajouter une question",
+			"adding": "Ajout…",
+			"tooltip": {
+				"edit": "Modifier",
+				"remove": "Retirer"
+			},
+			"confirm": {
+				"title": "Retirer la question ?",
+				"description": "« {label} » sera retirée du formulaire de réservation de ce type de rendez-vous."
+			},
+			"validation": {
+				"label": "Le libellé est obligatoire.",
+				"options": "Au moins une option est obligatoire pour les questions en liste déroulante.",
+				"optionsShort": "Au moins une option est obligatoire."
+			},
+			"error": {
+				"load": "Impossible de charger les questions",
+				"add": "Impossible d'ajouter la question",
+				"save": "Impossible d'enregistrer la question",
+				"delete": "Impossible de supprimer la question"
+			}
+		},
+		"embed": {
+			"title": "Intégration",
+			"subtitle": "Placez ce widget de réservation sur votre site — il s'affiche en ligne, sans iframe. Collez-le avant </body>.",
+			"inline": {
+				"label": "En ligne",
+				"hint": "Intègre le calendrier de réservation directement dans la page."
+			},
+			"popup": {
+				"label": "Bouton popup",
+				"hint": "Un bouton qui ouvre le widget de réservation dans une fenêtre."
+			},
+			"footer": "Le widget appelle l'API publique de réservation de cette instance. Pour limiter les sites autorisés à l'intégrer, définissez EMBED_ALLOWED_ORIGINS.",
+			"buttonText": "Réserver un appel"
+		},
+		"reminders": {
+			"option": {
+				"1h": "1 heure avant",
+				"2h": "2 heures avant",
+				"4h": "4 heures avant",
+				"8h": "8 heures avant",
+				"12h": "12 heures avant",
+				"24h": "24 heures avant",
+				"48h": "2 jours avant",
+				"72h": "3 jours avant",
+				"168h": "1 semaine avant"
+			}
+		},
+		"preview": {
+			"sampleAttendee": "Alex Johnson",
+			"sampleHost": "Hôte",
+			"sampleEventFallback": "Mon événement",
+			"locationLine": "Lieu : {value}",
+			"confirmation": {
+				"body": "Bonjour {attendee},\n\nVotre réservation est confirmée.\n\nÉvénement :    {event}\nAvec :         {host}\nDébut :        {start}\nFin :          {end}{location}\n\nRéférence de la réservation : preview-test\n\nPour annuler, rendez-vous sur :\n[page de réservation]{note}\n— Calnode"
+			},
+			"cancellation": {
+				"body": "Bonjour {attendee},\n\nVotre réservation a été annulée.\n\nÉvénement :    {event}\nAvec :         {host}\nDébut :        {start}\nFin :          {end}\n\nPour réserver à nouveau, rendez-vous sur :\n[page de réservation]{note}\n— Calnode"
+			},
+			"reschedule": {
+				"body": "Bonjour {attendee},\n\nVotre réservation a été reprogrammée.\n\nÉvénement :    {event}\nAvec :         {host}\nAvant :        {prev}\nMaintenant :   {start}\nFin :          {end}{location}\n\nRéférence de la réservation : preview-test{note}\n— Calnode"
+			},
+			"reminder": {
+				"body": "Bonjour {attendee},\n\nCeci est un rappel : votre rendez-vous approche.\n\nÉvénement :    {event}\nAvec :         {host}\nDébut :        {start}\nFin :          {end}{location}\n\nRéférence de la réservation : preview-test{note}\n— Calnode"
+			},
+			"sampleStart": "Demain, 14:00 UTC",
+			"samplePrev": "Aujourd'hui, 14:00 UTC",
+			"sampleEnd": "Demain, {time} UTC",
+			"signature": "— Calnode"
+		},
+		"ownerFallback": "le propriétaire",
+		"error": {
+			"transfer": "Impossible de transférer le type de rendez-vous",
+			"loadHosts": "Impossible de charger les hôtes",
+			"loadMembers": "Impossible de charger les membres",
+			"loadTeams": "Impossible de charger les équipes",
+			"loadTeamMembers": "Impossible de charger les membres de l'équipe"
+		}
+	}
+}

@@ -2,6 +2,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
+	import { t, tr } from '$lib/i18n';
 
 	let email = $state('');
 	let submitting = $state(false);
@@ -16,7 +17,7 @@
 		// Require a valid address up front — otherwise the request silently no-ops
 		// (the endpoint returns the same generic message), which looks broken.
 		if (!isValidEmail(addr)) {
-			error = 'Enter a valid email address first.';
+			error = tr('auth.forgot.invalidEmail');
 			return;
 		}
 		error = '';
@@ -30,40 +31,40 @@
 			const data = await res.json().catch(() => ({}));
 			message =
 				data.message ||
-				'If an account with that email exists, a password-reset link is on its way.';
+				tr('auth.forgot.defaultMessage');
 		} catch {
-			message = 'If an account with that email exists, a password-reset link is on its way.';
+			message = tr('auth.forgot.defaultMessage');
 		} finally {
 			submitting = false;
 		}
 	}
 </script>
 
-<svelte:head><title>Forgot password — Calnode</title></svelte:head>
+<svelte:head><title>{$t('auth.forgot.headTitle')}</title></svelte:head>
 
 <div class="flex min-h-screen items-center justify-center bg-muted/30 p-6">
 	<div class="w-full max-w-sm">
 		<div class="mb-8 text-center">
-			<h1 class="text-xl font-semibold tracking-tight">Forgot your password?</h1>
+			<h1 class="text-xl font-semibold tracking-tight">{$t('auth.forgot.title')}</h1>
 			<p class="mt-2 text-sm text-muted-foreground">
-				Enter your account email and we'll send you a link to set a new password.
+				{$t('auth.forgot.subtitle')}
 			</p>
 		</div>
 
 		{#if message}
 			<div class="rounded-md bg-green-50 px-3 py-2.5 text-sm text-green-700">{message}</div>
 			<p class="mt-4 text-center text-sm">
-				<a href="/admin/login" class="text-muted-foreground hover:underline">Back to sign in</a>
+				<a href="/admin/login" class="text-muted-foreground hover:underline">{$t('auth.forgot.back')}</a>
 			</p>
 		{:else}
 			<form onsubmit={submit} class="space-y-4">
 				<div class="space-y-1.5">
-					<Label for="email">Email</Label>
+					<Label for="email">{$t('auth.forgot.email')}</Label>
 					<Input
 						id="email"
 						type="email"
 						autocomplete="email"
-						placeholder="you@example.com"
+						placeholder={$t('auth.forgot.placeholder')}
 						bind:value={email}
 						oninput={() => (error = '')}
 						aria-invalid={error ? 'true' : undefined}
@@ -74,11 +75,11 @@
 					{/if}
 				</div>
 				<Button type="submit" class="h-11 w-full" disabled={submitting}>
-					{submitting ? 'Sending…' : 'Send reset link'}
+					{submitting ? $t('auth.forgot.submitting') : $t('auth.forgot.submit')}
 				</Button>
 			</form>
 			<p class="mt-4 text-center text-sm">
-				<a href="/admin/login" class="text-muted-foreground hover:underline">Back to sign in</a>
+				<a href="/admin/login" class="text-muted-foreground hover:underline">{$t('auth.forgot.back')}</a>
 			</p>
 		{/if}
 	</div>

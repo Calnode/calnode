@@ -134,10 +134,12 @@ client SDK**, not Svelte.
 ## Languages (i18n) - data-driven, adding one touches no code
 
 Public surfaces (book.html, manage.html, embed.js, the four emails, calendar invite
-title/description) are translated. **NOT translated: the admin SPA, the LiveKit room**
-(`livekit-room.html`/`.js`, ~45 hardcoded strings - it has its own asset pipeline and shares
-no string plumbing with the Go templates), and admin-authored content (event names,
-descriptions, questions, custom email copy). Locale is resolved per request from
+title/description) are translated. The **admin SPA has its own separate catalog**
+(`frontend/src/lib/i18n/`, client-side, `en` + `fr`, English fallback per key) — a
+different system from the booker locales here; see ARCHITECTURE §23. **NOT translated:
+the LiveKit room** (`livekit-room.html`/`.js`, ~45 hardcoded strings - it has its own
+asset pipeline and shares no string plumbing with the Go templates), and admin-authored
+content (event names, descriptions, questions, custom email copy). Locale is resolved per request from
 `Accept-Language` + a `?lang=` override + the operator's fallback setting
 (`internal/handler/i18n.go`), and the booker's locale is stored on the booking so later
 reminders match. Ships `en es fr fr-CA de el it nl pl pt sv`. Full detail: ARCHITECTURE §23.

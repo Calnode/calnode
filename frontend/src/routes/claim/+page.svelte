@@ -3,6 +3,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
+	import { t, tr } from '$lib/i18n';
 
 	let name = $state('');
 	let email = $state('');
@@ -37,7 +38,7 @@
 			} else if (res.status === 409) {
 				window.location.href = '/admin/login';
 			} else {
-				error = data.error || 'Setup failed. Please try again.';
+				error = data.error || tr('auth.claim.error');
 			}
 		} finally {
 			submitting = false;
@@ -45,7 +46,7 @@
 	}
 </script>
 
-<svelte:head><title>Set up Calnode</title></svelte:head>
+<svelte:head><title>{$t('auth.claim.headTitle')}</title></svelte:head>
 
 <div class="flex min-h-screen items-center justify-center bg-muted/30 p-6">
 	<div class="w-full max-w-sm">
@@ -56,8 +57,8 @@
 					<path fill="#ffffff" d="M 13.529898,23.489202 c 0.41676,-0.42858 2.30921,-2.34577 4.20548,-4.26044 3.89443,-3.93222 3.79896,-3.77881 2.93494,-4.71617 -0.86333,-0.9366 -0.70987,-1.03489 -4.7574,3.04728 -2.01816,2.03542 -3.63135,3.56753 -3.70704,3.52074 -0.0737,-0.0455 -0.86549,-0.83379 -1.759495,-1.7516 -1.7365396,-1.78282 -2.1646795,-2.10404 -2.5380305,-1.90423 -0.40259,0.21546 -1.13741,1.12099 -1.13741,1.40162 0,0.18848 0.79327,1.06899 2.5741409,2.85723 3.0861346,3.09893 2.9741146,3.05059 4.1848146,1.80557 z"/>
 				</svg>
 			</div>
-			<h1 class="text-xl font-semibold tracking-tight">Welcome to Calnode</h1>
-			<p class="mt-1 text-sm text-muted-foreground">You're the first here — create your owner account.</p>
+			<h1 class="text-xl font-semibold tracking-tight">{$t('auth.claim.title')}</h1>
+			<p class="mt-1 text-sm text-muted-foreground">{$t('auth.claim.subtitle')}</p>
 		</div>
 
 		{#if error}
@@ -66,20 +67,20 @@
 
 		<form onsubmit={claim} class="space-y-4">
 			<div class="space-y-1.5">
-				<Label for="name">Full name</Label>
+				<Label for="name">{$t('auth.claim.name')}</Label>
 				<Input id="name" type="text" autocomplete="name" bind:value={name} required />
 			</div>
 			<div class="space-y-1.5">
-				<Label for="email">Email</Label>
+				<Label for="email">{$t('auth.claim.email')}</Label>
 				<Input id="email" type="email" autocomplete="email" bind:value={email} required />
 			</div>
 			<div class="space-y-1.5">
-				<Label for="password">Password</Label>
+				<Label for="password">{$t('auth.claim.password')}</Label>
 				<Input id="password" type="password" autocomplete="new-password" bind:value={password} required minlength={8} />
-				<p class="text-xs text-muted-foreground">Minimum 8 characters</p>
+				<p class="text-xs text-muted-foreground">{$t('auth.claim.passwordHint')}</p>
 			</div>
 			<Button type="submit" class="h-11 w-full" disabled={submitting}>
-				{submitting ? 'Creating account…' : 'Create owner account'}
+				{submitting ? $t('auth.claim.submitting') : $t('auth.claim.submit')}
 			</Button>
 		</form>
 	</div>

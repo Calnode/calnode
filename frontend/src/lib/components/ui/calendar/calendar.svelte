@@ -1,23 +1,30 @@
 <script lang="ts">
 	import { Calendar as CalendarPrimitive } from 'bits-ui';
 	import { cn } from '$lib/utils.js';
+	import { locale as adminLocale } from '$lib/i18n';
+	import { prefs } from '$lib/prefs';
 
 	let {
 		value = $bindable(),
 		onValueChange,
-		weekStartsOn = 1,
+		weekStartsOn,
 		class: className,
 		...restProps
 		// bits-ui v2 only exposes the union RootProps; this component is always type="single",
 		// so derive the single-date variant (drop `type`, which we set below).
 	}: Omit<Extract<CalendarPrimitive.RootProps, { type: 'single' }>, 'type'> & { class?: string } = $props();
+
+	const resolvedWeekStart = $derived(
+		(weekStartsOn ?? ($prefs.week_start === 0 ? 0 : 1)) as 0 | 1
+	);
 </script>
 
 <CalendarPrimitive.Root
 	type="single"
 	bind:value
 	{onValueChange}
-	{weekStartsOn}
+	weekStartsOn={resolvedWeekStart}
+	locale={$adminLocale}
 	class={cn('p-3', className)}
 	{...restProps}
 >

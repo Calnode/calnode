@@ -4,6 +4,7 @@
 	import { authStatus } from '$lib/stores';
 	import { Button } from '$lib/components/ui/button';
 	import { ConfirmDialog } from '$lib/components/ui/confirm-dialog';
+	import { t, tr } from '$lib/i18n';
 
 	let resetOpen = $state(false);
 	let resetting = $state(false);
@@ -12,10 +13,10 @@
 		resetting = true;
 		try {
 			await api.post('/v1/demo/reset');
-			toast.success('Demo reset — reloading…');
+			toast.success(tr('demo.toast.resetSuccess'));
 			window.location.href = '/admin/';
 		} catch (e: any) {
-			toast.error(e.message ?? 'Reset failed');
+			toast.error(e.message ?? tr('demo.toast.resetFailed'));
 		} finally {
 			resetting = false;
 		}
@@ -24,23 +25,22 @@
 
 <ConfirmDialog
 	bind:open={resetOpen}
-	title="Reset the demo now?"
-	description="Every event type, booking, and setting is wiped and replaced with fresh sample data. This also happens automatically on a timer."
-	confirmText="Reset demo"
+	title={$t('demo.confirm.title')}
+	description={$t('demo.confirm.description')}
+	confirmText={$t('demo.confirm.confirm')}
 	onConfirm={doReset}
 />
 
 <div class="flex items-center justify-between gap-3 border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900">
 	<p>
-		<span class="font-semibold">Public demo</span> — data here is visible to everyone and resets
-		automatically. Don't enter anything private.
+		<span class="font-semibold">{$t('demo.banner.title')}</span> — {$t('demo.banner.body')}
 		<a
 			href="https://github.com/Calnode/calnode"
 			target="_blank"
 			rel="noopener noreferrer"
 			class="ml-1 font-medium underline"
 		>
-			View source
+			{$t('demo.banner.viewSource')}
 		</a>
 	</p>
 	<Button
@@ -50,6 +50,6 @@
 		onclick={() => (resetOpen = true)}
 		disabled={resetting}
 	>
-		{resetting ? 'Resetting…' : 'Reset demo now'}
+		{resetting ? $t('demo.resetting') : $t('demo.resetButton')}
 	</Button>
 </div>

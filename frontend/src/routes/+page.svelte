@@ -3,6 +3,7 @@
 	import { base } from '$app/paths';
 	import { api, type CalendarStatus, type AvailabilityRule, type EventType, type User } from '$lib/api';
 	import { authStatus } from '$lib/stores';
+	import { t } from '$lib/i18n';
 
 	let calendarConnected = $state(false);
 	let calendarConfigured = $state(true);
@@ -73,18 +74,18 @@
 	}
 </script>
 
-<svelte:head><title>Dashboard — Calnode</title></svelte:head>
+<svelte:head><title>{$t('dashboard.headTitle')}</title></svelte:head>
 
 {#if loading}
-	<p class="py-8 text-sm text-muted-foreground">Loading…</p>
+	<p class="py-8 text-sm text-muted-foreground">{$t('common.loading')}</p>
 {:else if allDone}
 	<div class="mb-8">
-		<h1 class="text-2xl font-semibold tracking-tight">Dashboard</h1>
-		<p class="mt-1 text-sm text-muted-foreground">Your booking page is live and ready to share.</p>
+		<h1 class="text-2xl font-semibold tracking-tight">{$t('dashboard.title')}</h1>
+		<p class="mt-1 text-sm text-muted-foreground">{$t('dashboard.subtitleReady')}</p>
 	</div>
 	{#if eventLinks.length === 1}
 		<div class="rounded-lg border bg-card px-5 py-4">
-			<p class="text-sm font-medium mb-2">Your booking link</p>
+			<p class="text-sm font-medium mb-2">{$t('dashboard.bookingLinkSingular')}</p>
 			<div class="flex items-center gap-2">
 				<a
 					href={bookingUrl(eventLinks[0].slug)}
@@ -99,13 +100,13 @@
 					class="shrink-0 rounded px-2 py-0.5 text-xs border bg-background hover:bg-muted transition-colors
 						{copyFailed ? 'border-destructive text-destructive' : ''}"
 				>
-					{copiedSlug === eventLinks[0].slug ? 'Copied!' : copyFailed ? 'Failed' : 'Copy'}
+					{copiedSlug === eventLinks[0].slug ? $t('common.copied') : copyFailed ? $t('common.failed') : $t('common.copy')}
 				</button>
 			</div>
 		</div>
 	{:else if eventLinks.length > 1}
 		<div class="rounded-lg border bg-card px-5 py-4">
-			<p class="text-sm font-medium mb-2">Your booking links</p>
+			<p class="text-sm font-medium mb-2">{$t('dashboard.bookingLinksPlural')}</p>
 			<div class="space-y-2">
 				{#each eventLinks as e (e.slug)}
 					<div class="flex items-center gap-2">
@@ -123,7 +124,7 @@
 							class="shrink-0 rounded px-2 py-0.5 text-xs border bg-background hover:bg-muted transition-colors
 								{copyFailed ? 'border-destructive text-destructive' : ''}"
 						>
-							{copiedSlug === e.slug ? 'Copied!' : copyFailed ? 'Failed' : 'Copy'}
+							{copiedSlug === e.slug ? $t('common.copied') : copyFailed ? $t('common.failed') : $t('common.copy')}
 						</button>
 					</div>
 				{/each}
@@ -132,7 +133,7 @@
 	{/if}
 	{#if myHandle && origin}
 		<div class="rounded-lg border bg-card px-5 py-4">
-			<p class="text-sm font-medium mb-2">Your profile page</p>
+			<p class="text-sm font-medium mb-2">{$t('dashboard.profilePage')}</p>
 			<div class="flex items-center gap-2">
 				<a
 					href={`${origin}/u/${myHandle}`}
@@ -147,15 +148,15 @@
 					class="shrink-0 rounded px-2 py-0.5 text-xs border bg-background hover:bg-muted transition-colors
 						{copyFailed ? 'border-destructive text-destructive' : ''}"
 				>
-					{copiedSlug === `u/${myHandle}` ? 'Copied!' : copyFailed ? 'Failed' : 'Copy'}
+					{copiedSlug === `u/${myHandle}` ? $t('common.copied') : copyFailed ? $t('common.failed') : $t('common.copy')}
 				</button>
 			</div>
 		</div>
 	{/if}
 {:else}
 	<div class="mb-8">
-		<h1 class="text-2xl font-semibold tracking-tight">Getting started</h1>
-		<p class="mt-1 text-sm text-muted-foreground">Complete these steps and you'll be ready to take bookings.</p>
+		<h1 class="text-2xl font-semibold tracking-tight">{$t('dashboard.gettingStarted.title')}</h1>
+		<p class="mt-1 text-sm text-muted-foreground">{$t('dashboard.gettingStarted.subtitle')}</p>
 	</div>
 
 	<!-- Checklist -->
@@ -176,10 +177,10 @@
 			</div>
 			<div class="flex-1 min-w-0">
 				<p class="text-sm font-medium {calendarConnected ? 'text-muted-foreground line-through' : ''}">
-					Connect your calendar
+					{$t('dashboard.checklist.connectCalendar')}
 				</p>
 				<p class="mt-0.5 text-xs text-muted-foreground">
-					{calendarConfigured ? 'Calnode checks your calendar to prevent double-bookings.' : 'Google Calendar setup required — see the Calendar page for details.'}
+					{calendarConfigured ? $t('dashboard.checklist.connectCalendarHintConfigured') : $t('dashboard.checklist.connectCalendarHintUnconfigured')}
 				</p>
 			</div>
 			<svg class="mt-0.5 shrink-0 text-muted-foreground/40 group-hover:text-muted-foreground transition-colors" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -203,10 +204,10 @@
 			</div>
 			<div class="flex-1 min-w-0">
 				<p class="text-sm font-medium {hasAvailability ? 'text-muted-foreground line-through' : ''}">
-					Set your availability
+					{$t('dashboard.checklist.availability')}
 				</p>
 				<p class="mt-0.5 text-xs text-muted-foreground">
-					Define the hours when people can book time with you.
+					{$t('dashboard.checklist.availabilityHint')}
 				</p>
 			</div>
 			<svg class="mt-0.5 shrink-0 text-muted-foreground/40 group-hover:text-muted-foreground transition-colors" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -229,10 +230,10 @@
 			</div>
 			<div class="flex-1 min-w-0">
 				<p class="text-sm font-medium {hasEventType ? 'text-muted-foreground line-through' : ''}">
-					Create your first event type
+					{$t('dashboard.checklist.eventType')}
 				</p>
 				<p class="mt-0.5 text-xs text-muted-foreground">
-					An event type defines the duration, location, and availability for a booking.
+					{$t('dashboard.checklist.eventTypeHint')}
 				</p>
 			</div>
 			<svg class="mt-0.5 shrink-0 text-muted-foreground/40 group-hover:text-muted-foreground transition-colors" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -251,9 +252,9 @@
 				{/if}
 			</div>
 			<div class="flex-1 min-w-0">
-				<p class="text-sm font-medium">Share your booking link</p>
+				<p class="text-sm font-medium">{$t('dashboard.checklist.shareLink')}</p>
 				<p class="mt-0.5 text-xs text-muted-foreground">
-					{hasEventType ? 'Your page is live. Share it and start taking bookings.' : "Available once you've created an event type."}
+					{hasEventType ? $t('dashboard.checklist.shareLinkHintReady') : $t('dashboard.checklist.shareLinkHintWaiting')}
 				</p>
 				{#if hasEventType && eventLinks.length > 0}
 					<div class="mt-2 flex items-center gap-2">
@@ -270,7 +271,7 @@
 							class="shrink-0 rounded px-2 py-0.5 text-xs border bg-background hover:bg-muted transition-colors
 								{copyFailed ? 'border-destructive text-destructive' : ''}"
 						>
-							{copiedSlug === eventLinks[0].slug ? 'Copied!' : copyFailed ? 'Failed' : 'Copy'}
+							{copiedSlug === eventLinks[0].slug ? $t('common.copied') : copyFailed ? $t('common.failed') : $t('common.copy')}
 						</button>
 					</div>
 				{/if}

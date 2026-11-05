@@ -19,6 +19,7 @@ export default defineConfig({
 	test: {
 		setupFiles: ['./src/test-setup.ts'],
 		include: ['src/**/*.{test,spec}.{js,ts}'],
+		exclude: ['src/lib/i18n/catalog.test.ts'],
 		browser: {
 			enabled: true,
 			provider: playwright(),

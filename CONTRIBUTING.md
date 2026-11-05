@@ -76,15 +76,21 @@ prefer additive, nullable/defaulted columns.
 
 Calnode ships 11 locales (`en es fr fr-CA de el it nl pl pt sv`) on the booker-facing surfaces:
 booking page, manage/reschedule page, embed widget, the four emails, and the calendar
-invite. The admin SPA has its own catalogue, in progress.
+invite. The admin SPA is translated separately (`en` + `fr` today). The built-in video
+room is still English-only.
 
 **Translation PRs are very welcome** - both new languages and corrections to existing
 ones. **Most non-English locales are machine drafts with no native review, and none has
 had a full native read** (Polish was contributed and grammar-checked by a native
 speaker), so if you speak one of them, fixes are genuinely valuable and will be merged
-readily. Small, single-language PRs are easier to review than sweeping ones.
+readily. Small, single-language PRs are easier to review than sweeping ones. The admin
+French catalog was written by a native speaker.
 
-A language is **one file, and it does not have to be complete.**
+**Adding a booker-facing language is adding one file, and it does not have to be complete:**
+`internal/i18n/locales/<code>.json`. No Go, template, or frontend change is needed -
+`init()` globs the directory. The language switcher, the fallback-language setting and the
+public API payload all read `SupportedLocales()`, which only lists locales at or above the
+coverage floor (see below).
 
 1. Copy `internal/i18n/locales/en.json` to `internal/i18n/locales/<code>.json` and translate
    the values. Delete the keys you have not got to yet if that helps; a missing key falls
@@ -116,6 +122,19 @@ are spliced together, and plurals written as flat strings.
 Terminology is agreed in [`docs/i18n-glossary.md`](docs/i18n-glossary.md). Add your
 language's column there rather than inventing a second word for something that already has
 one.
+
+**Adding an admin-UI language** is a small frontend change (the catalogs are not globbed):
+
+1. Copy `frontend/src/lib/i18n/en.json` to `<code>.json` and translate the values. Keep
+   every key and any `{placeholders}` (including `{console}` / `{email}`-style link
+   slots rendered by `LinkedText` — do not turn catalog values into HTML). English is
+   the source of truth; missing keys fall back to English at runtime.
+2. Register the new file in `frontend/src/lib/i18n/catalog.ts` (`catalogs` + `ADMIN_LOCALES`).
+3. Name the code the same way as booker locales: BCP-47 primary tag (`fr`, `de`).
+4. The operator picks the language in Settings → Profile → Preferences (stored in
+   `localStorage`, with `navigator.languages` as the first-visit fallback).
+5. Run the catalog tests (`node --experimental-strip-types --test src/lib/i18n/catalog.test.ts`
+   from `frontend/`). `pnpm test:visual` also runs the same assertions via Vitest.
 
 Background and the full list of limitations (2-form plurals, no RTL) are in
 [ARCHITECTURE.md §23](docs/ARCHITECTURE.md).

@@ -10,14 +10,15 @@
 	import * as Select from '$lib/components/ui/select';
 	import * as Tooltip from '$lib/components/ui/tooltip';
 	import { toast } from 'svelte-sonner';
+	import { t, tr } from '$lib/i18n';
 
 	let { slug }: { slug: string } = $props();
 
-	const QUESTION_TYPES = [
-		{ value: 'text', label: 'Text' },
-		{ value: 'checkbox', label: 'Checkbox (yes/no)' },
-		{ value: 'select', label: 'Dropdown' },
-	];
+	const QUESTION_TYPES = $derived([
+		{ value: 'text', label: $t('eventTypeEditor.questions.types.text') },
+		{ value: 'checkbox', label: $t('eventTypeEditor.questions.types.checkbox') },
+		{ value: 'select', label: $t('eventTypeEditor.questions.types.select') },
+	]);
 
 	let questions: Question[] = $state([]);
 	let qLoading = $state(true);
@@ -36,7 +37,7 @@
 			const res = await api.get<{ items: Question[] }>(`/v1/event-types/${slug}/questions/admin`);
 			questions = (res.items ?? []).sort((a, b) => a.position - b.position);
 		} catch (e: any) {
-			toast.error(e.message || 'Could not load questions');
+			toast.error(e.message || tr('eventTypeEditor.questions.error.load'));
 		} finally {
 			qLoading = false;
 		}
@@ -55,9 +56,9 @@
 	}
 
 	async function addQuestion() {
-		if (!qForm.label.trim()) { toast.error('Label is required.'); return; }
+		if (!qForm.label.trim()) { toast.error(tr('eventTypeEditor.questions.validation.label')); return; }
 		if (qForm.type === 'select' && optionsArray(qForm.options).length === 0) {
-			toast.error('At least one option is required for dropdown questions.'); return;
+			toast.error(tr('eventTypeEditor.questions.validation.options')); return;
 		}
 		qAdding = true;
 		try {
@@ -70,7 +71,7 @@
 			qForm = { label: '', type: 'text', options: '', required: false };
 			await loadQuestions();
 		} catch (e: any) {
-			toast.error(e.message || 'Could not add question');
+			toast.error(e.message || tr('eventTypeEditor.questions.error.add'));
 		} finally {
 			qAdding = false;
 		}
@@ -84,9 +85,9 @@
 	function cancelEditQ() { editingQId = null; }
 
 	async function saveQuestion(q: Question) {
-		if (!editQForm.label.trim()) { toast.error('Label is required.'); return; }
+		if (!editQForm.label.trim()) { toast.error(tr('eventTypeEditor.questions.validation.label')); return; }
 		if (editQForm.type === 'select' && optionsArray(editQForm.options).length === 0) {
-			toast.error('At least one option is required.'); return;
+			toast.error(tr('eventTypeEditor.questions.validation.optionsShort')); return;
 		}
 		qSaving = true;
 		try {
@@ -99,7 +100,7 @@
 			editingQId = null;
 			await loadQuestions();
 		} catch (e: any) {
-			toast.error(e.message || 'Could not save question');
+			toast.error(e.message || tr('eventTypeEditor.questions.error.save'));
 		} finally {
 			qSaving = false;
 		}
@@ -116,36 +117,40 @@
 			await api.del(`/v1/event-types/${slug}/questions/${pendingQ.id}`);
 			await loadQuestions();
 		} catch (e: any) {
-			toast.error(e.message || 'Could not delete question');
+			toast.error(e.message || tr('eventTypeEditor.questions.error.delete'));
 		}
+	}
+
+	function typeLabel(value: string): string {
+		return QUESTION_TYPES.find((t) => t.value === value)?.label ?? value;
 	}
 </script>
 
 <ConfirmDialog
 	bind:open={deleteQOpen}
-	title="Remove question?"
-	description={pendingQ ? `"${pendingQ.label}" will be removed from this event type's booking form.` : ''}
-	confirmText="Remove"
+	title={$t('eventTypeEditor.questions.confirm.title')}
+	description={pendingQ ? $t('eventTypeEditor.questions.confirm.description', { label: pendingQ.label }) : ''}
+	confirmText={$t('common.remove')}
 	destructive
 	onConfirm={doDeleteQuestion}
 />
 
 <!-- Intake Questions -->
 <div>
-	<h2 class="mb-1 text-sm font-semibold uppercase tracking-wider text-muted-foreground">Intake Questions</h2>
-	<p class="mb-3 text-sm text-muted-foreground">Collect information from attendees when they book.</p>
+	<h2 class="mb-1 text-sm font-semibold uppercase tracking-wider text-muted-foreground">{$t('eventTypeEditor.questions.title')}</h2>
+	<p class="mb-3 text-sm text-muted-foreground">{$t('eventTypeEditor.questions.subtitle')}</p>
 
 	<div class="rounded-lg border bg-card">
 		{#if qLoading}
-			<p class="px-4 py-4 text-sm text-muted-foreground">Loading…</p>
+			<p class="px-4 py-4 text-sm text-muted-foreground">{$t('common.loading')}</p>
 		{:else if questions.length > 0}
 			<table class="w-full text-sm">
 				<thead>
 					<tr class="border-b">
-						<th class="px-4 pb-3 pt-3 text-left text-xs font-medium text-muted-foreground">#</th>
-						<th class="px-4 pb-3 pt-3 text-left text-xs font-medium text-muted-foreground">Question</th>
-						<th class="px-4 pb-3 pt-3 text-left text-xs font-medium text-muted-foreground">Type</th>
-						<th class="px-4 pb-3 pt-3 text-left text-xs font-medium text-muted-foreground">Required</th>
+						<th class="px-4 pb-3 pt-3 text-left text-xs font-medium text-muted-foreground">{$t('eventTypeEditor.questions.table.number')}</th>
+						<th class="px-4 pb-3 pt-3 text-left text-xs font-medium text-muted-foreground">{$t('eventTypeEditor.questions.table.question')}</th>
+						<th class="px-4 pb-3 pt-3 text-left text-xs font-medium text-muted-foreground">{$t('eventTypeEditor.questions.table.type')}</th>
+						<th class="px-4 pb-3 pt-3 text-left text-xs font-medium text-muted-foreground">{$t('eventTypeEditor.questions.table.required')}</th>
 						<th class="px-4 pb-3 pt-3"></th>
 					</tr>
 				</thead>
@@ -157,40 +162,40 @@
 								<td colspan="3" class="px-4 py-3">
 									<div class="grid grid-cols-2 gap-3">
 										<div class="space-y-1.5">
-											<Label for="eq-label-{q.id}" class="text-xs text-muted-foreground">Label</Label>
+											<Label for="eq-label-{q.id}" class="text-xs text-muted-foreground">{$t('eventTypeEditor.questions.label')}</Label>
 											<Input id="eq-label-{q.id}" bind:value={editQForm.label} />
 										</div>
 										<div class="space-y-1.5">
-											<Label for="eq-type-{q.id}" class="text-xs text-muted-foreground">Type</Label>
+											<Label for="eq-type-{q.id}" class="text-xs text-muted-foreground">{$t('eventTypeEditor.questions.table.type')}</Label>
 											<Select.Root type="single" value={editQForm.type} onValueChange={(v) => { if (v) editQForm.type = v as 'text'|'select'|'checkbox'; }}>
 												<Select.Trigger id="eq-type-{q.id}" class="w-full">
-													{QUESTION_TYPES.find((t) => t.value === editQForm.type)?.label ?? 'Select…'}
+													{QUESTION_TYPES.find((t) => t.value === editQForm.type)?.label ?? $t('common.select')}
 												</Select.Trigger>
 												<Select.Content>
-													{#each QUESTION_TYPES as t}
-														<Select.Item value={t.value} label={t.label}>{t.label}</Select.Item>
+													{#each QUESTION_TYPES as qt}
+														<Select.Item value={qt.value} label={qt.label}>{qt.label}</Select.Item>
 													{/each}
 												</Select.Content>
 											</Select.Root>
 										</div>
 										{#if editQForm.type === 'select'}
 											<div class="col-span-2 space-y-1.5">
-												<Label for="eq-options-{q.id}" class="text-xs text-muted-foreground">Options (one per line)</Label>
+												<Label for="eq-options-{q.id}" class="text-xs text-muted-foreground">{$t('eventTypeEditor.questions.options')}</Label>
 												<Textarea id="eq-options-{q.id}" bind:value={editQForm.options} rows={3} />
 											</div>
 										{/if}
 										<div class="col-span-2 flex items-center gap-2">
 											<Checkbox id="eq-required-{q.id}" bind:checked={editQForm.required} />
-											<Label for="eq-required-{q.id}" class="cursor-pointer font-normal">Required</Label>
+											<Label for="eq-required-{q.id}" class="cursor-pointer font-normal">{$t('eventTypeEditor.questions.table.required')}</Label>
 										</div>
 									</div>
 								</td>
 								<td class="px-4 py-3 align-top">
 									<div class="flex items-center justify-end gap-2 pt-5">
 										<Button size="sm" onclick={() => saveQuestion(q)} disabled={qSaving}>
-											{qSaving ? 'Saving…' : 'Save'}
+											{qSaving ? $t('common.saving') : $t('common.save')}
 										</Button>
-										<Button size="sm" variant="outline" onclick={cancelEditQ}>Cancel</Button>
+										<Button size="sm" variant="outline" onclick={cancelEditQ}>{$t('common.cancel')}</Button>
 									</div>
 								</td>
 							</tr>
@@ -205,10 +210,10 @@
 								</td>
 								<td class="px-4 py-3">
 									<span class="inline-flex items-center rounded-md bg-secondary px-2 py-0.5 text-xs font-medium text-secondary-foreground">
-										{q.type}
+										{typeLabel(q.type)}
 									</span>
 								</td>
-								<td class="px-4 py-3 text-muted-foreground">{q.required ? '✓' : '—'}</td>
+								<td class="px-4 py-3 text-muted-foreground">{q.required ? '✓' : $t('common.emDash')}</td>
 								<td class="px-4 py-3">
 									<Tooltip.Provider>
 										<div class="flex items-center justify-end gap-1">
@@ -220,7 +225,7 @@
 													<!-- Pencil/edit icon -->
 													<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
 												</Tooltip.Trigger>
-												<Tooltip.Content>Edit</Tooltip.Content>
+												<Tooltip.Content>{$t('eventTypeEditor.questions.tooltip.edit')}</Tooltip.Content>
 											</Tooltip.Root>
 											<Tooltip.Root>
 												<Tooltip.Trigger
@@ -230,7 +235,7 @@
 													<!-- Trash icon -->
 													<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
 												</Tooltip.Trigger>
-												<Tooltip.Content>Remove</Tooltip.Content>
+												<Tooltip.Content>{$t('eventTypeEditor.questions.tooltip.remove')}</Tooltip.Content>
 											</Tooltip.Root>
 										</div>
 									</Tooltip.Provider>
@@ -241,42 +246,42 @@
 				</tbody>
 			</table>
 		{:else}
-			<p class="px-4 py-4 text-sm text-muted-foreground">No questions yet.</p>
+			<p class="px-4 py-4 text-sm text-muted-foreground">{$t('eventTypeEditor.questions.empty')}</p>
 		{/if}
 
 		<!-- Add question form -->
 		<div class="border-t px-4 py-4">
 			<div class="grid grid-cols-2 gap-3">
 				<div class="space-y-1.5">
-					<Label for="q-label">Label</Label>
-					<Input id="q-label" bind:value={qForm.label} placeholder="e.g. What's the meeting about?" />
+					<Label for="q-label">{$t('eventTypeEditor.questions.label')}</Label>
+					<Input id="q-label" bind:value={qForm.label} placeholder={$t('eventTypeEditor.questions.labelPlaceholder')} />
 				</div>
 				<div class="space-y-1.5">
-					<Label for="q-type">Type</Label>
+					<Label for="q-type">{$t('eventTypeEditor.questions.table.type')}</Label>
 					<Select.Root type="single" value={qForm.type} onValueChange={(v) => { if (v) qForm.type = v as 'text'|'select'|'checkbox'; }}>
 						<Select.Trigger id="q-type" class="w-full">
-							{QUESTION_TYPES.find((t) => t.value === qForm.type)?.label ?? 'Select…'}
+							{QUESTION_TYPES.find((t) => t.value === qForm.type)?.label ?? $t('common.select')}
 						</Select.Trigger>
 						<Select.Content>
-							{#each QUESTION_TYPES as t}
-								<Select.Item value={t.value} label={t.label}>{t.label}</Select.Item>
+							{#each QUESTION_TYPES as qt}
+								<Select.Item value={qt.value} label={qt.label}>{qt.label}</Select.Item>
 							{/each}
 						</Select.Content>
 					</Select.Root>
 				</div>
 				{#if qForm.type === 'select'}
 					<div class="col-span-2 space-y-1.5">
-						<Label for="q-options">Options (one per line)</Label>
-						<Textarea id="q-options" bind:value={qForm.options} rows={3} placeholder={"Option A\nOption B\nOption C"} />
+						<Label for="q-options">{$t('eventTypeEditor.questions.options')}</Label>
+						<Textarea id="q-options" bind:value={qForm.options} rows={3} placeholder={$t('eventTypeEditor.questions.optionsPlaceholder')} />
 					</div>
 				{/if}
 				<div class="col-span-2 flex items-center gap-2">
 					<Checkbox id="q-required" bind:checked={qForm.required} />
-					<Label for="q-required" class="cursor-pointer font-normal">Required</Label>
+					<Label for="q-required" class="cursor-pointer font-normal">{$t('eventTypeEditor.questions.table.required')}</Label>
 				</div>
 			</div>
 			<Button onclick={addQuestion} disabled={qAdding} class="mt-3">
-				{qAdding ? 'Adding…' : 'Add question'}
+				{qAdding ? $t('eventTypeEditor.questions.adding') : $t('eventTypeEditor.questions.add')}
 			</Button>
 		</div>
 	</div>

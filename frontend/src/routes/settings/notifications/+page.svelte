@@ -8,6 +8,7 @@
 	import { toast } from 'svelte-sonner';
 	import { saveOnCmdS } from '$lib/save-shortcut';
 	import { createAsyncFlag } from '$lib/async-action.svelte';
+	import { t, tr } from '$lib/i18n';
 
 	const loadingFlag = createAsyncFlag(true);
 	const savingFlag = createAsyncFlag();
@@ -29,7 +30,7 @@
 		notify_host_booking = user.notify_host_booking ?? true;
 		notify_host_cancel = user.notify_host_cancel ?? true;
 		notify_host_reschedule = user.notify_host_reschedule ?? true;
-	}, 'Could not load preferences'));
+	}, tr('settings.notifications.error.load')));
 
 	async function save() {
 		await savingFlag.run(async () => {
@@ -38,57 +39,57 @@
 				notify_host_booking, notify_host_cancel, notify_host_reschedule,
 			});
 			currentUser.set(updated);
-			toast.success('Preferences saved');
-		}, 'Could not save preferences');
+			toast.success(tr('settings.notifications.toast.saved'));
+		}, tr('settings.notifications.error.save'));
 	}
 </script>
 
 <svelte:window onkeydown={saveOnCmdS(save, () => !savingFlag.active)} />
 
 {#if loadingFlag.active}
-	<p class="py-8 text-sm text-muted-foreground">Loading…</p>
+	<p class="py-8 text-sm text-muted-foreground">{$t('common.loading')}</p>
 {:else}
 	<div class="max-w-lg space-y-4">
 		<div class="rounded-lg border bg-card p-6">
-			<h2 class="mb-1 text-sm font-semibold">Notifications</h2>
-			<p class="mb-5 text-xs text-muted-foreground">Control which emails you and your attendees receive.</p>
+			<h2 class="mb-1 text-sm font-semibold">{$t('settings.notifications.title')}</h2>
+			<p class="mb-5 text-xs text-muted-foreground">{$t('settings.notifications.subtitle')}</p>
 
 			<div class="space-y-5">
 				<div>
-					<p class="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Emails sent to your attendees</p>
+					<p class="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">{$t('settings.notifications.section.attendees')}</p>
 					<div class="space-y-3">
 						<div class="flex items-center justify-between gap-4">
-							<Label for="nc" class="cursor-pointer font-normal">Booking confirmation</Label>
+							<Label for="nc" class="cursor-pointer font-normal">{$t('settings.notifications.attendee.confirmation')}</Label>
 							<Switch id="nc" bind:checked={notify_confirmation} />
 						</div>
 						<div class="flex items-center justify-between gap-4">
-							<Label for="nca" class="cursor-pointer font-normal">Cancellation notice</Label>
+							<Label for="nca" class="cursor-pointer font-normal">{$t('settings.notifications.attendee.cancellation')}</Label>
 							<Switch id="nca" bind:checked={notify_cancellation} />
 						</div>
 						<div class="flex items-center justify-between gap-4">
-							<Label for="nr" class="cursor-pointer font-normal">Reschedule notice</Label>
+							<Label for="nr" class="cursor-pointer font-normal">{$t('settings.notifications.attendee.reschedule')}</Label>
 							<Switch id="nr" bind:checked={notify_reschedule} />
 						</div>
 						<div class="flex items-center justify-between gap-4">
-							<Label for="nrm" class="cursor-pointer font-normal">Reminder emails</Label>
+							<Label for="nrm" class="cursor-pointer font-normal">{$t('settings.notifications.attendee.reminder')}</Label>
 							<Switch id="nrm" bind:checked={notify_reminder} />
 						</div>
 					</div>
 				</div>
 
 				<div class="border-t pt-5">
-					<p class="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Emails sent to you</p>
+					<p class="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">{$t('settings.notifications.section.host')}</p>
 					<div class="space-y-3">
 						<div class="flex items-center justify-between gap-4">
-							<Label for="nhb" class="cursor-pointer font-normal">New booking received</Label>
+							<Label for="nhb" class="cursor-pointer font-normal">{$t('settings.notifications.host.newBooking')}</Label>
 							<Switch id="nhb" bind:checked={notify_host_booking} />
 						</div>
 						<div class="flex items-center justify-between gap-4">
-							<Label for="nhc" class="cursor-pointer font-normal">Booking cancelled</Label>
+							<Label for="nhc" class="cursor-pointer font-normal">{$t('settings.notifications.host.cancelled')}</Label>
 							<Switch id="nhc" bind:checked={notify_host_cancel} />
 						</div>
 						<div class="flex items-center justify-between gap-4">
-							<Label for="nhr" class="cursor-pointer font-normal">Booking rescheduled</Label>
+							<Label for="nhr" class="cursor-pointer font-normal">{$t('settings.notifications.host.rescheduled')}</Label>
 							<Switch id="nhr" bind:checked={notify_host_reschedule} />
 						</div>
 					</div>
@@ -97,7 +98,7 @@
 		</div>
 
 		<Button onclick={save} disabled={savingFlag.active}>
-			{savingFlag.active ? 'Saving…' : 'Save'}
+			{savingFlag.active ? $t('common.saving') : $t('common.save')}
 		</Button>
 	</div>
 {/if}

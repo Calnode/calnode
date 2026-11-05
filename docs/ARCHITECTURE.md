@@ -1247,7 +1247,8 @@ picks the exact tag first (pinned in `TestResolve`).
 
 ### What is translated, and what is not
 
-Translation covers the surfaces a **booker** sees. It deliberately stops there.
+Translation covers the surfaces a **booker** sees, and the admin SPA through its own
+catalog. It deliberately stops at the LiveKit room and at content the operator wrote.
 
 | Surface | Translated? |
 |---|---|
@@ -1257,12 +1258,22 @@ Translation covers the surfaces a **booker** sees. It deliberately stops there.
 | The four emails (confirm / cancel / reschedule / reminder) | yes |
 | Calendar invite title + description | yes |
 | Conversational booking assistant | yes (replies in the visitor's language) |
-| **Admin SPA** (`frontend/`) | **no** - English only, by design |
+| **Admin SPA** (`frontend/`) | **yes** - `en` + `fr` (`frontend/src/lib/i18n/`); English is source of truth |
 | **LiveKit room** (`livekit-room.html` + `livekit-room.js`) | **no** - see below |
 | **Admin-authored content** (event names, descriptions, intake questions, custom email copy) | **no** - stored as the operator typed it |
 | IANA timezone identifiers | no - shown as `Europe/Berlin`, not localized |
 
-**The LiveKit room is the one real hole.** ~45 strings in the in-browser meeting UI
+The admin SPA is a separate catalog from the booker locales. `frontend/src/lib/i18n/`
+ships nested JSON (`en.json` source of truth, `fr.json` a native-speaker translation).
+`t` / `tr` look up a dotted key, interpolate `{placeholders}`, and fall back to English
+then to the key itself. Locale resolution is client-side: a stored preference
+(`localStorage` key `calnode-admin-locale`, set from Settings → Profile → Preferences)
+wins, then `navigator.languages` (`fr-CA` → `fr`), then English. Dates and times in the
+admin use `Intl` with that tag; the operator's existing `date_format` / `time_format` /
+`week_start` prefs still apply. Adding an admin locale is copy-the-JSON plus two
+registrations in `catalog.ts` — see CONTRIBUTING.md.
+
+**The LiveKit room is the remaining hole.** ~45 strings in the in-browser meeting UI
 (join/leave, mute, screen share, recording banner, consent prompts, chat) are hardcoded
 English. It was excluded because the room is vanilla JS with its own asset pipeline
 (`go:embed`-ed in the handler package, not the SPA build) and shares no template or string
@@ -1383,6 +1394,13 @@ emails end to end.
 This doc tracks the code; when you change behaviour in an area above, update the
 matching section in the same PR. Notable rounds:
 
+- **2026-11-02 — Admin SPA i18n (`en` + `fr`).** The SvelteKit admin (`frontend/`) is no
+  longer English-only. A small client-side catalog in `frontend/src/lib/i18n/` drives
+  chrome, list pages, the event-type editor, settings, and auth screens. Locale comes
+  from Settings → Profile (stored in `localStorage`) with a browser-language fallback;
+  missing keys fall back to English. Booker-facing locales (`internal/i18n/locales`)
+  are unchanged. The LiveKit room stays English (§18).
+
 - **2026-08-20 — Multi-language public surfaces (8 locales).** Booking page, manage page,
   embed widget, the four emails, the calendar invite and the booking assistant now render in
   `en es fr de it pt nl sv` (new §23). Locale is negotiated from `Accept-Language` with a
@@ -1390,7 +1408,8 @@ matching section in the same PR. Notable rounds:
   (migration 00051) so reminders match the language the booker used. Adding a language is
   adding one JSON file - proven by adding six at once with no code change. Go has no locale
   date data, so the date tables are keys in the JSON, cross-checked against `Intl`/CLDR by a
-  node-backed test. **Not translated: the admin SPA and the LiveKit room** (§18).
+  node-backed test. **Not translated at the time: the admin SPA and the LiveKit room**
+  (§18). The admin SPA gained `en`/`fr` in 2026-11; the room is still English.
 
 - **2026-06-30 — Cookie consent + legal links + shared book/manage partials.** Native
   GA4/GTM (Settings → Tracking) is now consent-gated on book.html **and** manage.html:

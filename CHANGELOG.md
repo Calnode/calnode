@@ -11,6 +11,15 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
 
 ## [Unreleased]
 
+### Added
+- **French localization of the admin UI.** The SvelteKit admin (`frontend/`) now has a
+  lightweight i18n layer (`frontend/src/lib/i18n/`) with English as the source of truth
+  and a complete French catalog written by a native speaker. The language is chosen in
+  Settings → Profile (remembered in the browser) and falls back to the browser language,
+  then to English. Dates and times in the admin follow that locale. Public booking pages
+  and emails still use the existing 11-locale booker catalogs; the LiveKit room stays
+  English.
+
 ### Changed
 
 - **Partial locale catalogues are allowed, so a language can be translated in stages.** A
