@@ -125,6 +125,9 @@ func report(root string, c catalogue) error {
 // ("common.save", "teams.memberCount.one", ...). Arrays are not used in either
 // catalogue and are skipped rather than guessed at.
 func load(path string) (map[string]struct{}, error) {
+	// #nosec G304 -- path is the repository root this developer tool was invoked from
+	// plus a fixed catalogue name; there is no untrusted input, and this binary is never
+	// served. It reports on files a contributor is already editing.
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
