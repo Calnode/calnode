@@ -11,6 +11,7 @@ import (
 	"embed"
 	"encoding/json"
 	"fmt"
+	"log"
 	"sort"
 
 	"golang.org/x/text/language"
@@ -22,6 +23,23 @@ var localeFS embed.FS
 
 // DefaultCode is the fallback locale when nothing else matches.
 const DefaultCode = "en"
+
+// MinCoverage is the fraction of English keys a locale must carry before it is offered
+// to visitors (language switcher, Accept-Language matching, public API payload).
+//
+// Locales may now be translated incrementally: a locale file does not have to be
+// complete to merge, and any key it lacks falls back to English at lookup time (see
+// Locale.T). That is what makes an outside contribution worth landing at all - nobody
+// completes 169 strings in one sitting, and a half-finished locale used to be
+// unmergeable. The floor is the other half of that bargain: a mostly-English "German"
+// booking page is worse for a booker than English, so a locale below this is kept out
+// of the picker entirely rather than half-offered. Get() still returns it, so an
+// explicit ?lang=<code> works for whoever is translating it.
+//
+// Set with headroom, because the English catalogue grows: at 0.8 a locale survives
+// roughly a fifth more English keys before it drops out, which is the signal to chase
+// the translators rather than a reason to panic.
+const MinCoverage = 0.8
 
 // Locale holds one language's resolved string table.
 type Locale struct {
@@ -81,11 +99,33 @@ func init() {
 	supportedCodes = append(supportedCodes, DefaultCode)
 	supported = append(supported, language.Make(DefaultCode))
 	for _, code := range otherCodes {
+		// A partial catalogue is allowed to exist and to be merged (see MinCoverage),
+		// but it is not offered to visitors until it is substantially translated.
+		if !offeredToVisitors(locales[code]) {
+			log.Printf("i18n: locale %q is %.0f%% translated (floor %.0f%%); not offered to visitors - ?lang=%s still works",
+				code, Coverage(locales[code])*100, MinCoverage*100, code)
+			continue
+		}
 		supportedCodes = append(supportedCodes, code)
 		supported = append(supported, language.Make(code))
 	}
 	matcher = language.NewMatcher(supported)
 }
+
+// Coverage reports how much of the English catalogue a locale carries, as a fraction.
+// English is 1 by definition; a locale with keys English does not have can exceed 1,
+// which TestLocalesHaveNoUnknownKeys prevents in practice.
+func Coverage(l *Locale) float64 {
+	en := Default()
+	if l == nil || en == nil || len(en.strings) == 0 {
+		return 0
+	}
+	return float64(len(l.strings)) / float64(len(en.strings))
+}
+
+// offeredToVisitors is the single place the floor is applied, so init and the tests
+// cannot disagree about what "offered" means.
+func offeredToVisitors(l *Locale) bool { return Coverage(l) >= MinCoverage }
 
 // Default returns the fallback (English) locale.
 func Default() *Locale { return locales[DefaultCode] }

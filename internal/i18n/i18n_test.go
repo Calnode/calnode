@@ -93,8 +93,19 @@ func TestJSON_roundTrips(t *testing.T) {
 
 func TestSupportedLocales(t *testing.T) {
 	opts := SupportedLocales()
-	if len(opts) != len(locales) {
-		t.Fatalf("SupportedLocales() returned %d entries, want %d", len(opts), len(locales))
+	// Every locale at or above the coverage floor is offered, and nothing below it is.
+	// This used to assert len(opts) == len(locales), which is only true while every
+	// shipped locale is complete; with partial catalogues allowed that invariant is
+	// wrong, and it would fail the first time a translation landed in stages.
+	want := 0
+	for _, l := range locales {
+		if offeredToVisitors(l) {
+			want++
+		}
+	}
+	if len(opts) != want {
+		t.Fatalf("SupportedLocales() returned %d entries, want %d (locales at or above the %.0f%% floor)",
+			len(opts), want, MinCoverage*100)
 	}
 	if opts[0].Code != DefaultCode {
 		t.Errorf("SupportedLocales()[0] = %q, want English (%q) first", opts[0].Code, DefaultCode)
@@ -258,22 +269,76 @@ func TestFormatDateTime(t *testing.T) {
 	}
 }
 
-func TestAllLocalesHaveTheSameKeys(t *testing.T) {
+// TestLocalesHaveNoUnknownKeys is the half of the old completeness gate that still
+// matters. A locale no longer has to be complete to merge: partial catalogues are
+// allowed, and a key a locale lacks falls back to English at lookup time (Locale.T), so
+// a translator can land a language in stages instead of in one unmergeable 169-string
+// block. What remains an error is a key English does not have - that is always a typo or
+// a renamed key, it renders for nobody, and it would otherwise rot silently.
+//
+// The old test asserted set equality in both directions. Dropping the "missing key" half
+// is the point of this change; see MinCoverage for the guard that replaces it.
+func TestLocalesHaveNoUnknownKeys(t *testing.T) {
 	en := Default()
 	for code, l := range locales {
 		if code == DefaultCode {
 			continue
-		}
-		for k := range en.strings {
-			if _, ok := l.strings[k]; !ok {
-				t.Errorf("locale %q is missing key %q (present in English)", code, k)
-			}
 		}
 		for k := range l.strings {
 			if _, ok := en.strings[k]; !ok {
 				t.Errorf("locale %q has key %q that doesn't exist in English", code, k)
 			}
 		}
+	}
+}
+
+// TestOfferedLocalesMeetCoverageFloor pins the invariant the language switcher, the
+// Accept-Language matcher and the public API payload all rely on: everything in
+// `supported` is at or above MinCoverage. A locale below the floor must be reachable
+// only by an explicit code (?lang=), never offered to a visitor who did not ask for it.
+func TestOfferedLocalesMeetCoverageFloor(t *testing.T) {
+	if len(supportedCodes) == 0 {
+		t.Fatal("no supported locales")
+	}
+	for _, code := range supportedCodes {
+		cov := Coverage(locales[code])
+		if cov < MinCoverage {
+			t.Errorf("offered locale %q is %.0f%% translated, below the %.0f%% floor",
+				code, cov*100, MinCoverage*100)
+		}
+	}
+	if supportedCodes[0] != DefaultCode {
+		t.Errorf("English must stay first in supported (matcher fallback), got %q", supportedCodes[0])
+	}
+}
+
+// TestCoverageFloorHidesPartialLocale exercises the decision itself with synthetic
+// locales, so it does not depend on shipping a half-translated file to prove the rule.
+func TestCoverageFloorHidesPartialLocale(t *testing.T) {
+	en := Default()
+	total := len(en.strings)
+
+	partial := &Locale{Code: "xx", strings: make(map[string]string, total)}
+	for k := range en.strings {
+		if len(partial.strings) >= int(float64(total)*MinCoverage)-1 {
+			break
+		}
+		partial.strings[k] = "translated"
+	}
+	if offeredToVisitors(partial) {
+		t.Errorf("a locale just below the floor (%d/%d keys) must not be offered", len(partial.strings), total)
+	}
+
+	full := &Locale{Code: "xy", strings: make(map[string]string, total)}
+	for k, v := range en.strings {
+		full.strings[k] = v
+	}
+	if !offeredToVisitors(full) {
+		t.Error("a complete locale must be offered")
+	}
+
+	if got := Coverage(nil); got != 0 {
+		t.Errorf("Coverage(nil) = %v, want 0", got)
 	}
 }
 

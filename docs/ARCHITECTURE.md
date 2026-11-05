@@ -1308,9 +1308,28 @@ you is a key in the JSON instead (`internal/i18n/datetime.go`): `date_format`, `
 `dow_short_*`, `month_short_*`. That also makes per-language date shape expressible - German
 carries its own `date_format` for the ordinal period ("Mo, 22. Jun 2026").
 
+A locale does **not** have to be complete to merge. Partial catalogues are supported: any
+key a locale lacks falls back to English at lookup time (`Locale.T`), so a translation can
+land in stages instead of in one block. The practical reason is that nobody translates 169
+strings in one sitting, and requiring completeness made an in-progress language
+unmergeable - which is how community translations quietly die.
+
+The other half of that bargain is `MinCoverage` (80% of the English keys). A locale at or
+above it is offered to visitors: the language switcher, `Accept-Language` matching and the
+public API payload all read `SupportedLocales()`, which filters on it. A locale below the
+floor still exists and `?lang=<code>` still resolves, so whoever is translating it can
+check their work in situ, but no visitor is served a mostly-English booking page by
+accident. The floor is set with headroom because the English catalogue grows: adding
+strings can push a locale under it, and that is the signal to chase the translators.
+Startup logs a line for every locale it withholds and why.
+
 Three guards police a new file (`go test ./internal/i18n/`):
 
-- `TestAllLocalesHaveTheSameKeys` - no missing or unknown keys.
+- `TestLocalesHaveNoUnknownKeys` - no key that English does not have. A missing key is
+  fine now (that is the fallback), but an unknown one is always a typo or a renamed key
+  and would render for nobody. This replaced `TestAllLocalesHaveTheSameKeys`, which
+  asserted set equality in both directions and therefore rejected the in-progress locales
+  the floor exists to support.
 - `TestAllLocalesHaveMatchingFormatVerbs` - uses `fmt` **itself** as the oracle, so a locale
   that drops or reorders a `%s`/`%d` fails the test instead of emitting `%!(EXTRA…)` to a
   booker. An earlier hand-rolled parser for this was unsound (it missed indexed verbs like
@@ -1319,6 +1338,9 @@ Three guards police a new file (`go test ./internal/i18n/`):
   `month_short_*` and `clock_format` against `Intl`, skipping if node is absent. This is the
   only check that can tell `dim.` from `dim`, or catch a 12h/24h call that is wrong for the
   language. It caught a real drift on first run (`es` had `sep` where CLDR says `sept`).
+
+`TestOfferedLocalesMeetCoverageFloor` pins the invariant the three guards do not: nothing
+below `MinCoverage` is ever in `supported`.
 
 Two traps:
 

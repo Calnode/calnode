@@ -11,6 +11,23 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
 
 ## [Unreleased]
 
+### Changed
+
+- **Partial locale catalogues are allowed, so a language can be translated in stages.** A
+  locale file no longer has to contain every English key before it can merge: a missing key
+  falls back to English at lookup time (`Locale.T`). This was previously blocked by
+  `TestAllLocalesHaveTheSameKeys`, which asserted exact set equality in both directions, so a
+  half-finished locale was unmergeable and a volunteer had to produce all 169 strings before
+  contributing anything. That is the practical reason community translations stall.
+  A locale is now offered to visitors - language switcher, `Accept-Language` matching and the
+  public API payload - only at or above `MinCoverage` (80% of the English keys), so nobody is
+  served a mostly-English booking page by accident. Below the floor `?lang=<code>` still
+  resolves, so whoever is translating it can check their work, and startup logs which locales
+  are withheld and why. The unknown-key check survives as `TestLocalesHaveNoUnknownKeys`,
+  since a key English does not have is always a typo, and the floor is pinned by
+  `TestOfferedLocalesMeetCoverageFloor`. No shipped locale changes: all 11 are complete and
+  remain offered.
+
 ## [0.13.0] - 2026-11-03
 
 ### Added
