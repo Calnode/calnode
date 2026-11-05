@@ -21,6 +21,13 @@
 	// Mobile nav drawer. Only ever opened from the md:hidden header button, so it is
 	// always false at desktop widths — which is what makes `inert` on <main> safe.
 	let sidebarOpen = $state(false);
+	// Focus handling: opening moves focus into the drawer, closing returns it to the
+	// trigger. Without this, opening leaves focus on the button the backdrop covers,
+	// and closing hides the focused element (`visibility: hidden`), dropping focus to
+	// <body> and losing the user's place.
+	let sidebarEl: HTMLElement | null = $state(null);
+	let menuButtonEl: HTMLButtonElement | null = $state(null);
+	let drawerWasOpen = false;
 
 	const ISSUES_URL = 'https://github.com/Calnode/calnode/issues';
 	const NEW_ISSUE_URL = 'https://github.com/Calnode/calnode/issues/new/choose';
@@ -140,10 +147,25 @@
 		sidebarOpen = false;
 	});
 
+	// Move focus with the drawer. Effects run after the DOM flush, so the panel is
+	// already visible/current when the first link is focused.
+	$effect(() => {
+		if (sidebarOpen) {
+			drawerWasOpen = true;
+			sidebarEl?.querySelector<HTMLElement>('a[href], button')?.focus();
+		} else if (drawerWasOpen) {
+			drawerWasOpen = false;
+			menuButtonEl?.focus();
+		}
+	});
+
 	onMount(async () => {
 		// Close the drawer if the viewport grows past md while it is open, so it cannot
-		// linger as an active overlay over the desktop layout.
-		const desktop = window.matchMedia('(min-width: 768px)');
+		// linger as an active overlay over the desktop layout. Specified in rem, not px:
+		// every `md:` class compiles to 48rem, which only equals 768px at the 16px
+		// default font size — in px the two thresholds drift apart and this listener
+		// would never fire for the band where the drawer is already unreachable.
+		const desktop = window.matchMedia('(min-width: 48rem)');
 		const onDesktop = (e: MediaQueryListEvent) => {
 			if (e.matches) sidebarOpen = false;
 		};
@@ -223,6 +245,7 @@
 	<header class="flex items-center gap-1 border-b border-sidebar-border bg-sidebar px-2 py-1.5 md:hidden">
 		<button
 			type="button"
+			bind:this={menuButtonEl}
 			class={buttonVariants({ variant: 'ghost', size: 'icon-sm' })}
 			aria-label="Open navigation"
 			aria-controls="app-sidebar"
@@ -249,6 +272,7 @@
 		{/if}
 		<aside
 			id="app-sidebar"
+			bind:this={sidebarEl}
 			class="fixed inset-y-0 left-0 z-50 flex w-72 max-w-[85vw] shrink-0 flex-col border-r border-sidebar-border bg-sidebar shadow-xl transition-transform duration-200 md:static md:z-auto md:w-56 md:max-w-none md:translate-x-0 md:shadow-none md:transition-none
 				{sidebarOpen ? 'translate-x-0' : '-translate-x-full invisible md:visible'}"
 		>
@@ -272,7 +296,7 @@
 			</a>
 
 			<!-- Nav -->
-			<nav class="flex-1 space-y-0.5 p-2">
+			<nav class="min-h-0 flex-1 space-y-0.5 overflow-y-auto p-2">
 				{#each visibleNavItems as item, i}
 					{#if item.section && item.section !== visibleNavItems[i - 1]?.section}
 						<p class="mb-1 px-2.5 text-xs font-semibold uppercase tracking-wide text-sidebar-foreground/40 first:mt-0 mt-4">
