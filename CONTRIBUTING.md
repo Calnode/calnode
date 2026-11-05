@@ -74,9 +74,9 @@ prefer additive, nullable/defaulted columns.
 
 ## Translations
 
-Calnode ships 11 locales (`en es fr fr-CA de el it nl pl pt sv`) across the booker-facing surfaces:
+Calnode ships 11 locales (`en es fr fr-CA de el it nl pl pt sv`) on the booker-facing surfaces:
 booking page, manage/reschedule page, embed widget, the four emails, and the calendar
-invite. The admin UI and the built-in video room are English-only.
+invite. The admin SPA has its own catalogue, in progress.
 
 **Translation PRs are very welcome** - both new languages and corrections to existing
 ones. **Most non-English locales are machine drafts with no native review, and none has
@@ -84,23 +84,38 @@ had a full native read** (Polish was contributed and grammar-checked by a native
 speaker), so if you speak one of them, fixes are genuinely valuable and will be merged
 readily. Small, single-language PRs are easier to review than sweeping ones.
 
-**Adding a language is adding one file:** `internal/i18n/locales/<code>.json`. No Go,
-template, or frontend change is needed - `init()` globs the directory, and the language
-switcher, the fallback-language setting and the public API payload all read
-`SupportedLocales()`.
+A language is **one file, and it does not have to be complete.**
 
-1. Copy `internal/i18n/locales/en.json` and translate the values. Keep every key, keep
-   the key order (it keeps diffs readable), and keep printf verbs (`%s`, `%d`, `%q`)
-   intact - reordering them is fine with indexed verbs (`%[2]s`), dropping them is not.
-2. Name the file **BCP-47 canonical**: `pt-BR.json`, never `pt-br.json`.
-3. `dow_short_*`, `month_short_*`, `date_format` and `clock_format` are data, not code -
+1. Copy `internal/i18n/locales/en.json` to `internal/i18n/locales/<code>.json` and translate
+   the values. Delete the keys you have not got to yet if that helps; a missing key falls
+   back to English at lookup time, so a partial file is mergeable and useful.
+2. Keep the keys spelled exactly as English has them. A key that is not in `en.json` fails
+   the build (`TestLocalesHaveNoUnknownKeys`), because it is always a typo and renders for
+   nobody.
+3. Keep printf verbs intact: `%s`, `%d`, `%q`. Reordering is fine with indexed verbs
+   (`%[2]s`); dropping one is not. In the admin catalogue the placeholders are `{name}`.
+4. Name the file **BCP-47 canonical**: `pt-BR.json`, never `pt-br.json`.
+5. `dow_short_*`, `month_short_*`, `date_format` and `clock_format` are data, not code -
    Go has no locale date tables. Match CLDR; the test below checks you against `Intl`.
-4. Run `go test ./internal/i18n/`. Three guards will tell you exactly what is wrong:
-   key parity, printf-verb parity (with `fmt` as the oracle), and a CLDR cross-check of
-   the date tables (needs `node` on PATH; skipped if absent).
-5. Eyeball the result: `go run ./cmd/calnode`, then
+6. Run `go test ./internal/i18n/` and `make i18n-coverage` to see where you stand.
+7. Eyeball the result: `go run ./cmd/calnode`, then
    `http://localhost:3000/book/<slug>?lang=<code>` and the manage page. Long words
    overflowing buttons is the usual surprise; check mobile width too.
+
+**When a language is offered.** A language appears in the switcher, and is matched from
+`Accept-Language`, only at or above 80% of the English keys (`i18n.MinCoverage`). Below the
+floor it still resolves with `?lang=<code>`, so you can check your work in place, and
+startup logs which languages are withheld. The floor exists because a mostly-English
+booking page is worse for a booker than English is.
+
+**What passing tests does not prove.** They check structure, not wording. Before a language
+is advertised, a speaker should read the booking page, the manage page and the four emails
+end to end. The usual misses are literal calques, agreement when two translated sentences
+are spliced together, and plurals written as flat strings.
+
+Terminology is agreed in [`docs/i18n-glossary.md`](docs/i18n-glossary.md). Add your
+language's column there rather than inventing a second word for something that already has
+one.
 
 Background and the full list of limitations (2-form plurals, no RTL) are in
 [ARCHITECTURE.md §23](docs/ARCHITECTURE.md).

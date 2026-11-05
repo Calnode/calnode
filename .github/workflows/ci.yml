@@ -128,3 +128,9 @@ jobs:
 
       - name: go test
         run: go test ./...
+
+      # Informational, never fails: the tests in internal/i18n are the gate. This prints
+      # per-language coverage so a translation PR shows up in the log with its progress,
+      # and so a language falling under the floor is visible before a user meets it.
+      - name: Translation coverage
+        run: go run ./cmd/i18n-coverage
