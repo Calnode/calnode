@@ -17,7 +17,11 @@ on:
     - cron: '20 6 * * 1' # weekly, Monday — catches newly-disclosed CVEs even with no code changes
   workflow_dispatch:
 
-permissions: read-all
+# Read the repository and nothing else. The SBOM and claims-guard jobs only
+# check out code and upload a workflow artifact; the Scorecard job sets its
+# own grants below.
+permissions:
+  contents: read
 
 jobs:
   scorecard:

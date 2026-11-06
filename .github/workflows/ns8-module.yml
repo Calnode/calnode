@@ -35,6 +35,11 @@ concurrency:
   group: ns8-module-publish
   cancel-in-progress: false
 
+# Read-only by default. Only the build job writes, to push the module image
+# to GHCR (packages: write), and it says so itself.
+permissions:
+  contents: read
+
 jobs:
   validate:
     runs-on: ubuntu-latest
