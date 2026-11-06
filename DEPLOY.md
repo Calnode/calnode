@@ -49,6 +49,25 @@ The archive does **not** include Litestream or the container entrypoint. Setting
 the binary directly; configure Litestream separately or use another SQLite-aware
 backup method. The email, calendar and other integration settings below still apply.
 
+Releases also carry `calnode_<version>.sigstore.json`, a signed
+[build provenance](https://docs.github.com/en/actions/how-tos/secure-your-work/use-artifact-attestations/use-artifact-attestations)
+attestation for the archives. To check that an archive was built by this
+repository's release workflow from the release tag, with the
+[GitHub CLI](https://cli.github.com/):
+
+```bash
+gh attestation verify "calnode_${version}_linux_amd64.tar.gz" --repo Calnode/calnode \
+  --signer-workflow Calnode/calnode/.github/workflows/docker-publish.yml \
+  --source-ref "refs/tags/v${version}"
+```
+
+To check against the downloaded bundle instead of GitHub's attestation API, add
+`--bundle "calnode_${version}.sigstore.json"`. Without `--signer-workflow` and
+`--source-ref`, the command only checks that the archive was built by a workflow in
+this repository, which also matches the release workflow's dry runs.
+
+Releases published before this was added have checksums only.
+
 ---
 
 ## 1. Configuration (environment variables)

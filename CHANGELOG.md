@@ -19,6 +19,13 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
   then to English. Dates and times in the admin follow that locale. Public booking pages
   and emails still use the existing 11-locale booker catalogs; the LiveKit room stays
   English.
+- **Release archives carry signed build provenance.** The release job now creates a
+  [GitHub artifact attestation](https://docs.github.com/en/actions/how-tos/secure-your-work/use-artifact-attestations/use-artifact-attestations)
+  (SLSA build provenance, signed through Sigstore) for the standalone `.tar.gz`
+  archives, and attaches the bundle to the release as `calnode_<version>.sigstore.json`.
+  `gh attestation verify` checks that an archive was built by `docker-publish.yml`
+  in this repository from its release tag; the full command is in
+  [DEPLOY.md](DEPLOY.md#standalone-binary).
 
 ### Changed
 
