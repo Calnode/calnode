@@ -978,14 +978,16 @@ Each account can set `booking_accent` in its profile. The default preserves the 
 - **Teams on personal Microsoft accounts** — `teamsForBusiness` is work/school only,
   so a personal Microsoft account can't auto-mint Teams links; the organizer must
   supply a manual link (validated, and surfaced in the editor hint).
-- **The admin SPA does not lay out below ~600px.** On the settings pages the nav and the
-  content sit in one flex row with no stacking breakpoint, so the content column is
-  squeezed to near-zero width and text wraps into a tall vertical sliver. Measured on
-  Settings → Profile at a 535px viewport: the `mx-auto max-w-4xl px-8` shell reported a
-  151px client width and the form column 0. Affects every settings page, not one
-  component, so the fix is a breakpoint in the settings shell rather than per-page
-  patching. The **public** booking surfaces are unaffected and are verified on mobile;
-  this is admin-only. Deferred 2026-08-22, not a regression.
+- **The admin SPA does not fully lay out below ~600px.** *Phase 1 landed (#226/#227): the
+  outer shell now stacks below `md` — the sidebar is an off-canvas drawer, a compact
+  header carries the menu button, and content scrolls instead of clipping.* Still future
+  work: the settings sub-nav (`frontend/src/routes/settings/+layout.svelte`, `flex gap-8`
+  with a `w-44 shrink-0` nav) does not stack, so settings pages still squeeze their form
+  column; and list/table views and multi-column forms need the phase 2/3 treatments.
+  Measured before phase 1 on Settings → Profile at 535px: the shell reported a 151px
+  client width and the form column 0. Affects every settings page, so that half is a
+  breakpoint in the settings shell rather than per-page patching. The **public** booking
+  surfaces are unaffected and are verified on mobile; this is admin-only.
 - **LiveKit room is not translated** - the booking surfaces, emails and calendar invites
   ship in 11 languages (§23), but the in-browser meeting UI is ~45 hardcoded English
   strings. It has its own vanilla-JS asset pipeline and shares no string plumbing with

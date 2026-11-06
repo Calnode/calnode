@@ -19,6 +19,16 @@
 	let reportOpen = $state(false);
 	let recordingsConfigured = $state(false);
 	let version = $state('');
+	// Mobile nav drawer. Only ever opened from the md:hidden header button, so it is
+	// always false at desktop widths — which is what makes `inert` on <main> safe.
+	let sidebarOpen = $state(false);
+	// Focus handling: opening moves focus into the drawer, closing returns it to the
+	// trigger. Without this, opening leaves focus on the button the backdrop covers,
+	// and closing hides the focused element (`visibility: hidden`), dropping focus to
+	// <body> and losing the user's place.
+	let sidebarEl: HTMLElement | null = $state(null);
+	let menuButtonEl: HTMLButtonElement | null = $state(null);
+	let drawerWasOpen = false;
 
 	const ISSUES_URL = 'https://github.com/Calnode/calnode/issues';
 	const NEW_ISSUE_URL = 'https://github.com/Calnode/calnode/issues/new/choose';
@@ -143,7 +153,37 @@
 		)
 	);
 
+	// Close the mobile drawer whenever the route changes, so tapping a nav link does not
+	// leave it open over the page it just navigated to.
+	$effect(() => {
+		void $page.url.pathname;
+		sidebarOpen = false;
+	});
+
+	// Move focus with the drawer. Effects run after the DOM flush, so the panel is
+	// already visible/current when the first link is focused.
+	$effect(() => {
+		if (sidebarOpen) {
+			drawerWasOpen = true;
+			sidebarEl?.querySelector<HTMLElement>('a[href], button')?.focus();
+		} else if (drawerWasOpen) {
+			drawerWasOpen = false;
+			menuButtonEl?.focus();
+		}
+	});
+
 	onMount(async () => {
+		// Close the drawer if the viewport grows past md while it is open, so it cannot
+		// linger as an active overlay over the desktop layout. Specified in rem, not px:
+		// every `md:` class compiles to 48rem, which only equals 768px at the 16px
+		// default font size — in px the two thresholds drift apart and this listener
+		// would never fire for the band where the drawer is already unreachable.
+		const desktop = window.matchMedia('(min-width: 48rem)');
+		const onDesktop = (e: MediaQueryListEvent) => {
+			if (e.matches) sidebarOpen = false;
+		};
+		desktop.addEventListener('change', onDesktop);
+
 		if (isPublicRoute) {
 			checking = false;
 			return;
@@ -193,6 +233,12 @@
 	}
 </script>
 
+<svelte:window
+	onkeydown={(e) => {
+		if (e.key === 'Escape' && sidebarOpen) sidebarOpen = false;
+	}}
+/>
+
 <Toaster position="bottom-right" />
 
 {#if isPublicRoute}
@@ -206,11 +252,45 @@
 	{#if $authStatus.demo_mode}
 		<DemoBanner />
 	{/if}
-	<div class="flex flex-1 overflow-hidden">
-		<!-- Sidebar -->
-		<aside class="flex w-56 shrink-0 flex-col border-r border-sidebar-border bg-sidebar">
+
+	<!-- Mobile chrome (§226 phase 1): a compact header with the nav trigger. Hidden from md
+	     up, where the sidebar is always visible instead. -->
+	<header class="flex items-center gap-1 border-b border-sidebar-border bg-sidebar px-2 py-1.5 md:hidden">
+		<button
+			type="button"
+			bind:this={menuButtonEl}
+			class={buttonVariants({ variant: 'ghost', size: 'icon-sm' })}
+			aria-label="Open navigation"
+			aria-controls="app-sidebar"
+			aria-expanded={sidebarOpen}
+			onclick={() => (sidebarOpen = true)}
+		>
+			<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+				<line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
+			</svg>
+		</button>
+		<p class="min-w-0 truncate text-sm font-medium text-sidebar-foreground">{$currentUser?.name ?? 'Calnode'}</p>
+	</header>
+
+	<div class="flex min-h-0 flex-1 overflow-hidden">
+		<!-- Below md this is an off-canvas drawer; from md up it is the static sidebar.
+		     `invisible` (not just translated) keeps the closed drawer out of the tab order. -->
+		{#if sidebarOpen}
+			<button
+				type="button"
+				class="fixed inset-0 z-40 bg-black/40 md:hidden"
+				aria-label="Close navigation"
+				onclick={() => (sidebarOpen = false)}
+			></button>
+		{/if}
+		<aside
+			id="app-sidebar"
+			bind:this={sidebarEl}
+			class="fixed inset-y-0 left-0 z-50 flex w-72 max-w-[85vw] shrink-0 flex-col border-r border-sidebar-border bg-sidebar shadow-xl transition-transform duration-200 md:static md:z-auto md:w-56 md:max-w-none md:translate-x-0 md:shadow-none md:transition-none
+				{sidebarOpen ? 'translate-x-0' : '-translate-x-full invisible md:visible'}"
+		>
 			<!-- User section -->
-			<a href="{base}/settings/profile" class="flex items-center gap-3 border-b border-sidebar-border px-4 py-3 hover:bg-sidebar-accent/60 transition-colors">
+			<a href="{base}/settings/profile" onclick={() => (sidebarOpen = false)} class="flex items-center gap-3 border-b border-sidebar-border px-4 py-3 hover:bg-sidebar-accent/60 transition-colors">
 				<!-- Fixed-size clip container: the image fills it and is clipped by the
 				     parent's overflow-hidden (not its own border-radius). A rounded,
 				     object-cover image on its own composited layer gets mis-painted by
@@ -229,7 +309,7 @@
 			</a>
 
 			<!-- Nav -->
-			<nav class="flex-1 space-y-0.5 p-2">
+			<nav class="min-h-0 flex-1 space-y-0.5 overflow-y-auto p-2">
 				{#each visibleNavItems as item, i}
 					{#if item.section && item.section !== visibleNavItems[i - 1]?.section}
 						<p class="mb-1 px-2.5 text-xs font-semibold uppercase tracking-wide text-sidebar-foreground/40 first:mt-0 mt-4">
@@ -243,6 +323,7 @@
 						: $page.url.pathname.startsWith(item.href)}
 					<a
 						href={item.href}
+						onclick={() => (sidebarOpen = false)}
 						class="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium transition-colors
 							{active
 								? 'bg-sidebar-accent text-sidebar-accent-foreground'
@@ -257,7 +338,10 @@
 			<!-- Footer -->
 			<div class="border-t border-sidebar-border p-2">
 				<button
-					onclick={() => (reportOpen = true)}
+					onclick={() => {
+						sidebarOpen = false;
+						reportOpen = true;
+					}}
 					class="flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-sidebar-foreground/45 transition-colors hover:bg-sidebar-accent/60 hover:text-sidebar-foreground/70"
 				>
 					<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="shrink-0">
@@ -290,8 +374,8 @@
 		</aside>
 
 		<!-- Main content -->
-		<main class="flex-1 overflow-y-auto bg-background">
-			<div class="mx-auto max-w-4xl px-8 py-8">
+		<main class="min-w-0 flex-1 overflow-y-auto bg-background" inert={sidebarOpen}>
+			<div class="mx-auto max-w-4xl px-4 py-4 sm:px-6 sm:py-6 lg:px-8 lg:py-8">
 				{@render children()}
 			</div>
 		</main>
