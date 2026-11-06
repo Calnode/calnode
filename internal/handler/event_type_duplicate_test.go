@@ -598,7 +598,7 @@ func TestDuplicateEventType_handlesEveryEventTypeColumn(t *testing.T) {
 		"buffer_before_minutes": true, "buffer_after_minutes": true,
 		"min_notice_minutes": true, "max_future_days": true,
 		"max_active_bookings": true, "seat_limit": true,
-		"is_public": true, "show_taken_slots": true,
+		"is_public": true, "is_unlisted": true, "show_taken_slots": true,
 		"msg_confirmation": true, "msg_cancellation": true, "msg_reschedule": true,
 		"msg_reminder": true, "msg_greeting": true,
 		"subj_confirmation": true, "subj_cancellation": true, "subj_reschedule": true,

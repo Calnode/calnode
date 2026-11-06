@@ -545,6 +545,17 @@
 		}
 	},
 	"eventTypes": {
+		"visibility": {
+			"label": "Visibilité",
+			"public": "Public",
+			"unlisted": "Non répertorié",
+			"private": "Privé",
+			"hint": {
+				"public": "Visible dans les annuaires publics. Toute personne disposant du lien peut réserver.",
+				"unlisted": "Masqué dans les annuaires publics. Toute personne disposant du lien peut réserver, sans connexion.",
+				"private": "Masqué dans les annuaires publics et inaccessible via le lien de réservation public."
+			}
+		},
 		"headTitle": "Types de rendez-vous — Calnode",
 		"title": "Types de rendez-vous",
 		"subtitle": {
@@ -1597,9 +1608,7 @@
 			},
 			"status": {
 				"active": "Actif",
-				"inactive": "Inactif",
-				"listed": "Répertorié",
-				"unlisted": "Non répertorié (lien uniquement)"
+				"inactive": "Inactif"
 			},
 			"durationSuffix": " min"
 		},
@@ -1622,8 +1631,6 @@
 			"descriptionPlaceholder": "Facultatif — prend en charge le markdown **gras** et *italique*",
 			"status": "Statut",
 			"active": "Actif (accepte les réservations)",
-			"visibility": "Visibilité",
-			"public": "Public (visible sur la page de réservation)",
 			"showTaken": "Afficher les horaires réservés comme indisponibles",
 			"showTakenHint": "Les horaires réservés apparaissent barrés sur la page de réservation au lieu d'être masqués, afin que les visiteurs voient le calendrier se remplir. Seuls les horaires dans vos heures de travail sont affichés, jamais le reste de votre journée.",
 			"showTakenWarning": "Quiconque dispose du lien de réservation peut voir quels horaires sont pris.",

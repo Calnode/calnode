@@ -818,6 +818,26 @@ as the desired state:
 
 ## 14. Visibility model
 
+Event types have three visibility choices, independent of **Active**:
+
+- **Public** (the default): direct booking is accessible and the event type is listed
+  in the existing person/team directories.
+- **Unlisted**: direct booking works normally, but directories omit the event type.
+  Anyone with the URL can book without signing in; this is discoverability, not access control.
+- **Private**: direct booking is inaccessible and directories omit the event type.
+
+Inactive event types remain unbookable and absent from directories in every visibility
+state. Administration lists and manages all three states under the existing ownership rules.
+Create/PATCH accepts `visibility` (`public`, `unlisted`, `private`); admin responses include it.
+Migration 00072 adds `is_unlisted` (default 0), retaining `is_public` as the direct-booking
+gate so all existing Public/Private values and booking checks stay unchanged. Direct booking,
+slots, questions, embeds and the assistant use that gate; only the directory queries check
+`is_unlisted`. The authenticated MCP booking catalog retains its existing bookability filter.
+Legacy PATCH clients can still use `is_public` to choose Public/Private (clearing Unlisted).
+If both fields are sent they must agree on direct accessibility; `visibility` sets the state.
+Duplication keeps visibility and still starts inactive. Rolling migration 00072 back makes
+Unlisted types Private, avoiding unexpected directory publication by an older binary.
+
 - Members see **only bookings they host** — `ListByHost` matches `bookings.host_id`
   **OR** any `booking_hosts` seat, so Group/fixed non-primary attendees see meetings
   they're on (not just the ones they lead).

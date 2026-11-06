@@ -140,7 +140,7 @@ func (h *Handler) DuplicateEventType(w http.ResponseWriter, r *http.Request) {
 		  routing_mode, rr_strategy,
 		  buffer_before_minutes, buffer_after_minutes,
 		  min_notice_minutes, max_future_days, max_active_bookings, seat_limit,
-		  is_active, is_public, show_taken_slots, archived_at,
+		  is_active, is_public, is_unlisted, show_taken_slots, archived_at,
 		  msg_confirmation, msg_cancellation, msg_reschedule, msg_reminder, msg_greeting,
 		  subj_confirmation, subj_cancellation, subj_reschedule, subj_reminder,
 		  price_cents, currency, invite_delivery, display_order)
@@ -151,7 +151,7 @@ func (h *Handler) DuplicateEventType(w http.ResponseWriter, r *http.Request) {
 		  routing_mode, rr_strategy,
 		  buffer_before_minutes, buffer_after_minutes,
 		  min_notice_minutes, max_future_days, max_active_bookings, seat_limit,
-		  0, is_public, show_taken_slots, NULL,
+		  0, is_public, is_unlisted, show_taken_slots, NULL,
 		  msg_confirmation, msg_cancellation, msg_reschedule, msg_reminder, msg_greeting,
 		  subj_confirmation, subj_cancellation, subj_reschedule, subj_reminder,
 		  price_cents, currency, invite_delivery, display_order

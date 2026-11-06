@@ -545,6 +545,17 @@
 		}
 	},
 	"eventTypes": {
+		"visibility": {
+			"label": "Visibility",
+			"public": "Public",
+			"unlisted": "Unlisted",
+			"private": "Private",
+			"hint": {
+				"public": "Listed in public directories and bookable by anyone with the link.",
+				"unlisted": "Hidden from public directories. Anyone with the link can book; no sign-in is required.",
+				"private": "Hidden from public directories and unavailable through the public booking link."
+			}
+		},
 		"headTitle": "Event Types — Calnode",
 		"title": "Event Types",
 		"subtitle": {
@@ -1597,9 +1608,7 @@
 			},
 			"status": {
 				"active": "Active",
-				"inactive": "Inactive",
-				"listed": "Listed",
-				"unlisted": "Unlisted (link only)"
+				"inactive": "Inactive"
 			},
 			"durationSuffix": " min"
 		},
@@ -1622,8 +1631,6 @@
 			"descriptionPlaceholder": "Optional — supports **bold** and *italic* markdown",
 			"status": "Status",
 			"active": "Active (accepting bookings)",
-			"visibility": "Visibility",
-			"public": "Public (visible in booking page)",
 			"showTaken": "Show booked times as unavailable",
 			"showTakenHint": "Booked times appear struck through on the booking page instead of being hidden, so visitors can see the calendar filling up. Only times inside your working hours are shown, never the rest of your day.",
 			"showTakenWarning": "Anyone with the booking link can see which hours are taken.",
