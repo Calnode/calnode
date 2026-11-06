@@ -67,7 +67,12 @@ jobs:
       contents: read
       pull-requests: write
       statuses: write
-    uses: NethServer/ns8-github-actions/.github/workflows/test-on-digitalocean-infra.yml@v1
+    # Pinned to a commit on NethServer's `v1` branch (a branch, not a tag).
+    # It is the last commit that still has this workflow: the branch has since
+    # removed test-on-digitalocean-infra.yml in favour of test-module-qemu.yml,
+    # so `@v1` no longer resolves to it. Moving this pin to the branch head
+    # would break the workflow, so check that the file exists before bumping.
+    uses: NethServer/ns8-github-actions/.github/workflows/test-on-digitalocean-infra.yml@3dc3a490752846c4cb0ea86921f8ae3790d7d78c
     with:
       # packaging/ns8 holds both the module definition and tests/, so this is the
       # module root for the purposes of the runner.
