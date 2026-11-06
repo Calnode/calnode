@@ -9,6 +9,11 @@ on:
     branches: [main]
   pull_request:
 
+# Read-only token. The job checks out the repository and fetches the base
+# branch, and writes nothing back to GitHub.
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true

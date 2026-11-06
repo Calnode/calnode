@@ -60,9 +60,16 @@ on:
 #     types: [completed]
 # ...after setting the do_token secret.
 
+# Read-only by default; the job below grants what the reusable workflow uses.
+permissions:
+  contents: read
+
 jobs:
   test:
     name: Run tests
+    # The called workflow checks out code (contents: read), sets a commit
+    # status for the run (statuses: write) and comments UI screenshots on the
+    # pull request (pull-requests: write).
     permissions:
       contents: read
       pull-requests: write
