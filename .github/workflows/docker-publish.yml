@@ -292,7 +292,9 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: write     # create the GitHub Release
+      id-token: write     # Sigstore signing certificate for the attestation below
+      attestations: write # store that attestation with the repository
     steps:
       - uses: actions/checkout@v7
 
@@ -320,6 +322,37 @@ jobs:
           else
             echo "have_notes=false" >> "$GITHUB_OUTPUT"
           fi
+
+      # Signed SLSA build provenance for the release archives, so anyone can
+      # check that an archive was built by this workflow from its release tag
+      # (DEPLOY.md has the full command):
+      #   gh attestation verify calnode_<version>_linux_amd64.tar.gz --repo Calnode/calnode \
+      #     --signer-workflow Calnode/calnode/.github/workflows/docker-publish.yml \
+      #     --source-ref refs/tags/v<version>
+      # The attestation is stored with the repository, and the bundle is also
+      # attached to the release as calnode_<version>.sigstore.json, so it can
+      # be checked from the file (`--bundle`) as well as through the API. This
+      # runs on the dry run too, so the step is exercised before a real tag
+      # needs it; a dry run's attestation names its branch, not a release tag,
+      # so the --source-ref check above never accepts it.
+      - name: Attest build provenance for the archives
+        id: attest
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: dist/release/*.tar.gz
+
+      - name: Add the attestation bundle to the release files
+        env:
+          BUNDLE: ${{ steps.attest.outputs.bundle-path }}
+        run: |
+          set -euo pipefail
+          test -s "$BUNDLE"
+          # On a tag this is the version (v0.14.0 gives 0.14.0). A dry run from
+          # a branch such as ci/foo gets calnode_ci-foo.sigstore.json: a slash
+          # here would name a directory that does not exist.
+          name="${GITHUB_REF_NAME#v}"
+          cp "$BUNDLE" "dist/release/calnode_${name//\//-}.sigstore.json"
+          ls -l dist/release
 
       # Preinstalled gh CLI + GITHUB_TOKEN (no third-party action — keeps the
       # supply-chain surface small).
