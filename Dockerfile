@@ -1,11 +1,15 @@
 # syntax=docker/dockerfile:1
 
+# Base images are pinned by digest (the multi-arch index, so every platform
+# resolves). The tag stays beside it for readers and for Dependabot, whose
+# docker entry bumps the digest when the tag moves.
+
 # ── Frontend build stage ───────────────────────────────────────────────────────
 # Built for the BUILD platform, not the target: the output is static JS/CSS that is
 # identical for every architecture. Without this pin a multi-arch build (buildx:
 # linux/amd64,linux/arm64) runs pnpm install and pnpm build a second time under QEMU
 # for arm64, which is slow and occasionally hangs for hours.
-FROM --platform=$BUILDPLATFORM node:22-alpine AS frontend-builder
+FROM --platform=$BUILDPLATFORM node:22-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914 AS frontend-builder
 
 # Pin pnpm to the version in package.json's `packageManager` field (not @latest)
 # so CI builds are reproducible and match the committed lockfile.
@@ -24,7 +28,7 @@ RUN pnpm build
 # target arch; there is no reason for this stage to run under QEMU. Running it
 # emulated is what made a multi-arch build stall: the arm64 leg spent its time
 # interpreting the compiler instead of compiling.
-FROM --platform=$BUILDPLATFORM golang:1.27.3-alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:1.27.3-alpine@sha256:d200d2dd76b03a99b52651fd1325aff7dcd35422c35c01bac56571b0507f3deb AS builder
 
 RUN apk add --no-cache ca-certificates wget
 
@@ -71,7 +75,7 @@ COPY LICENSE /LICENSE
 # No --platform pin: under buildx this defaults to the TARGET platform, which is
 # what we want (an arm64 final image for arm64 consumers). Only the two builder
 # stages above are pinned to BUILDPLATFORM.
-FROM alpine:3.24
+FROM alpine:3.24@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a
 
 RUN apk add --no-cache ca-certificates tzdata
 
