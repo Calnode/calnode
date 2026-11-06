@@ -88,6 +88,13 @@ jobs:
         working-directory: frontend
         run: pnpm check
 
+      # Data-level catalogue tests cannot see the 1,500-odd call sites that use the keys,
+      # or how the strings are rendered. This checks both: every literal $t/tr/trp key
+      # exists in en.json, and no catalogue value is rendered with {@html}.
+      - name: i18n catalogue guard (call sites, no {@html})
+        working-directory: frontend
+        run: pnpm check:i18n
+
       - name: Build frontend (required by the Go embed)
         working-directory: frontend
         run: pnpm build

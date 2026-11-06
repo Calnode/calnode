@@ -81,8 +81,7 @@
 			"title": "Report an issue",
 			"description": "Please search the existing issues first — it may already be reported or being worked on. The tracker is for reproducible bugs in Calnode; for setup help or \"how do I…\" questions, please use Discussions instead.",
 			"searchIssues": "Search existing issues",
-			"reportBug": "Report a bug",
-			"descriptionHtml": "Please <strong>search the existing issues first</strong> — it may already be reported or being worked on. The tracker is for <strong>reproducible bugs</strong> in Calnode; for setup help or “how do I…” questions, please use Discussions instead."
+			"reportBug": "Report a bug"
 		},
 		"headTitleSuffix": "Calnode"
 	},

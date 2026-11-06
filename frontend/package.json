@@ -15,6 +15,7 @@
   "scripts": {
     "dev": "vite dev",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+    "check:i18n": "node scripts/check-i18n.mjs",
     "build": "vite build",
     "preview": "vite preview",
     "test:visual": "vitest run"
