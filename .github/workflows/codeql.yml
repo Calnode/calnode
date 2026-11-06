@@ -1,0 +1,79 @@
+name: CodeQL
+
+# Static analysis (SAST) of the Go backend and of the JavaScript/TypeScript:
+# the SvelteKit admin app, and the vanilla JS of the booking pages, the embed
+# widget and the video room. Findings land in the repository's Security tab
+# under Code scanning, and on pull requests as annotations.
+#
+# Runs on pushes to main, on pull requests, and weekly, so a newly added query
+# can flag existing code even when nothing has changed.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: '20 5 * * 1' # weekly, Monday
+  workflow_dispatch:
+
+# Read-only by default; the analyze job adds the one grant it needs.
+permissions:
+  contents: read
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read         # check out the code
+      security-events: write # upload the results to code scanning
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Go needs a build for CodeQL to trace. See the build step below.
+          - language: go
+            build-mode: manual
+          # JavaScript/TypeScript is extracted from source, with no build.
+          - language: javascript-typescript
+            build-mode: none
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Same toolchain as ci.yml, from go.mod. Set up before CodeQL so its
+      # tracer sees the Go that does the build.
+      - if: matrix.language == 'go'
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+          # The vendored LiveKit client SDK is third-party, minified code.
+          config: |
+            paths-ignore:
+              - internal/handler/assets/livekit-client.umd.min.js
+
+      # frontend/embed.go has `//go:embed all:build`, so `go build` fails while
+      # frontend/build is missing. The embedded files are data and CodeQL does
+      # not analyse them, so a placeholder stands in for `pnpm build` here and
+      # this job needs no Node toolchain. The real build is covered by ci.yml.
+      - name: Build (Go)
+        if: matrix.language == 'go'
+        run: |
+          mkdir -p frontend/build
+          touch frontend/build/.codeql-placeholder
+          go build ./...
+
+      - uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          category: /language:${{ matrix.language }}
