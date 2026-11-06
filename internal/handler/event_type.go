@@ -47,8 +47,10 @@ type eventTypeJSON struct {
 	// from the instance sender, so no host address reaches the booker) or "none" (no one:
 	// guestless host events and no .ics, for integrations that send their own invite).
 	// See migrations 00068 and 00071.
-	InviteDelivery  string  `json:"invite_delivery"`
+	InviteDelivery string `json:"invite_delivery"`
+	// IsPublic retains its existing meaning: direct booking is allowed.
 	IsPublic        bool    `json:"is_public"`
+	Visibility      string  `json:"visibility"`
 	CreatedAt       string  `json:"created_at"`
 	MsgConfirmation *string `json:"msg_confirmation"`
 	MsgCancellation *string `json:"msg_cancellation"`
@@ -106,7 +108,7 @@ func scanEventTypeRow(s rowScanner, trailing ...any) (*eventTypeJSON, error) {
 	var et eventTypeJSON
 	var desc, locVal, msgConf, msgCancel, msgResched, msgRemind, msgGreeting sql.NullString
 	var subjConf, subjCancel, subjResched, subjRemind sql.NullString
-	var isActive, isPublic, showTaken int
+	var isActive, isPublic, isUnlisted, showTaken int
 
 	dests := []any{
 		&et.ID, &et.Slug, &et.Name, &desc,
@@ -115,7 +117,7 @@ func scanEventTypeRow(s rowScanner, trailing ...any) (*eventTypeJSON, error) {
 		&et.RoutingMode, &et.RRStrategy,
 		&et.BufferBeforeMinutes, &et.BufferAfterMinutes,
 		&et.MinNoticeMinutes, &et.MaxFutureDays, &et.MaxActiveBookings,
-		&isActive, &isPublic, &showTaken, &et.CreatedAt,
+		&isActive, &isPublic, &isUnlisted, &showTaken, &et.CreatedAt,
 		&msgConf, &msgCancel, &msgResched, &msgRemind, &msgGreeting,
 		&subjConf, &subjCancel, &subjResched, &subjRemind,
 		&et.PriceCents, &et.Currency, &et.InviteDelivery, &et.DisplayOrder,
@@ -136,6 +138,13 @@ func scanEventTypeRow(s rowScanner, trailing ...any) (*eventTypeJSON, error) {
 	}
 	et.IsActive = isActive != 0
 	et.IsPublic = isPublic != 0
+	et.Visibility = "private"
+	if et.IsPublic {
+		et.Visibility = "public"
+		if isUnlisted != 0 {
+			et.Visibility = "unlisted"
+		}
+	}
 	et.ShowTakenSlots = showTaken != 0
 	if msgConf.Valid {
 		et.MsgConfirmation = &msgConf.String
@@ -174,7 +183,7 @@ const etColumns = `id, slug, name, description,
 	routing_mode, rr_strategy,
 	buffer_before_minutes, buffer_after_minutes,
 	min_notice_minutes, max_future_days, max_active_bookings,
-	is_active, is_public, show_taken_slots, created_at,
+	is_active, is_public, is_unlisted, show_taken_slots, created_at,
 	msg_confirmation, msg_cancellation, msg_reschedule, msg_reminder, msg_greeting,
 	subj_confirmation, subj_cancellation, subj_reschedule, subj_reminder,
 	price_cents, currency, invite_delivery, display_order`
@@ -231,6 +240,10 @@ func (et *eventTypeJSON) setOwnership(user AuthUser, ownerID string) {
 	et.CanEdit = canManageEventType(user, ownerID)
 }
 
+func validEventVisibility(visibility string) bool {
+	return visibility == "public" || visibility == "unlisted" || visibility == "private"
+}
+
 // boolArg binds a Go bool as SQLite's 0/1 for the `? = 1` switches above.
 func boolArg(b bool) int {
 	if b {
@@ -283,6 +296,7 @@ func (h *Handler) CreateEventType(w http.ResponseWriter, r *http.Request) {
 		AllowPhoneCall      *bool   `json:"allow_phone_call"`
 		ShowTakenSlots      *bool   `json:"show_taken_slots"`
 		InviteDelivery      *string `json:"invite_delivery"`
+		Visibility          *string `json:"visibility"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.writeError(w, http.StatusBadRequest, "invalid JSON")
@@ -298,6 +312,15 @@ func (h *Handler) CreateEventType(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.DurationMinutes <= 0 {
 		h.writeError(w, http.StatusBadRequest, "duration_minutes must be positive")
+		return
+	}
+
+	visibility := "public"
+	if req.Visibility != nil {
+		visibility = *req.Visibility
+	}
+	if !validEventVisibility(visibility) {
+		h.writeError(w, http.StatusBadRequest, "visibility must be 'public', 'unlisted' or 'private'")
 		return
 	}
 
@@ -386,12 +409,13 @@ func (h *Handler) CreateEventType(w http.ResponseWriter, r *http.Request) {
 		   slot_interval_minutes, location_type, location_value, allow_phone_call,
 		   routing_mode, buffer_before_minutes, buffer_after_minutes,
 		   min_notice_minutes, max_future_days, max_active_bookings, show_taken_slots, invite_delivery,
-		   msg_confirmation, msg_cancellation, msg_reschedule, msg_reminder, display_order)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		   msg_confirmation, msg_cancellation, msg_reschedule, msg_reminder, display_order, is_public, is_unlisted)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		id, user.ID, req.Slug, req.Name, req.Description,
 		req.DurationMinutes, slotInterval, locType, req.LocationValue, req.AllowPhoneCall != nil && *req.AllowPhoneCall,
 		routingMode, bufBefore, bufAfter, minNotice, maxFuture, maxActive, showTaken, inviteDelivery,
-		defaultMsgConfirmation, defaultMsgCancellation, defaultMsgReschedule, defaultMsgReminder, req.DisplayOrder)
+		defaultMsgConfirmation, defaultMsgCancellation, defaultMsgReschedule, defaultMsgReminder, req.DisplayOrder,
+		boolArg(visibility != "private"), boolArg(visibility == "unlisted"))
 	if err != nil {
 		if db.IsUniqueViolation(err) {
 			h.writeError(w, http.StatusConflict, "slug already in use")
@@ -521,6 +545,7 @@ func (h *Handler) PatchEventType(w http.ResponseWriter, r *http.Request) {
 		AllowPhoneCall      *bool   `json:"allow_phone_call"`
 		ShowTakenSlots      *bool   `json:"show_taken_slots"`
 		InviteDelivery      *string `json:"invite_delivery"`
+		Visibility          *string `json:"visibility"`
 		Archived            *bool   `json:"archived"`
 		MsgConfirmation     *string `json:"msg_confirmation"`
 		MsgCancellation     *string `json:"msg_cancellation"`
@@ -661,12 +686,22 @@ func (h *Handler) PatchEventType(w http.ResponseWriter, r *http.Request) {
 		}
 		set("is_active", v)
 	}
-	if req.IsPublic != nil {
-		v := 0
-		if *req.IsPublic {
-			v = 1
+	if req.Visibility != nil {
+		if !validEventVisibility(*req.Visibility) {
+			h.writeError(w, http.StatusBadRequest, "visibility must be 'public', 'unlisted' or 'private'")
+			return
 		}
-		set("is_public", v)
+		isPublic := *req.Visibility != "private"
+		if req.IsPublic != nil && *req.IsPublic != isPublic {
+			h.writeError(w, http.StatusBadRequest, "is_public conflicts with visibility")
+			return
+		}
+		set("is_public", boolArg(isPublic))
+		set("is_unlisted", boolArg(*req.Visibility == "unlisted"))
+	} else if req.IsPublic != nil {
+		// Legacy clients still choose between the original Public and Private states.
+		set("is_public", boolArg(*req.IsPublic))
+		set("is_unlisted", 0)
 	}
 	if req.AllowPhoneCall != nil {
 		set("allow_phone_call", *req.AllowPhoneCall)

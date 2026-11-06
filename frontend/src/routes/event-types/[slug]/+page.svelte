@@ -1,4 +1,5 @@
 <script lang="ts">
+	import VisibilitySelect from '$lib/components/event-types/VisibilitySelect.svelte';
 	import { onMount } from 'svelte';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
@@ -86,7 +87,7 @@
 	let form = $state({
 		display_order: 0,
 		name: '', slug: '', description: '', duration_minutes: 30, slot_interval_minutes: 30,
-		is_active: true, is_public: true, show_taken_slots: false,
+		is_active: true, visibility: 'public' as EventType['visibility'], show_taken_slots: false,
 		invite_delivery: 'calendar' as EventType['invite_delivery'],
 		location_type: 'link', location_value: '',
 		buffer_before_minutes: 0, buffer_after_minutes: 0,
@@ -333,7 +334,7 @@
 				duration_minutes: et.duration_minutes,
 				slot_interval_minutes: et.slot_interval_minutes,
 				is_active: et.is_active,
-				is_public: et.is_public,
+				visibility: et.visibility,
 				show_taken_slots: et.show_taken_slots ?? false,
 				invite_delivery: et.invite_delivery ?? 'calendar',
 				location_type: et.location_type,
@@ -394,7 +395,7 @@
 				duration_minutes: Number(form.duration_minutes),
 				slot_interval_minutes: Number(form.slot_interval_minutes),
 				is_active: form.is_active,
-				is_public: form.is_public,
+				visibility: form.visibility,
 				show_taken_slots: form.show_taken_slots,
 				invite_delivery: form.invite_delivery,
 				allow_phone_call: allowPhoneCall,
@@ -610,7 +611,7 @@
 		{/if}
 		<dt class="text-muted-foreground">{$t('eventTypeEditor.readOnly.labels.location')}</dt><dd>{LOCATION_TYPES.find((l) => l.value === et?.location_type)?.label ?? et.location_type}{#if et.location_value} · {et.location_value}{/if}</dd>
 		<dt class="text-muted-foreground">{$t('eventTypeEditor.readOnly.labels.routing')}</dt><dd class="capitalize">{et.routing_mode.replace('_', ' ')}</dd>
-		<dt class="text-muted-foreground">{$t('eventTypeEditor.readOnly.labels.status')}</dt><dd>{et.is_active ? $t('eventTypeEditor.readOnly.status.active') : $t('eventTypeEditor.readOnly.status.inactive')} · {et.is_public ? $t('eventTypeEditor.readOnly.status.listed') : $t('eventTypeEditor.readOnly.status.unlisted')}</dd>
+		<dt class="text-muted-foreground">{$t('eventTypeEditor.readOnly.labels.status')}</dt><dd>{et.is_active ? $t('eventTypeEditor.readOnly.status.active') : $t('eventTypeEditor.readOnly.status.inactive')} · {$t(`eventTypes.visibility.${et.visibility}`)}</dd>
 		<dt class="text-muted-foreground">{$t('eventTypeEditor.readOnly.labels.bookingPage')}</dt><dd><a href="/book/{et.slug}" target="_blank" rel="noopener" class="text-primary underline">/book/{et.slug}</a></dd>
 	</dl>
 </div>
@@ -679,13 +680,7 @@
 					<Label for="is-active" class="cursor-pointer font-normal">{$t('eventTypeEditor.general.active')}</Label>
 				</div>
 			</div>
-			<div class="space-y-1.5">
-				<p class="text-sm font-medium">{$t('eventTypeEditor.general.visibility')}</p>
-				<div class="flex items-center gap-2">
-					<Checkbox id="is-public" bind:checked={form.is_public} />
-					<Label for="is-public" class="cursor-pointer font-normal">{$t('eventTypeEditor.general.public')}</Label>
-				</div>
-			</div>
+			<VisibilitySelect bind:value={form.visibility} />
 		</div>
 
 		<div class="mt-4 space-y-1.5">

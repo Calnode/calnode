@@ -35,6 +35,10 @@ not have to invent terminology that is already decided.
 | round robin | round robin | - | tourniquet | French admin uses "tourniquet"; do not calque "tourner entre eux". |
 | reminder | reminder | rappel | rappel | |
 | directory | directory | - | annuaire | Only the person and team pages. |
+| event-type visibility | Visibility | - | Visibilité | Admin key: `eventTypes.visibility.label`. Independent of Active. |
+| public event type | Public | - | Public | Admin key: `eventTypes.visibility.public`. Listed and bookable when active. |
+| unlisted event type | Unlisted | - | Non répertorié | Admin key: `eventTypes.visibility.unlisted`. Hidden from directories; anyone with the link can book when active. |
+| private event type | Private | - | Privé | Admin key: `eventTypes.visibility.private`. No public booking access or directory listing. |
 
 ## Register
 

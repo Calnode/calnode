@@ -1,4 +1,5 @@
 <script lang="ts">
+	import VisibilitySelect from '$lib/components/event-types/VisibilitySelect.svelte';
 	import { onMount } from 'svelte';
 	import { api, type EventType } from '$lib/api';
 	import { currentUser } from '$lib/stores';
@@ -16,7 +17,7 @@
 	let loading = $state(true);
 	let showCreate = $state(false);
 
-	let form = $state({ slug: '', name: '', description: '', duration_minutes: 30 });
+	let form = $state({ slug: '', name: '', description: '', duration_minutes: 30, visibility: 'public' as EventType['visibility'] });
 	let creating = $state(false);
 	let deleteOpen = $state(false);
 	let deleteSlug = $state('');
@@ -74,9 +75,10 @@
 				slug: form.slug,
 				name: form.name,
 				description: form.description || undefined,
-				duration_minutes: Number(form.duration_minutes)
+				duration_minutes: Number(form.duration_minutes),
+				visibility: form.visibility
 			});
-			form = { slug: '', name: '', description: '', duration_minutes: 30 };
+			form = { slug: '', name: '', description: '', duration_minutes: 30, visibility: 'public' as EventType['visibility'] };
 			showCreate = false;
 			await load();
 		} catch (e: any) {
@@ -197,6 +199,7 @@
 				<Label for="et-desc">{$t('eventTypes.new.description')}</Label>
 				<Input id="et-desc" bind:value={form.description} placeholder={$t('eventTypes.new.descriptionPlaceholder')} />
 			</div>
+			<VisibilitySelect bind:value={form.visibility} />
 		</div>
 		<Button onclick={create} disabled={creating}>
 			{creating ? $t('eventTypes.new.creating') : $t('eventTypes.new.create')}
@@ -239,6 +242,7 @@
 						<td class="px-4 py-3">
 							<div class="flex items-center gap-2">
 								<span class="font-medium">{et.name}</span>
+								<Badge variant="outline">{$t(`eventTypes.visibility.${et.visibility}`)}</Badge>
 								{#if et.owned === false && scope === 'mine'}
 									<Badge variant="secondary" class="text-[10px]">{$t('eventTypes.badge.youHost')}</Badge>
 								{/if}

@@ -12,6 +12,15 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
 ## [Unreleased]
 
 ### Added
+- **Unlisted event types.** Create and edit forms now offer Public, Unlisted and Private
+  visibility, shown in the admin list and read-only details. Active Unlisted event types
+  accept normal bookings through their existing URLs without appearing in person or team
+  directories; anyone with the link can book without signing in. Active remains independent,
+  and existing Public/Private behavior is preserved. Migration 00072 adds a default-off
+  `is_unlisted` flag while retaining the `is_public` booking gate. Create/PATCH accepts
+  `visibility`; legacy `is_public` PATCH requests still select Public/Private. New event
+  types default to Public; duplicates retain visibility and start inactive. Migration rollback
+  makes Unlisted types Private so an older binary cannot unexpectedly list them.
 - **French localization of the admin UI.** The SvelteKit admin (`frontend/`) now has a
   lightweight i18n layer (`frontend/src/lib/i18n/`) with English as the source of truth
   and a complete French catalog written by a native speaker. The language is chosen in

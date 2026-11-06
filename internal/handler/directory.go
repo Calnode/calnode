@@ -141,7 +141,7 @@ func (h *Handler) PersonPage(w http.ResponseWriter, r *http.Request) {
 	brand := h.loadBranding(r.Context())
 	loc := h.resolveLocaleWithFallback(r, brand.FallbackLocale)
 	items, err := h.directoryItems(r.Context(), loc,
-		`et.is_public = 1 AND et.is_active = 1 AND (et.user_id = ? OR EXISTS
+		`et.is_public = 1 AND et.is_unlisted = 0 AND et.is_active = 1 AND (et.user_id = ? OR EXISTS
 		  (SELECT 1 FROM event_type_hosts hh WHERE hh.event_type_id = et.id AND hh.user_id = ?))`,
 		userID, userID)
 	if err != nil {
@@ -206,7 +206,7 @@ func (h *Handler) TeamPage(w http.ResponseWriter, r *http.Request) {
 	brand := h.loadBranding(r.Context())
 	loc := h.resolveLocaleWithFallback(r, brand.FallbackLocale)
 	items, err := h.directoryItems(r.Context(), loc,
-		`et.team_id = ? AND et.is_public = 1 AND et.is_active = 1`, teamID)
+		`et.team_id = ? AND et.is_public = 1 AND et.is_unlisted = 0 AND et.is_active = 1`, teamID)
 	if err != nil {
 		h.logger.ErrorContext(r.Context(), "team page: load event types", "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)

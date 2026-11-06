@@ -29,7 +29,7 @@ func (h *Handler) MCPServer() *mcp.Server {
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name:        "list_event_types",
-		Description: "List the bookable event types in this workspace (active and public). Returns each type's slug (use it as event_type_id in other tools), name, duration, and location.",
+		Description: "List the bookable event types in this workspace (active, with Public or Unlisted visibility). Returns each type's slug (use it as event_type_id in other tools), name, duration, and location.",
 	}, h.mcpListEventTypes)
 
 	mcp.AddTool(s, &mcp.Tool{

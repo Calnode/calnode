@@ -69,8 +69,9 @@ app you must `pnpm build` in `frontend/` **and** rebuild/restart the Go binary
 
 ## 4. Persistence (SQLite) — and the single-connection rule
 
-Public person (`/u/{handle}`) and team (`/team/{slug}`) directories list public,
-active event types by `display_order` ascending, then name and unique slug for
+Public person (`/u/{handle}`) and team (`/team/{slug}`) directories list active event
+types with **Public** visibility (excluding Unlisted and Private; see §14), by
+`display_order` ascending, then name and unique slug for
 deterministic ties. The integer defaults to 0, preserving alphabetical order for
 existing types. Owners can set it through event-type create/PATCH or the event
 editor's Directory order field; negative values put an event ahead of the default
@@ -79,7 +80,7 @@ It does not affect the admin event-type list or team member roster ordering.
 
 - `internal/db`: opens SQLite with **`SetMaxOpenConns(1)`** + `SetMaxIdleConns(1)`,
   **WAL** journal mode, `busy_timeout=5000`. One writer connection by design.
-- Migrations: **goose** SQL files in `internal/db/migrations/` (00001→00029). Run
+- Migrations: numbered **goose** SQL files embedded from `internal/db/migrations/`. Run
   automatically on startup. `ALTER TABLE ADD COLUMN` is reversible-by-convention
   only (SQLite can't easily drop columns).
 
@@ -106,7 +107,9 @@ partial unique index covers) — no TOCTOU between concurrent bookings.
   `invite_tokens` (hashed, single-use). **There is no `auth_providers` table** —
   OAuth identity is columns on `users` (migration 00012).
 - **Teams:** `teams`, `team_members` (with `routing_priority`).
-- **Event types:** `event_types` (+ `routing_mode` — CHECK has **four** values:
+- **Event types:** `event_types` (+ `is_active`, independent of visibility;
+  `is_public` gates direct booking and `is_unlisted` suppresses directory listing — §14;
+  `routing_mode` — CHECK has **four** values:
   fixed | round_robin | collective | priority; `rr_strategy`; `max_active_bookings`
   (per-invitee cap, enforced); `seat_limit` (group/class — column exists but is
   **not enforced**); `team_id` — vestigial for routing), `event_type_hosts`
@@ -817,6 +820,26 @@ as the desired state:
 ---
 
 ## 14. Visibility model
+
+Event types have three visibility choices, independent of **Active**:
+
+- **Public** (the default): direct booking is accessible and the event type is listed
+  in the existing person/team directories.
+- **Unlisted**: direct booking works normally, but directories omit the event type.
+  Anyone with the URL can book without signing in; this is discoverability, not access control.
+- **Private**: direct booking is inaccessible and directories omit the event type.
+
+Inactive event types remain unbookable and absent from directories in every visibility
+state. Administration lists and manages all three states under the existing ownership rules.
+Create/PATCH accepts `visibility` (`public`, `unlisted`, `private`); admin responses include it.
+Migration 00072 adds `is_unlisted` (default 0), retaining `is_public` as the direct-booking
+gate so all existing Public/Private values and booking checks stay unchanged. Direct booking,
+slots, questions, embeds and the assistant use that gate; only the directory queries check
+`is_unlisted`. The authenticated MCP booking catalog retains its existing bookability filter.
+Legacy PATCH clients can still use `is_public` to choose Public/Private (clearing Unlisted).
+If both fields are sent they must agree on direct accessibility; `visibility` sets the state.
+Duplication keeps visibility and still starts inactive. Rolling migration 00072 back makes
+Unlisted types Private, avoiding unexpected directory publication by an older binary.
 
 - Members see **only bookings they host** — `ListByHost` matches `bookings.host_id`
   **OR** any `booking_hosts` seat, so Group/fixed non-primary attendees see meetings

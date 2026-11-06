@@ -34,7 +34,9 @@ export type EventType = {
 	// duration on create; editable so a 45-minute meeting can still be offered on the hour.
 	slot_interval_minutes: number;
 	is_active: boolean;
+	/** Direct-booking gate, true for both Public and Unlisted. */
 	is_public: boolean;
+	visibility: 'public' | 'unlisted' | 'private';
 	/** Show already-booked times struck through on the booking page instead of hiding
 	 *  them. Off by default: the slots endpoint is public, so this makes the host's
 	 *  booked hours visible to anyone with the link. */

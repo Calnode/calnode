@@ -515,10 +515,10 @@ type bookableEventType struct {
 }
 
 // loadBookableEventType loads an event type by slug for the booking-creation/slot paths.
-// Returns errEventTypeNotFound if the slug doesn't exist, is inactive, or isn't public —
+// Returns errEventTypeNotFound if the slug doesn't exist, is inactive, or is Private —
 // bookability is gated identically to the direct booking page (book.go's PublicEventType/
-// BookPage), so an operator who unpublishes an event type stops it from being bookable
-// everywhere, not just hidden from its own page.
+// BookPage). Public and Unlisted types share this gate: hiding a type from directories
+// must not stop direct booking, while making it Private stops new bookings everywhere.
 func (h *Handler) loadBookableEventType(ctx context.Context, slug string) (*bookableEventType, error) {
 	var et bookableEventType
 	var isActive, isPublic, showTaken int
