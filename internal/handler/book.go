@@ -337,7 +337,7 @@ func assistantGreeting(msgGreeting sql.NullString, loc *i18n.Locale) string {
 // PublicEventType handles GET /v1/event-types/{slug}/public — the public display
 // info a booking client (e.g. the embeddable widget) needs before rendering the
 // form: name, duration, location label, host faces, and brand. No PII, no auth;
-// only active + public event types. Slots, intake questions, and booking creation
+// only active Public or Unlisted event types. Slots, intake questions, and booking creation
 // are separate public endpoints the client calls next.
 func (h *Handler) PublicEventType(w http.ResponseWriter, r *http.Request) {
 	slug := r.PathValue("slug")

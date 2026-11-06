@@ -183,6 +183,7 @@ domains, Resend email, Google & Microsoft OAuth, Litestream backups, troubleshoo
 
 **Shipped**
 - Event types with per-type duration, location, custom questions, custom email copy
+- Public, **Unlisted** (direct link only), or Private event-type visibility
 - DST-correct availability (working hours, day-of-week rules, date overrides)
 - Team routing: **fixed · round-robin · collective · priority**
 - **Google Calendar & Microsoft 365 / Outlook** — native free/busy conflict checks
@@ -217,6 +218,20 @@ domains, Resend email, Google & Microsoft OAuth, Litestream backups, troubleshoo
 
 **On the roadmap**
 - OpenAPI spec · `/metrics` · multi-domain (one instance, many hostnames)
+
+### Event-type visibility
+
+Choose **Visibility** when creating an event type, or open an existing event type's
+**General** tab, choose a visibility and save:
+
+- **Public** (the default): listed in person/team directories and bookable through its URL.
+- **Unlisted**: hidden from those directories, but bookable through the same `/book/{slug}` URL.
+- **Private**: hidden from directories and inaccessible through the public booking URL.
+
+Keep **Active** enabled to accept bookings. Inactive types are unbookable and absent from
+directories in every visibility state. Unlisted is discoverability, not access control:
+anyone with the link can book without signing in. For API compatibility and migration
+details, see [the visibility model](docs/ARCHITECTURE.md#14-visibility-model).
 
 ---
 
