@@ -81,8 +81,7 @@
 			"title": "Signaler un problème",
 			"description": "Veuillez d'abord rechercher parmi les tickets existants — le problème a peut-être déjà été signalé ou est en cours de traitement. Le suivi est réservé aux bugs reproductibles dans Calnode ; pour une aide à la configuration ou les questions du type « comment faire pour… », utilisez plutôt Discussions.",
 			"searchIssues": "Rechercher parmi les tickets existants",
-			"reportBug": "Signaler un bug",
-			"descriptionHtml": "Veuillez d'abord <strong>rechercher parmi les tickets existants</strong> — le problème a peut-être déjà été signalé ou est en cours de traitement. Le suivi est réservé aux <strong>bugs reproductibles</strong> dans Calnode ; pour une aide à la configuration ou les questions du type « comment faire pour… », utilisez plutôt Discussions."
+			"reportBug": "Signaler un bug"
 		},
 		"headTitleSuffix": "Calnode"
 	},

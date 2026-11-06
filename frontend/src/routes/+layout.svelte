@@ -387,7 +387,7 @@
 			<Dialog.Header>
 				<Dialog.Title>{$t('layout.reportDialog.title')}</Dialog.Title>
 				<Dialog.Description>
-					{@html $t('layout.reportDialog.descriptionHtml')}
+					{$t('layout.reportDialog.description')}
 				</Dialog.Description>
 			</Dialog.Header>
 			<Dialog.Footer class="gap-2 sm:justify-between">
