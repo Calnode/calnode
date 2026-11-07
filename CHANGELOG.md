@@ -11,14 +11,23 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-11-08
+
 ### Added
-- **French localization of the admin UI.** The SvelteKit admin (`frontend/`) now has a
+- **French for the admin interface.** The SvelteKit admin (`frontend/`) now has a
   lightweight i18n layer (`frontend/src/lib/i18n/`) with English as the source of truth
-  and a complete French catalog written by a native speaker. The language is chosen in
-  Settings → Profile (remembered in the browser) and falls back to the browser language,
-  then to English. Dates and times in the admin follow that locale. Public booking pages
-  and emails still use the existing 11-locale booker catalogs; the LiveKit room stays
-  English.
+  and a complete French catalogue. The language is chosen in Settings → Profile (remembered
+  in the browser) and falls back to the browser language, then to English. Dates and times in
+  the admin follow that locale. Public booking pages and emails still use the existing
+  booker catalogues; the LiveKit room stays English. The wording reads as native French
+  rather than machine translation, but it has not had a separate review, so treat it like
+  every other non-English locale here until a speaker confirms it.
+- **Polish.** The booker-facing surfaces now ship a `pl` locale: booking page, manage and
+  reschedule page, embed widget, the confirmation and reminder emails, and the calendar invite
+  text. It is selected from `Accept-Language`, a `?lang=pl` override, or the operator's
+  fallback setting, and the switcher lists it automatically. Like every non-English locale
+  here it is a contribution rather than a reviewed translation, so the wording is worth a
+  native check before it is advertised.
 
 ### Changed
 
@@ -36,6 +45,28 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
   since a key English does not have is always a typo, and the floor is pinned by
   `TestOfferedLocalesMeetCoverageFloor`. No shipped locale changes: all 11 are complete and
   remain offered.
+- **The admin is usable on a phone.** Below the `md` breakpoint the sidebar becomes a drawer
+  with a compact header. Focus moves into the drawer on open and back to the trigger on close,
+  Escape and any navigation close it, `<main>` is inert while it is open, and content scrolls
+  instead of clipping. On 0.13.0 the fixed 224px sidebar left almost nothing of a 390px
+  screen and the wrapper clipped rather than scrolled, so every admin page was unusable at
+  that width.
+- **Documentation for translators.** `docs/i18n-glossary.md` fixes one term per concept per
+  language, including the places where the booker and admin catalogues currently disagree.
+  `CONTRIBUTING.md` explains how to add or extend a language, what the coverage floor means,
+  and what passing tests does not prove. `make i18n-coverage` prints per-language coverage for
+  both catalogues, and CI prints the same table.
+
+### Fixed
+- **Catalogue text is no longer rendered as HTML.** The report-issue dialog used `{@html}` on
+  a catalogue string, which contradicted the catalogue's own rule and left a path where a
+  future locale file could put markup, and therefore script, into an operator's admin session.
+  It now renders the plain string. A new CI check fails if any call site renders catalogue text
+  as HTML, or passes a key that does not exist in the English catalogue, which previously
+  printed the dotted key on screen with every test still green.
+- **SvelteKit 2.70.4**, the 2.x security release.
+
+There are no database migrations in this release.
 
 ## [0.13.0] - 2026-11-03
 
