@@ -141,8 +141,8 @@ func (c *Client) CreateCheckoutSession(ctx context.Context, p CheckoutParams) (*
 		"customer": map[string]interface{}{
 			"email":   p.CustomerEmail,
 			"ip":      "176.46.60.160",
-			"country": "EE", // Default to Estonia, can be parameterized
-			"locale":  "en", // Default to English
+			"country": "EE",
+			"locale":  "en",
 		},
 		"app_info": map[string]interface{}{
 			"module":         "makecommerce",
@@ -154,7 +154,7 @@ func (c *Client) CreateCheckoutSession(ctx context.Context, p CheckoutParams) (*
 
 	// Add product name to reference
 	if p.ProductName != "" {
-		reqBody["transaction"].(map[string]interface{})["reference"] = fmt.Sprintf("%s - %s", p.ProductName, bookingID)
+		reqBody["transaction"].(map[string]interface{})["reference"] = p.ProductName
 	}
 
 	jsonBody, err := json.Marshal(reqBody)

@@ -73,6 +73,11 @@ func (h *Handler) StripeWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	bookingId := r.URL.Query().Get("booking_id")
+	if bookingId == "" {
+		h.writeError(w, http.StatusBadRequest, "param missing")
+	}
+
 	switch ev.Type {
 	case "checkout.session.completed":
 		sess, perr := ev.Session()
@@ -80,15 +85,11 @@ func (h *Handler) StripeWebhook(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 		if sess.PaymentStatus == "paid" {
-			if id := sess.Metadata["booking_id"]; id != "" {
-				h.confirmPaidBooking(context.Background(), id, sess.PaymentIntent, int(sess.AmountTotal), sess.Currency)
-			}
+			h.confirmPaidBooking(context.Background(), bookingId, sess.PaymentIntent, int(sess.AmountTotal), sess.Currency)
 		}
 	case "checkout.session.expired":
-		if sess, perr := ev.Session(); perr == nil {
-			if id := sess.Metadata["booking_id"]; id != "" {
-				h.releaseUnpaidHold(context.Background(), id)
-			}
+		if _, perr := ev.Session(); perr == nil {
+			h.releaseUnpaidHold(context.Background(), bookingId)
 		}
 	}
 	// Acknowledge so the payment provider stops retrying (we've durably acted, or chosen to ignore).
