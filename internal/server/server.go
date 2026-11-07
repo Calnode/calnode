@@ -58,6 +58,30 @@ func newMCPStreamableHandler(srv *mcp.Server) http.Handler {
 	)
 }
 
+// envEntry pairs one environment-sourced setting with the value the database
+// resolved for the same thing. Only the name is ever surfaced — never a value.
+type envEntry struct {
+	name string
+	env  string
+	db   string
+}
+
+// shadowedEnv returns the names of environment variables that are set but overridden
+// by stored settings, so boot can say so instead of ignoring them silently (#238).
+// A variable that agrees with the database, or is unset, is not reported: only a real
+// divergence is a surprise worth warning about. Fields whose environment default is
+// non-empty (EMAIL_SMTP_PORT, EMAIL_FROM_ADDRESS) are deliberately not compared here —
+// they would warn for values the operator never set.
+func shadowedEnv(entries []envEntry) []string {
+	var out []string
+	for _, e := range entries {
+		if e.env != "" && e.env != e.db {
+			out = append(out, e.name)
+		}
+	}
+	return out
+}
+
 func BuildHandler(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logger) (*handler.Handler, func()) {
 	h := handler.New(db, logger)
 	h.SetBaseURL(cfg.BaseURL)
@@ -123,6 +147,16 @@ func BuildHandler(ctx context.Context, cfg *config.Config, db *sql.DB, logger *s
 		live.Swap(m)
 		logger.Info("mailer: configured from database",
 			"transport", string(transport), "host", dbSMTP.Host, "port", dbSMTP.Port)
+		// Environment SMTP settings are ignored once the database holds a configuration
+		// (they seeded it on first boot). Say which ones, so a redeploy that changes an
+		// env var does not fail silently (#238).
+		if ignored := shadowedEnv([]envEntry{
+			{"EMAIL_SMTP_HOST", cfg.SMTPHost, dbSMTP.Host},
+			{"EMAIL_SMTP_USER", cfg.SMTPUser, dbSMTP.User},
+		}); len(ignored) > 0 {
+			logger.Warn("mailer: ignoring environment settings — the database configuration takes precedence; change it in Settings → Email, or clear the stored settings there to fall back to the environment",
+				"ignored", ignored)
+		}
 
 	case cfg.SMTPHost != "":
 		m, _ := h.BuildMailer(handler.SMTPConfig{
@@ -171,6 +205,13 @@ func BuildHandler(ctx context.Context, cfg *config.Config, db *sql.DB, logger *s
 		googleClientID = dbGoogle.ClientID
 		googleClientSecret = dbGoogle.ClientSecret
 		logger.Info("Google OAuth: credentials loaded from database")
+		// Same silent-override trap as SMTP above (#238).
+		if ignored := shadowedEnv([]envEntry{
+			{"GOOGLE_CLIENT_ID", cfg.GoogleClientID, dbGoogle.ClientID},
+		}); len(ignored) > 0 {
+			logger.Warn("Google OAuth: ignoring environment settings — the database configuration takes precedence; change it in Settings → Google, or clear the stored settings there to fall back to the environment",
+				"ignored", ignored)
+		}
 	}
 
 	// Build one calendar Service and register every configured provider into it.
