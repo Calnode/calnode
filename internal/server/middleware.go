@@ -50,10 +50,37 @@ func Logging(logger *slog.Logger, next http.Handler) http.Handler {
 			"path", redactTokenPaths(r.URL.Path),
 			"status", rw.status,
 			"duration_ms", time.Since(start).Milliseconds(),
-			"remote_addr", r.RemoteAddr,
+			"remote_addr", ClientIP(r),
 			"request_id", reqID,
 		)
 	})
+}
+
+// ClientIP returns the most likely client IP for the request.
+func ClientIP(r *http.Request) string {
+	// X-Real-Ip is set by Traefik from the PROXY protocol source address.
+	if ip := net.ParseIP(strings.TrimSpace(r.Header.Get("X-Real-Ip"))); ip != nil {
+		return ip.String()
+	}
+
+	// X-Forwarded-For: client, proxy1, proxy2, ... The leftmost entry
+	// is the original client. Parse it to reject garbage.
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		if i := strings.IndexByte(xff, ','); i >= 0 {
+			xff = xff[:i]
+		}
+		if ip := net.ParseIP(strings.TrimSpace(xff)); ip != nil {
+			return ip.String()
+		}
+	}
+
+	// Fallback: direct connection (or misconfigured proxy). This will be
+	// Traefik's IP when the proxy is in front but headers are missing.
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return strings.TrimSpace(r.RemoteAddr)
+	}
+	return host
 }
 
 // redactTokenPaths replaces bearer credentials carried in URL paths before they
