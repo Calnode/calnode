@@ -73,14 +73,15 @@ func (c *Client) WebhookConfigured() bool { return c.webhookSecret != "" }
 // CheckoutParams describes a one-off payment Checkout Session.
 // This is identical to stripe.CheckoutParams for compatibility.
 type CheckoutParams struct {
-	AmountCents   int64
-	Currency      string
-	ProductName   string            // shown on the payment page
-	CustomerEmail string            // prefills the email field
-	SuccessURL    string            // redirect URL after successful payment
-	CancelURL     string            // redirect URL if payment is cancelled
-	ExpiresAt     time.Time         // session expiry (MakeCommerce uses 30 min fixed)
-	Metadata      map[string]string // e.g. booking_id — echoed back on the webhook
+	AmountCents     int64
+	Currency        string
+	ProductName     string    // shown on the payment page
+	CustomerEmail   string    // prefills the email field
+	SuccessURL      string    // redirect URL after successful payment
+	CancelURL       string    // redirect URL if payment is cancelled
+	NotificationURL string    // redirect URL if payment is cancelled
+	ExpiresAt       time.Time // session expiry (MakeCommerce uses 30 min fixed)
+	Metadata        map[string]string
 }
 
 // CheckoutSession is the subset of a Stripe Checkout Session we use.
@@ -112,12 +113,6 @@ func (c *Client) CreateCheckoutSession(ctx context.Context, p CheckoutParams) (*
 	// Use 2 decimal places to ensure proper currency formatting
 	amountStr := strconv.FormatFloat(float64(p.AmountCents)/100.0, 'f', 2, 64)
 
-	// Extract booking_id from metadata for reference
-	bookingID := p.Metadata["booking_id"]
-	if bookingID == "" {
-		bookingID = fmt.Sprintf("booking_%s", p.ProductName)
-	}
-
 	// Build MakeCommerce transaction request
 	reqBody := map[string]interface{}{
 		"transaction": map[string]interface{}{
@@ -133,7 +128,7 @@ func (c *Client) CreateCheckoutSession(ctx context.Context, p CheckoutParams) (*
 					"method": "GET",
 				},
 				"notification_url": map[string]interface{}{
-					"url":    "https://romelia-hypermetaphoric-clarinda.ngrok-free.dev/v1/stripe/webhook",
+					"url":    p.NotificationURL,
 					"method": "POST",
 				},
 			},

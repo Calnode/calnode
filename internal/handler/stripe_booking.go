@@ -30,10 +30,11 @@ func (h *Handler) startBookingCheckout(ctx context.Context, sc *stripe.Client, b
 		CustomerEmail: email,
 		// MakeCommerce doesn't use template variables like Stripe's {CHECKOUT_SESSION_ID}
 		// Instead, we include the booking_id in the reference and handle it on success
-		SuccessURL: base + "/book/" + slug + "?paid=1&session_id=" + bookingID,
-		CancelURL:  base + "/book/" + slug,
-		ExpiresAt:  time.Now().Add(checkoutHoldWindow),
-		Metadata:   map[string]string{"booking_id": bookingID},
+		SuccessURL:      base + "/book/" + slug + "?paid=1&session_id=" + bookingID,
+		CancelURL:       base + "/book/" + slug,
+		NotificationURL: base + "/v1/stripe/webhook?booking_id=" + bookingID,
+		ExpiresAt:       time.Now().Add(checkoutHoldWindow),
+		Metadata:        map[string]string{"booking_id": bookingID},
 	})
 	if err != nil {
 		return "", err
