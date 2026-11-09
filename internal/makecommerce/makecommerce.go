@@ -136,10 +136,8 @@ func (c *Client) CreateCheckoutSession(ctx context.Context, p CheckoutParams) (*
 			},
 		},
 		"customer": map[string]interface{}{
-			"email":   p.CustomerEmail,
-			"ip":      p.Metadata["client_ip"],
-			"country": "EE",
-			"locale":  "en",
+			"email": p.CustomerEmail,
+			"ip":    p.Metadata["client_ip"],
 		},
 		"app_info": map[string]interface{}{
 			"module":         "makecommerce",
