@@ -35,6 +35,7 @@ type Client struct {
 	secretKey     string
 	publicKey     string
 	webhookSecret string // Same as secretKey for MakeCommerce MAC verification
+	shopId        string
 
 	// HTTP client
 	http *http.Client
@@ -52,6 +53,7 @@ func New(secretKey, publishableKey, webhookSecret string) (*Client, error) {
 		return nil, fmt.Errorf("makecommerce: secret key required")
 	}
 	return &Client{
+		shopId:        "f7741ab2-7445-45f9-9af4-0d0408ef1e4c", // TODO
 		secretKey:     secretKey,
 		publicKey:     publishableKey,
 		webhookSecret: webhookSecret,
@@ -165,7 +167,7 @@ func (c *Client) CreateCheckoutSession(ctx context.Context, p CheckoutParams) (*
 	}
 
 	// MakeCommerce uses Basic Auth with secret key
-	req.SetBasicAuth("f7741ab2-7445-45f9-9af4-0d0408ef1e4c", c.secretKey)
+	req.SetBasicAuth(c.shopId, c.secretKey)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 
@@ -242,7 +244,7 @@ func (c *Client) GetCheckoutSession(ctx context.Context, id string) (*CheckoutSe
 		return nil, fmt.Errorf("makecommerce: create request: %w", err)
 	}
 
-	req.SetBasicAuth("f7741ab2-7445-45f9-9af4-0d0408ef1e4c", c.secretKey)
+	req.SetBasicAuth(c.shopId, c.secretKey)
 	req.Header.Set("Accept", "application/json")
 
 	resp, err := c.http.Do(req)
