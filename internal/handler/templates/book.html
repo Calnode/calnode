@@ -358,7 +358,7 @@ body {
   // [] — otherwise a visitor who picked a language via the switcher, or whose
   // Accept-Language differs from navigator.language, would see translated chrome next
   // to month/day names in a different language. See internal-docs/i18n-plan.md.
-  function fmtTime(iso) { return BookingLogic.formatTime(iso, TZ, LOCALE); }
+  function fmtTime(iso) { return BookingLogic.formatTime(iso, TZ, "et-EE"); }
   function fmtDate(d) {
     return d.toLocaleDateString(LOCALE, { weekday: 'short', month: 'short', day: 'numeric' });
   }
