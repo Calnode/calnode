@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/mail"
 	"net/url"
@@ -26,6 +27,34 @@ import (
 	"github.com/calnode/calnode/internal/webhook"
 	"github.com/calnode/calnode/internal/zoom"
 )
+
+// clientIP extracts the most likely client IP from the request headers.
+// It tries X-Real-Ip first (set by Traefik from PROXY protocol), then X-Forwarded-For,
+// then falls back to the TCP remote address.
+func clientIP(r *http.Request) string {
+	// X-Real-Ip is set by Traefik from the PROXY protocol source address.
+	if ip := net.ParseIP(strings.TrimSpace(r.Header.Get("X-Real-Ip"))); ip != nil {
+		return ip.String()
+	}
+
+	// X-Forwarded-For: client, proxy1, proxy2, ... The leftmost entry
+	// is the original client.
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		if i := strings.IndexByte(xff, ','); i >= 0 {
+			xff = xff[:i]
+		}
+		if ip := net.ParseIP(strings.TrimSpace(xff)); ip != nil {
+			return ip.String()
+		}
+	}
+
+	// Fallback: direct connection (or misconfigured proxy).
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return strings.TrimSpace(r.RemoteAddr)
+	}
+	return host
+}
 
 // errInvalidBookerEmail is returned by normalizeBookerEmail for an address net/mail
 // cannot parse. Callers map it to their own protocol (400 on the REST path, a short
@@ -1002,7 +1031,10 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 			h.writeError(w, http.StatusServiceUnavailable, "payments are temporarily unavailable")
 			return
 		}
-		checkoutURL, err := h.startBookingCheckout(r.Context(), sc, b.ID, et.PriceCents, et.Currency, et.Name, req.EventTypeSlug, req.Email)
+
+		clientIp := clientIP(r)
+
+		checkoutURL, err := h.startBookingCheckout(r.Context(), sc, b.ID, et.PriceCents, et.Currency, et.Name, req.EventTypeSlug, req.Email, clientIp)
 		if err != nil {
 			h.logger.ErrorContext(r.Context(), "create booking: start checkout", "error", err, "booking_id", b.ID)
 			_ = h.bookingSvc.CancelByID(r.Context(), b.ID, "checkout failed")

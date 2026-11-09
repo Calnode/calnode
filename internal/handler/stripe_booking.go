@@ -16,7 +16,7 @@ const checkoutHoldWindow = 31 * time.Minute
 // startBookingCheckout creates a payment transaction for a held (pending) booking, marks
 // the booking pending_payment, and returns the hosted payment URL to redirect the booker to.
 // For MakeCommerce, the transaction ID is used instead of Stripe's session ID.
-func (h *Handler) startBookingCheckout(ctx context.Context, sc *stripe.Client, bookingID string, priceCents int, currency, productName, slug, email string) (string, error) {
+func (h *Handler) startBookingCheckout(ctx context.Context, sc *stripe.Client, bookingID string, priceCents int, currency, productName, slug, email string, clientIp string) (string, error) {
 	if currency == "" {
 		currency = "eur" // MakeCommerce primarily uses EUR
 	}
@@ -34,7 +34,10 @@ func (h *Handler) startBookingCheckout(ctx context.Context, sc *stripe.Client, b
 		CancelURL:       base + "/book/" + slug,
 		NotificationURL: base + "/v1/stripe/webhook?booking_id=" + bookingID,
 		ExpiresAt:       time.Now().Add(checkoutHoldWindow),
-		Metadata:        map[string]string{"booking_id": bookingID},
+		Metadata: map[string]string{
+			"booking_id": bookingID,
+			"client_ip":  clientIp,
+		},
 	})
 	if err != nil {
 		return "", err

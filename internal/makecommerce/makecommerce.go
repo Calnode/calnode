@@ -137,7 +137,7 @@ func (c *Client) CreateCheckoutSession(ctx context.Context, p CheckoutParams) (*
 		},
 		"customer": map[string]interface{}{
 			"email":   p.CustomerEmail,
-			"ip":      "176.46.60.160",
+			"ip":      p.Metadata["client_ip"],
 			"country": "EE",
 			"locale":  "en",
 		},
