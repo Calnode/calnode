@@ -145,7 +145,7 @@ func (c *Client) CreateCheckoutSession(ctx context.Context, p CheckoutParams) (*
 			"module":         "makecommerce",
 			"module_version": "0.0.1",
 			"platform":       "calnode",
-			"version":        "0.12.0",
+			"version":        "0.13.0",
 		},
 	}
 
