@@ -17,6 +17,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -24,8 +25,7 @@ import (
 
 // API base URLs
 const (
-	apiBaseDefault = "https://api.test.maksekeskus.ee"
-	apiVersion     = "v1"
+	apiVersion = "v1"
 )
 
 // Client talks to MakeCommerce using API keys.
@@ -48,15 +48,33 @@ type Client struct {
 // The secretKey is used for authentication and webhook verification.
 // The publishableKey is optional and used for client-side operations if needed.
 // The webhookSecret should be the same as secretKey for MakeCommerce.
-func New(secretKey, publishableKey, webhookSecret string) (*Client, error) {
+func New(_, _, _ string) (*Client, error) {
+
+	shopId := os.Getenv("MK_SHOPID")
+	if shopId == "" {
+		return nil, fmt.Errorf("makecommerce: shop ID required")
+	}
+
+	secretKey := os.Getenv("MK_SECRETKEY")
 	if secretKey == "" {
 		return nil, fmt.Errorf("makecommerce: secret key required")
 	}
+
+	publishableKey := os.Getenv("MK_PUBLISHABLEKEY")
+	if publishableKey == "" {
+		return nil, fmt.Errorf("makecommerce: publishable key required")
+	}
+
+	apiBaseDefault := os.Getenv("MK_APIURL")
+	if apiBaseDefault == "" {
+		return nil, fmt.Errorf("makecommerce: api url required")
+	}
+
 	return &Client{
-		shopId:        "f7741ab2-7445-45f9-9af4-0d0408ef1e4c", // TODO
+		shopId:        shopId,
 		secretKey:     secretKey,
 		publicKey:     publishableKey,
-		webhookSecret: webhookSecret,
+		webhookSecret: "webhookSecret",
 		http:          &http.Client{Timeout: 20 * time.Second},
 		apiBase:       apiBaseDefault,
 	}, nil
