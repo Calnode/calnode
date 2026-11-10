@@ -36,23 +36,25 @@ jobs:
       security-events: write
       id-token: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - uses: ossf/scorecard-action@2d1146689b8cda280b9bc96326124645441f03bc # v2.4.3 — floating v2 tag no longer resolves upstream; pinned to commit per Scorecard's own pinned-deps recommendation
+      # The floating v2 tag no longer resolves upstream, so this is pinned to a
+      # commit, per Scorecard's own pinned-deps recommendation.
+      - uses: ossf/scorecard-action@2d1146689b8cda280b9bc96326124645441f03bc # v2.4.4
         with:
           results_file: results.sarif
           results_format: sarif
           publish_results: true
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: scorecard-sarif
           path: results.sarif
           retention-days: 30
 
-      - uses: github/codeql-action/upload-sarif@v4
+      - uses: github/codeql-action/upload-sarif@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
         with:
           sarif_file: results.sarif
 
@@ -60,9 +62,9 @@ jobs:
     name: SBOM (syft)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: anchore/sbom-action@v0
+      - uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
         with:
           path: .
           format: cyclonedx-json
@@ -73,15 +75,15 @@ jobs:
     name: Deterministic claims guard
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0 # gitleaks needs full history
 
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
         with:
           version: 10.32.1
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           cache: pnpm
@@ -95,7 +97,7 @@ jobs:
         working-directory: frontend
         run: pnpm build
 
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
           cache: true
@@ -114,14 +116,20 @@ jobs:
             exit 1
           fi
 
+      # The three scanners below are installed at fixed versions rather than
+      # @latest, so a run is reproducible and a new release cannot change the
+      # gate unannounced. Dependabot does not see `go install` lines, so these
+      # are bumped by hand. govulncheck reads the live vulnerability database
+      # on every run whatever its own version, so pinning it does not freeze
+      # what it knows about.
       - name: govulncheck (clean-security-scan claim)
         run: |
-          go install golang.org/x/vuln/cmd/govulncheck@latest
+          go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
           govulncheck ./...
 
       - name: gosec (clean-security-scan claim — AUDIT.md says every finding is annotated)
         run: |
-          go install github.com/securego/gosec/v2/cmd/gosec@latest
+          go install github.com/securego/gosec/v2/cmd/gosec@v2.30.0
           gosec ./...
 
       - name: gitleaks (clean-security-scan claim)
@@ -131,5 +139,5 @@ jobs:
         # same way govulncheck/gosec above do, and the same invocation AUDIT.md
         # documents for a local run.
         run: |
-          go install github.com/zricethezav/gitleaks/v8@latest
+          go install github.com/zricethezav/gitleaks/v8@v8.30.1
           gitleaks detect --source . --no-banner -v
