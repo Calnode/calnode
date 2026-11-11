@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	"github.com/calnode/calnode/internal/db"
-	"github.com/calnode/calnode/internal/stripe"
+	"github.com/calnode/calnode/internal/payments"
 )
 
 func newRefundTestSetup(t *testing.T) (*Handler, *sql.DB, string) {
@@ -38,7 +38,7 @@ func newRefundTestSetup(t *testing.T) (*Handler, *sql.DB, string) {
 	if _, err := database.Exec(`INSERT INTO event_types (id,user_id,slug,name,duration_minutes) VALUES ('et-pay',?,'et-pay','E',30)`, ownerID); err != nil {
 		t.Fatalf("event type: %v", err)
 	}
-	if _, err := database.Exec(`INSERT INTO bookings (id,event_type_id,host_id,start_at,end_at,status,payment_status,stripe_payment_intent_id)
+	if _, err := database.Exec(`INSERT INTO bookings (id,event_type_id,host_id,start_at,end_at,status,payment_status,payment_ref)
 		VALUES ('b-pay','et-pay',?,'2099-01-01T10:00:00Z','2099-01-01T10:30:00Z','confirmed','paid','pi_test_123')`, ownerID); err != nil {
 		t.Fatalf("booking: %v", err)
 	}
@@ -49,12 +49,12 @@ func refundTestClient(t *testing.T, h *Handler, handler func(w http.ResponseWrit
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(handler))
 	t.Cleanup(srv.Close)
-	sc, err := stripe.New("sk_test_x", "", "")
+	sc, err := payments.NewStripe("sk_test_x", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	sc.SetAPIBase(srv.URL)
-	h.SetStripe(sc)
+	h.SetPaymentProvider(sc)
 }
 
 // TestRefundBookingPayment_claimsOnce proves two cancels for the same paid booking
