@@ -20,7 +20,7 @@ import (
 	"github.com/calnode/calnode/internal/mailer"
 	"github.com/calnode/calnode/internal/secret"
 
-	"github.com/calnode/calnode/internal/stripe"
+	"github.com/calnode/calnode/internal/payments"
 	"github.com/calnode/calnode/internal/webhook"
 	"github.com/calnode/calnode/internal/worker"
 	"github.com/calnode/calnode/internal/zoom"
@@ -301,10 +301,10 @@ func BuildHandler(ctx context.Context, cfg *config.Config, db *sql.DB, logger *s
 	if dbStripe, dbStripeErr := handler.LoadStripeSettingsFromDB(db, encKey); dbStripeErr != nil {
 		logger.Warn("stripe settings: could not load from database", "error", dbStripeErr)
 	} else if dbStripe != nil {
-		if sc, err := stripe.New(dbStripe.SecretKey, dbStripe.PublishableKey, dbStripe.WebhookSecret); err != nil {
+		if sc, err := payments.NewStripe(dbStripe.SecretKey, dbStripe.PublishableKey, dbStripe.WebhookSecret); err != nil {
 			logger.Error("stripe: init failed", "error", err)
 		} else {
-			h.SetStripe(sc)
+			h.SetPaymentProvider(sc)
 			logger.Info("Stripe payments configured", "webhook_secret_set", dbStripe.WebhookSecret != "")
 		}
 	} else {

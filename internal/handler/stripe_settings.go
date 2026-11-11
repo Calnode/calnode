@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/calnode/calnode/internal/payments"
 	"github.com/calnode/calnode/internal/secret"
-	"github.com/calnode/calnode/internal/stripe"
 )
 
 // StripeConfig holds decrypted Stripe settings loaded from the DB.
@@ -103,7 +103,7 @@ func (h *Handler) PatchStripeSettings(w http.ResponseWriter, r *http.Request) {
 			h.writeError(w, http.StatusInternalServerError, "internal error")
 			return
 		}
-		h.SetStripe(nil)
+		h.SetPaymentProvider(nil)
 		h.GetStripeSettings(w, r)
 		return
 	}
@@ -156,13 +156,13 @@ func (h *Handler) PatchStripeSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if cfg == nil {
-		h.SetStripe(nil)
-	} else if sc, err := stripe.New(cfg.SecretKey, cfg.PublishableKey, cfg.WebhookSecret); err != nil {
+		h.SetPaymentProvider(nil)
+	} else if sc, err := payments.NewStripe(cfg.SecretKey, cfg.PublishableKey, cfg.WebhookSecret); err != nil {
 		h.logger.ErrorContext(r.Context(), "stripe settings: init client", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "failed to initialize Stripe client")
 		return
 	} else {
-		h.SetStripe(sc)
+		h.SetPaymentProvider(sc)
 		h.logger.Info("stripe settings: credentials updated and client hot-reloaded")
 	}
 
