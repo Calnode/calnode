@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import {api, type AvailabilityRule, type AvailabilityOverride, type EventType} from '$lib/api';
-	import { prefs, fmtDate } from '$lib/prefs';
+	import { api, type AvailabilityRule, type AvailabilityOverride, type EventType } from '$lib/api';
+	import { prefs, fmtDate, weekDays } from '$lib/prefs';
+	import { t, tr, localeTag } from '$lib/i18n';
 	import { Button, buttonVariants } from '$lib/components/ui/button';
 	import { ConfirmDialog } from '$lib/components/ui/confirm-dialog';
 	import { Badge } from '$lib/components/ui/badge';
@@ -9,7 +10,7 @@
 	import * as Select from '$lib/components/ui/select';
 	import { DatePicker } from '$lib/components/ui/date-picker';
 
-	const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+	const DAY_NAMES = $derived(weekDays($t));
 
 	const TIME_SLOTS: string[] = [];
 	for (let h = 0; h < 24; h++) {
@@ -18,14 +19,17 @@
 		}
 	}
 
-	function fmtTime(t: string) {
-		const [hh, mm] = t.split(':').map(Number);
+	function fmtTime(slot: string) {
+		const [hh, mm] = slot.split(':').map(Number);
+		const date = new Date(2000, 0, 1, hh, mm);
 		if ($prefs.time_format === '24h') {
-			return mm === 0 ? `${String(hh).padStart(2,'0')}:00` : `${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}`;
+			return date.toLocaleTimeString(localeTag(), { hour: '2-digit', minute: '2-digit', hour12: false });
 		}
-		const ampm = hh < 12 ? 'am' : 'pm';
-		const h12 = hh % 12 || 12;
-		return mm === 0 ? `${h12}${ampm}` : `${h12}:${String(mm).padStart(2,'0')}${ampm}`;
+		return date.toLocaleTimeString(localeTag(), {
+			hour: 'numeric',
+			minute: mm === 0 ? undefined : '2-digit',
+			hour12: true
+		});
 	}
 
 	// ── Weekly rules — 7-day model ────────────────────────────────────────────────
@@ -88,7 +92,7 @@
 	async function updateBlock(block: DayBlock) {
 		if (!block.id) return;
 		if (block.start_time >= block.end_time) {
-			block.error = 'End must be after start';
+			block.error = tr('availability.blockError.endAfterStart');
 			return;
 		}
 		block.error = '';
@@ -125,11 +129,11 @@
 	let overridesError = $state('');
 
 	type OverrideReason = 'day_off' | 'out_of_office' | 'custom_hours';
-	const REASON_LABELS: Record<OverrideReason, string> = {
-		day_off: 'Day off',
-		out_of_office: 'Out of office',
-		custom_hours: 'Custom hours'
-	};
+	const REASON_LABELS = $derived<Record<OverrideReason, string>>({
+		day_off: $t('availability.override.type.dayOff'),
+		out_of_office: $t('availability.override.type.outOfOffice'),
+		custom_hours: $t('availability.override.type.customHours')
+	});
 
 	let ovForm = $state({ date: '', end_date: '', reason: 'day_off' as OverrideReason, start_time: '09:00', end_time: '17:00' });
 	let addingOv = $state(false);
@@ -210,18 +214,17 @@
 
 
 
-
 	async function addOverride() {
 		ovAddError = '';
-		if (!ovForm.date) { ovAddError = 'Date is required.'; return; }
+		if (!ovForm.date) { ovAddError = tr('availability.validation.dateRequired'); return; }
 		if (ovForm.reason === 'custom_hours' && (!ovForm.start_time || !ovForm.end_time)) {
-			ovAddError = 'Start and end time are required for custom hours.'; return;
+			ovAddError = tr('availability.validation.customHoursTimes'); return;
 		}
 		if (ovForm.reason === 'custom_hours' && ovForm.start_time >= ovForm.end_time) {
-			ovAddError = 'End time must be after start time.'; return;
+			ovAddError = tr('availability.validation.endAfterStart'); return;
 		}
 		if (ovForm.end_date && ovForm.end_date < ovForm.date) {
-			ovAddError = 'End date must be on or after the start date.'; return;
+			ovAddError = tr('availability.validation.endDate'); return;
 		}
 		addingOv = true;
 		try {
@@ -289,11 +292,11 @@
 		loadOverrides();
 	});
 
-	const REASON_OPTIONS: { value: OverrideReason; label: string }[] = [
-		{ value: 'day_off', label: 'Day off' },
-		{ value: 'out_of_office', label: 'Out of office' },
-		{ value: 'custom_hours', label: 'Custom hours' },
-	];
+	const REASON_OPTIONS = $derived<{ value: OverrideReason; label: string }[]>([
+		{ value: 'day_off', label: REASON_LABELS.day_off },
+		{ value: 'out_of_office', label: REASON_LABELS.out_of_office },
+		{ value: 'custom_hours', label: REASON_LABELS.custom_hours },
+	]);
 
 	// Time-of-day options for the start/end selects, formatted per the user's prefs.
 	let timeOptions = $derived(TIME_SLOTS.map((t) => ({ value: t, label: fmtTime(t) })));
@@ -308,37 +311,37 @@
 
 <ConfirmDialog
 	bind:open={deleteOvOpen}
-	title="Remove date override?"
-	description="Your default weekly hours will apply to this date again."
-	confirmText="Remove"
+	title={$t('availability.confirmRemoveOverride.title')}
+	description={$t('availability.confirmRemoveOverride.description')}
+	confirmText={$t('common.remove')}
 	destructive
 	onConfirm={doDeleteOverride}
 />
 
 <ConfirmDialog
 	bind:open={deleteGroupOpen}
-	title="Remove this out-of-office span?"
-	description="All days in this range will become bookable again."
-	confirmText="Remove"
+	title={$t('availability.confirmRemoveSpan.title')}
+	description={$t('availability.confirmRemoveSpan.description')}
+	confirmText={$t('common.remove')}
 	destructive
 	onConfirm={doDeleteGroup}
 />
 
-<svelte:head><title>Availability — Calnode</title></svelte:head>
+<svelte:head><title>{$t('availability.headTitle')}</title></svelte:head>
 
 <div class="mb-8">
-	<h1 class="text-2xl font-semibold tracking-tight">Availability</h1>
-	<p class="mt-1 text-sm text-muted-foreground">Set your weekly hours and block off specific dates.</p>
+	<h1 class="text-2xl font-semibold tracking-tight">{$t('availability.title')}</h1>
+	<p class="mt-1 text-sm text-muted-foreground">{$t('availability.subtitle')}</p>
 </div>
 
 <!-- Weekly Hours -->
 <div class="mb-8">
-	<h2 class="mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">Weekly Hours</h2>
+	<h2 class="mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">{$t('availability.weeklyHours')}</h2>
 
 	{#if rulesError}<p class="mb-3 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{rulesError}</p>{/if}
 
 	{#if rulesLoading}
-		<p class="py-4 text-sm text-muted-foreground">Loading…</p>
+		<p class="py-4 text-sm text-muted-foreground">{$t('common.loading')}</p>
 	{:else}
 		<div class="rounded-lg border bg-card">
 			<Tooltip.Provider>
@@ -357,12 +360,12 @@
 
 							{#if day.blocks.length === 0}
 								<div class="flex items-center gap-3 py-0.5">
-									<span class="text-sm text-muted-foreground/50">No hours set</span>
+									<span class="text-sm text-muted-foreground/50">{$t('availability.noHours')}</span>
 									<button
 										onclick={() => addBlock(day)}
 										class="text-sm text-primary hover:underline"
 									>
-										+ Add hours
+										{$t('availability.addHours')}
 									</button>
 								</div>
 							{:else}
@@ -376,7 +379,7 @@
 										>
 											<Select.Trigger class="w-fit">{timeLabel(block.start_time)}</Select.Trigger>
 											<Select.Content>
-												{#each timeOptions as t}<Select.Item value={t.value} label={t.label}>{t.label}</Select.Item>{/each}
+												{#each timeOptions as opt}<Select.Item value={opt.value} label={opt.label}>{opt.label}</Select.Item>{/each}
 											</Select.Content>
 										</Select.Root>
 										<span class="text-muted-foreground">–</span>
@@ -388,11 +391,11 @@
 										>
 											<Select.Trigger class="w-fit">{timeLabel(block.end_time)}</Select.Trigger>
 											<Select.Content>
-												{#each timeOptions as t}<Select.Item value={t.value} label={t.label}>{t.label}</Select.Item>{/each}
+												{#each timeOptions as opt}<Select.Item value={opt.value} label={opt.label}>{opt.label}</Select.Item>{/each}
 											</Select.Content>
 										</Select.Root>
 										{#if block.saving}
-											<span class="text-xs text-muted-foreground">saving…</span>
+											<span class="text-xs text-muted-foreground">{$t('availability.saving')}</span>
 										{:else if block.error}
 											<span class="text-xs text-destructive">{block.error}</span>
 										{/if}
@@ -424,7 +427,7 @@
 											>
 												<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
 											</Tooltip.Trigger>
-											<Tooltip.Content>Remove</Tooltip.Content>
+											<Tooltip.Content>{$t('availability.tooltip.remove')}</Tooltip.Content>
 										</Tooltip.Root>
 									</div>
 								{/each}
@@ -433,7 +436,7 @@
 									class="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
 								>
 									<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-									Add block
+									{$t('availability.addBlock')}
 								</button>
 							{/if}
 						</div>
@@ -446,24 +449,24 @@
 
 <!-- Date Overrides -->
 <div>
-	<h2 class="mb-1 text-sm font-semibold uppercase tracking-wider text-muted-foreground">Date Overrides</h2>
-	<p class="mb-3 text-sm text-muted-foreground">Block out a specific date, or set custom hours for it.</p>
+	<h2 class="mb-1 text-sm font-semibold uppercase tracking-wider text-muted-foreground">{$t('availability.overrides.title')}</h2>
+	<p class="mb-3 text-sm text-muted-foreground">{$t('availability.overrides.subtitle')}</p>
 
 	<div class="rounded-lg border bg-card">
 		{#if overridesError}<p class="px-4 pt-4 text-sm text-destructive">{overridesError}</p>{/if}
 		{#if overlappingOverrideDates.length > 0}
-			<p class="px-4 pt-4 text-xs text-amber-700">Overlapping blocks on {overlappingOverrideDates.map((d) => fmtDate(d, $prefs)).join(', ')} merge into one window — trim them if that wasn't the intent.</p>
+			<p class="px-4 pt-4 text-xs text-amber-700">{$t('availability.overrides.overlapWarning', { dates: overlappingOverrideDates.map((d) => fmtDate(d, $prefs)).join(', ') })}</p>
 		{/if}
 
 		{#if overridesLoading}
-			<p class="px-4 py-4 text-sm text-muted-foreground">Loading…</p>
+			<p class="px-4 py-4 text-sm text-muted-foreground">{$t('common.loading')}</p>
 		{:else if overrides.length > 0}
 			<table class="w-full text-sm">
 				<thead>
 					<tr class="border-b">
-						<th class="px-4 pb-3 pt-3 text-left text-xs font-medium text-muted-foreground">Date</th>
-						<th class="px-4 pb-3 pt-3 text-left text-xs font-medium text-muted-foreground">Type</th>
-						<th class="px-4 pb-3 pt-3 text-left text-xs font-medium text-muted-foreground">Duration</th>
+						<th class="px-4 pb-3 pt-3 text-left text-xs font-medium text-muted-foreground">{$t('availability.overrides.table.date')}</th>
+						<th class="px-4 pb-3 pt-3 text-left text-xs font-medium text-muted-foreground">{$t('availability.overrides.table.type')}</th>
+						<th class="px-4 pb-3 pt-3 text-left text-xs font-medium text-muted-foreground">{$t('availability.overrides.table.duration')}</th>
 						<th class="px-4 pb-3 pt-3"></th>
 					</tr>
 				</thead>
@@ -474,12 +477,12 @@
 								<td class="px-4 py-3 font-medium">{fmtDate(entry.start, $prefs)} – {fmtDate(entry.end, $prefs)}</td>
 								<td class="px-4 py-3">
 									{#if entry.reason === 'out_of_office'}
-										<Badge class="bg-amber-50 text-amber-700 border-amber-200">Out of office</Badge>
+										<Badge class="bg-amber-50 text-amber-700 border-amber-200">{REASON_LABELS.out_of_office}</Badge>
 									{:else}
-										<Badge variant="secondary">Day off</Badge>
+										<Badge variant="secondary">{REASON_LABELS.day_off}</Badge>
 									{/if}
 								</td>
-								<td class="px-4 py-3 text-muted-foreground">{entry.days} days</td>
+								<td class="px-4 py-3 text-muted-foreground">{$t('availability.overrides.duration.days', { count: entry.days })}</td>
 								<td class="px-4 py-3">
 									<Tooltip.Provider>
 										<div class="flex items-center justify-end gap-1">
@@ -487,7 +490,7 @@
 												<Tooltip.Trigger class={buttonVariants({ variant: 'ghost', size: 'icon' })} onclick={() => deleteGroup(entry.group_id)}>
 													<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
 												</Tooltip.Trigger>
-												<Tooltip.Content>Delete span</Tooltip.Content>
+												<Tooltip.Content>{$t('availability.tooltip.deleteSpan')}</Tooltip.Content>
 											</Tooltip.Root>
 										</div>
 									</Tooltip.Provider>
@@ -499,17 +502,17 @@
 								<td class="px-4 py-3 font-medium">{fmtDate(ov.date, $prefs)}</td>
 								<td class="px-4 py-3">
 									{#if ov.reason === 'custom_hours'}
-										<Badge class="bg-blue-50 text-blue-700 border-blue-200">Custom hours</Badge>
+										<Badge class="bg-blue-50 text-blue-700 border-blue-200">{REASON_LABELS.custom_hours}</Badge>
 									{:else if ov.reason === 'out_of_office'}
-										<Badge class="bg-amber-50 text-amber-700 border-amber-200">Out of office</Badge>
+										<Badge class="bg-amber-50 text-amber-700 border-amber-200">{REASON_LABELS.out_of_office}</Badge>
 									{:else}
-										<Badge variant="secondary">Day off</Badge>
+										<Badge variant="secondary">{REASON_LABELS.day_off}</Badge>
 									{/if}
 								</td>
 								<td class="px-4 py-3 text-muted-foreground">
 									{ov.is_available && ov.start_time && ov.end_time
 										? `${fmtTime(ov.start_time)} – ${fmtTime(ov.end_time)}`
-										: '1 day'}
+										: $t('availability.overrides.duration.oneDay')}
 								</td>
 								<td class="px-4 py-3">
 									<Tooltip.Provider>
@@ -521,7 +524,7 @@
 												>
 													<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
 												</Tooltip.Trigger>
-												<Tooltip.Content>Delete</Tooltip.Content>
+												<Tooltip.Content>{$t('availability.tooltip.delete')}</Tooltip.Content>
 											</Tooltip.Root>
 										</div>
 									</Tooltip.Provider>
@@ -532,7 +535,7 @@
 				</tbody>
 			</table>
 		{:else}
-			<p class="px-4 py-4 text-sm text-muted-foreground">No overrides yet.</p>
+			<p class="px-4 py-4 text-sm text-muted-foreground">{$t('availability.overrides.empty')}</p>
 		{/if}
 
 		<!-- Add override form -->
@@ -540,17 +543,17 @@
 			{#if ovAddError}<p class="mb-3 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{ovAddError}</p>{/if}
 			<div class="flex flex-wrap items-end gap-3">
 				<div class="space-y-1.5">
-					<label for="ov-date" class="text-sm font-medium">Date</label>
-					<DatePicker bind:value={ovForm.date} placeholder="Pick a date" />
+					<label for="ov-date" class="text-sm font-medium">{$t('availability.overrides.form.date')}</label>
+					<DatePicker bind:value={ovForm.date} placeholder={$t('common.datePicker.pickDate')} />
 				</div>
 				{#if ovForm.reason !== 'custom_hours'}
 					<div class="space-y-1.5">
-						<label for="ov-end-date" class="text-sm font-medium">To <span class="font-normal text-muted-foreground">(optional)</span></label>
-						<DatePicker bind:value={ovForm.end_date} placeholder="Same day" />
+						<label for="ov-end-date" class="text-sm font-medium">{$t('availability.overrides.form.toOptional')}</label>
+						<DatePicker bind:value={ovForm.end_date} placeholder={$t('common.datePicker.sameDay')} />
 					</div>
 				{/if}
 				<div class="space-y-1.5">
-					<label for="ov-type" class="text-sm font-medium">Type</label>
+					<label for="ov-type" class="text-sm font-medium">{$t('availability.overrides.form.type')}</label>
 					<Select.Root type="single" value={ovForm.reason} onValueChange={(v) => { if (v) ovForm.reason = v as OverrideReason; }}>
 						<Select.Trigger id="ov-type" class="w-fit">{REASON_LABELS[ovForm.reason]}</Select.Trigger>
 						<Select.Content>
@@ -562,29 +565,29 @@
 				</div>
 				{#if ovForm.reason === 'custom_hours'}
 					<div class="space-y-1.5">
-						<label for="ov-start" class="text-sm font-medium">From</label>
+						<label for="ov-start" class="text-sm font-medium">{$t('availability.overrides.form.from')}</label>
 						<Select.Root type="single" bind:value={ovForm.start_time}>
 							<Select.Trigger id="ov-start" class="w-fit">{timeLabel(ovForm.start_time)}</Select.Trigger>
 							<Select.Content>
-								{#each timeOptions as t}<Select.Item value={t.value} label={t.label}>{t.label}</Select.Item>{/each}
+								{#each timeOptions as opt}<Select.Item value={opt.value} label={opt.label}>{opt.label}</Select.Item>{/each}
 							</Select.Content>
 						</Select.Root>
 					</div>
 					<div class="space-y-1.5">
-						<label for="ov-end" class="text-sm font-medium">To</label>
+						<label for="ov-end" class="text-sm font-medium">{$t('availability.overrides.form.to')}</label>
 						<Select.Root type="single" bind:value={ovForm.end_time}>
 							<Select.Trigger id="ov-end" class="w-fit">{timeLabel(ovForm.end_time)}</Select.Trigger>
 							<Select.Content>
-								{#each timeOptions as t}<Select.Item value={t.value} label={t.label}>{t.label}</Select.Item>{/each}
+								{#each timeOptions as opt}<Select.Item value={opt.value} label={opt.label}>{opt.label}</Select.Item>{/each}
 							</Select.Content>
 						</Select.Root>
 					</div>
 				{/if}
 				<Button onclick={addOverride} disabled={addingOv}>
-					{addingOv ? 'Adding…' : 'Add override'}
+					{addingOv ? $t('availability.overrides.adding') : $t('availability.overrides.add')}
 				</Button>
 				{#if ovForm.reason === 'custom_hours'}
-					<p class="w-full text-xs text-muted-foreground">Split day? Add one block, then add another on the same date.</p>
+					<p class="w-full text-xs text-muted-foreground">{$t('availability.overrides.splitHint')}</p>
 				{/if}
 			</div>
 		</div>

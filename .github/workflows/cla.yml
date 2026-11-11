@@ -20,19 +20,30 @@ on:
   pull_request_target:
     types: [opened, closed, synchronize]
 
+# Nothing at the top level beyond reading the repository. The grants the
+# CLA job needs are on the job itself, below.
 permissions:
-  actions: write
-  contents: write
-  pull-requests: write
-  statuses: write
+  contents: read
 
 jobs:
   cla:
     runs-on: ubuntu-latest
+    # What contributor-assistant/github-action does with the workflow token:
+    #   contents: write       commits each new signature to
+    #                         signatures/version1/cla.json on main
+    #   pull-requests: write  posts and updates the CLA comment on the pull request
+    #   actions: write        re-runs the pull request's failed CLA run once
+    #                         everyone has signed
+    # It never calls the commit statuses API, so `statuses: write` is not
+    # granted; the CLA result is the job's own pass or fail.
+    permissions:
+      actions: write
+      contents: write
+      pull-requests: write
     steps:
       - name: CLA Assistant
         if: (github.event.comment.body == 'recheck' || github.event.comment.body == 'I have read the CLA Document and I hereby sign the CLA') || github.event_name == 'pull_request_target'
-        uses: contributor-assistant/github-action@v2.6.1
+        uses: contributor-assistant/github-action@ca4a40a7d1004f18d9960b404b97e5f30a505a08 # v2.6.1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PERSONAL_ACCESS_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }}

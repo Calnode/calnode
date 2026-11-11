@@ -1,5 +1,6 @@
 import { writable, get } from 'svelte/store';
 import type { User } from './api';
+import { localeTag, weekdayName } from './i18n';
 
 export interface UserPrefs {
 	timezone: string;
@@ -38,7 +39,7 @@ function fmtDatePart(date: Date, format: 'dmy' | 'mdy' | 'ymd'): string {
 export function fmtDateTime(iso: string, p: UserPrefs = get(prefs)): string {
 	const date = new Date(iso);
 	const datePart = fmtDatePart(date, p.date_format);
-	const timePart = date.toLocaleTimeString(undefined, {
+	const timePart = date.toLocaleTimeString(localeTag(), {
 		hour: '2-digit',
 		minute: '2-digit',
 		hour12: p.time_format === '12h'
@@ -55,14 +56,17 @@ export function fmtDate(ymd: string, p: UserPrefs = get(prefs)): string {
 }
 
 export function fmtTime(iso: string, p: UserPrefs = get(prefs)): string {
-	return new Date(iso).toLocaleTimeString(undefined, {
+	return new Date(iso).toLocaleTimeString(localeTag(), {
 		hour: '2-digit',
 		minute: '2-digit',
 		hour12: p.time_format === '12h'
 	});
 }
 
-export const WEEK_DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+/** Localized weekday names (Sunday = 0). Pass `$t` from a component so they update with the locale. */
+export function weekDays(translateFn?: (key: string) => string): string[] {
+	return [0, 1, 2, 3, 4, 5, 6].map((i) => weekdayName(i, translateFn));
+}
 
 export const TIMEZONES = [
 	'Pacific/Auckland',

@@ -4,6 +4,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
+	import { t, tr } from '$lib/i18n';
 
 	let token = $state('');
 	let password = $state('');
@@ -14,18 +15,18 @@
 	onMount(() => {
 		token = $page.url.searchParams.get('token') ?? '';
 		if (!token) {
-			error = 'This reset link is missing its token. Request a new one below.';
+			error = tr('auth.reset.missingToken');
 		}
 	});
 
 	async function submit(e: SubmitEvent) {
 		e.preventDefault();
 		if (password.length < 8) {
-			error = 'Password must be at least 8 characters.';
+			error = tr('auth.reset.tooShort');
 			return;
 		}
 		if (password !== confirm) {
-			error = 'The two passwords do not match.';
+			error = tr('auth.reset.mismatch');
 			return;
 		}
 		error = '';
@@ -41,36 +42,36 @@
 				window.location.href = '/admin';
 			} else {
 				const data = await res.json().catch(() => ({}));
-				error = data.error || 'Could not reset your password. The link may have expired.';
+				error = data.error || tr('auth.reset.failed');
 			}
 		} catch {
-			error = 'Could not reset your password. Please try again.';
+			error = tr('auth.reset.retry');
 		} finally {
 			submitting = false;
 		}
 	}
 </script>
 
-<svelte:head><title>Set a new password — Calnode</title></svelte:head>
+<svelte:head><title>{$t('auth.reset.headTitle')}</title></svelte:head>
 
 <div class="flex min-h-screen items-center justify-center bg-muted/30 p-6">
 	<div class="w-full max-w-sm">
 		<div class="mb-8 text-center">
-			<h1 class="text-xl font-semibold tracking-tight">Set a new password</h1>
-			<p class="mt-2 text-sm text-muted-foreground">Choose a password of at least 8 characters.</p>
+			<h1 class="text-xl font-semibold tracking-tight">{$t('auth.reset.title')}</h1>
+			<p class="mt-2 text-sm text-muted-foreground">{$t('auth.reset.subtitle')}</p>
 		</div>
 
 		{#if error && !token}
 			<div class="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</div>
 			<p class="mt-4 text-center text-sm">
 				<a href="/admin/forgot-password" class="text-muted-foreground hover:underline"
-					>Request a new reset link</a
+					>{$t('auth.reset.requestNew')}</a
 				>
 			</p>
 		{:else}
 			<form onsubmit={submit} class="space-y-4">
 				<div class="space-y-1.5">
-					<Label for="password">New password</Label>
+					<Label for="password">{$t('auth.reset.password')}</Label>
 					<Input
 						id="password"
 						type="password"
@@ -80,7 +81,7 @@
 					/>
 				</div>
 				<div class="space-y-1.5">
-					<Label for="confirm">Confirm new password</Label>
+					<Label for="confirm">{$t('auth.reset.confirm')}</Label>
 					<Input
 						id="confirm"
 						type="password"
@@ -93,7 +94,7 @@
 					<div class="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</div>
 				{/if}
 				<Button type="submit" class="h-11 w-full" disabled={submitting || !token}>
-					{submitting ? 'Setting…' : 'Set new password'}
+					{submitting ? $t('auth.reset.submitting') : $t('auth.reset.submit')}
 				</Button>
 			</form>
 		{/if}

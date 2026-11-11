@@ -10,6 +10,7 @@
 	import { Badge } from '$lib/components/ui/badge';
 	import * as Select from '$lib/components/ui/select';
 	import { toast } from 'svelte-sonner';
+	import { t, tr, localeTag } from '$lib/i18n';
 
 	let members: TeamMember[] = $state([]);
 	let invites: Invite[] = $state([]);
@@ -29,7 +30,7 @@
 	let confirmOpen = $state(false);
 	let confirmTitle = $state('');
 	let confirmDescription = $state('');
-	let confirmActionText = $state('Confirm');
+	let confirmActionText = $state('');
 	let pendingAction: (() => void) | null = null;
 
 	function openConfirm(opts: { title: string; description: string; confirmText: string; action: () => void }) {
@@ -82,7 +83,7 @@
 	async function sendInvite() {
 		inviteError = '';
 		inviteResult = null;
-		if (!inviteEmail.trim()) { inviteError = 'Email is required.'; return; }
+		if (!inviteEmail.trim()) { inviteError = tr('members.invite.validation.email'); return; }
 		inviting = true;
 		try {
 			const res = await api.post<{
@@ -101,9 +102,9 @@
 
 	function revokeInvite(id: string) {
 		openConfirm({
-			title: 'Revoke invite?',
-			description: 'The link will stop working immediately.',
-			confirmText: 'Revoke',
+			title: tr('members.confirm.revoke.title'),
+			description: tr('members.confirm.revoke.description'),
+			confirmText: tr('members.confirm.revoke.confirm'),
 			action: async () => {
 				try { await api.del(`/v1/invites/${id}`); await load(); }
 				catch (e: any) { error = e.message; }
@@ -120,18 +121,18 @@
 			);
 			await load();
 			if (res.email_sent) {
-				toast.success(`Invite re-sent to ${res.email}`);
+				toast.success(tr('members.toast.inviteResent', { email: res.email }));
 			} else {
 				// No SMTP configured — surface the fresh link so the admin can send it manually.
 				showInvite = true;
 				inviteResult = {
 					invite_url: res.invite_url, email: res.email, email_sent: false,
-					note: 'Email is not configured — copy this link and send it manually.'
+					note: tr('members.invite.noteManual')
 				};
-				toast.success(`New link generated for ${res.email}`);
+				toast.success(tr('members.toast.newLink', { email: res.email }));
 			}
 		} catch (e: any) {
-			toast.error(e.message || 'Could not resend invite');
+			toast.error(e.message || tr('members.toast.errors.resend'));
 		}
 	}
 
@@ -139,19 +140,19 @@
 	async function setRole(m: TeamMember, role: 'admin' | 'member') {
 		try {
 			await api.patch(`/v1/users/${m.id}/role`, { role });
-			toast.success(`${m.name} is now ${role === 'admin' ? 'an admin' : 'a member'}`);
+			toast.success(role === 'admin' ? tr('members.toast.roleAdmin', { name: m.name }) : tr('members.toast.roleMember', { name: m.name }));
 			await load();
-		} catch (e: any) { toast.error(e.message || 'Could not change role'); }
+		} catch (e: any) { toast.error(e.message || tr('members.toast.errors.role')); }
 	}
 
 	function confirmTransfer(m: TeamMember) {
 		openConfirm({
-			title: `Transfer ownership to ${m.name}?`,
-			description: 'You will become an admin and they become the workspace owner. Only the owner can do this.',
-			confirmText: 'Transfer ownership',
+			title: tr('members.confirm.transfer.title', { name: m.name }),
+			description: tr('members.confirm.transfer.description'),
+			confirmText: tr('members.confirm.transfer.confirm'),
 			action: async () => {
-				try { await api.post(`/v1/users/${m.id}/transfer-ownership`); toast.success(`${m.name} is now the owner`); await load(); }
-				catch (e: any) { toast.error(e.message || 'Could not transfer ownership'); }
+				try { await api.post(`/v1/users/${m.id}/transfer-ownership`); toast.success(tr('members.toast.newOwner', { name: m.name })); await load(); }
+				catch (e: any) { toast.error(e.message || tr('members.toast.errors.transfer')); }
 			}
 		});
 	}
@@ -169,9 +170,9 @@
 				resolveOpen = true;
 			} else {
 				openConfirm({
-					title: `Archive ${m.name}?`,
-					description: 'They lose access immediately and their event types are deactivated. Their record and history are kept — you can restore them later.',
-					confirmText: 'Archive',
+					title: tr('members.confirm.archive.title', { name: m.name }),
+					description: tr('members.confirm.archive.description'),
+					confirmText: tr('members.confirm.archive.confirm'),
 					action: () => doArchive(m.id)
 				});
 			}
@@ -179,13 +180,13 @@
 	}
 
 	async function doArchive(id: string) {
-		try { await api.post(`/v1/users/${id}/archive`); toast.success('Member archived'); await load(); }
-		catch (e: any) { toast.error(e.message || 'Could not archive member'); }
+		try { await api.post(`/v1/users/${id}/archive`); toast.success(tr('members.toast.archived')); await load(); }
+		catch (e: any) { toast.error(e.message || tr('members.toast.errors.archive')); }
 	}
 
 	async function restoreMember(m: TeamMember) {
-		try { await api.post(`/v1/users/${m.id}/restore`); toast.success(`${m.name} restored`); await load(); }
-		catch (e: any) { toast.error(e.message || 'Could not restore member'); }
+		try { await api.post(`/v1/users/${m.id}/restore`); toast.success(tr('members.toast.restored', { name: m.name })); await load(); }
+		catch (e: any) { toast.error(e.message || tr('members.toast.errors.restore')); }
 	}
 
 	// --- Resolve-meetings dialog actions ---
@@ -238,7 +239,7 @@
 
 	async function submitReset(userId: string) {
 		resetError = ''; resetOk = false;
-		if (!resetPassword) { resetError = 'Password is required.'; return; }
+		if (!resetPassword) { resetError = tr('members.validation.password'); return; }
 		resetting = true;
 		try {
 			await api.post(`/v1/users/${userId}/password`, { password: resetPassword });
@@ -254,26 +255,36 @@
 		setTimeout(() => { copied = false; }, 2000);
 	}
 
+	const roleLabels = $derived({
+		owner: $t('members.role.owner'),
+		admin: $t('members.role.admin'),
+		member: $t('members.role.member')
+	});
 	function roleLabel(m: TeamMember) {
-		return m.role === 'owner' ? 'Owner' : m.role === 'admin' ? 'Admin' : 'Member';
+		return roleLabels[m.role as keyof typeof roleLabels] ?? roleLabels.member;
 	}
 	function roleVariant(m: TeamMember): 'default' | 'secondary' | 'outline' {
 		return m.role === 'owner' ? 'default' : m.role === 'admin' ? 'secondary' : 'outline';
 	}
 
+	const authLabels = $derived({
+		google: $t('members.badge.google'),
+		microsoft: $t('members.badge.microsoft'),
+		email: $t('members.badge.email')
+	});
 	function authBadge(m: TeamMember): string[] {
 		const badges: string[] = [];
-		if (m.provider === 'google') badges.push('Google');
-		else if (m.provider === 'microsoft') badges.push('Microsoft');
-		if (m.email_login) badges.push('Email');
+		if (m.provider === 'google') badges.push(authLabels.google);
+		else if (m.provider === 'microsoft') badges.push(authLabels.microsoft);
+		if (m.email_login) badges.push(authLabels.email);
 		return badges;
 	}
 
 	function fmtDate(iso: string) {
-		return new Date(iso).toLocaleDateString(undefined, { dateStyle: 'medium' });
+		return new Date(iso).toLocaleDateString(localeTag(), { dateStyle: 'medium' });
 	}
 	function fmtDateTime(iso: string) {
-		return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+		return new Date(iso).toLocaleString(localeTag(), { dateStyle: 'medium', timeStyle: 'short' });
 	}
 	function daysLeft(iso: string) {
 		const diff = new Date(iso).getTime() - Date.now();
@@ -294,10 +305,9 @@
 <Dialog.Root bind:open={resolveOpen}>
 	<Dialog.Content class="max-w-2xl">
 		<Dialog.Header>
-			<Dialog.Title>Resolve {resolveMember?.name}'s upcoming meetings</Dialog.Title>
+			<Dialog.Title>{$t('members.resolve.title', { name: resolveMember?.name ?? '' })}</Dialog.Title>
 			<Dialog.Description>
-				{resolveBookings.length} upcoming meeting{resolveBookings.length === 1 ? '' : 's'} remaining.
-				Reassign each to another member or cancel it. When all are resolved, the member is archived automatically.
+				{$t('members.resolve.description', { count: resolveBookings.length })}
 			</Dialog.Description>
 		</Dialog.Header>
 
@@ -311,7 +321,7 @@
 					<div class="mb-2">
 						<p class="text-sm font-medium">{b.event_type_name}</p>
 						<p class="text-xs text-muted-foreground">
-							{fmtDateTime(b.start_at)} · {b.attendee_name || b.attendee_email || 'attendee'}
+							{fmtDateTime(b.start_at)} · {b.attendee_name || b.attendee_email || $t('common.attendeeFallback')}
 						</p>
 					</div>
 					<div class="flex flex-wrap items-center gap-2">
@@ -322,7 +332,7 @@
 							disabled={resolveBusy || reassignTargets.length === 0}
 						>
 							<Select.Trigger class="w-fit min-w-40">
-								{reassignTargets.find((t) => t.id === resolveChoice[b.id])?.name ?? 'Reassign to…'}
+								{reassignTargets.find((t) => t.id === resolveChoice[b.id])?.name ?? $t('members.resolve.reassignTo')}
 							</Select.Trigger>
 							<Select.Content>
 								{#each reassignTargets as t}
@@ -331,61 +341,61 @@
 							</Select.Content>
 						</Select.Root>
 						<Button size="sm" variant="outline" class="h-8" disabled={resolveBusy || !resolveChoice[b.id]} onclick={() => reassignOne(b.id)}>
-							Reassign
+							{$t('members.resolve.reassign')}
 						</Button>
 						<Button size="sm" variant="ghost" class="h-8 text-destructive hover:text-destructive" disabled={resolveBusy} onclick={() => cancelOne(b.id)}>
-							Cancel meeting
+							{$t('members.resolve.cancelMeeting')}
 						</Button>
 					</div>
 				</div>
 			{/each}
 			{#if reassignTargets.length === 0}
-				<p class="text-xs text-muted-foreground">No other active members to reassign to — meetings can only be cancelled.</p>
+				<p class="text-xs text-muted-foreground">{$t('members.resolve.noTargets')}</p>
 			{/if}
 		</div>
 
 		<Dialog.Footer class="mt-2 gap-2 sm:justify-between">
 			<Button variant="ghost" class="text-destructive hover:text-destructive" disabled={resolveBusy} onclick={cancelAllRemaining}>
-				Cancel all remaining
+				{$t('members.resolve.cancelAll')}
 			</Button>
 			<Button variant="outline" disabled={resolveBusy} onclick={() => { resolveOpen = false; resolveMember = null; }}>
-				Done later
+				{$t('members.resolve.doneLater')}
 			</Button>
 		</Dialog.Footer>
 	</Dialog.Content>
 </Dialog.Root>
 
-<svelte:head><title>Members — Calnode</title></svelte:head>
+<svelte:head><title>{$t('members.headTitle')}</title></svelte:head>
 
 <div class="mb-8 flex items-center justify-between">
 	<div>
-		<h1 class="text-2xl font-semibold tracking-tight">Members</h1>
-		<p class="mt-1 text-sm text-muted-foreground">Manage workspace members, roles, and invites.</p>
+		<h1 class="text-2xl font-semibold tracking-tight">{$t('members.title')}</h1>
+		<p class="mt-1 text-sm text-muted-foreground">{$t('members.subtitle')}</p>
 	</div>
 	{#if $currentUser?.is_admin}
 		<Button onclick={() => { showInvite = !showInvite; inviteError = ''; inviteResult = null; }}>
-			{showInvite ? 'Cancel' : 'Invite member'}
+			{showInvite ? $t('members.invite.toggleCancel') : $t('members.invite.toggleOpen')}
 		</Button>
 	{/if}
 </div>
 
 {#if showInvite}
 	<div class="mb-6 rounded-lg border bg-card p-6">
-		<h2 class="mb-4 text-sm font-semibold">Invite a member</h2>
+		<h2 class="mb-4 text-sm font-semibold">{$t('members.invite.formTitle')}</h2>
 
 		{#if inviteResult}
 			<div class="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-4">
-				<p class="mb-1 text-sm font-semibold text-amber-900">Invite link generated</p>
+				<p class="mb-1 text-sm font-semibold text-amber-900">{$t('members.invite.linkGenerated')}</p>
 				<p class="mb-3 text-xs text-amber-800">{inviteResult.note}</p>
 				{#if inviteResult.email_sent}
-					<p class="mb-3 text-xs text-amber-700">An invite email has been sent to {inviteResult.email}.</p>
+					<p class="mb-3 text-xs text-amber-700">{$t('members.invite.emailSent', { email: inviteResult.email })}</p>
 				{:else}
-					<p class="mb-3 text-xs text-amber-700">SMTP is not configured — share this link directly with {inviteResult.email}.</p>
+					<p class="mb-3 text-xs text-amber-700">{$t('members.invite.smtpManual', { email: inviteResult.email })}</p>
 				{/if}
 				<div class="flex items-center gap-2">
 					<code class="flex-1 overflow-x-auto rounded border bg-white px-2 py-1.5 text-xs font-mono text-gray-800">{inviteResult.invite_url}</code>
 					<Button variant="outline" size="sm" onclick={() => copyInviteUrl(inviteResult!.invite_url)}>
-						{copied ? 'Copied!' : 'Copy'}
+						{copied ? $t('common.copied') : $t('common.copy')}
 					</Button>
 				</div>
 			</div>
@@ -394,13 +404,13 @@
 		{#if inviteError}<p class="mb-3 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{inviteError}</p>{/if}
 
 		<div class="mb-4 space-y-1.5">
-			<Label for="inv-email">Email address</Label>
-			<Input id="inv-email" type="email" bind:value={inviteEmail} placeholder="teammate@example.com"
+			<Label for="inv-email">{$t('members.invite.emailLabel')}</Label>
+			<Input id="inv-email" type="email" bind:value={inviteEmail} placeholder={$t('members.invite.emailPlaceholder')}
 				onkeydown={(e) => e.key === 'Enter' && sendInvite()} />
 		</div>
 
 		<Button onclick={sendInvite} disabled={inviting}>
-			{inviting ? 'Generating…' : 'Generate invite link'}
+			{inviting ? $t('members.invite.generating') : $t('members.invite.generate')}
 		</Button>
 	</div>
 {/if}
@@ -408,32 +418,32 @@
 {#if error}<p class="mb-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>{/if}
 
 {#if loading}
-	<p class="py-8 text-sm text-muted-foreground">Loading…</p>
+	<p class="py-8 text-sm text-muted-foreground">{$t('common.loading')}</p>
 {:else}
 	<div class="mb-8">
 		<div class="mb-3 flex items-center justify-between">
-			<h2 class="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Members</h2>
+			<h2 class="text-sm font-semibold text-muted-foreground uppercase tracking-wide">{$t('members.section.members')}</h2>
 			{#if $currentUser?.is_admin}
 				<button class="text-xs text-muted-foreground hover:text-foreground" onclick={toggleArchived}>
-					{showArchived ? 'Hide archived' : 'Show archived'}
+					{showArchived ? $t('members.hideArchived') : $t('members.showArchived')}
 				</button>
 			{/if}
 		</div>
 		{#if members.length === 0}
 			<div class="rounded-lg border border-dashed bg-card p-8 text-center">
-				<p class="text-sm text-muted-foreground">No members yet.</p>
+				<p class="text-sm text-muted-foreground">{$t('members.empty')}</p>
 			</div>
 		{:else}
 			<div class="rounded-lg border bg-card overflow-hidden">
 				<table class="w-full text-sm">
 					<thead>
 						<tr class="border-b">
-							<th class="px-4 pb-3 pt-3 text-left text-xs font-medium text-muted-foreground">Name</th>
-							<th class="px-4 pb-3 pt-3 text-left text-xs font-medium text-muted-foreground">Role</th>
-							<th class="px-4 pb-3 pt-3 text-left text-xs font-medium text-muted-foreground">Teams</th>
-							<th class="px-4 pb-3 pt-3 text-left text-xs font-medium text-muted-foreground">Page</th>
-							<th class="px-4 pb-3 pt-3 text-left text-xs font-medium text-muted-foreground">Auth</th>
-							<th class="px-4 pb-3 pt-3 text-left text-xs font-medium text-muted-foreground">Joined</th>
+							<th class="px-4 pb-3 pt-3 text-left text-xs font-medium text-muted-foreground">{$t('members.table.name')}</th>
+							<th class="px-4 pb-3 pt-3 text-left text-xs font-medium text-muted-foreground">{$t('members.table.role')}</th>
+							<th class="px-4 pb-3 pt-3 text-left text-xs font-medium text-muted-foreground">{$t('members.table.teams')}</th>
+							<th class="px-4 pb-3 pt-3 text-left text-xs font-medium text-muted-foreground">{$t('members.table.page')}</th>
+							<th class="px-4 pb-3 pt-3 text-left text-xs font-medium text-muted-foreground">{$t('members.table.auth')}</th>
+							<th class="px-4 pb-3 pt-3 text-left text-xs font-medium text-muted-foreground">{$t('members.table.joined')}</th>
 							{#if $currentUser?.is_admin}<th class="px-4 pb-3 pt-3"></th>{/if}
 						</tr>
 					</thead>
@@ -452,7 +462,7 @@
 										<div class="min-w-0">
 											<p class="font-medium">
 												{m.name}
-												{#if m.id === $currentUser?.id}<span class="text-xs text-muted-foreground">(you)</span>{/if}
+												{#if m.id === $currentUser?.id}<span class="text-xs text-muted-foreground">{$t('members.you')}</span>{/if}
 											</p>
 											<p class="text-xs text-muted-foreground">{m.email}</p>
 										</div>
@@ -461,7 +471,7 @@
 								<td class="px-4 py-3">
 									<div class="flex items-center gap-1.5">
 										<Badge variant={roleVariant(m)}>{roleLabel(m)}</Badge>
-										{#if m.archived}<Badge variant="outline" class="text-xs text-muted-foreground">Archived</Badge>{/if}
+										{#if m.archived}<Badge variant="outline" class="text-xs text-muted-foreground">{$t('members.badge.archived')}</Badge>{/if}
 									</div>
 								</td>
 								<td class="px-4 py-3">
@@ -469,7 +479,7 @@
 										{#each m.teams as tm}
 											<Badge variant="secondary" class="text-xs">{tm.name}</Badge>
 										{:else}
-											<span class="text-xs text-muted-foreground/50">—</span>
+											<span class="text-xs text-muted-foreground/50">{$t('common.emDash')}</span>
 										{/each}
 									</div>
 								</td>
@@ -477,7 +487,7 @@
 									{#if m.handle}
 										<a href="/u/{m.handle}" target="_blank" rel="noopener noreferrer" class="text-xs text-primary hover:underline font-mono">/u/{m.handle}</a>
 									{:else}
-										<span class="text-xs text-muted-foreground/50" title="No public page — set a handle in their profile">—</span>
+										<span class="text-xs text-muted-foreground/50" title={$t('members.noPublicPageTitle')}>{$t('common.emDash')}</span>
 									{/if}
 								</td>
 								<td class="px-4 py-3">
@@ -493,41 +503,41 @@
 										<div class="flex flex-wrap items-center justify-end gap-1">
 											{#if m.archived}
 												{#if m.archived_by_name}
-													<span class="text-xs text-muted-foreground">Archived by {m.archived_by_name}</span>
+													<span class="text-xs text-muted-foreground">{$t('members.archivedBy', { name: m.archived_by_name })}</span>
 												{/if}
 												<!-- Owner can restore anyone; an admin only members they archived. -->
 												{#if $currentUser.is_owner || m.archived_by === $currentUser.id}
-													<Button size="sm" variant="outline" class="h-7 text-xs" onclick={() => restoreMember(m)}>Restore</Button>
+													<Button size="sm" variant="outline" class="h-7 text-xs" onclick={() => restoreMember(m)}>{$t('members.restore')}</Button>
 												{/if}
 											{:else if m.id !== $currentUser.id}
 												{#if resetTarget === m.id}
 													<div class="flex items-center gap-1.5">
 														{#if resetOk}
-															<span class="text-xs text-green-600 font-medium">Password updated</span>
+															<span class="text-xs text-green-600 font-medium">{$t('members.passwordUpdated')}</span>
 														{:else}
-															<Input type="password" bind:value={resetPassword} placeholder="New password"
+															<Input type="password" bind:value={resetPassword} placeholder={$t('members.passwordPlaceholder')}
 																class="h-7 w-36 text-xs" onkeydown={(e) => e.key === 'Enter' && submitReset(m.id)} />
 															{#if resetError}<span class="text-xs text-destructive">{resetError}</span>{/if}
 															<Button size="sm" variant="outline" class="h-7 text-xs" onclick={() => submitReset(m.id)} disabled={resetting}>
-																{resetting ? '…' : 'Set'}
+																{resetting ? '…' : $t('members.setPassword')}
 															</Button>
-															<Button size="sm" variant="ghost" class="h-7 text-xs" onclick={cancelReset}>Cancel</Button>
+															<Button size="sm" variant="ghost" class="h-7 text-xs" onclick={cancelReset}>{$t('common.cancel')}</Button>
 														{/if}
 													</div>
 												{:else}
 													{#if $currentUser.is_owner && !m.is_owner}
 														{#if m.is_admin}
-															<Button size="sm" variant="ghost" class="h-7 text-xs" onclick={() => setRole(m, 'member')}>Make member</Button>
+															<Button size="sm" variant="ghost" class="h-7 text-xs" onclick={() => setRole(m, 'member')}>{$t('members.makeMember')}</Button>
 														{:else}
-															<Button size="sm" variant="ghost" class="h-7 text-xs" onclick={() => setRole(m, 'admin')}>Make admin</Button>
+															<Button size="sm" variant="ghost" class="h-7 text-xs" onclick={() => setRole(m, 'admin')}>{$t('members.makeAdmin')}</Button>
 														{/if}
-														<Button size="sm" variant="ghost" class="h-7 text-xs" onclick={() => confirmTransfer(m)}>Transfer ownership</Button>
+														<Button size="sm" variant="ghost" class="h-7 text-xs" onclick={() => confirmTransfer(m)}>{$t('members.transferOwnership')}</Button>
 													{/if}
 													<!-- Reset password + Archive only on members this viewer may manage:
 													     never the owner; another admin only if the viewer is the owner. -->
 													{#if !m.is_owner && (!m.is_admin || $currentUser.is_owner)}
-														<Button size="sm" variant="ghost" class="h-7 text-xs" onclick={() => startReset(m.id)}>Reset password</Button>
-														<Button size="sm" variant="ghost" class="h-7 text-xs text-destructive hover:text-destructive" onclick={() => startArchive(m)}>Archive</Button>
+														<Button size="sm" variant="ghost" class="h-7 text-xs" onclick={() => startReset(m.id)}>{$t('members.resetPassword')}</Button>
+														<Button size="sm" variant="ghost" class="h-7 text-xs text-destructive hover:text-destructive" onclick={() => startArchive(m)}>{$t('members.archive')}</Button>
 													{/if}
 												{/if}
 											{/if}
@@ -545,13 +555,13 @@
 	<!-- Pending invites -->
 	{#if $currentUser?.is_admin && invites.length > 0}
 		<div>
-			<h2 class="mb-3 text-sm font-semibold text-muted-foreground uppercase tracking-wide">Pending Invites</h2>
+			<h2 class="mb-3 text-sm font-semibold text-muted-foreground uppercase tracking-wide">{$t('members.section.pendingInvites')}</h2>
 			<div class="rounded-lg border bg-card overflow-hidden">
 				<table class="w-full text-sm">
 					<thead>
 						<tr class="border-b">
-							<th class="px-4 pb-3 pt-3 text-left text-xs font-medium text-muted-foreground">Email</th>
-							<th class="px-4 pb-3 pt-3 text-left text-xs font-medium text-muted-foreground">Expires</th>
+							<th class="px-4 pb-3 pt-3 text-left text-xs font-medium text-muted-foreground">{$t('members.table.email')}</th>
+							<th class="px-4 pb-3 pt-3 text-left text-xs font-medium text-muted-foreground">{$t('members.table.expires')}</th>
 							<th class="px-4 pb-3 pt-3"></th>
 						</tr>
 					</thead>
@@ -561,14 +571,14 @@
 								<td class="px-4 py-3">{inv.email}</td>
 								<td class="px-4 py-3 text-muted-foreground">
 									{fmtDate(inv.expires_at)}
-									<span class="ml-1 text-xs">({daysLeft(inv.expires_at)}d left)</span>
+									<span class="ml-1 text-xs">{$t('members.expiresDaysLeft', { days: daysLeft(inv.expires_at) })}</span>
 								</td>
 								<td class="px-4 py-3 text-right whitespace-nowrap">
 									<Button size="sm" variant="ghost" class="h-7 text-xs" onclick={() => resendInvite(inv.id)}>
-										Resend
+										{$t('members.resend')}
 									</Button>
 									<Button size="sm" variant="ghost" class="h-7 text-xs text-destructive hover:text-destructive" onclick={() => revokeInvite(inv.id)}>
-										Revoke
+										{$t('members.revoke')}
 									</Button>
 								</td>
 							</tr>
@@ -577,7 +587,7 @@
 				</table>
 			</div>
 			<p class="mt-2 text-xs text-muted-foreground">
-				Resend mints a fresh link, resets the 7-day expiry, and re-emails it — the previous link stops working.
+				{$t('members.resendHint')}
 			</p>
 		</div>
 	{/if}

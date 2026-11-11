@@ -9,6 +9,11 @@ on:
     branches: [main]
   pull_request:
 
+# Read-only token. The job checks out the repository and fetches the base
+# branch, and writes nothing back to GitHub.
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -19,7 +24,7 @@ jobs:
     steps:
       # Full history, because the CLA check below needs the fork point of the pull
       # request, not just the tip of the base branch. The repository is small.
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
@@ -70,11 +75,11 @@ jobs:
           print(f"CLA ledger append-only: {len(base_by_id)} signed at base, {len(head_ids)} now, none removed")
           PY
 
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
         with:
           version: 10.32.1
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           cache: pnpm
@@ -87,6 +92,13 @@ jobs:
       - name: svelte-check (frontend types)
         working-directory: frontend
         run: pnpm check
+
+      # Data-level catalogue tests cannot see the 1,500-odd call sites that use the keys,
+      # or how the strings are rendered. This checks both: every literal $t/tr/trp key
+      # exists in en.json, and no catalogue value is rendered with {@html}.
+      - name: i18n catalogue guard (call sites, no {@html})
+        working-directory: frontend
+        run: pnpm check:i18n
 
       - name: Build frontend (required by the Go embed)
         working-directory: frontend
@@ -105,7 +117,7 @@ jobs:
         working-directory: frontend
         run: pnpm test:visual
 
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
           cache: true
@@ -128,3 +140,9 @@ jobs:
 
       - name: go test
         run: go test ./...
+
+      # Informational, never fails: the tests in internal/i18n are the gate. This prints
+      # per-language coverage so a translation PR shows up in the log with its progress,
+      # and so a language falling under the floor is visible before a user meets it.
+      - name: Translation coverage
+        run: go run ./cmd/i18n-coverage

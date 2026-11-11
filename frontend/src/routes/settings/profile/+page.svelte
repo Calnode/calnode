@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { api, type User } from '$lib/api';
-	import { prefs, prefsFromUser, TIMEZONES, WEEK_DAYS } from '$lib/prefs';
+	import { prefs, prefsFromUser, TIMEZONES, weekDays } from '$lib/prefs';
+	import { t, tr, locale, setLocale, ADMIN_LOCALES, isAdminLocale } from '$lib/i18n';
 	import { currentUser } from '$lib/stores';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
@@ -83,7 +84,7 @@
 		week_start = user.week_start ?? 1;
 		date_format = user.date_format ?? 'dmy';
 		avatarUrl = user.avatar_url ?? '';
-	}, 'Could not load profile'));
+	}, tr('settings.profile.error.load')));
 
 	// Mirrors the normalisation the API applies, so the link we show is the URL that
 	// actually resolves — a handle with spaces or punctuation is rewritten server-side.
@@ -114,8 +115,8 @@
 			cropOpen = false;
 			cropSrc = '';
 			if (fileInput) fileInput.value = '';
-			toast.success('Avatar updated');
-		}, 'Could not upload avatar');
+			toast.success(tr('settings.profile.toast.avatarUpdated'));
+		}, tr('settings.profile.error.upload'));
 	}
 
 	async function removeAvatar() {
@@ -125,7 +126,7 @@
 			const updated = await api.get<User>('/v1/users/me');
 			currentUser.set(updated);
 		} catch (e: any) {
-			toast.error(e.message || 'Could not remove avatar');
+			toast.error(e.message || tr('settings.profile.error.removeAvatar'));
 		}
 	}
 
@@ -137,29 +138,30 @@
 			currentUser.set(updated);
 			prefs.set(prefsFromUser(updated));
 			user = updated;
-			toast.success('Settings saved');
-		}, 'Could not save settings');
+			toast.success(tr('settings.profile.toast.settingsSaved'));
+		}, tr('settings.profile.error.save'));
 	}
 
 	function initials(name: string) {
 		return name.split(' ').map((p) => p[0]).join('').toUpperCase().slice(0, 2);
 	}
 
-	const DATE_FORMATS = [
-		{ value: 'dmy', label: 'DD/MM/YYYY' },
-		{ value: 'mdy', label: 'MM/DD/YYYY' },
-		{ value: 'ymd', label: 'YYYY-MM-DD' },
-	];
+	const DATE_FORMATS = $derived([
+		{ value: 'dmy', label: $t('settings.profile.dateFormat.dmy') },
+		{ value: 'mdy', label: $t('settings.profile.dateFormat.mdy') },
+		{ value: 'ymd', label: $t('settings.profile.dateFormat.ymd') },
+	]);
+	const weekdayLabels = $derived(weekDays($t));
 </script>
 
 <svelte:window onkeydown={saveOnCmdS(save, () => !savingFlag.active)} />
 
 {#if loadingFlag.active}
-	<p class="py-8 text-sm text-muted-foreground">Loading…</p>
+	<p class="py-8 text-sm text-muted-foreground">{$t('common.loading')}</p>
 {:else}
 	<form onsubmit={(e) => { e.preventDefault(); save(); }} class="max-w-lg space-y-4">
 		<div class="rounded-lg border bg-card p-6">
-			<h2 class="mb-4 text-sm font-semibold">Profile</h2>
+			<h2 class="mb-4 text-sm font-semibold">{$t('settings.profile.section.profile')}</h2>
 			<div class="space-y-4">
 				<div class="flex items-center gap-4">
 					<input bind:this={fileInput} type="file" accept="image/jpeg,image/png,image/gif,image/webp" class="hidden" onchange={onFileChange} />
@@ -167,7 +169,7 @@
 						type="button"
 						onclick={() => fileInput?.click()}
 						disabled={uploadingFlag.active}
-						title={avatarUrl ? 'Replace photo' : 'Upload photo'}
+						title={avatarUrl ? $t('settings.profile.photo.replaceTitle') : $t('settings.profile.photo.uploadTitle')}
 						class="group relative cursor-pointer rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-wait"
 					>
 						<Avatar.Root class="size-16 text-xl font-semibold">
@@ -184,33 +186,33 @@
 					     no stacking breakpoint), so narrow viewports are already degraded for reasons
 					     this does not fix. -->
 					<div class="flex min-w-0 flex-1 flex-col gap-1.5">
-						<p class="text-sm font-medium">Profile photo</p>
-						<p class="text-xs text-muted-foreground">Click your avatar to {avatarUrl ? 'replace' : 'upload'} · shown at 400×400, so square works best · JPEG, PNG, GIF or WebP, max 5 MB · saved as JPEG</p>
+						<p class="text-sm font-medium">{$t('settings.profile.photo.title')}</p>
+						<p class="text-xs text-muted-foreground">{$t('settings.profile.photo.hint', { action: avatarUrl ? $t('settings.profile.photo.actionReplace') : $t('settings.profile.photo.actionUpload') })}</p>
 						{#if avatarUrl}
-							<Button type="button" variant="ghost" size="sm" onclick={removeAvatar} class="w-fit text-destructive hover:text-destructive">Remove photo</Button>
+							<Button type="button" variant="ghost" size="sm" onclick={removeAvatar} class="w-fit text-destructive hover:text-destructive">{$t('settings.profile.photo.remove')}</Button>
 						{/if}
 					</div>
 				</div>
 
 				<div class="space-y-2">
-					<Label for="booking-accent">Booking accent color</Label>
+					<Label for="booking-accent">{$t('settings.profile.accent.label')}</Label>
 					<div class="flex items-center gap-3">
 						<input id="booking-accent" type="color" bind:value={booking_accent} class="h-10 w-14 cursor-pointer rounded border p-1" />
 						<span class="text-sm text-muted-foreground">{booking_accent}</span>
 					</div>
-					<p class="text-xs text-muted-foreground">Used on your booking pages.</p>
+					<p class="text-xs text-muted-foreground">{$t('settings.profile.accent.hint')}</p>
 				</div>
 				<div class="space-y-1.5">
-					<Label for="name">Name</Label>
-					<Input id="name" type="text" bind:value={name} placeholder="Your name" />
-					<p class="text-xs text-muted-foreground">Your personal name, shown as the meeting host. Your business brand (logo, business name) is set separately in Settings → Branding.</p>
+					<Label for="name">{$t('settings.profile.name.label')}</Label>
+					<Input id="name" type="text" bind:value={name} placeholder={$t('settings.profile.name.placeholder')} />
+					<p class="text-xs text-muted-foreground">{$t('settings.profile.name.hint')}</p>
 				</div>
 				<div class="space-y-1.5">
-					<Label for="handle">Booking handle</Label>
-					<Input id="handle" type="text" bind:value={handle} placeholder="e.g. wynne" />
+					<Label for="handle">{$t('settings.profile.handle.label')}</Label>
+					<Input id="handle" type="text" bind:value={handle} placeholder={$t('settings.profile.handle.placeholder')} />
 					{#if handleSlug}
 						<p class="text-xs text-muted-foreground">
-							Your public booking page:
+							{$t('settings.profile.handle.publicPage')}
 							<a
 								href={`/u/${handleSlug}`}
 								target="_blank"
@@ -221,34 +223,49 @@
 							</a>
 						</p>
 					{:else}
-						<p class="text-xs text-muted-foreground">Leave blank for no page.</p>
+						<p class="text-xs text-muted-foreground">{$t('settings.profile.handle.noPage')}</p>
 					{/if}
 				</div>
 				<div class="space-y-1.5">
-					<Label class="text-muted-foreground">Email</Label>
+					<Label class="text-muted-foreground">{$t('settings.profile.email.label')}</Label>
 					<Input type="email" disabled value={user?.email ?? ''} class="opacity-60" />
 				</div>
 			</div>
 		</div>
 
 		<div class="rounded-lg border bg-card p-6">
-			<h2 class="mb-4 text-sm font-semibold">Preferences</h2>
+			<h2 class="mb-4 text-sm font-semibold">{$t('settings.profile.section.preferences')}</h2>
 			<div class="space-y-4">
 				<div class="space-y-1.5">
-					<Label for="timezone">Timezone</Label>
-					<Combobox
-						items={TIMEZONES.map((tz) => ({ value: tz, label: tz }))}
-						bind:value={timezone}
-						placeholder="Select timezone…"
-						searchPlaceholder="Search timezones…"
-					/>
-					<p class="text-xs text-muted-foreground">Used when computing available slots for your booking pages.</p>
+					<Label for="ui-locale">{$t('settings.profile.language.label')}</Label>
+					<Select.Root type="single" value={$locale} onValueChange={(v) => { if (isAdminLocale(v)) setLocale(v); }}>
+						<Select.Trigger id="ui-locale" class="w-full">
+							{ADMIN_LOCALES.find((l) => l.code === $locale)?.name ?? $t('common.select')}
+						</Select.Trigger>
+						<Select.Content>
+							{#each ADMIN_LOCALES as loc}
+								<Select.Item value={loc.code} label={loc.name}>{loc.name}</Select.Item>
+							{/each}
+						</Select.Content>
+					</Select.Root>
+					<p class="text-xs text-muted-foreground">{$t('settings.profile.language.hint')}</p>
 				</div>
 
 				<div class="space-y-1.5">
-					<p class="text-sm font-medium">Time format</p>
+					<Label for="timezone">{$t('settings.profile.timezone.label')}</Label>
+					<Combobox
+						items={TIMEZONES.map((tz) => ({ value: tz, label: tz }))}
+						bind:value={timezone}
+						placeholder={$t('settings.profile.timezone.placeholder')}
+						searchPlaceholder={$t('settings.profile.timezone.searchPlaceholder')}
+					/>
+					<p class="text-xs text-muted-foreground">{$t('settings.profile.timezone.hint')}</p>
+				</div>
+
+				<div class="space-y-1.5">
+					<p class="text-sm font-medium">{$t('settings.profile.timeFormat.label')}</p>
 					<div class="flex gap-2">
-						{#each [{ value: '12h', label: '12-hour', hint: '1:30 PM' }, { value: '24h', label: '24-hour', hint: '13:30' }] as opt}
+						{#each [{ value: '12h', label: $t('settings.profile.timeFormat.12h'), hint: $t('settings.profile.timeFormat.12hHint') }, { value: '24h', label: $t('settings.profile.timeFormat.24h'), hint: $t('settings.profile.timeFormat.24hHint') }] as opt}
 							<label class="flex flex-1 cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm transition-colors {time_format === opt.value ? 'border-primary bg-primary/5' : 'bg-background hover:bg-accent/50'}">
 								<input type="radio" bind:group={time_format} value={opt.value} class="sr-only" />
 								{opt.label}
@@ -259,24 +276,24 @@
 				</div>
 
 				<div class="space-y-1.5">
-					<Label for="week-start">First day of week</Label>
+					<Label for="week-start">{$t('settings.profile.weekStart.label')}</Label>
 					<Select.Root type="single" value={String(week_start)} onValueChange={(v) => { if (v) week_start = Number(v); }}>
 						<Select.Trigger id="week-start" class="w-full">
-							{WEEK_DAYS[week_start]}
+							{weekdayLabels[week_start]}
 						</Select.Trigger>
 						<Select.Content>
 							{#each [0, 1] as d}
-								<Select.Item value={String(d)} label={WEEK_DAYS[d]}>{WEEK_DAYS[d]}</Select.Item>
+								<Select.Item value={String(d)} label={weekdayLabels[d]}>{weekdayLabels[d]}</Select.Item>
 							{/each}
 						</Select.Content>
 					</Select.Root>
 				</div>
 
 				<div class="space-y-1.5">
-					<Label for="date-format">Date format</Label>
+					<Label for="date-format">{$t('settings.profile.dateFormat.label')}</Label>
 					<Select.Root type="single" value={date_format} onValueChange={(v) => { if (v) date_format = v as 'dmy' | 'mdy' | 'ymd'; }}>
 						<Select.Trigger id="date-format" class="w-full">
-							{DATE_FORMATS.find((f) => f.value === date_format)?.label ?? 'Select…'}
+							{DATE_FORMATS.find((f) => f.value === date_format)?.label ?? $t('common.select')}
 						</Select.Trigger>
 						<Select.Content>
 							{#each DATE_FORMATS as f}
@@ -289,7 +306,7 @@
 		</div>
 
 		<Button type="submit" disabled={savingFlag.active}>
-			{savingFlag.active ? 'Saving…' : 'Save'}
+			{savingFlag.active ? $t('common.saving') : $t('common.save')}
 		</Button>
 	</form>
 {/if}
@@ -297,18 +314,18 @@
 <Dialog.Root bind:open={cropOpen} onOpenChange={(o) => { if (!o) cancelCrop(); }}>
 	<Dialog.Content class="max-w-md">
 		<Dialog.Header>
-			<Dialog.Title>{hasExistingAvatar ? 'Replace photo' : 'Upload photo'}</Dialog.Title>
-			<Dialog.Description>Drag or pinch to adjust. The cropped area will be saved.</Dialog.Description>
+			<Dialog.Title>{hasExistingAvatar ? $t('settings.profile.crop.replaceTitle') : $t('settings.profile.crop.uploadTitle')}</Dialog.Title>
+			<Dialog.Description>{$t('settings.profile.crop.description')}</Dialog.Description>
 		</Dialog.Header>
 		<div class="mt-2 overflow-hidden rounded-md bg-muted" style="max-height: 360px;">
 			{#if cropSrc}
-				<img bind:this={cropperEl} src={cropSrc} alt="Crop preview" class="block max-w-full" />
+				<img bind:this={cropperEl} src={cropSrc} alt={$t('settings.profile.crop.previewAlt')} class="block max-w-full" />
 			{/if}
 		</div>
 		<Dialog.Footer class="mt-4">
-			<Button variant="outline" onclick={cancelCrop} disabled={uploadingFlag.active}>Cancel</Button>
+			<Button variant="outline" onclick={cancelCrop} disabled={uploadingFlag.active}>{$t('common.cancel')}</Button>
 			<Button onclick={cropAndUpload} disabled={uploadingFlag.active}>
-				{uploadingFlag.active ? 'Uploading…' : 'Save photo'}
+				{uploadingFlag.active ? $t('settings.profile.crop.uploading') : $t('settings.profile.crop.save')}
 			</Button>
 		</Dialog.Footer>
 	</Dialog.Content>

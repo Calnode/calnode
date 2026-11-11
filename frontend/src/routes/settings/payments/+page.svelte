@@ -9,6 +9,8 @@
 	import { toast } from 'svelte-sonner';
 	import { saveOnCmdS } from '$lib/save-shortcut';
 	import { createAsyncFlag } from '$lib/async-action.svelte';
+	import { t, tr } from '$lib/i18n';
+	import LinkedText from '$lib/i18n/linked-text.svelte';
 
 	const loadingFlag = createAsyncFlag(true);
 	const savingFlag = createAsyncFlag();
@@ -24,7 +26,7 @@
 	onMount(() => loadingFlag.run(async () => {
 		settings = await api.get<StripeSettings>('/v1/settings/stripe');
 		publishableKey = settings.publishable_key;
-	}, 'Could not load payment settings'));
+	}, tr('settings.payments.error.load')));
 
 	async function save() {
 		await savingFlag.run(async () => {
@@ -34,56 +36,61 @@
 			settings = await api.patch<StripeSettings>('/v1/settings/stripe', body);
 			secretKey = '';
 			webhookSecret = '';
-			toast.success('Saved — set a price on an event type to start charging');
-		}, 'Could not save payment settings');
+			toast.success(tr('settings.payments.toast.saved'));
+		}, tr('settings.payments.error.save'));
 	}
 
 	async function disconnect() {
 		await savingFlag.run(async () => {
 			settings = await api.patch<StripeSettings>('/v1/settings/stripe', { clear: true });
 			secretKey = publishableKey = webhookSecret = '';
-			toast.success('Stripe disconnected');
-		}, 'Could not disconnect');
+			toast.success(tr('settings.payments.toast.disconnected'));
+		}, tr('settings.payments.error.disconnect'));
 	}
 </script>
 
 <svelte:window onkeydown={saveOnCmdS(save, () => !savingFlag.active)} />
 
 {#if !$currentUser?.is_admin}
-	<p class="text-sm text-muted-foreground">Admin access required.</p>
+	<p class="text-sm text-muted-foreground">{$t('common.adminRequired')}</p>
 {:else}
 
 {#if loadingFlag.active}
-	<p class="py-8 text-sm text-muted-foreground">Loading…</p>
+	<p class="py-8 text-sm text-muted-foreground">{$t('common.loading')}</p>
 {:else}
 	<div class="max-w-lg space-y-4">
 
 		{#if !settings?.configured}
 		<div class="rounded-lg border bg-card p-6">
-			<h2 class="mb-4 text-sm font-semibold">Setup instructions</h2>
+			<h2 class="mb-4 text-sm font-semibold">{$t('settings.payments.setup.title')}</h2>
 			<ol class="space-y-4 text-sm">
 				<li class="flex gap-3">
 					<span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">1</span>
 					<div>
-						In your <a href="https://dashboard.stripe.com/apikeys" target="_blank" rel="noopener noreferrer" class="font-medium text-primary underline">Stripe Dashboard → Developers → API keys</a>,
-						copy the <span class="font-medium">Secret key</span> and <span class="font-medium">Publishable key</span>.
+						<LinkedText
+							text={$t('settings.payments.setup.step1')}
+							links={{
+								dashboard: {
+									href: 'https://dashboard.stripe.com/apikeys',
+									text: $t('settings.payments.setup.dashboard'),
+									target: '_blank',
+									rel: 'noopener noreferrer',
+									class: 'font-medium text-primary underline'
+								}
+							}}
+						/>
 					</div>
 				</li>
 				<li class="flex gap-3">
 					<span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">2</span>
 					<div>
-						Go to <span class="font-medium">Developers → Webhooks → Add endpoint</span> and set the URL to:
+						{$t('settings.payments.setup.step2')}
 						<code class="mt-1 block rounded bg-muted px-2 py-1 text-xs font-mono break-all">{webhookURL}</code>
-						Subscribe to <code class="rounded bg-muted px-1">checkout.session.completed</code> and
-						<code class="rounded bg-muted px-1">checkout.session.expired</code>.
 					</div>
 				</li>
 				<li class="flex gap-3">
 					<span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-semibold text-muted-foreground">3</span>
-					<div>
-						Copy the endpoint's <span class="font-medium">Signing secret</span> (<code class="rounded bg-muted px-1">whsec_…</code>),
-						paste all three values below, and save.
-					</div>
+					<div>{$t('settings.payments.setup.step3')}</div>
 				</li>
 			</ol>
 		</div>
@@ -92,57 +99,54 @@
 		<div class="rounded-lg border bg-card p-6">
 			<div class="mb-4 flex items-start justify-between gap-2">
 				<div>
-					<h2 class="text-sm font-semibold">Stripe</h2>
-					<p class="mt-0.5 text-xs text-muted-foreground">
-						Lets you charge for bookings. An event type with a price sends the booker to Stripe
-						Checkout before the slot is confirmed.
-					</p>
+					<h2 class="text-sm font-semibold">{$t('settings.payments.stripe.title')}</h2>
+					<p class="mt-0.5 text-xs text-muted-foreground">{$t('settings.payments.stripe.subtitle')}</p>
 				</div>
 				{#if settings !== null}
 					<span class="flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium {settings.configured ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'}">
 						<span class="h-1.5 w-1.5 rounded-full {settings.configured ? 'bg-green-500' : 'bg-amber-400'}"></span>
-						{settings.configured ? 'Configured' : 'Not configured'}
+						{settings.configured ? $t('common.configured') : $t('common.notConfigured')}
 					</span>
 				{/if}
 			</div>
 
 			<div class="space-y-3">
 				<div class="space-y-1.5">
-					<Label for="s-secret">Secret key</Label>
+					<Label for="s-secret">{$t('settings.payments.secretKey')}</Label>
 					<Input id="s-secret" type="password"
-						placeholder={settings?.secret_key_set ? '•••••••• (stored)' : 'sk_live_… or sk_test_…'}
+						placeholder={settings?.secret_key_set ? $t('common.storedSecretPlaceholder') : $t('settings.payments.secretKeyPlaceholder')}
 						bind:value={secretKey} />
 					{#if settings?.secret_key_set && !secretKey}
-						<p class="text-xs text-muted-foreground">Stored — leave blank to keep it.</p>
+						<p class="text-xs text-muted-foreground">{$t('common.leaveBlankKeep')}</p>
 					{/if}
 				</div>
 				<div class="space-y-1.5">
-					<Label for="s-pub">Publishable key</Label>
-					<Input id="s-pub" type="text" placeholder="pk_live_… or pk_test_…" bind:value={publishableKey} />
+					<Label for="s-pub">{$t('settings.payments.publishableKey')}</Label>
+					<Input id="s-pub" type="text" placeholder={$t('settings.payments.publishableKeyPlaceholder')} bind:value={publishableKey} />
 				</div>
 				<div class="space-y-1.5">
-					<Label for="s-wh">Webhook signing secret</Label>
+					<Label for="s-wh">{$t('settings.payments.webhookSecret')}</Label>
 					<Input id="s-wh" type="password"
-						placeholder={settings?.webhook_secret_set ? '•••••••• (stored)' : 'whsec_…'}
+						placeholder={settings?.webhook_secret_set ? $t('common.storedSecretPlaceholder') : $t('settings.payments.webhookSecretPlaceholder')}
 						bind:value={webhookSecret} />
 					{#if settings?.webhook_secret_set && !webhookSecret}
-						<p class="text-xs text-muted-foreground">Stored — leave blank to keep it.</p>
+						<p class="text-xs text-muted-foreground">{$t('common.leaveBlankKeep')}</p>
 					{/if}
 				</div>
 			</div>
 
 			{#if settings?.configured}
 				<div class="mt-5 border-t pt-4">
-					<p class="text-xs font-medium text-muted-foreground">Webhook endpoint</p>
-					<p class="mt-0.5 text-xs text-muted-foreground">Register this in Stripe → Developers → Webhooks.</p>
+					<p class="text-xs font-medium text-muted-foreground">{$t('settings.payments.webhookEndpoint.title')}</p>
+					<p class="mt-0.5 text-xs text-muted-foreground">{$t('settings.payments.webhookEndpoint.hint')}</p>
 					<code class="mt-2 block rounded bg-muted px-2 py-1 text-xs font-mono break-all">{webhookURL}</code>
 				</div>
 			{/if}
 
 			<div class="mt-5 flex items-center gap-2">
-				<Button onclick={save} disabled={savingFlag.active}>{savingFlag.active ? 'Saving…' : 'Save'}</Button>
+				<Button onclick={save} disabled={savingFlag.active}>{savingFlag.active ? $t('common.saving') : $t('common.save')}</Button>
 				{#if settings?.configured}
-					<Button variant="outline" onclick={() => (confirmDisconnectOpen = true)} disabled={savingFlag.active}>Disconnect</Button>
+					<Button variant="outline" onclick={() => (confirmDisconnectOpen = true)} disabled={savingFlag.active}>{$t('settings.payments.disconnect')}</Button>
 				{/if}
 			</div>
 		</div>
@@ -152,9 +156,9 @@
 
 <ConfirmDialog
 	bind:open={confirmDisconnectOpen}
-	title="Remove Stripe credentials?"
-	description="Paid event types will stop being bookable."
-	confirmText="Remove"
+	title={$t('settings.payments.confirmDisconnect.title')}
+	description={$t('settings.payments.confirmDisconnect.description')}
+	confirmText={$t('settings.payments.confirmDisconnect.confirm')}
 	destructive
 	onConfirm={disconnect}
 />

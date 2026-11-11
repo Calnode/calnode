@@ -8,6 +8,7 @@
 	import { Badge } from '$lib/components/ui/badge';
 	import * as Select from '$lib/components/ui/select';
 	import { toast } from 'svelte-sonner';
+	import { t, tr } from '$lib/i18n';
 
 	let teams = $state<Team[]>([]);
 	let users = $state<TeamMember[]>([]);
@@ -53,7 +54,7 @@
 	onMount(load);
 
 	async function createTeam() {
-		if (!newTeamName.trim()) { toast.error('Team name is required'); return; }
+		if (!newTeamName.trim()) { toast.error(tr('teams.toast.nameRequired')); return; }
 		creating = true;
 		try {
 			await api.post('/v1/teams', { name: newTeamName.trim() });
@@ -61,7 +62,7 @@
 			showCreate = false;
 			await load();
 		} catch (e: any) {
-			toast.error(e.message || 'Could not create team');
+			toast.error(e.message || tr('common.failed'));
 		} finally {
 			creating = false;
 		}
@@ -77,7 +78,7 @@
 			const detail = await api.get<Team>(`/v1/teams/${team.id}`);
 			expanded = { ...expanded, [team.id]: detail };
 		} catch (e: any) {
-			toast.error(e.message || 'Could not load team');
+			toast.error(e.message || tr('common.failed'));
 		}
 	}
 
@@ -101,7 +102,7 @@
 			addChoice = { ...addChoice, [teamId]: '' };
 			await refreshTeam(teamId);
 		} catch (e: any) {
-			toast.error(e.message || 'Could not add member');
+			toast.error(e.message || tr('common.failed'));
 		}
 	}
 
@@ -110,7 +111,7 @@
 			await api.del(`/v1/teams/${teamId}/members/${userId}`);
 			await refreshTeam(teamId);
 		} catch (e: any) {
-			toast.error(e.message || 'Could not remove member');
+			toast.error(e.message || tr('common.failed'));
 		}
 	}
 
@@ -118,7 +119,7 @@
 		try {
 			await api.patch(`/v1/teams/${teamId}/members/${userId}`, { routing_priority: Number(value) });
 		} catch (e: any) {
-			toast.error(e.message || 'Could not update priority');
+			toast.error(e.message || tr('common.failed'));
 			await refreshTeam(teamId);
 		}
 	}
@@ -126,20 +127,20 @@
 	function startRename(team: Team) { renamingId = team.id; renameValue = team.name; }
 	function cancelRename() { renamingId = null; renameValue = ''; }
 	async function saveRename(team: Team) {
-		if (!renameValue.trim()) { toast.error('Name cannot be empty'); return; }
+		if (!renameValue.trim()) { toast.error(tr('teams.toast.nameEmpty')); return; }
 		try {
 			await api.patch(`/v1/teams/${team.id}`, { name: renameValue.trim() });
 			renamingId = null;
 			await load();
 		} catch (e: any) {
-			toast.error(e.message || 'Could not rename team');
+			toast.error(e.message || tr('common.failed'));
 		}
 	}
 
 	function deleteTeam(team: Team) {
 		openConfirm({
-			title: `Delete "${team.name}"?`,
-			description: 'The team is removed and its members are unassigned. Members themselves and their bookings are not affected. Event types using this team for routing fall back to no team.',
+			title: tr('teams.confirm.delete.title', { name: team.name }),
+			description: tr('teams.confirm.delete.description'),
 			action: async () => {
 				try {
 					await api.del(`/v1/teams/${team.id}`);
@@ -147,34 +148,34 @@
 					expanded = rest;
 					await load();
 				} catch (e: any) {
-					toast.error(e.message || 'Could not delete team');
+					toast.error(e.message || tr('common.failed'));
 				}
 			}
 		});
 	}
 </script>
 
-<ConfirmDialog bind:open={confirmOpen} title={confirmTitle} description={confirmDescription} confirmText="Delete" destructive onConfirm={() => pendingAction?.()} />
+<ConfirmDialog bind:open={confirmOpen} title={confirmTitle} description={confirmDescription} confirmText={$t('teams.confirm.delete.confirm')} destructive onConfirm={() => pendingAction?.()} />
 
-<svelte:head><title>Teams — Calnode</title></svelte:head>
+<svelte:head><title>{$t('teams.headTitle')}</title></svelte:head>
 
 <div class="mb-8 flex items-center justify-between">
 	<div>
-		<h1 class="text-2xl font-semibold tracking-tight">Teams</h1>
-		<p class="mt-1 text-sm text-muted-foreground">Group members for round-robin and group event types.</p>
+		<h1 class="text-2xl font-semibold tracking-tight">{$t('teams.title')}</h1>
+		<p class="mt-1 text-sm text-muted-foreground">{$t('teams.subtitle')}</p>
 	</div>
-	<Button onclick={() => { showCreate = !showCreate; }}>{showCreate ? 'Cancel' : 'New team'}</Button>
+	<Button onclick={() => { showCreate = !showCreate; }}>{showCreate ? $t('common.cancel') : $t('teams.newTeam')}</Button>
 </div>
 
 {#if showCreate}
 	<div class="mb-6 rounded-lg border bg-card p-6">
-		<h2 class="mb-4 text-sm font-semibold">New team</h2>
+		<h2 class="mb-4 text-sm font-semibold">{$t('teams.newTeamForm.title')}</h2>
 		<div class="flex items-end gap-3">
 			<div class="flex-1 space-y-1.5">
-				<Label for="team-name">Team name</Label>
-				<Input id="team-name" bind:value={newTeamName} placeholder="e.g. Sales" onkeydown={(e) => e.key === 'Enter' && createTeam()} />
+				<Label for="team-name">{$t('teams.nameLabel')}</Label>
+				<Input id="team-name" bind:value={newTeamName} placeholder={$t('teams.namePlaceholder')} onkeydown={(e) => e.key === 'Enter' && createTeam()} />
 			</div>
-			<Button onclick={createTeam} disabled={creating}>{creating ? 'Creating…' : 'Create team'}</Button>
+			<Button onclick={createTeam} disabled={creating}>{creating ? $t('teams.creating') : $t('teams.create')}</Button>
 		</div>
 	</div>
 {/if}
@@ -182,11 +183,11 @@
 {#if error}<p class="mb-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>{/if}
 
 {#if loading}
-	<p class="py-8 text-sm text-muted-foreground">Loading…</p>
+	<p class="py-8 text-sm text-muted-foreground">{$t('common.loading')}</p>
 {:else if teams.length === 0}
 	<div class="rounded-lg border border-dashed bg-card p-12 text-center">
-		<p class="text-sm font-medium">No teams yet</p>
-		<p class="mt-1 text-sm text-muted-foreground">Create a team to group members for round-robin or group scheduling.</p>
+		<p class="text-sm font-medium">{$t('teams.empty.title')}</p>
+		<p class="mt-1 text-sm text-muted-foreground">{$t('teams.empty.description')}</p>
 	</div>
 {:else}
 	<div class="space-y-3">
@@ -197,8 +198,8 @@
 						{#if renamingId === team.id}
 							<div class="flex items-center gap-2">
 								<Input bind:value={renameValue} class="h-8 w-56" onkeydown={(e) => e.key === 'Enter' && saveRename(team)} />
-								<Button size="sm" class="h-8" onclick={() => saveRename(team)}>Save</Button>
-								<Button size="sm" variant="ghost" class="h-8" onclick={cancelRename}>Cancel</Button>
+								<Button size="sm" class="h-8" onclick={() => saveRename(team)}>{$t('common.save')}</Button>
+								<Button size="sm" variant="ghost" class="h-8" onclick={cancelRename}>{$t('common.cancel')}</Button>
 							</div>
 						{:else}
 							<div class="flex items-center gap-2">
@@ -209,29 +210,29 @@
 									</a>
 								</Badge>
 							</div>
-							<p class="mt-0.5 text-xs text-muted-foreground">{team.member_count} member{team.member_count === 1 ? '' : 's'}</p>
+							<p class="mt-0.5 text-xs text-muted-foreground">{$t('teams.memberCount', { count: team.member_count })}</p>
 						{/if}
 					</div>
 					<div class="flex shrink-0 items-center gap-1">
 						<Button size="sm" variant="outline" class="h-8 text-xs" onclick={() => toggleExpand(team)}>
-							{expanded[team.id] ? 'Close' : 'Manage'}
+							{expanded[team.id] ? $t('teams.close') : $t('teams.manage')}
 						</Button>
-						<Button size="sm" variant="ghost" class="h-8 text-xs" onclick={() => startRename(team)}>Rename</Button>
-						<Button size="sm" variant="ghost" class="h-8 text-xs text-destructive hover:text-destructive" onclick={() => deleteTeam(team)}>Delete</Button>
+						<Button size="sm" variant="ghost" class="h-8 text-xs" onclick={() => startRename(team)}>{$t('teams.rename')}</Button>
+						<Button size="sm" variant="ghost" class="h-8 text-xs text-destructive hover:text-destructive" onclick={() => deleteTeam(team)}>{$t('common.delete')}</Button>
 					</div>
 				</div>
 
 				{#if expanded[team.id]}
 					<div class="border-t px-4 py-4">
-						<h3 class="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Members</h3>
+						<h3 class="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{$t('teams.members.title')}</h3>
 						{#if (expanded[team.id].members ?? []).length === 0}
-							<p class="mb-3 text-sm text-muted-foreground">No members in this team yet.</p>
+							<p class="mb-3 text-sm text-muted-foreground">{$t('teams.members.empty')}</p>
 						{:else}
 							<table class="mb-3 w-full text-sm">
 								<thead>
 									<tr class="border-b">
-										<th class="pb-2 text-left text-xs font-medium text-muted-foreground">Member</th>
-										<th class="pb-2 text-left text-xs font-medium text-muted-foreground">Routing priority</th>
+										<th class="pb-2 text-left text-xs font-medium text-muted-foreground">{$t('teams.members.column')}</th>
+										<th class="pb-2 text-left text-xs font-medium text-muted-foreground">{$t('teams.members.routingPriority')}</th>
 										<th class="pb-2"></th>
 									</tr>
 								</thead>
@@ -242,7 +243,7 @@
 												<div class="flex items-center gap-2">
 													<span class="font-medium">{m.name}</span>
 													<span class="text-xs text-muted-foreground">{m.email}</span>
-													{#if m.archived}<Badge variant="outline" class="text-xs text-muted-foreground">Archived</Badge>{/if}
+													{#if m.archived}<Badge variant="outline" class="text-xs text-muted-foreground">{$t('members.badge.archived')}</Badge>{/if}
 												</div>
 											</td>
 											<td class="py-2">
@@ -254,7 +255,7 @@
 												/>
 											</td>
 											<td class="py-2 text-right">
-												<Button size="sm" variant="ghost" class="h-7 text-xs text-destructive hover:text-destructive" onclick={() => removeMember(team.id, m.id)}>Remove</Button>
+												<Button size="sm" variant="ghost" class="h-7 text-xs text-destructive hover:text-destructive" onclick={() => removeMember(team.id, m.id)}>{$t('teams.members.remove')}</Button>
 											</td>
 										</tr>
 									{/each}
@@ -273,9 +274,9 @@
 								<Select.Trigger class="w-fit min-w-48">
 									{#if addChoice[team.id]}
 										{@const u = users.find((x) => x.id === addChoice[team.id])}
-										{u ? `${u.name} (${u.email})` : 'Add a member…'}
+										{u ? `${u.name} (${u.email})` : $t('teams.addMember')}
 									{:else}
-										Add a member…
+										{$t('teams.addMember')}
 									{/if}
 								</Select.Trigger>
 								<Select.Content>
@@ -284,12 +285,12 @@
 									{/each}
 								</Select.Content>
 							</Select.Root>
-							<Button size="sm" variant="outline" class="h-8" disabled={!addChoice[team.id]} onclick={() => addMember(team.id)}>Add</Button>
+							<Button size="sm" variant="outline" class="h-8" disabled={!addChoice[team.id]} onclick={() => addMember(team.id)}>{$t('teams.add')}</Button>
 							{#if membersNotIn(team).length === 0}
-								<span class="text-xs text-muted-foreground">All active members are already in this team.</span>
+								<span class="text-xs text-muted-foreground">{$t('teams.allMembersInTeam')}</span>
 							{/if}
 						</div>
-						<p class="mt-2 text-xs text-muted-foreground">Lower routing priority = preferred earlier (used by Priority routing; ties broken by load for round-robin).</p>
+						<p class="mt-2 text-xs text-muted-foreground">{$t('teams.routingHint')}</p>
 					</div>
 				{/if}
 			</div>

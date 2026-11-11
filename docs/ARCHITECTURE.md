@@ -978,20 +978,25 @@ Each account can set `booking_accent` in its profile. The default preserves the 
 - **Teams on personal Microsoft accounts** — `teamsForBusiness` is work/school only,
   so a personal Microsoft account can't auto-mint Teams links; the organizer must
   supply a manual link (validated, and surfaced in the editor hint).
-- **The admin SPA does not lay out below ~600px.** On the settings pages the nav and the
-  content sit in one flex row with no stacking breakpoint, so the content column is
-  squeezed to near-zero width and text wraps into a tall vertical sliver. Measured on
-  Settings → Profile at a 535px viewport: the `mx-auto max-w-4xl px-8` shell reported a
-  151px client width and the form column 0. Affects every settings page, not one
-  component, so the fix is a breakpoint in the settings shell rather than per-page
-  patching. The **public** booking surfaces are unaffected and are verified on mobile;
-  this is admin-only. Deferred 2026-08-22, not a regression.
+- **The admin SPA does not fully lay out below ~600px.** *Phase 1 landed (#226/#227): the
+  outer shell now stacks below `md` — the sidebar is an off-canvas drawer, a compact
+  header carries the menu button, and content scrolls instead of clipping.* Still future
+  work: the settings sub-nav (`frontend/src/routes/settings/+layout.svelte`, `flex gap-8`
+  with a `w-44 shrink-0` nav) does not stack, so settings pages still squeeze their form
+  column; and list/table views and multi-column forms need the phase 2/3 treatments.
+  Measured before phase 1 on Settings → Profile at 535px: the shell reported a 151px
+  client width and the form column 0. Affects every settings page, so that half is a
+  breakpoint in the settings shell rather than per-page patching. The **public** booking
+  surfaces are unaffected and are verified on mobile; this is admin-only.
 - **LiveKit room is not translated** - the booking surfaces, emails and calendar invites
-  ship in 9 languages (§23), but the in-browser meeting UI is ~45 hardcoded English
+  ship in 11 languages (§23), but the in-browser meeting UI is ~45 hardcoded English
   strings. It has its own vanilla-JS asset pipeline and shares no string plumbing with
   the Go templates, so it needs a small runtime `t()` of its own. Separate work, not hard.
-- **Plural rules are 2-form only** (§23) - shipping Polish, Russian or Arabic correctly
-  needs a real CLDR plural-category selector first.
+- **Plural rules are 2-form only** (§23) - every plural-bearing key splits on `n == 1` and
+  nothing else. Polish ships despite that because its keys dodge the missing categories:
+  durations use invariant abbreviations (`godz.`, `min`), and `hostsLabel`'s
+  `other`/`others` pair (`inny`/`innych`) is correct for every count. Russian or Arabic
+  genuinely do need a CLDR plural-category selector first.
 - **OAuth app verification** — the Google and Microsoft apps should go through
   publisher verification before wide public use to avoid "unverified app" warnings.
 
@@ -1244,7 +1249,8 @@ picks the exact tag first (pinned in `TestResolve`).
 
 ### What is translated, and what is not
 
-Translation covers the surfaces a **booker** sees. It deliberately stops there.
+Translation covers the surfaces a **booker** sees, and the admin SPA through its own
+catalog. It deliberately stops at the LiveKit room and at content the operator wrote.
 
 | Surface | Translated? |
 |---|---|
@@ -1254,12 +1260,22 @@ Translation covers the surfaces a **booker** sees. It deliberately stops there.
 | The four emails (confirm / cancel / reschedule / reminder) | yes |
 | Calendar invite title + description | yes |
 | Conversational booking assistant | yes (replies in the visitor's language) |
-| **Admin SPA** (`frontend/`) | **no** - English only, by design |
+| **Admin SPA** (`frontend/`) | **yes** - `en` + `fr` (`frontend/src/lib/i18n/`); English is source of truth |
 | **LiveKit room** (`livekit-room.html` + `livekit-room.js`) | **no** - see below |
 | **Admin-authored content** (event names, descriptions, intake questions, custom email copy) | **no** - stored as the operator typed it |
 | IANA timezone identifiers | no - shown as `Europe/Berlin`, not localized |
 
-**The LiveKit room is the one real hole.** ~45 strings in the in-browser meeting UI
+The admin SPA is a separate catalog from the booker locales. `frontend/src/lib/i18n/`
+ships nested JSON (`en.json` source of truth, `fr.json` a native-speaker translation).
+`t` / `tr` look up a dotted key, interpolate `{placeholders}`, and fall back to English
+then to the key itself. Locale resolution is client-side: a stored preference
+(`localStorage` key `calnode-admin-locale`, set from Settings → Profile → Preferences)
+wins, then `navigator.languages` (`fr-CA` → `fr`), then English. Dates and times in the
+admin use `Intl` with that tag; the operator's existing `date_format` / `time_format` /
+`week_start` prefs still apply. Adding an admin locale is copy-the-JSON plus two
+registrations in `catalog.ts` — see CONTRIBUTING.md.
+
+**The LiveKit room is the remaining hole.** ~45 strings in the in-browser meeting UI
 (join/leave, mute, screen share, recording banner, consent prompts, chat) are hardcoded
 English. It was excluded because the room is vanilla JS with its own asset pipeline
 (`go:embed`-ed in the handler package, not the SPA build) and shares no template or string
@@ -1305,9 +1321,28 @@ you is a key in the JSON instead (`internal/i18n/datetime.go`): `date_format`, `
 `dow_short_*`, `month_short_*`. That also makes per-language date shape expressible - German
 carries its own `date_format` for the ordinal period ("Mo, 22. Jun 2026").
 
+A locale does **not** have to be complete to merge. Partial catalogues are supported: any
+key a locale lacks falls back to English at lookup time (`Locale.T`), so a translation can
+land in stages instead of in one block. The practical reason is that nobody translates 169
+strings in one sitting, and requiring completeness made an in-progress language
+unmergeable - which is how community translations quietly die.
+
+The other half of that bargain is `MinCoverage` (80% of the English keys). A locale at or
+above it is offered to visitors: the language switcher, `Accept-Language` matching and the
+public API payload all read `SupportedLocales()`, which filters on it. A locale below the
+floor still exists and `?lang=<code>` still resolves, so whoever is translating it can
+check their work in situ, but no visitor is served a mostly-English booking page by
+accident. The floor is set with headroom because the English catalogue grows: adding
+strings can push a locale under it, and that is the signal to chase the translators.
+Startup logs a line for every locale it withholds and why.
+
 Three guards police a new file (`go test ./internal/i18n/`):
 
-- `TestAllLocalesHaveTheSameKeys` - no missing or unknown keys.
+- `TestLocalesHaveNoUnknownKeys` - no key that English does not have. A missing key is
+  fine now (that is the fallback), but an unknown one is always a typo or a renamed key
+  and would render for nobody. This replaced `TestAllLocalesHaveTheSameKeys`, which
+  asserted set equality in both directions and therefore rejected the in-progress locales
+  the floor exists to support.
 - `TestAllLocalesHaveMatchingFormatVerbs` - uses `fmt` **itself** as the oracle, so a locale
   that drops or reorders a `%s`/`%d` fails the test instead of emitting `%!(EXTRA…)` to a
   booker. An earlier hand-rolled parser for this was unsound (it missed indexed verbs like
@@ -1316,6 +1351,9 @@ Three guards police a new file (`go test ./internal/i18n/`):
   `month_short_*` and `clock_format` against `Intl`, skipping if node is absent. This is the
   only check that can tell `dim.` from `dim`, or catch a 12h/24h call that is wrong for the
   language. It caught a real drift on first run (`es` had `sep` where CLDR says `sept`).
+
+`TestOfferedLocalesMeetCoverageFloor` pins the invariant the three guards do not: nothing
+below `MinCoverage` is ever in `supported`.
 
 Two traps:
 
@@ -1329,8 +1367,11 @@ Two traps:
 
 ### Translation quality
 
-**Every non-English locale is an LLM draft with no native review.** The structure is
-verified by the guards above; the *wording* is not. Register was chosen per language rather
+**Most non-English locales are LLM drafts with no native review, and none has had a full
+native read.** The structure is
+verified by the guards above; the *wording* is not. `pl` is the partial exception: it was
+contributed and grammar-checked by a native speaker in #216/#220, though two developer
+edits (the CLDR date forms and `innych`) went in on top of his text. Register was chosen per language rather
 than uniformly (`fr`/`de`/`it`/`pt` formal, `es`/`nl`/`sv` informal), matching what business
 booking pages do in each market, but that too is unreviewed. Corrections via PR are welcome
 and are the expected path to improving them. Do not describe a language as production-quality
@@ -1355,6 +1396,13 @@ emails end to end.
 This doc tracks the code; when you change behaviour in an area above, update the
 matching section in the same PR. Notable rounds:
 
+- **2026-11-02 — Admin SPA i18n (`en` + `fr`).** The SvelteKit admin (`frontend/`) is no
+  longer English-only. A small client-side catalog in `frontend/src/lib/i18n/` drives
+  chrome, list pages, the event-type editor, settings, and auth screens. Locale comes
+  from Settings → Profile (stored in `localStorage`) with a browser-language fallback;
+  missing keys fall back to English. Booker-facing locales (`internal/i18n/locales`)
+  are unchanged. The LiveKit room stays English (§18).
+
 - **2026-08-20 — Multi-language public surfaces (8 locales).** Booking page, manage page,
   embed widget, the four emails, the calendar invite and the booking assistant now render in
   `en es fr de it pt nl sv` (new §23). Locale is negotiated from `Accept-Language` with a
@@ -1362,7 +1410,8 @@ matching section in the same PR. Notable rounds:
   (migration 00051) so reminders match the language the booker used. Adding a language is
   adding one JSON file - proven by adding six at once with no code change. Go has no locale
   date data, so the date tables are keys in the JSON, cross-checked against `Intl`/CLDR by a
-  node-backed test. **Not translated: the admin SPA and the LiveKit room** (§18).
+  node-backed test. **Not translated at the time: the admin SPA and the LiveKit room**
+  (§18). The admin SPA gained `en`/`fr` in 2026-11; the room is still English.
 
 - **2026-06-30 — Cookie consent + legal links + shared book/manage partials.** Native
   GA4/GTM (Settings → Tracking) is now consent-gated on book.html **and** manage.html:

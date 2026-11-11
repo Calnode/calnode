@@ -34,6 +34,12 @@ concurrency:
   group: docker-publish-${{ github.ref }}
   cancel-in-progress: true
 
+# Read-only by default. Each job below asks for what it needs on top: build
+# pushes to GHCR (packages: write), release creates the GitHub Release
+# (contents: write).
+permissions:
+  contents: read
+
 env:
   REGISTRY: ghcr.io
   # Hardcoded lowercase — GHCR tags reject the repo's actual "Calnode/calnode"
@@ -58,15 +64,15 @@ jobs:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
 
-      - uses: docker/setup-buildx-action@v4
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Log in to GHCR
         if: github.event_name == 'push'
-        uses: docker/login-action@v4
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -81,7 +87,7 @@ jobs:
       # pre-release deploy can be pinned to an immutable tag that names its commit.
       - name: Docker metadata
         id: meta
-        uses: docker/metadata-action@v6
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
@@ -93,7 +99,7 @@ jobs:
 
       - name: Build (push on branch pushes and on tags)
         id: build
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           platforms: ${{ env.BUILD_PLATFORMS }}
@@ -105,7 +111,7 @@ jobs:
             COMMIT=${{ github.sha }}
 
       - name: Export standalone binaries
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           target: standalone
@@ -138,7 +144,7 @@ jobs:
       # workflow_dispatch dry run, or the rehearsal finds no artifact to download.
       - name: Upload standalone binaries
         if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.dry_run)
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: standalone-binaries
           path: dist/release/
@@ -164,7 +170,7 @@ jobs:
       contents: read
       packages: read
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Prove this runner is genuinely arm64
         run: |
@@ -246,9 +252,11 @@ jobs:
         # Regression guard for the quick-start trap: a first start with no
         # CALNODE_ENCRYPTION_KEY must write a key beside the database, so stored
         # credentials survive a restart instead of becoming unreadable.
+        # The helper image is pinned by digest (the multi-arch alpine:3 index).
+        # Dependabot does not read `docker run` lines, so bump it by hand.
         run: |
           set -euo pipefail
-          docker run --rm -v calnode-data:/data alpine:3 sh -c 'test -s /data/calnode.key' \
+          docker run --rm -v calnode-data:/data alpine:3@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a sh -c 'test -s /data/calnode.key' \
             && echo "key persisted beside the database"
 
       - name: Assert a restart still finds the key
@@ -294,9 +302,9 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: standalone-binaries
           path: dist/release

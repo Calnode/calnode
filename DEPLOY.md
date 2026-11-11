@@ -53,6 +53,14 @@ backup method. The email, calendar and other integration settings below still ap
 
 ## 1. Configuration (environment variables)
 
+> **Settings saved in the UI win over environment variables.** Email (SMTP/Resend) and
+> Google OAuth credentials are stored in the database. Environment variables are read only
+> when nothing is stored: on first boot they *seed* the database, and from then on the
+> stored values take precedence. Changing an env var after that has no effect until you
+> clear the matching setting in Settings → Email / Settings → Google. Calnode logs a
+> warning at startup naming every variable it is ignoring, so this is visible rather than
+> silent.
+
 | Variable | Required | Default | Notes |
 |---|---|---|---|
 | `CALNODE_ENCRYPTION_KEY` | **prod: yes** | — | KEK input (Argon2id). **Required when `BASE_URL` is https** — the app refuses to start without it. Use a long random string: `openssl rand -hex 32`. **Losing it makes encrypted data unrecoverable** unless you set the recovery secret below. |
@@ -61,11 +69,11 @@ backup method. The email, calendar and other integration settings below still ap
 | `PUBLIC_BASE_URL` | no | = `BASE_URL` | Booker-facing host for booking links/emails, if different from the identity host. |
 | `DATABASE_URL` | no | `sqlite://./data/calnode.db` | Point at the persistent volume, e.g. `sqlite:///data/calnode.db`. |
 | `PORT` | no | `3000` | The app listens on `$PORT`. Many platforms inject their own (Railway injects `8080`) — let them. |
-| `EMAIL_SMTP_HOST` / `_PORT` / `_USER` / `_PASS` | no¹ | — / `587` | SMTP. Can also be set later in Settings → Email (DB-stored, encrypted). |
+| `EMAIL_SMTP_HOST` / `_PORT` / `_USER` / `_PASS` | no¹ | — / `587` | SMTP. Seeds Settings → Email on first boot; once stored there, the database value wins (see the precedence note above). |
 | `EMAIL_SMTP_CONNECT_HOST` / `EMAIL_SMTP_CONNECT_PORT` | no | SMTP host / port | TCP relay address, loaded at startup. Applies to environment and database SMTP settings; TLS and authentication still use the SMTP host. |
 | `EMAIL_SMTP_TLS` / `_STARTTLS` | no | `false` | `STARTTLS` for 587, implicit `TLS` for 465. |
 | `EMAIL_FROM_ADDRESS` / `EMAIL_FROM_NAME` | no | `bookings@localhost` / `Calnode` | The From identity. |
-| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | no | — | Google sign-in + calendar. Can also be set in Settings → Google OAuth. |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | no | — | Google sign-in + calendar. Seeds Settings → Google OAuth on first boot; once stored there, the database value wins (see the precedence note above). |
 | `LITESTREAM_REPLICA_URL` | recommended | — | Enables continuous SQLite backup (see §6). |
 | `COOKIE_SECURE` | no | https→true | Override cookie Secure flag; defaults from `BASE_URL` scheme. |
 | `TRUSTED_PROXY_CIDRS` | no | — | Comma-separated CIDRs (a bare address = one host) whose `X-Forwarded-For` is believed when keying per-IP rate limits, e.g. `10.0.0.0/8`. Include a fronting CDN's own ranges so the walk steps over its edge and lands on the visitor. Unset ⇒ the header is ignored and the limit keys on the TCP peer, so behind a CDN every visitor shares one bucket. **Only list networks you control**: anything in the list can name any client IP it likes. Single-value vendor headers (`CF-Connecting-IP`, `X-Real-IP`) are never read, from any peer. |

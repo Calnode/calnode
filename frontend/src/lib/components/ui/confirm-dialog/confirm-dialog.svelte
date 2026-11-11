@@ -2,13 +2,14 @@
 	import { AlertDialog as AlertDialogPrimitive } from 'bits-ui';
 	import { buttonVariants } from '$lib/components/ui/button';
 	import { cn } from '$lib/utils.js';
+	import { t } from '$lib/i18n';
 
 	let {
 		open = $bindable(false),
-		title = 'Are you sure?',
+		title,
 		description = '',
-		confirmText = 'Confirm',
-		cancelText = 'Cancel',
+		confirmText,
+		cancelText,
 		destructive = false,
 		onConfirm
 	}: {
@@ -20,6 +21,10 @@
 		destructive?: boolean;
 		onConfirm?: () => void;
 	} = $props();
+
+	const resolvedTitle = $derived(title ?? $t('common.confirmDialog.defaultTitle'));
+	const resolvedConfirm = $derived(confirmText ?? $t('common.confirmDialog.defaultConfirm'));
+	const resolvedCancel = $derived(cancelText ?? $t('common.confirmDialog.defaultCancel'));
 </script>
 
 <AlertDialogPrimitive.Root bind:open>
@@ -42,7 +47,7 @@
 		>
 			<div class="flex flex-col gap-2">
 				<AlertDialogPrimitive.Title class="text-base font-semibold">
-					{title}
+					{resolvedTitle}
 				</AlertDialogPrimitive.Title>
 				{#if description}
 					<AlertDialogPrimitive.Description class="text-sm text-muted-foreground">
@@ -52,13 +57,13 @@
 			</div>
 			<div class="flex justify-end gap-2">
 				<AlertDialogPrimitive.Cancel class={buttonVariants({ variant: 'outline' })}>
-					{cancelText}
+					{resolvedCancel}
 				</AlertDialogPrimitive.Cancel>
 				<AlertDialogPrimitive.Action
 					class={buttonVariants({ variant: destructive ? 'destructive' : 'default' })}
 					onclick={() => { open = false; onConfirm?.(); }}
 				>
-					{confirmText}
+					{resolvedConfirm}
 				</AlertDialogPrimitive.Action>
 			</div>
 		</AlertDialogPrimitive.Content>
