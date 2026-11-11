@@ -94,8 +94,8 @@
   function dayKey(iso) { return new Intl.DateTimeFormat('en-CA', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(iso)); }
   // locale is the resolved server-side locale (this.locale), not the browser's own
   // ([]) — see the matching fix/comment in book.html / internal-docs/i18n-plan.md.
-  function timeLabel(iso, locale) { return new Intl.DateTimeFormat(locale || [], { timeZone: TZ, hour: 'numeric', minute: '2-digit' }).format(new Date(iso)); }
-  function shortDay(iso, locale) { return new Intl.DateTimeFormat(locale || [], { timeZone: TZ, weekday: 'short', month: 'short', day: 'numeric' }).format(new Date(iso)); }
+  function timeLabel(iso, locale) { return new Intl.DateTimeFormat("et-EE", { timeZone: TZ, hour: 'numeric', minute: '2-digit' }).format(new Date(iso)); }
+  function shortDay(iso, locale) { return new Intl.DateTimeFormat("et-EE", { timeZone: TZ, weekday: 'short', month: 'short', day: 'numeric' }).format(new Date(iso)); }
   function ymd(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
   function startOfMonth(d) { return new Date(d.getFullYear(), d.getMonth(), 1); }
   function endOfMonth(d) { return new Date(d.getFullYear(), d.getMonth() + 1, 0); }
