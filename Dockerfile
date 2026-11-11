@@ -9,11 +9,15 @@
 # identical for every architecture. Without this pin a multi-arch build (buildx:
 # linux/amd64,linux/arm64) runs pnpm install and pnpm build a second time under QEMU
 # for arm64, which is slow and occasionally hangs for hours.
-FROM --platform=$BUILDPLATFORM node:22-alpine@sha256:fe4f6d74e20370acb04ad889077d14d0f64a9c8ea6a42bc60cddf1e844699914 AS frontend-builder
+FROM --platform=$BUILDPLATFORM node:26-alpine@sha256:8996bb5821d62a8fd9bb27c1cb07462f3fdce6e47d640c6a881ead0b064ce216 AS frontend-builder
 
 # Pin pnpm to the version in package.json's `packageManager` field (not @latest)
 # so CI builds are reproducible and match the committed lockfile.
-RUN corepack enable && corepack prepare pnpm@10.32.1 --activate
+#
+# Installed with npm, not corepack: Node 25+ no longer bundles corepack, so
+# `corepack enable` fails on node:26-alpine with "corepack: not found". Installing
+# the pinned version directly keeps the same guarantee without that dependency.
+RUN npm install -g pnpm@10.32.1
 
 WORKDIR /app
 
