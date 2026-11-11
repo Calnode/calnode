@@ -994,15 +994,15 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 	// send the booker to Stripe Checkout and DEFER all confirmation side-effects until the
 	// webhook marks the payment paid. Free event types fall through to the normal path.
 	if et.PriceCents > 0 {
-		sc := h.getStripe()
-		if sc == nil {
+		provider := h.getPaymentProvider()
+		if provider == nil {
 			// The price gate requires Stripe at save time, but never strand a charge:
 			// release the hold and tell the booker payments are unavailable.
 			_ = h.bookingSvc.CancelByID(r.Context(), b.ID, "payments unavailable")
 			h.writeError(w, http.StatusServiceUnavailable, "payments are temporarily unavailable")
 			return
 		}
-		checkoutURL, err := h.startBookingCheckout(r.Context(), sc, b.ID, et.PriceCents, et.Currency, et.Name, req.EventTypeSlug, req.Email)
+		checkoutURL, err := h.startBookingCheckout(r.Context(), provider, b.ID, et.PriceCents, et.Currency, et.Name, req.EventTypeSlug, req.Email)
 		if err != nil {
 			h.logger.ErrorContext(r.Context(), "create booking: start checkout", "error", err, "booking_id", b.ID)
 			_ = h.bookingSvc.CancelByID(r.Context(), b.ID, "checkout failed")

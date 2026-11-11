@@ -6,22 +6,22 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/calnode/calnode/internal/stripe"
+	"github.com/calnode/calnode/internal/payments"
 )
 
 // checkoutHoldWindow is how long the slot is held while the booker pays. Stripe requires a
 // Checkout session to expire between 30 minutes and 24 hours from creation.
 const checkoutHoldWindow = 31 * time.Minute
 
-// startBookingCheckout creates a Stripe Checkout session for a held (pending) booking, marks
-// the booking pending_payment, and returns the hosted Checkout URL to redirect the booker to.
-func (h *Handler) startBookingCheckout(ctx context.Context, sc *stripe.Client, bookingID string, priceCents int, currency, productName, slug, email string) (string, error) {
+// startBookingCheckout creates a payment session for a held (pending) booking, marks the
+// booking pending_payment, and returns the hosted checkout URL to redirect the booker to.
+func (h *Handler) startBookingCheckout(ctx context.Context, provider payments.Provider, bookingID string, priceCents int, currency, productName, slug, email string) (string, error) {
 	if currency == "" {
 		currency = "usd"
 	}
 	base := h.publicURL()
-	sess, err := sc.CreateCheckoutSession(ctx, stripe.CheckoutParams{
-		AmountCents:   int64(priceCents),
+	sess, err := provider.CreateCheckout(ctx, payments.CheckoutRequest{
+		AmountMinor:   int64(priceCents),
 		Currency:      currency,
 		ProductName:   productName,
 		CustomerEmail: email,
@@ -35,8 +35,9 @@ func (h *Handler) startBookingCheckout(ctx context.Context, sc *stripe.Client, b
 		return "", err
 	}
 	if _, err := h.db.ExecContext(ctx,
-		`UPDATE bookings SET payment_status = 'pending', stripe_session_id = ? WHERE id = ?`,
-		sess.ID, bookingID); err != nil {
+		`UPDATE bookings SET payment_status = 'pending', payment_provider = ?, payment_session_id = ?
+		 WHERE id = ?`,
+		provider.Name(), sess.ID, bookingID); err != nil {
 		return "", err
 	}
 	return sess.URL, nil
@@ -45,8 +46,8 @@ func (h *Handler) startBookingCheckout(ctx context.Context, sc *stripe.Client, b
 // StripeWebhook handles POST /v1/stripe/webhook — Stripe's payment notifications. Public, but
 // authenticated by the signing secret (no session cookie, so CSRF middleware doesn't apply).
 func (h *Handler) StripeWebhook(w http.ResponseWriter, r *http.Request) {
-	sc := h.getStripe()
-	if sc == nil || !sc.WebhookConfigured() {
+	provider := h.getPaymentProvider()
+	if provider == nil || !provider.Capabilities().Webhooks {
 		h.writeError(w, http.StatusServiceUnavailable, "payments not configured")
 		return
 	}
@@ -55,7 +56,7 @@ func (h *Handler) StripeWebhook(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusBadRequest, "could not read body")
 		return
 	}
-	ev, err := sc.VerifyWebhook(body, r.Header.Get("Stripe-Signature"), time.Now())
+	ev, err := provider.ParseWebhook(body, r.Header, time.Now())
 	if err != nil {
 		// Bad signature → 400 so Stripe surfaces the failure (and a forged call is rejected).
 		h.logger.WarnContext(r.Context(), "stripe webhook: verify failed", "error", err)
@@ -63,20 +64,16 @@ func (h *Handler) StripeWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	switch ev.Type {
-	case "checkout.session.completed":
-		sess, perr := ev.Session()
-		if perr != nil {
-			break
-		}
-		if sess.PaymentStatus == "paid" {
-			if id := sess.Metadata["booking_id"]; id != "" {
-				h.confirmPaidBooking(context.Background(), id, sess.PaymentIntent, int(sess.AmountTotal), sess.Currency)
+	switch ev.Kind {
+	case payments.EventCheckoutCompleted:
+		if ev.Session != nil && ev.Session.Paid {
+			if id := ev.Session.Metadata["booking_id"]; id != "" {
+				h.confirmPaidBooking(context.Background(), id, ev.Session.PaymentRef, int(ev.Session.AmountMinor), ev.Session.Currency)
 			}
 		}
-	case "checkout.session.expired":
-		if sess, perr := ev.Session(); perr == nil {
-			if id := sess.Metadata["booking_id"]; id != "" {
+	case payments.EventCheckoutExpired:
+		if ev.Session != nil {
+			if id := ev.Session.Metadata["booking_id"]; id != "" {
 				h.releaseUnpaidHold(context.Background(), id)
 			}
 		}
@@ -93,7 +90,7 @@ func (h *Handler) confirmPaidBooking(ctx context.Context, bookingID, paymentInte
 	defer cancel()
 
 	res, err := h.db.ExecContext(ctx,
-		`UPDATE bookings SET payment_status = 'paid', stripe_payment_intent_id = ?,
+		`UPDATE bookings SET payment_status = 'paid', payment_ref = ?,
 		     amount_paid_cents = ?, amount_paid_currency = ?
 		 WHERE id = ? AND payment_status = 'pending'`,
 		paymentIntentID, amountCents, currency, bookingID)
@@ -152,17 +149,17 @@ func (h *Handler) releaseUnpaidHold(ctx context.Context, bookingID string) {
 // retried request returns the original refund, and a failed Stripe call reverts
 // the claim so a later cancel retries instead of losing the refund.
 func (h *Handler) refundBookingPayment(ctx context.Context, bookingID string) {
-	sc := h.getStripe()
-	if sc == nil {
+	provider := h.getPaymentProvider()
+	if provider == nil || !provider.Capabilities().Refunds {
 		return
 	}
-	var intentID string
+	var paymentRef string
 	if err := h.db.QueryRowContext(ctx,
-		`SELECT COALESCE(stripe_payment_intent_id, '') FROM bookings WHERE id = ?`,
-		bookingID).Scan(&intentID); err != nil {
+		`SELECT COALESCE(payment_ref, '') FROM bookings WHERE id = ?`,
+		bookingID).Scan(&paymentRef); err != nil {
 		return
 	}
-	if intentID == "" {
+	if paymentRef == "" {
 		return
 	}
 	// Claim the refund: only a row still marked paid flips to refunding. A
@@ -177,7 +174,7 @@ func (h *Handler) refundBookingPayment(ctx context.Context, bookingID string) {
 	if n, _ := claimed.RowsAffected(); n == 0 {
 		return // already refunded/refunding, or never paid
 	}
-	if err := sc.Refund(ctx, intentID, "refund:"+bookingID); err != nil {
+	if err := provider.Refund(ctx, payments.RefundRequest{PaymentRef: paymentRef, IdempotencyKey: "refund:" + bookingID}); err != nil {
 		h.logger.ErrorContext(ctx, "stripe: refund on cancel", "error", err, "booking_id", bookingID)
 		// Revert the claim so a later cancel retries; the money was not moved.
 		// If the revert itself fails, the row stays 'refunding' — still safe:
