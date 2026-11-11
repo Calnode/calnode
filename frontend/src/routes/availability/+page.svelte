@@ -275,13 +275,14 @@
 		}
 	}
 
-	let eventTypes: {id: string, name: string}[] = []
+	let eventTypes = $state<{id: string; name: string}[]>([])
 	async function loadEventTypes() {
 		try {
 			const res = await api.get<{ items: EventType[] }>('/v1/event-types');
-			for (const r of (res.items ?? [])) {
-				eventTypes.push({id: r.id, name: r.name})
-			}
+			eventTypes = (res.items ?? []).map((et) => ({
+				id: et.id,
+				name: et.name,
+			}))
 		} catch (e: any) {
 
 		}
