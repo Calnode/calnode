@@ -123,9 +123,10 @@ func (h *Handler) UpdateAvailabilityRule(w http.ResponseWriter, r *http.Request)
 	r.Body = http.MaxBytesReader(w, r.Body, 32<<10)
 
 	var req struct {
-		DayOfWeek *int    `json:"day_of_week"`
-		StartTime *string `json:"start_time"`
-		EndTime   *string `json:"end_time"`
+		EventTypeId *string `json:"event_type_id"`
+		DayOfWeek   *int    `json:"day_of_week"`
+		StartTime   *string `json:"start_time"`
+		EndTime     *string `json:"end_time"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.writeError(w, http.StatusBadRequest, "invalid JSON")
@@ -137,11 +138,10 @@ func (h *Handler) UpdateAvailabilityRule(w http.ResponseWriter, r *http.Request)
 	}
 
 	var current availRuleJSON
-	var etID sql.NullString
 	err := h.db.QueryRowContext(r.Context(),
 		`SELECT id, event_type_id, day_of_week, start_time, end_time
 		 FROM availability_rules WHERE id = ? AND user_id = ?`, id, user.ID).
-		Scan(&current.ID, &etID, &current.DayOfWeek, &current.StartTime, &current.EndTime)
+		Scan(&current.ID, &current.EventTypeID, &current.DayOfWeek, &current.StartTime, &current.EndTime)
 	if err == sql.ErrNoRows {
 		h.writeError(w, http.StatusNotFound, "rule not found")
 		return
@@ -151,8 +151,14 @@ func (h *Handler) UpdateAvailabilityRule(w http.ResponseWriter, r *http.Request)
 		h.writeError(w, http.StatusInternalServerError, "internal error")
 		return
 	}
-	if etID.Valid {
-		current.EventTypeID = &etID.String
+
+	if req.EventTypeId != nil {
+		etID := req.EventTypeId
+		if *etID == "null" {
+			current.EventTypeID = nil
+		} else {
+			current.EventTypeID = req.EventTypeId
+		}
 	}
 
 	if req.DayOfWeek != nil {
@@ -174,8 +180,8 @@ func (h *Handler) UpdateAvailabilityRule(w http.ResponseWriter, r *http.Request)
 	}
 
 	_, err = h.db.ExecContext(r.Context(),
-		`UPDATE availability_rules SET day_of_week=?, start_time=?, end_time=? WHERE id=? AND user_id=?`,
-		current.DayOfWeek, current.StartTime, current.EndTime, id, user.ID)
+		`UPDATE availability_rules SET event_type_id=?, day_of_week=?, start_time=?, end_time=? WHERE id=? AND user_id=?`,
+		current.EventTypeID, current.DayOfWeek, current.StartTime, current.EndTime, id, user.ID)
 	if err != nil {
 		if db.IsUniqueViolation(err) {
 			h.writeError(w, http.StatusConflict, "a rule for this day and time already exists")
