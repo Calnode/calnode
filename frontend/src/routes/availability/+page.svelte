@@ -402,6 +402,10 @@
 											<span class="text-xs text-destructive">{block.error}</span>
 										{/if}
 
+										<span class="text-muted-foreground">|</span>
+										<div class="text-sm font-normal text-muted-foreground">
+											{$t('availability.eventTypes.appliesTo')}:
+										</div>
 										<Select.Root
 											type="single"
 											bind:value={block.event_type_id}
@@ -410,13 +414,13 @@
 										>
 											<Select.Trigger class="w-fit">
 												{#if block.event_type_id === "null"}
-													All
+													{$t('availability.eventTypes.allEventTypes')}
 												{:else}
 													{eventName(block.event_type_id)?.name ?? block.event_type_id}
 												{/if}
 											</Select.Trigger>
 											<Select.Content>
-												<Select.Item value="null" label="All">All</Select.Item>
+												<Select.Item value="null" label="All">{$t('availability.eventTypes.allEventTypes')}</Select.Item>
 												{#each eventTypes as e}<Select.Item value={e.id} label={e.name}>{e.name}</Select.Item>{/each}
 											</Select.Content>
 										</Select.Root>
