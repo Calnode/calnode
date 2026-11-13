@@ -101,9 +101,6 @@ export type SingleUseLink = {
 	url: string;
 	event_type_id: string;
 	created_by_user_id: string;
-	prefill_name: string;
-	prefill_email: string;
-	deal_id: string;
 	expires_at: string | null;
 	used_at: string | null;
 	booking_id: string | null;
@@ -111,9 +108,6 @@ export type SingleUseLink = {
 };
 
 export type CreateSingleUseLinkPayload = {
-	prefill_name?: string;
-	prefill_email?: string;
-	deal_id?: string;
 	expires_in_hours?: number;
 };
 

@@ -491,9 +491,9 @@
 
 /* ── Theme switcher & Dark mode ─────────────────────────── */
 :root {
-  --fp-bg: #f3f4f6;
+  --fp-bg: #F7F8FA;
   --fp-surface: #ffffff;
-  --fp-surface-muted: #f9fafb;
+  --fp-surface-muted: #F1F3F5;
   --fp-border: #e5e7eb;
   --fp-text: #111827;
   --fp-text-muted: #6b7280;
@@ -588,9 +588,13 @@ html.dark .dir-members li {
   border-color: var(--fp-border);
 }
 html.dark .business-name-text,
+html.dark header span,
 html.dark .event-name,
 html.dark .month-label,
 html.dark #month-label,
+html.dark .slots-title,
+html.dark .slots-date,
+html.dark #selected-date,
 html.dark .section-title,
 html.dark .scheduled-time,
 html.dark .dir-title,
@@ -634,11 +638,12 @@ html.dark .cookie-btn:hover {
   color: #ffffff;
 }
 html.dark .cd.avail {
-  background: #27272a;
-  color: #f4f4f5;
+  background: #27272A;
+  color: #F4F4F5;
+  border: 1px solid #3F3F46;
 }
 html.dark .cd.avail:hover {
-  background: #3f3f46;
+  background: #3F3F46;
 }
 html.dark .cd.past,
 html.dark .cd.unavail {

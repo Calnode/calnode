@@ -24,9 +24,6 @@ type singleUseLinkJSON struct {
 	URL             string  `json:"url"`
 	EventTypeID     string  `json:"event_type_id"`
 	CreatedByUserID string  `json:"created_by_user_id"`
-	PrefillName     string  `json:"prefill_name"`
-	PrefillEmail    string  `json:"prefill_email"`
-	DealID          string  `json:"deal_id"`
 	ExpiresAt       *string `json:"expires_at"`
 	UsedAt          *string `json:"used_at"`
 	BookingID       *string `json:"booking_id"`
@@ -83,10 +80,7 @@ func (h *Handler) CreateSingleUseLink(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		PrefillName    string `json:"prefill_name"`
-		PrefillEmail   string `json:"prefill_email"`
-		DealID         string `json:"deal_id"`
-		ExpiresInHours *int   `json:"expires_in_hours"`
+		ExpiresInHours *int `json:"expires_in_hours"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
 		h.writeError(w, http.StatusBadRequest, "invalid JSON")
@@ -120,15 +114,11 @@ func (h *Handler) CreateSingleUseLink(w http.ResponseWriter, r *http.Request) {
 		expiresAtPtr = &expStr
 	}
 
-	prefillName := strings.TrimSpace(req.PrefillName)
-	prefillEmail := strings.TrimSpace(req.PrefillEmail)
-	dealID := strings.TrimSpace(req.DealID)
-
 	if _, err := h.db.ExecContext(r.Context(), `
 		INSERT INTO single_use_tokens
-		  (id, token, event_type_id, created_by_user_id, prefill_name, prefill_email, deal_id, expires_at, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		id, token, etID, user.ID, prefillName, prefillEmail, dealID, expiresAtSQL, nowStr); err != nil {
+		  (id, token, event_type_id, created_by_user_id, expires_at, created_at)
+		VALUES (?, ?, ?, ?, ?, ?)`,
+		id, token, etID, user.ID, expiresAtSQL, nowStr); err != nil {
 		h.logger.ErrorContext(r.Context(), "create single-use link: insert", "error", err)
 		h.writeError(w, http.StatusInternalServerError, "internal error")
 		return
@@ -140,9 +130,6 @@ func (h *Handler) CreateSingleUseLink(w http.ResponseWriter, r *http.Request) {
 		URL:             h.singleUseURL(token),
 		EventTypeID:     etID,
 		CreatedByUserID: user.ID,
-		PrefillName:     prefillName,
-		PrefillEmail:    prefillEmail,
-		DealID:          dealID,
 		ExpiresAt:       expiresAtPtr,
 		CreatedAt:       nowStr,
 	})
@@ -168,7 +155,7 @@ func (h *Handler) ListSingleUseLinks(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rows, err := h.db.QueryContext(r.Context(), `
-		SELECT id, token, event_type_id, created_by_user_id, prefill_name, prefill_email, deal_id,
+		SELECT id, token, event_type_id, created_by_user_id,
 		       expires_at, used_at, booking_id, created_at
 		FROM single_use_tokens
 		WHERE event_type_id = ?
@@ -186,7 +173,6 @@ func (h *Handler) ListSingleUseLinks(w http.ResponseWriter, r *http.Request) {
 		var expiresAt, usedAt, bookingID sql.NullString
 		if err := rows.Scan(
 			&item.ID, &item.Token, &item.EventTypeID, &item.CreatedByUserID,
-			&item.PrefillName, &item.PrefillEmail, &item.DealID,
 			&expiresAt, &usedAt, &bookingID, &item.CreatedAt,
 		); err != nil {
 			h.logger.ErrorContext(r.Context(), "list single-use links: scan", "error", err)
@@ -284,21 +270,18 @@ func (h *Handler) SingleUseBookPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var (
-		slug        string
-		isActive    int
-		prefillName string
-		prefillMail string
-		dealID      string
-		expiresAt   sql.NullString
-		usedAt      sql.NullString
+		slug      string
+		isActive  int
+		expiresAt sql.NullString
+		usedAt    sql.NullString
 	)
 	err := h.db.QueryRowContext(r.Context(), `
-		SELECT et.slug, et.is_active, s.prefill_name, s.prefill_email, s.deal_id,
+		SELECT et.slug, et.is_active,
 		       s.expires_at, s.used_at
 		FROM single_use_tokens s
 		JOIN event_types et ON et.id = s.event_type_id
 		WHERE s.token = ?`, token).
-		Scan(&slug, &isActive, &prefillName, &prefillMail, &dealID, &expiresAt, &usedAt)
+		Scan(&slug, &isActive, &expiresAt, &usedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		writeSingleUseGonePage(w)
 		return
@@ -326,9 +309,6 @@ func (h *Handler) SingleUseBookPage(w http.ResponseWriter, r *http.Request) {
 
 	h.renderBookPage(w, r, slug, true, bookPrefill{
 		SingleUseToken: token,
-		Name:           prefillName,
-		Email:          prefillMail,
-		DealID:         dealID,
 	})
 }
 

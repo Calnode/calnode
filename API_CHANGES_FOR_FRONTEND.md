@@ -44,14 +44,11 @@ Generates a cryptographically random URL-safe single-use link for the event type
 **Request Body:**
 ```json
 {
-  "prefill_name": "Jane Founder",
-  "prefill_email": "jane@startup.io",
-  "deal_id": "deal_123",
   "expires_in_hours": 168
 }
 ```
-- All fields are optional.
-- `expires_in_hours`: defaults to `168` (7 days) when omitted. `0` creates a non-expiring single-use link (`expires_at: null`). Negative values return `400 Bad Request`.
+- `expires_in_hours` is optional (defaults to `168` / 7 days when omitted; `0` creates a non-expiring single-use link; negative values return `400 Bad Request`).
+- Standard URL query parameters appended externally (e.g. `/t/{token}?name=...&email=...`) pre-fill the booking form identically to `/book/{slug}?...`.
 
 **Response (`201 Created`):**
 ```json
@@ -61,9 +58,6 @@ Generates a cryptographically random URL-safe single-use link for the event type
   "url": "https://cal.example.com/t/xYz...",
   "event_type_id": "01J...",
   "created_by_user_id": "01J...",
-  "prefill_name": "Jane Founder",
-  "prefill_email": "jane@startup.io",
-  "deal_id": "deal_123",
   "expires_at": "2026-11-20T12:00:00Z",
   "used_at": null,
   "booking_id": null,

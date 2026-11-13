@@ -15,9 +15,7 @@
 
 	let items: EventType[] = $state([]);
 	let loading = $state(true);
-	let showCreate = $state(false);
 
-	let form = $state({ slug: '', name: '', description: '', duration_minutes: 30 });
 	let creating = $state(false);
 	let deleteOpen = $state(false);
 	let deleteSlug = $state('');
@@ -64,25 +62,20 @@
 		return et.owned ? $t('eventTypes.owner.you') : et.owner_name || et.owner_email || $t('common.emDash');
 	}
 
-	async function create() {
-		if (!form.slug || !form.name || !form.duration_minutes) {
-			toast.error(tr('eventTypes.toast.validation'));
-			return;
-		}
+	async function createDirect() {
+		if (creating) return;
 		creating = true;
 		try {
-			await api.post('/v1/event-types', {
-				slug: form.slug,
-				name: form.name,
-				description: form.description || undefined,
-				duration_minutes: Number(form.duration_minutes)
+			const suffix = Math.random().toString(36).slice(2, 6);
+			const created = await api.post<EventType>('/v1/event-types', {
+				slug: `new-meeting-${suffix}`,
+				name: 'New Meeting',
+				duration_minutes: 30,
+				is_active: true
 			});
-			form = { slug: '', name: '', description: '', duration_minutes: 30 };
-			showCreate = false;
-			await load();
+			window.location.href = `/admin/event-types/${created.slug}`;
 		} catch (e: any) {
 			toast.error(e.message || tr('eventTypes.toast.errors.create'));
-		} finally {
 			creating = false;
 		}
 	}
@@ -145,21 +138,15 @@
 	let linkEventType = $state<EventType | null>(null);
 	let singleUseLinks = $state<SingleUseLink[]>([]);
 	let linksLoading = $state(false);
-	let linkCreating = $state(false);
+	let mintingId = $state('');
 	let revokingToken = $state('');
-	let linkForm = $state({
-		prefill_name: '',
-		prefill_email: '',
-		deal_id: '',
-		expires_in_hours: 168
-	});
 
 	function resolveSingleUseUrl(link: SingleUseLink) {
 		if (link.url && link.url.startsWith('http')) return link.url;
 		return `${window.location.origin}/t/${link.token}`;
 	}
 
-	async function copyText(text: string, msg = 'Copied 1-time link to clipboard') {
+	async function copyText(text: string, msg = '1-time link copied to clipboard') {
 		try {
 			await navigator.clipboard.writeText(text);
 			toast.success(msg);
@@ -168,9 +155,27 @@
 		}
 	}
 
-	async function openSingleUseModal(et: EventType) {
+	async function mintAndCopyOneTimeLink(et: EventType) {
+		if (mintingId) return;
+		mintingId = et.id;
+		try {
+			const created = await api.post<SingleUseLink>(
+				`/v1/event-types/${et.id}/single-use-links`,
+				{}
+			);
+			await copyText(resolveSingleUseUrl(created), '1-time link copied to clipboard');
+			if (linkModalOpen && linkEventType?.id === et.id) {
+				singleUseLinks = [created, ...singleUseLinks];
+			}
+		} catch (e: any) {
+			toast.error(e.message || 'Failed to create 1-time link');
+		} finally {
+			mintingId = '';
+		}
+	}
+
+	async function openSingleUseDrawer(et: EventType) {
 		linkEventType = et;
-		linkForm = { prefill_name: '', prefill_email: '', deal_id: '', expires_in_hours: 168 };
 		linkModalOpen = true;
 		await loadSingleUseLinks(et.id);
 	}
@@ -183,39 +188,10 @@
 			);
 			singleUseLinks = res.single_use_links ?? [];
 		} catch (e: any) {
-			toast.error(e.message || 'Failed to load single-use links');
+			toast.error(e.message || 'Failed to load 1-time links');
 			singleUseLinks = [];
 		} finally {
 			linksLoading = false;
-		}
-	}
-
-	async function createSingleUseLink() {
-		if (!linkEventType || linkCreating) return;
-		const hours = Number(linkForm.expires_in_hours);
-		if (!Number.isFinite(hours) || hours < 0) {
-			toast.error('Expiration hours cannot be negative.');
-			return;
-		}
-		linkCreating = true;
-		try {
-			const payload: CreateSingleUseLinkPayload = {
-				prefill_name: linkForm.prefill_name.trim(),
-				prefill_email: linkForm.prefill_email.trim(),
-				deal_id: linkForm.deal_id.trim(),
-				expires_in_hours: hours
-			};
-			const created = await api.post<SingleUseLink>(
-				`/v1/event-types/${linkEventType.id}/single-use-links`,
-				payload
-			);
-			singleUseLinks = [created, ...singleUseLinks];
-			linkForm = { prefill_name: '', prefill_email: '', deal_id: '', expires_in_hours: 168 };
-			await copyText(resolveSingleUseUrl(created), '1-Time Link created & copied!');
-		} catch (e: any) {
-			toast.error(e.message || 'Failed to create single-use link');
-		} finally {
-			linkCreating = false;
 		}
 	}
 
@@ -225,7 +201,7 @@
 		try {
 			await api.del(`/v1/single-use-links/${token}`);
 			singleUseLinks = singleUseLinks.filter((l) => l.token !== token);
-			toast.success('Single-use link revoked');
+			toast.success('1-time link revoked');
 		} catch (e: any) {
 			toast.error(e.message || 'Failed to revoke link');
 		} finally {
@@ -271,38 +247,11 @@
 				>{$t('eventTypes.scope.all')}</button>
 			</div>
 		{/if}
-		<Button onclick={() => { showCreate = !showCreate; }}>
-			{showCreate ? $t('eventTypes.new.toggleCancel') : $t('eventTypes.new.toggleOpen')}
+		<Button onclick={createDirect} disabled={creating}>
+			{creating ? 'Creating...' : '+ New event type'}
 		</Button>
 	</div>
 </div>
-
-{#if showCreate}
-	<div class="mb-6 rounded-lg border bg-card p-6">
-		<h2 class="mb-4 text-sm font-semibold">{$t('eventTypes.new.title')}</h2>
-		<div class="mb-4 grid grid-cols-2 gap-4">
-			<div class="space-y-1.5">
-				<Label for="et-name">{$t('eventTypes.new.name')}</Label>
-				<Input id="et-name" bind:value={form.name} placeholder={$t('eventTypes.new.namePlaceholder')} />
-			</div>
-			<div class="space-y-1.5">
-				<Label for="et-slug">{$t('eventTypes.new.slug')}</Label>
-				<Input id="et-slug" bind:value={form.slug} placeholder={$t('eventTypes.new.slugPlaceholder')} />
-			</div>
-			<div class="space-y-1.5">
-				<Label for="et-dur">{$t('eventTypes.new.duration')}</Label>
-				<Input id="et-dur" type="number" min="5" bind:value={form.duration_minutes} />
-			</div>
-			<div class="space-y-1.5">
-				<Label for="et-desc">{$t('eventTypes.new.description')}</Label>
-				<Input id="et-desc" bind:value={form.description} placeholder={$t('eventTypes.new.descriptionPlaceholder')} />
-			</div>
-		</div>
-		<Button onclick={create} disabled={creating}>
-			{creating ? $t('eventTypes.new.creating') : $t('eventTypes.new.create')}
-		</Button>
-	</div>
-{/if}
 
 {#if loading}
 	<p class="py-8 text-sm text-muted-foreground">{$t('common.loading')}</p>
@@ -365,10 +314,19 @@
 									variant="outline"
 									size="sm"
 									class="h-7 px-2.5 text-xs"
-									onclick={() => openSingleUseModal(et)}
-									disabled={!et.is_active || !!et.archived}
+									onclick={() => mintAndCopyOneTimeLink(et)}
+									disabled={!et.is_active || !!et.archived || mintingId === et.id}
 								>
-									1-Time Link
+									{mintingId === et.id ? 'Copying...' : '1-Time Link'}
+								</Button>
+								<Button
+									variant="ghost"
+									size="sm"
+									class="h-7 px-2 text-xs text-muted-foreground"
+									onclick={() => openSingleUseDrawer(et)}
+									title="Manage 1-time links"
+								>
+									Manage
 								</Button>
 							</div>
 						</td>
@@ -441,43 +399,27 @@
 <Dialog.Root bind:open={linkModalOpen}>
 	<Dialog.Content class="max-w-lg">
 		<Dialog.Header>
-			<Dialog.Title>1-Time Booking Link{linkEventType ? ` — ${linkEventType.name}` : ''}</Dialog.Title>
+			<Dialog.Title>1-Time Links{linkEventType ? ` — ${linkEventType.name}` : ''}</Dialog.Title>
 			<Dialog.Description>
-				Generate an ephemeral link that expires automatically after a single booking.
+				Ephemeral links expire automatically after a single booking. Append query params like <code class="rounded bg-muted px-1 py-0.5 text-xs">?name=...&amp;email=...</code> externally if needed.
 			</Dialog.Description>
 		</Dialog.Header>
 
 		<div class="space-y-4 py-2">
-			<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-				<div class="space-y-1.5">
-					<Label for="su-name">Founder Name (optional)</Label>
-					<Input id="su-name" bind:value={linkForm.prefill_name} placeholder="Jane Founder" />
-				</div>
-				<div class="space-y-1.5">
-					<Label for="su-email">Founder Email (optional)</Label>
-					<Input id="su-email" type="email" bind:value={linkForm.prefill_email} placeholder="jane@startup.io" />
-				</div>
-				<div class="space-y-1.5">
-					<Label for="su-deal">Deal ID (optional)</Label>
-					<Input id="su-deal" bind:value={linkForm.deal_id} placeholder="deal_123" />
-				</div>
-				<div class="space-y-1.5">
-					<Label for="su-exp">Expires in (hours, 0 = never)</Label>
-					<Input id="su-exp" type="number" min="0" bind:value={linkForm.expires_in_hours} />
-				</div>
-			</div>
-			<Button class="w-full" onclick={createSingleUseLink} disabled={linkCreating}>
-				{linkCreating ? 'Generating...' : 'Generate & Copy 1-Time Link'}
-			</Button>
+			{#if linkEventType}
+				<Button class="w-full" onclick={() => linkEventType && mintAndCopyOneTimeLink(linkEventType)} disabled={!!mintingId}>
+					{mintingId ? 'Generating...' : 'Generate & Copy New 1-Time Link'}
+				</Button>
+			{/if}
 
 			<div class="border-t pt-3">
-				<p class="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Recent 1-Time Links</p>
+				<p class="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Existing 1-Time Links</p>
 				{#if linksLoading}
 					<p class="py-3 text-xs text-muted-foreground">Loading links...</p>
 				{:else if singleUseLinks.length === 0}
-					<p class="py-3 text-xs text-muted-foreground">No single-use links created for this event type yet.</p>
+					<p class="py-3 text-xs text-muted-foreground">No 1-time links created for this event type yet.</p>
 				{:else}
-					<div class="max-h-56 space-y-2 overflow-y-auto pr-1">
+					<div class="max-h-64 space-y-2 overflow-y-auto pr-1">
 						{#each singleUseLinks as link (link.id)}
 							{@const st = linkStatus(link)}
 							<div class="flex items-center justify-between gap-2 rounded-md border bg-muted/20 px-3 py-2 text-xs">
@@ -486,14 +428,8 @@
 										<Badge variant={st === 'active' ? 'default' : 'secondary'} class="text-[10px] capitalize">
 											{st}
 										</Badge>
-										<span class="truncate font-medium">
-											{link.prefill_name || link.prefill_email || link.token.slice(0, 10) + '…'}
-										</span>
-										{#if link.deal_id}
-											<span class="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">{link.deal_id}</span>
-										{/if}
+										<span class="truncate font-mono text-[11px] text-muted-foreground">/t/{link.token}</span>
 									</div>
-									<p class="mt-0.5 truncate font-mono text-[11px] text-muted-foreground">/t/{link.token}</p>
 								</div>
 								<div class="flex shrink-0 items-center gap-1">
 									{#if st === 'active'}

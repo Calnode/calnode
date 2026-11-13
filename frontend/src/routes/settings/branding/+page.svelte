@@ -207,7 +207,7 @@
 					onclick={() => fileInput?.click()}
 					disabled={uploadingFlag.active}
 					title={logoUrl ? $t('settings.branding.logo.replaceTitle') : $t('settings.branding.logo.uploadTitle')}
-					class="group relative flex min-h-[88px] w-full max-w-md cursor-pointer items-center justify-center overflow-hidden rounded-md border bg-white px-4 py-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-wait"
+					class="group relative flex min-h-[88px] w-full max-w-md cursor-pointer items-center justify-center overflow-hidden rounded-md border border-dashed border-zinc-300 bg-zinc-50 px-4 py-3 transition-colors hover:border-zinc-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-wait dark:border-zinc-700 dark:bg-zinc-900/60 dark:hover:border-zinc-500"
 				>
 					{#if logoUrl}
 						<img src={logoUrl} alt={$t('settings.branding.logo.alt')} style="height:{logoHeight}px;width:auto;opacity:{logoOpacity / 100};" />
@@ -246,7 +246,7 @@
 					onclick={() => bannerFileInput?.click()}
 					disabled={uploadingFlag.active}
 					title={bannerUrl ? $t('settings.branding.banner.replaceTitle') : $t('settings.branding.banner.uploadTitle')}
-					class="group relative flex min-h-[88px] w-full max-w-md cursor-pointer items-center justify-center overflow-hidden rounded-md border bg-white px-4 py-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-wait"
+					class="group relative flex min-h-[88px] w-full max-w-md cursor-pointer items-center justify-center overflow-hidden rounded-md border border-dashed border-zinc-300 bg-zinc-50 px-4 py-3 transition-colors hover:border-zinc-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-wait dark:border-zinc-700 dark:bg-zinc-900/60 dark:hover:border-zinc-500"
 				>
 					{#if bannerUrl}
 						<img src={bannerUrl} alt={$t('settings.branding.banner.alt')} style="width:100%;height:auto;opacity:{bannerOpacity / 100};" />

@@ -239,19 +239,36 @@ func BuildHandler(ctx context.Context, cfg *config.Config, db *sql.DB, logger *s
 		h.SetAllowedSignupDomains(cfg.AllowedSignupDomains)
 	}
 
-	if cfg.MicrosoftClientID != "" && cfg.MicrosoftClientSecret != "" {
-		msTenant := strings.TrimSpace(cfg.MicrosoftTenantID)
-		if msTenant == "" {
-			msTenant = strings.TrimSpace(cfg.MicrosoftTenant)
+	msClientID := cfg.MicrosoftClientID
+	msClientSecret := cfg.MicrosoftClientSecret
+	msTenant := strings.TrimSpace(cfg.MicrosoftTenantID)
+	if msTenant == "" {
+		msTenant = strings.TrimSpace(cfg.MicrosoftTenant)
+	}
+	if dbMS, err := handler.LoadMicrosoftSettingsFromDB(db, encKey); err == nil && dbMS != nil {
+		if dbMS.ClientID != "" {
+			msClientID = dbMS.ClientID
 		}
+		if dbMS.ClientSecret != "" {
+			msClientSecret = dbMS.ClientSecret
+		}
+		if dbMS.TenantID != "" {
+			msTenant = dbMS.TenantID
+		}
+		if len(dbMS.AllowedSignupDomains) > 0 {
+			h.SetAllowedSignupDomains(dbMS.AllowedSignupDomains)
+		}
+	}
+
+	if msClientID != "" && msClientSecret != "" {
 		if msTenant == "" {
 			msTenant = "common"
 		}
 		msAuthRedirect := cfg.BaseURL + "/v1/auth/microsoft/callback"
-		h.SetMicrosoftAuth(cfg.MicrosoftClientID, cfg.MicrosoftClientSecret, msTenant, msAuthRedirect, cfg.CookieSecure)
+		h.SetMicrosoftAuth(msClientID, msClientSecret, msTenant, msAuthRedirect, cfg.CookieSecure)
 		logger.Info("Microsoft OAuth login configured", "redirect_url", msAuthRedirect, "tenant", msTenant)
 
-		mc, err := microsoft.New(db, cfg.MicrosoftClientID, cfg.MicrosoftClientSecret, msTenant, calRedirect, cfg.EncryptionKey)
+		mc, err := microsoft.New(db, msClientID, msClientSecret, msTenant, calRedirect, cfg.EncryptionKey)
 		if err != nil {
 			logger.Error("microsoft: init failed", "error", err)
 		} else {
@@ -449,6 +466,9 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	mux.HandleFunc("POST /v1/settings/email/rsvp-webhook", settingsRL(h.RequireAuth(h.SetupRSVPWebhook)))
 	mux.HandleFunc("GET /v1/settings/google", h.RequireAuth(h.GetGoogleSettings))
 	mux.HandleFunc("PATCH /v1/settings/google", settingsRL(h.RequireAuth(h.PatchGoogleSettings)))
+	mux.HandleFunc("GET /v1/settings/microsoft", h.RequireAuth(h.GetMicrosoftSettings))
+	mux.HandleFunc("PUT /v1/settings/microsoft", settingsRL(h.RequireAuth(h.PutMicrosoftSettings)))
+	mux.HandleFunc("PATCH /v1/settings/microsoft", settingsRL(h.RequireAuth(h.PutMicrosoftSettings)))
 	mux.HandleFunc("GET /v1/settings/zoom", h.RequireAuth(h.GetZoomSettings))
 	mux.HandleFunc("PATCH /v1/settings/zoom", settingsRL(h.RequireAuth(h.PatchZoomSettings)))
 	mux.HandleFunc("GET /v1/settings/livekit", h.RequireAuth(h.GetLiveKitSettings))

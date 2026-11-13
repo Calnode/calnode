@@ -3,7 +3,7 @@
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 	import { base } from '$app/paths';
-	import { api, type EventType, type EventTypeHost, type TeamMember, type Team, type CalendarStatus, type ZoomStatus } from '$lib/api';
+	import { api, type EventType, type EventTypeHost, type TeamMember, type Team, type CalendarStatus, type ZoomStatus, type SingleUseLink } from '$lib/api';
 	import { currentUser } from '$lib/stores';
 	import { Button, buttonVariants } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
@@ -17,6 +17,7 @@
 	import { saveOnCmdS } from '$lib/save-shortcut';
 	import QuestionsPanel from '$lib/components/event-types/QuestionsPanel.svelte';
 	import EmbedPanel from '$lib/components/event-types/EmbedPanel.svelte';
+	import BookingPreviewCard from '$lib/components/event-types/BookingPreviewCard.svelte';
 	import { ConfirmDialog } from '$lib/components/ui/confirm-dialog';
 	import { t, tr, localeTag } from '$lib/i18n';
 	import LinkedText from '$lib/i18n/linked-text.svelte';
@@ -537,6 +538,30 @@
 		}
 	});
 
+	let mintingOneTime = $state(false);
+	async function copyPublicLink() {
+		const url = `${window.location.origin}/book/${form.slug || slug}`;
+		try {
+			await navigator.clipboard.writeText(url);
+			toast.success('Booking link copied to clipboard');
+		} catch {
+			toast.error('Unable to copy automatically');
+		}
+	}
+	async function mintOneTimeLink() {
+		if (!et || mintingOneTime) return;
+		mintingOneTime = true;
+		try {
+			const created = await api.post<SingleUseLink>(`/v1/event-types/${et.id}/single-use-links`, {});
+			const url = created.url?.startsWith('http') ? created.url : `${window.location.origin}/t/${created.token}`;
+			await navigator.clipboard.writeText(url);
+			toast.success('1-time link copied to clipboard');
+		} catch (e: any) {
+			toast.error(e.message || 'Failed to create 1-time link');
+		} finally {
+			mintingOneTime = false;
+		}
+	}
 </script>
 
 {#snippet hostPickers(target: Target, idPrefix: string)}
@@ -577,25 +602,34 @@
 <svelte:head><title>{$t('eventTypeEditor.headTitle', { name: et?.name ?? slug ?? '' })}</title></svelte:head>
 <svelte:window onkeydown={saveOnCmdS(saveET, () => !etSaving)} />
 
-<div class="mb-8">
-	<a href="{base}/event-types" class="mb-2 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-		<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-		{$t('eventTypeEditor.back')}
-	</a>
-	<div class="flex items-center gap-3">
-		<h1 class="text-2xl font-semibold tracking-tight">{et?.name ?? slug}</h1>
-		<Tooltip.Provider>
-			<Tooltip.Root>
-				<Tooltip.Trigger
-					class={buttonVariants({ variant: 'ghost', size: 'icon' })}
-					onclick={() => window.open(`/book/${slug}`, '_blank')}
-				>
-					<!-- External link icon (matches the event-types list) -->
+<div class="sticky top-0 z-20 -mx-4 mb-6 border-b bg-background/95 px-4 py-3 backdrop-blur-sm sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+	<div class="flex flex-wrap items-center justify-between gap-3">
+		<div class="flex min-w-0 items-center gap-3">
+			<a href="{base}/event-types" class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-sm text-muted-foreground hover:bg-muted hover:text-foreground">
+				<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+				{$t('eventTypeEditor.back')}
+			</a>
+			<h1 class="truncate text-lg font-semibold tracking-tight sm:text-xl">{form.name || et?.name || slug}</h1>
+		</div>
+
+		{#if et && et.can_edit !== false}
+			<div class="flex flex-wrap items-center gap-2">
+				<div class="flex items-center gap-2 rounded-md border bg-card px-2.5 py-1">
+					<span class="text-xs text-muted-foreground">{form.is_active ? 'Active' : 'Inactive'}</span>
+					<Switch bind:checked={form.is_active} />
+				</div>
+				<Button variant="ghost" size="icon" onclick={() => window.open(`/book/${form.slug || slug}`, '_blank')} title={$t('eventTypeEditor.previewTooltip')}>
 					<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-				</Tooltip.Trigger>
-				<Tooltip.Content>{$t('eventTypeEditor.previewTooltip')}</Tooltip.Content>
-			</Tooltip.Root>
-		</Tooltip.Provider>
+				</Button>
+				<Button variant="outline" size="sm" onclick={copyPublicLink}>Copy Link</Button>
+				<Button variant="outline" size="sm" onclick={mintOneTimeLink} disabled={mintingOneTime || !form.is_active}>
+					{mintingOneTime ? 'Copying...' : '1-Time Link'}
+				</Button>
+				<Button size="sm" onclick={saveET} disabled={etSaving}>
+					{etSaving ? 'Saving...' : 'Save'}
+				</Button>
+			</div>
+		{/if}
 	</div>
 </div>
 
@@ -634,22 +668,28 @@
 {:else}
 
 {#if editingForOwner}
-<div class="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+<div class="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-200">
 	{$t('eventTypeEditor.adminEditing.banner', { owner: ownerLabel })}
 </div>
 {/if}
 
-<div class="mb-6 flex gap-1 overflow-x-auto border-b">
-	{#each TABS as tab}
-		<button
-			type="button"
-			onclick={() => (activeTab = tab.id)}
-			class="-mb-px shrink-0 border-b-2 px-3 py-2 text-sm font-medium transition-colors {activeTab === tab.id ? 'border-foreground text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'}"
-		>
-			{tab.label}
-		</button>
-	{/each}
-</div>
+<div class="flex flex-col gap-6 lg:flex-row lg:items-start">
+	<!-- Sub-Navigation Rail (Left) -->
+	<nav class="flex shrink-0 gap-1 overflow-x-auto pb-2 lg:w-52 lg:flex-col lg:overflow-visible lg:pb-0" aria-label="Event type sections">
+		<p class="hidden px-3 pb-1 pt-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70 lg:block">Setup</p>
+		{#each TABS as tab}
+			<button
+				type="button"
+				onclick={() => (activeTab = tab.id)}
+				class="shrink-0 rounded-md px-3 py-2 text-left text-sm font-medium transition-colors {activeTab === tab.id ? 'bg-secondary text-secondary-foreground' : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'}"
+			>
+				{tab.label}
+			</button>
+		{/each}
+	</nav>
+
+	<!-- Focused Settings Pane (Center) -->
+	<div class="min-w-0 flex-1">
 
 {#if activeTab === 'general'}
 <!-- General Settings -->
@@ -1283,6 +1323,21 @@
 		</Button>
 	</div>
 {/if}
+	</div>
+
+	<!-- Live Interactive Booking Preview (Right, collapsible on < 1280px) -->
+	<aside class="hidden w-80 shrink-0 xl:block">
+		<BookingPreviewCard
+			name={form.name}
+			description={form.description}
+			duration={form.duration_minutes}
+			locationType={form.location_type}
+			locationValue={form.location_value}
+			hostName={$currentUser?.name ?? 'Host'}
+			hostAvatar={$currentUser?.avatar_url ?? ''}
+		/>
+	</aside>
+</div>
 
 	<ConfirmDialog
 		bind:open={confirmNoneOpen}
