@@ -673,9 +673,9 @@
 </div>
 {/if}
 
-<div class="flex flex-col gap-6 lg:flex-row lg:items-start">
+<div class="flex flex-col gap-6 pb-16 lg:grid lg:grid-cols-[208px_minmax(480px,1fr)] lg:items-start xl:grid-cols-[208px_minmax(480px,1fr)_320px]">
 	<!-- Sub-Navigation Rail (Left) -->
-	<nav class="flex shrink-0 gap-1 overflow-x-auto pb-2 lg:w-52 lg:flex-col lg:overflow-visible lg:pb-0" aria-label="Event type sections">
+	<nav class="flex shrink-0 gap-1 overflow-x-auto pb-2 lg:flex-col lg:overflow-visible lg:pb-0" aria-label="Event type sections">
 		<p class="hidden px-3 pb-1 pt-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/70 lg:block">Setup</p>
 		{#each TABS as tab}
 			<button
@@ -689,7 +689,7 @@
 	</nav>
 
 	<!-- Focused Settings Pane (Center) -->
-	<div class="min-w-0 flex-1">
+	<div class="min-w-0 w-full">
 
 {#if activeTab === 'general'}
 <!-- General Settings -->
@@ -1314,14 +1314,6 @@
 
 {#if activeTab === 'embed'}
 	<EmbedPanel slug={et?.slug ?? ''} />
-{/if}
-
-{#if activeTab === 'general' || activeTab === 'hosts' || activeTab === 'notifications'}
-	<div class="sticky bottom-0 mt-4 flex justify-end border-t bg-background/90 py-3 backdrop-blur">
-		<Button onclick={saveET} disabled={etSaving}>
-			{etSaving ? $t('eventTypeEditor.saveInProgress') : $t('eventTypeEditor.save')}
-		</Button>
-	</div>
 {/if}
 	</div>
 
