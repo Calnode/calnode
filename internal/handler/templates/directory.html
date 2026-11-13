@@ -8,6 +8,7 @@
 {{template "demoNoindex" .}}
 {{template "trackingHead" .}}
 {{.HeadHTML}}
+{{template "themeHead"}}
 <link rel="stylesheet" href="/booking.css?v={{.CSSVersion}}">
 <style>
 body {
@@ -62,6 +63,7 @@ body {
 </style>
 </head>
 <body>
+{{template "themeSwitcher"}}
 {{template "demoBanner" .}}
 {{template "businessHeader" .}}
 <main class="dir-card">

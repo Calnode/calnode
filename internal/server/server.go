@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/calnode/calnode/frontend"
@@ -234,17 +235,28 @@ func BuildHandler(ctx context.Context, cfg *config.Config, db *sql.DB, logger *s
 		logger.Info("Google OAuth not configured — add credentials in Settings or set GOOGLE_CLIENT_ID")
 	}
 
-	if cfg.MicrosoftClientID != "" && cfg.MicrosoftClientSecret != "" {
-		msAuthRedirect := cfg.BaseURL + "/v1/auth/microsoft/callback"
-		h.SetMicrosoftAuth(cfg.MicrosoftClientID, cfg.MicrosoftClientSecret, cfg.MicrosoftTenant, msAuthRedirect, cfg.CookieSecure)
-		logger.Info("Microsoft OAuth login configured", "redirect_url", msAuthRedirect)
+	if len(cfg.AllowedSignupDomains) > 0 {
+		h.SetAllowedSignupDomains(cfg.AllowedSignupDomains)
+	}
 
-		mc, err := microsoft.New(db, cfg.MicrosoftClientID, cfg.MicrosoftClientSecret, cfg.MicrosoftTenant, calRedirect, cfg.EncryptionKey)
+	if cfg.MicrosoftClientID != "" && cfg.MicrosoftClientSecret != "" {
+		msTenant := strings.TrimSpace(cfg.MicrosoftTenantID)
+		if msTenant == "" {
+			msTenant = strings.TrimSpace(cfg.MicrosoftTenant)
+		}
+		if msTenant == "" {
+			msTenant = "common"
+		}
+		msAuthRedirect := cfg.BaseURL + "/v1/auth/microsoft/callback"
+		h.SetMicrosoftAuth(cfg.MicrosoftClientID, cfg.MicrosoftClientSecret, msTenant, msAuthRedirect, cfg.CookieSecure)
+		logger.Info("Microsoft OAuth login configured", "redirect_url", msAuthRedirect, "tenant", msTenant)
+
+		mc, err := microsoft.New(db, cfg.MicrosoftClientID, cfg.MicrosoftClientSecret, msTenant, calRedirect, cfg.EncryptionKey)
 		if err != nil {
 			logger.Error("microsoft: init failed", "error", err)
 		} else {
 			calSvc.Register(mc)
-			logger.Info("Microsoft 365 calendar configured", "tenant", cfg.MicrosoftTenant)
+			logger.Info("Microsoft 365 calendar configured", "tenant", msTenant)
 		}
 	}
 
@@ -474,6 +486,9 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	mux.HandleFunc("PUT /v1/event-types/{slug}/hosts", h.RequireAuth(h.SetEventTypeHosts))
 	testEmailRL := RateLimit(10, time.Minute)
 	mux.HandleFunc("POST /v1/event-types/{slug}/test-email", testEmailRL(h.RequireAuth(h.SendTestEmail)))
+	mux.HandleFunc("POST /v1/event-types/{id}/single-use-links", h.RequireAuth(h.CreateSingleUseLink))
+	mux.HandleFunc("GET /v1/event-types/{id}/single-use-links", h.RequireAuth(h.ListSingleUseLinks))
+	mux.HandleFunc("DELETE /v1/single-use-links/{token}", h.RequireAuth(h.RevokeSingleUseLink))
 
 	// Availability rules
 	mux.HandleFunc("POST /v1/availability-rules", h.RequireAuth(h.CreateAvailabilityRule))
@@ -532,6 +547,7 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	mux.HandleFunc("GET /embed.js", h.EmbedJS)
 	mux.HandleFunc("GET /booking.css", h.BookingCSS)
 	mux.HandleFunc("GET /book/{slug}", h.BookPage)
+	mux.HandleFunc("GET /t/{token}", h.SingleUseBookPage)
 	mux.HandleFunc("GET /u/{handle}", h.PersonPage)
 	mux.HandleFunc("GET /team/{slug}", h.TeamPage)
 

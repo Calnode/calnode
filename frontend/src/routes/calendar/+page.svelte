@@ -275,13 +275,13 @@
 	<p class="mb-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>
 {/if}
 {#if justConnected && status?.connected}
-	<p class="mb-4 rounded-md bg-green-50 px-3 py-2 text-sm text-green-700">{$t('calendar.connectedSuccess')}</p>
+	<p class="mb-4 rounded-md bg-green-50 px-3 py-2 text-sm text-green-700 dark:bg-green-950/50 dark:text-green-300">{$t('calendar.connectedSuccess')}</p>
 {/if}
 
 {#if loading}
 	<p class="py-8 text-sm text-muted-foreground">{$t('common.loading')}</p>
 {:else if status?.configured === false}
-	<div class="max-w-md rounded-md bg-amber-50 px-3 py-2.5 text-sm text-amber-800 ring-1 ring-inset ring-amber-200">
+	<div class="max-w-md rounded-md bg-amber-50 px-3 py-2.5 text-sm text-amber-800 ring-1 ring-inset ring-amber-200 dark:bg-amber-950/40 dark:text-amber-200 dark:ring-amber-800/60">
 		<p class="font-medium">{$t('calendar.noProvider.title')}</p>
 		<p class="mt-1 text-amber-700">
 			<LinkedText
@@ -303,14 +303,25 @@
 			<div class="divide-y rounded-lg border bg-card">
 				{#each connections as c (c.id)}
 					<div class="p-4">
-						<div class="flex items-center justify-between gap-3">
+						<div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 						<div class="flex min-w-0 items-center gap-3">
 							<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="shrink-0 text-muted-foreground">
 								<rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
 							</svg>
 							<div class="min-w-0">
-								<p class="truncate font-medium">{c.account_email || label(c.provider)}</p>
-								<p class="text-xs text-muted-foreground">{label(c.provider)} · {$t('calendar.checkedForConflicts')}</p>
+								<div class="flex flex-wrap items-center gap-2">
+									<p class="truncate font-medium">{c.account_email || label(c.provider)}</p>
+									<span class="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
+										<span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+										Conflict Check Active
+									</span>
+									{#if c.is_destination}
+										<span class="inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
+											Primary Booking Target
+										</span>
+									{/if}
+								</div>
+								<p class="text-xs text-muted-foreground">{label(c.provider)} · {c.is_destination ? 'Writes new bookings & checked for conflicts' : 'Read-only for busy blocks'}</p>
 								{#if reauthNeeded.has(c.id)}
 									<p class="text-xs font-medium text-destructive">{$t('calendar.reconnectNeeded')}</p>
 								{/if}
@@ -319,7 +330,7 @@
 						<div class="flex shrink-0 items-center gap-4">
 							<label class="flex cursor-pointer items-center gap-1.5 text-sm text-muted-foreground">
 								<input type="radio" name="destination" checked={c.is_destination} disabled={busy} onchange={() => setDestination(c)} />
-								{$t('calendar.addBookingsHere')}
+								Primary Booking Target
 							</label>
 							<Button variant="ghost" size="sm" onclick={() => askDisconnect(c)} disabled={busy}>{$t('calendar.disconnect')}</Button>
 						</div>

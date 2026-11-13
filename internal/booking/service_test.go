@@ -676,3 +676,91 @@ func TestListByHost_empty(t *testing.T) {
 		t.Errorf("ListByHost empty: got %d bookings; want 0", len(bookings))
 	}
 }
+
+func TestCreate_frequencyCapsDailyAndWeeklyTimezoneAware(t *testing.T) {
+	database := newTestDB(t)
+	ctx := context.Background()
+	svc := booking.New(database)
+
+	hostID := uid.New()
+	if _, err := database.ExecContext(ctx, `
+		INSERT INTO users (id, email, name, iana_timezone)
+		VALUES (?, ?, 'NY Host', 'America/New_York')`,
+		hostID, hostID+"@test.com"); err != nil {
+		t.Fatalf("seed host: %v", err)
+	}
+
+	etID := uid.New()
+	if _, err := database.ExecContext(ctx, `
+		INSERT INTO event_types (id, user_id, slug, name, duration_minutes, max_per_day, max_per_week)
+		VALUES (?, ?, ?, 'Capped Call', 30, 1, 2)`,
+		etID, hostID, etID+"-slug"); err != nil {
+		t.Fatalf("seed event type: %v", err)
+	}
+
+	// Monday 2026-06-15 23:00 EDT = Tuesday 2026-06-16 03:00 UTC.
+	// Counts toward Monday 2026-06-15 in America/New_York.
+	ny, _ := time.LoadLocation("America/New_York")
+	monNight := time.Date(2026, 6, 15, 23, 0, 0, 0, ny).UTC()
+	b1, err := svc.Create(ctx, booking.CreateParams{
+		EventTypeID: etID,
+		HostIDs:     []string{hostID},
+		StartAt:     monNight,
+		EndAt:       monNight.Add(30 * time.Minute),
+		Organizer:   booking.Attendee{Name: "A", Email: "a@example.com"},
+	})
+	if err != nil {
+		t.Fatalf("first booking on Monday NY: %v", err)
+	}
+
+	// Same NY Monday morning (09:00 EDT = 13:00 UTC on 2026-06-15): hits max_per_day=1.
+	monMorning := time.Date(2026, 6, 15, 9, 0, 0, 0, ny).UTC()
+	if _, err := svc.Create(ctx, booking.CreateParams{
+		EventTypeID: etID,
+		HostIDs:     []string{hostID},
+		StartAt:     monMorning,
+		EndAt:       monMorning.Add(30 * time.Minute),
+		Organizer:   booking.Attendee{Name: "B", Email: "b@example.com"},
+	}); err != booking.ErrFrequencyCapReached {
+		t.Fatalf("same NY day err = %v; want ErrFrequencyCapReached", err)
+	}
+
+	// Next NY day (Tuesday 2026-06-16 10:00 EDT = 14:00 UTC): succeeds even though
+	// b1 was also on 2026-06-16 in UTC!
+	tueMorning := time.Date(2026, 6, 16, 10, 0, 0, 0, ny).UTC()
+	if _, err := svc.Create(ctx, booking.CreateParams{
+		EventTypeID: etID,
+		HostIDs:     []string{hostID},
+		StartAt:     tueMorning,
+		EndAt:       tueMorning.Add(30 * time.Minute),
+		Organizer:   booking.Attendee{Name: "C", Email: "c@example.com"},
+	}); err != nil {
+		t.Fatalf("Tuesday NY booking failed unexpectedly: %v", err)
+	}
+
+	// Wednesday same ISO week: hits max_per_week=2.
+	wedMorning := time.Date(2026, 6, 17, 10, 0, 0, 0, ny).UTC()
+	if _, err := svc.Create(ctx, booking.CreateParams{
+		EventTypeID: etID,
+		HostIDs:     []string{hostID},
+		StartAt:     wedMorning,
+		EndAt:       wedMorning.Add(30 * time.Minute),
+		Organizer:   booking.Attendee{Name: "D", Email: "d@example.com"},
+	}); err != booking.ErrFrequencyCapReached {
+		t.Fatalf("Wednesday same week err = %v; want ErrFrequencyCapReached", err)
+	}
+
+	// Cancelling b1 frees Monday AND lowers weekly count to 1, allowing Wednesday!
+	if err := svc.CancelByID(ctx, b1.ID, "cancelled by test"); err != nil {
+		t.Fatalf("cancel b1: %v", err)
+	}
+	if _, err := svc.Create(ctx, booking.CreateParams{
+		EventTypeID: etID,
+		HostIDs:     []string{hostID},
+		StartAt:     wedMorning,
+		EndAt:       wedMorning.Add(30 * time.Minute),
+		Organizer:   booking.Attendee{Name: "D", Email: "d@example.com"},
+	}); err != nil {
+		t.Fatalf("Wednesday after cancelling b1: %v", err)
+	}
+}

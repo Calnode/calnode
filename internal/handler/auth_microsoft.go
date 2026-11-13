@@ -16,6 +16,7 @@ import (
 // own scopes. Called from server.New when Microsoft credentials are configured.
 // secure should be true when BASE_URL starts with https://.
 func (h *Handler) SetMicrosoftAuth(clientID, clientSecret, tenant, redirectURL string, secure bool) {
+	tenant = strings.TrimSpace(tenant)
 	if tenant == "" {
 		tenant = "common"
 	}

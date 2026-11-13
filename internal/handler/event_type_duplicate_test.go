@@ -606,6 +606,8 @@ func TestDuplicateEventType_handlesEveryEventTypeColumn(t *testing.T) {
 		"price_cents":   true, "currency": true,
 		"invite_delivery": true,
 		"display_order":   true,
+		"max_per_day":     true,
+		"max_per_week":    true,
 	}
 	// Deliberately not inherited, with the reason.
 	notInherited := map[string]string{

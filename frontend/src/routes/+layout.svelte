@@ -6,6 +6,7 @@
 	import { api, type User } from '$lib/api';
 	import { currentUser, authStatus, type AuthStatus } from '$lib/stores';
 	import { prefs, prefsFromUser } from '$lib/prefs';
+	import { theme, type ThemeMode } from '$lib/theme.svelte';
 	import { t } from '$lib/i18n';
 	import { Toaster } from '$lib/components/ui/sonner';
 	import { buttonVariants } from '$lib/components/ui/button';
@@ -173,6 +174,7 @@
 	});
 
 	onMount(async () => {
+		theme.init();
 		// Close the drawer if the viewport grows past md while it is open, so it cannot
 		// linger as an active overlay over the desktop layout. Specified in rem, not px:
 		// every `md:` class compiles to 48rem, which only equals 768px at the 16px
@@ -242,6 +244,21 @@
 <Toaster position="bottom-right" />
 
 {#if isPublicRoute}
+	<div class="fixed right-4 top-4 z-40">
+		<div class="inline-flex items-center rounded-lg border bg-card/90 p-0.5 shadow-sm backdrop-blur-sm" role="radiogroup" aria-label="Theme">
+			{#each (['light', 'dark', 'system'] as ThemeMode[]) as modeOption}
+				<button
+					type="button"
+					role="radio"
+					aria-checked={theme.mode === modeOption}
+					onclick={() => theme.set(modeOption)}
+					class="rounded-md px-2.5 py-1 text-xs font-medium capitalize transition-colors {theme.mode === modeOption ? 'bg-secondary text-secondary-foreground shadow-xs' : 'text-muted-foreground hover:text-foreground'}"
+				>
+					{modeOption}
+				</button>
+			{/each}
+		</div>
+	</div>
 	{@render children()}
 {:else if checking}
 	<div class="flex h-full items-center justify-center text-sm text-muted-foreground">
@@ -337,6 +354,31 @@
 
 			<!-- Footer -->
 			<div class="border-t border-sidebar-border p-2">
+				<div class="mb-2 px-1" role="radiogroup" aria-label="Theme">
+					<div class="grid grid-cols-3 gap-0.5 rounded-md border border-sidebar-border bg-sidebar-accent/40 p-0.5">
+						{#each (['light', 'dark', 'system'] as ThemeMode[]) as modeOption}
+							<button
+								type="button"
+								role="radio"
+								aria-checked={theme.mode === modeOption}
+								onclick={() => theme.set(modeOption)}
+								class="flex items-center justify-center gap-1 rounded px-1.5 py-1 text-[11px] font-medium capitalize transition-colors
+									{theme.mode === modeOption
+										? 'bg-background text-foreground shadow-xs'
+										: 'text-sidebar-foreground/60 hover:text-sidebar-foreground'}"
+							>
+								{#if modeOption === 'light'}
+									<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
+								{:else if modeOption === 'dark'}
+									<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+								{:else}
+									<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></svg>
+								{/if}
+								<span>{modeOption}</span>
+							</button>
+						{/each}
+					</div>
+				</div>
 				<button
 					onclick={() => {
 						sidebarOpen = false;

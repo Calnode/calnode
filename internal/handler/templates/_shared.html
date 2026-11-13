@@ -16,10 +16,65 @@
 {{define "businessHeader"}}
 {{if or .LogoURL .BusinessName}}
 <header style="text-align:center;padding:24px 16px 4px;max-width:100%;box-sizing:border-box;">
-  {{if .LogoURL}}<img src="{{.LogoURL}}" alt="{{if .BusinessName}}{{.BusinessName}}{{else}}Business logo{{end}}" style="height:{{.LogoHeight}}px;width:auto;max-width:100%;opacity:{{.LogoOpacity}};display:inline-block;border:0;">{{else}}<span style="font-size:.9375rem;font-weight:600;color:#111827;">{{.BusinessName}}</span>{{end}}
+  {{if .LogoURL}}<img src="{{.LogoURL}}" alt="{{if .BusinessName}}{{.BusinessName}}{{else}}Business logo{{end}}" style="height:{{.LogoHeight}}px;width:auto;max-width:100%;opacity:{{.LogoOpacity}};display:inline-block;border:0;">{{else}}<span class="business-name-text" style="font-size:.9375rem;font-weight:600;color:#111827;">{{.BusinessName}}</span>{{end}}
 </header>
 {{end}}
 {{end}}
+
+{{define "themeHead"}}<script>
+(function(){
+  try {
+    var m = localStorage.getItem('fp-theme') || 'system';
+    var d = m === 'dark' || (m !== 'light' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    document.documentElement.classList.toggle('dark', d);
+    document.documentElement.style.colorScheme = d ? 'dark' : 'light';
+  } catch (e) {}
+})();
+</script>{{end}}
+
+{{define "themeSwitcher"}}<div class="fp-theme-switcher" role="radiogroup" aria-label="Theme">
+  <button type="button" role="radio" data-fp-theme="light" aria-checked="false">Light</button>
+  <button type="button" role="radio" data-fp-theme="dark" aria-checked="false">Dark</button>
+  <button type="button" role="radio" data-fp-theme="system" aria-checked="false">System</button>
+</div>
+<script>
+(function(){
+  var KEY = 'fp-theme';
+  var mq = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+  function getMode() {
+    try {
+      var v = localStorage.getItem(KEY);
+      return (v === 'light' || v === 'dark' || v === 'system') ? v : 'system';
+    } catch (e) { return 'system'; }
+  }
+  function apply(mode) {
+    var dark = mode === 'dark' || (mode !== 'light' && !!(mq && mq.matches));
+    document.documentElement.classList.toggle('dark', dark);
+    document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
+    var btns = document.querySelectorAll('.fp-theme-switcher [data-fp-theme]');
+    for (var i = 0; i < btns.length; i++) {
+      var active = btns[i].getAttribute('data-fp-theme') === mode;
+      btns[i].setAttribute('aria-checked', active ? 'true' : 'false');
+      btns[i].classList.toggle('active', active);
+    }
+  }
+  var btns = document.querySelectorAll('.fp-theme-switcher [data-fp-theme]');
+  for (var i = 0; i < btns.length; i++) {
+    btns[i].addEventListener('click', function () {
+      var next = this.getAttribute('data-fp-theme') || 'system';
+      try { localStorage.setItem(KEY, next); } catch (e) {}
+      apply(next);
+    });
+  }
+  if (mq && mq.addEventListener) {
+    mq.addEventListener('change', function () { apply(getMode()); });
+  }
+  window.addEventListener('storage', function (e) {
+    if (e.key === KEY) apply(getMode());
+  });
+  apply(getMode());
+})();
+</script>{{end}}
 
 {{define "trackingHead"}}{{if or .GTMContainerID .GA4MeasurementID}}
 <!-- Analytics (GA4/GTM) is CONSENT-GATED: the Google scripts load only after the visitor accepts

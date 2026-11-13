@@ -54,6 +54,8 @@ export type EventType = {
 	min_notice_minutes: number;
 	max_future_days: number;
 	max_active_bookings: number;
+	max_per_day?: number | null;
+	max_per_week?: number | null;
 	price_cents: number; // 0 = free
 	currency: string;    // ISO 4217, lowercase (e.g. "usd")
 	created_at: string;
@@ -91,6 +93,28 @@ export type EventTypeHost = {
 	role: 'required' | 'rotation' | 'optional';
 	priority: number;
 	archived: boolean;
+};
+
+export type SingleUseLink = {
+	id: string;
+	token: string;
+	url: string;
+	event_type_id: string;
+	created_by_user_id: string;
+	prefill_name: string;
+	prefill_email: string;
+	deal_id: string;
+	expires_at: string | null;
+	used_at: string | null;
+	booking_id: string | null;
+	created_at: string;
+};
+
+export type CreateSingleUseLinkPayload = {
+	prefill_name?: string;
+	prefill_email?: string;
+	deal_id?: string;
+	expires_in_hours?: number;
 };
 
 export type Question = {

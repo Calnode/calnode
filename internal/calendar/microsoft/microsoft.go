@@ -54,6 +54,7 @@ func New(db *sql.DB, clientID, clientSecret, tenant, redirectURL, encKeyHex stri
 	if err != nil || len(b) != 32 {
 		return nil, fmt.Errorf("microsoft: invalid encryption key")
 	}
+	tenant = strings.TrimSpace(tenant)
 	if tenant == "" {
 		tenant = "common"
 	}

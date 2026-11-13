@@ -27,6 +27,7 @@
   }
 </script>
 {{end}}
+{{template "themeHead"}}
 <link rel="stylesheet" href="/booking.css?v={{.CSSVersion}}">
 <style>
 /* Page chrome (body/footer) + page-level responsive + mobile step-flow. The card /
@@ -79,6 +80,7 @@ body {
 </style>
 </head>
 <body style="--booking-accent:{{.AccentColor}};--booking-accent-text:{{.AccentForeground}}">
+{{template "themeSwitcher"}}
 {{template "demoBanner" .}}
 {{/* GTM <noscript> fallback intentionally omitted — it would load GTM without consent for no-JS visitors, bypassing the cookie gate. */}}
 
@@ -196,11 +198,11 @@ body {
         </div>
         <div class="field">
           <label for="f-name">{{call .T "name_label"}}</label>
-          <input id="f-name" name="name" type="text" required autocomplete="name" placeholder="{{call .T "name_placeholder"}}">
+          <input id="f-name" name="name" type="text" required autocomplete="name" value="{{.PrefillName}}" placeholder="{{call .T "name_placeholder"}}">
         </div>
         <div class="field">
           <label for="f-email">{{call .T "email_label"}}</label>
-          <input id="f-email" name="email" type="email" required autocomplete="email" placeholder="{{call .T "email_placeholder"}}">
+          <input id="f-email" name="email" type="email" required autocomplete="email" value="{{.PrefillEmail}}" placeholder="{{call .T "email_placeholder"}}">
         </div>
         {{/* SAFE (generic.html-templates.security.unquoted-attribute-var, this whole block):
              .ID is the event type's own intake-question primary key (admin-configured, not
@@ -267,7 +269,9 @@ body {
 (function () {
   'use strict';
 
-  const SLUG     = "{{.Slug}}";
+  const SLUG             = "{{.Slug}}";
+  const SINGLE_USE_TOKEN = "{{.SingleUseToken}}";
+  const PREFILL_DEAL_ID  = "{{.PrefillDealID}}";
   const MAX_DAYS = {{.MaxFutureDays}};
   const PRICE_CENTS = {{.PriceCents}};
   const CURRENCY = "{{.Currency}}";
@@ -446,7 +450,8 @@ body {
     const lastDay = new Date(y, m + 1, 0).getDate();
     const to   = toDateStr(y, m, lastDay);
     try {
-      const r = await fetch(`/v1/event-types/${SLUG}/slots?from=${from}&to=${to}&tz=${encodeURIComponent(TZ)}`);
+      const tokenParam = SINGLE_USE_TOKEN ? `&single_use_token=${encodeURIComponent(SINGLE_USE_TOKEN)}` : '';
+      const r = await fetch(`/v1/event-types/${SLUG}/slots?from=${from}&to=${to}&tz=${encodeURIComponent(TZ)}${tokenParam}`);
       if (!r.ok) throw new Error(r.status);
       const data = await r.json();
       Object.assign(hostMeta, data.hosts || {});
@@ -626,7 +631,8 @@ body {
     // Fallback (clicked before the month load finished): fetch just this day.
     list.innerHTML = `<p class="hint">${t('loading')}</p>`;
     try {
-      const r = await fetch(`/v1/event-types/${SLUG}/slots?from=${ds}&to=${ds}&tz=${encodeURIComponent(TZ)}`);
+      const tokenParam = SINGLE_USE_TOKEN ? `&single_use_token=${encodeURIComponent(SINGLE_USE_TOKEN)}` : '';
+      const r = await fetch(`/v1/event-types/${SLUG}/slots?from=${ds}&to=${ds}&tz=${encodeURIComponent(TZ)}${tokenParam}`);
       if (!r.ok) throw new Error(r.status);
       const data = await r.json();
       Object.assign(hostMeta, data.hosts || {});
@@ -667,6 +673,28 @@ body {
 
   $('back-btn').addEventListener('click', () => showView('slots-view'));
   $('cal-back-btn').addEventListener('click', () => setStep('cal'));
+
+  // ── Pre-fill from single-use link / query string ─────────────────────────
+  (function () {
+    const qp = new URLSearchParams(window.location.search);
+    const fName = $('f-name');
+    const fEmail = $('f-email');
+    if (fName && qp.has('name')) fName.value = qp.get('name') || '';
+    if (fEmail && qp.has('email')) fEmail.value = qp.get('email') || '';
+    const dealVal = qp.has('dealId')
+      ? (qp.get('dealId') || '')
+      : (qp.has('deal_id') ? (qp.get('deal_id') || '') : PREFILL_DEAL_ID);
+    if (dealVal) {
+      document.querySelectorAll('[data-qid]').forEach(el => {
+        const qid = (el.dataset.qid || '').toLowerCase();
+        const lbl = (el.querySelector('label')?.textContent || '').toLowerCase();
+        if (qid === 'dealid' || qid === 'deal_id' || lbl.includes('deal id') || lbl.includes('dealid')) {
+          const input = el.querySelector('input, textarea, select');
+          if (input && input.type !== 'checkbox' && !input.value) input.value = dealVal;
+        }
+      });
+    }
+  })();
 
   // ── Booking form ──────────────────────────────────────────────────────────
   $('booking-form').addEventListener('submit', async e => {
@@ -720,6 +748,7 @@ body {
           timezone: TZ,
           language: LOCALE,
           hp_extra: form.hp_extra.value,
+          single_use_token: SINGLE_USE_TOKEN || undefined,
           answers,
         }),
       });

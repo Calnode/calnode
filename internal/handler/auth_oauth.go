@@ -4,7 +4,11 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
+	"errors"
 	"net/http"
+	"strings"
+
+	"github.com/calnode/calnode/internal/uid"
 )
 
 // newOAuthState generates a CSRF state token, sets it as a short-lived cookie, and
@@ -46,15 +50,50 @@ func (h *Handler) verifyOAuthState(w http.ResponseWriter, r *http.Request) bool 
 }
 
 // finishOAuthLogin resolves an OAuth-verified email to an existing, non-archived
-// user and starts a session, redirecting to /admin on success or /admin/login with
-// an error otherwise. Self-registration is not allowed — only known emails sign in.
+// user and starts a session. When allowedSignupDomains is empty, self-registration
+// is blocked and unknown emails redirect to /admin/login?error=no_account. When
+// allowedSignupDomains is configured, matching domains auto-provision a "member"
+// user and non-matching domains are rejected with 403 Forbidden.
 func (h *Handler) finishOAuthLogin(w http.ResponseWriter, r *http.Request, email string) {
+	email = strings.ToLower(strings.TrimSpace(email))
 	var userID string
 	var archivedAt sql.NullString
-	if err := h.db.QueryRowContext(r.Context(),
-		`SELECT id, archived_at FROM users WHERE email = ?`, email).Scan(&userID, &archivedAt); err != nil {
-		h.logger.WarnContext(r.Context(), "auth: no account for email", "email", email)
-		http.Redirect(w, r, "/admin/login?error=no_account", http.StatusFound)
+	err := h.db.QueryRowContext(r.Context(),
+		`SELECT id, archived_at FROM users WHERE email = ?`, email).Scan(&userID, &archivedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		allowed := h.getAllowedSignupDomains()
+		if len(allowed) == 0 {
+			h.logger.WarnContext(r.Context(), "auth: no account for email", "email", email)
+			http.Redirect(w, r, "/admin/login?error=no_account", http.StatusFound)
+			return
+		}
+		if !emailDomainAllowed(email, allowed) {
+			h.logger.WarnContext(r.Context(), "auth: email domain not in allowed signup domains", "email", email)
+			h.writeError(w, http.StatusForbidden, "email domain is not allowed")
+			return
+		}
+		userID = uid.New()
+		name, _, _ := strings.Cut(email, "@")
+		if name == "" {
+			name = email
+		}
+		if _, insErr := h.db.ExecContext(r.Context(), `
+			INSERT INTO users (id, email, name, iana_timezone, is_admin, is_owner, email_login)
+			VALUES (?, ?, ?, 'UTC', 0, 0, 0)`,
+			userID, email, name); insErr != nil {
+			// Handle concurrent login race if another request inserted the same email first.
+			if reErr := h.db.QueryRowContext(r.Context(),
+				`SELECT id, archived_at FROM users WHERE email = ?`, email).Scan(&userID, &archivedAt); reErr != nil {
+				h.logger.ErrorContext(r.Context(), "auth: auto-provision user", "email", email, "error", insErr)
+				http.Redirect(w, r, "/admin/login?error=session", http.StatusFound)
+				return
+			}
+		} else {
+			h.logger.InfoContext(r.Context(), "auth: auto-provisioned member user", "user_id", userID, "email", email)
+		}
+	} else if err != nil {
+		h.logger.ErrorContext(r.Context(), "auth: lookup user", "email", email, "error", err)
+		http.Redirect(w, r, "/admin/login?error=session", http.StatusFound)
 		return
 	}
 	if archivedAt.Valid {
@@ -73,4 +112,17 @@ func (h *Handler) finishOAuthLogin(w http.ResponseWriter, r *http.Request, email
 		return
 	}
 	http.Redirect(w, r, "/admin", http.StatusFound)
+}
+
+func emailDomainAllowed(email string, allowed []string) bool {
+	_, domain, ok := strings.Cut(strings.ToLower(strings.TrimSpace(email)), "@")
+	if !ok || domain == "" {
+		return false
+	}
+	for _, a := range allowed {
+		if domain == a {
+			return true
+		}
+	}
+	return false
 }

@@ -208,3 +208,33 @@ func TestValidate_acceptsAPortAndATrailingSlash(t *testing.T) {
 		t.Errorf("Validate() = %v; want nil", err)
 	}
 }
+
+func TestLoad_microsoftTenantIDAndAllowedSignupDomains(t *testing.T) {
+	os.Unsetenv("MICROSOFT_TENANT_ID")
+	os.Unsetenv("MICROSOFT_TENANT")
+	os.Unsetenv("ALLOWED_SIGNUP_DOMAINS")
+	cfg := config.Load()
+	if cfg.MicrosoftTenantID != "common" {
+		t.Errorf("MicrosoftTenantID default = %q; want common", cfg.MicrosoftTenantID)
+	}
+	if cfg.MicrosoftTenant != "common" {
+		t.Errorf("MicrosoftTenant default = %q; want common", cfg.MicrosoftTenant)
+	}
+	if len(cfg.AllowedSignupDomains) != 0 {
+		t.Errorf("AllowedSignupDomains default = %v; want empty", cfg.AllowedSignupDomains)
+	}
+
+	t.Setenv("MICROSOFT_TENANT", "legacy-tenant")
+	t.Setenv("MICROSOFT_TENANT_ID", "11111111-2222-3333-4444-555555555555")
+	t.Setenv("ALLOWED_SIGNUP_DOMAINS", "formaprime.vc, example.org ")
+	cfg = config.Load()
+	if cfg.MicrosoftTenantID != "11111111-2222-3333-4444-555555555555" {
+		t.Errorf("MicrosoftTenantID = %q; want MICROSOFT_TENANT_ID", cfg.MicrosoftTenantID)
+	}
+	if cfg.MicrosoftTenant != cfg.MicrosoftTenantID {
+		t.Errorf("MicrosoftTenant = %q; want %q", cfg.MicrosoftTenant, cfg.MicrosoftTenantID)
+	}
+	if len(cfg.AllowedSignupDomains) != 2 || cfg.AllowedSignupDomains[0] != "formaprime.vc" || cfg.AllowedSignupDomains[1] != "example.org" {
+		t.Errorf("AllowedSignupDomains = %v; want [formaprime.vc example.org]", cfg.AllowedSignupDomains)
+	}
+}

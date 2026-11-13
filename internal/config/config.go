@@ -35,10 +35,12 @@ type Config struct {
 	GoogleClientID     string
 	GoogleClientSecret string
 
-	// Microsoft 365 / Outlook (calendar) — env-only; tenant defaults to "common".
+	// Microsoft 365 / Outlook (calendar & OAuth login) — env-only; tenant defaults to "common".
 	MicrosoftClientID     string
 	MicrosoftClientSecret string
 	MicrosoftTenant       string
+	MicrosoftTenantID     string
+	AllowedSignupDomains  []string
 
 	// Zoom OAuth app (per-host meeting links) — DB settings take priority over these.
 	ZoomClientID     string
@@ -126,7 +128,9 @@ func Load() *Config {
 
 		MicrosoftClientID:     getEnv("MICROSOFT_CLIENT_ID", ""),
 		MicrosoftClientSecret: getEnv("MICROSOFT_CLIENT_SECRET", ""),
-		MicrosoftTenant:       getEnv("MICROSOFT_TENANT", "common"),
+		MicrosoftTenant:       getEnv("MICROSOFT_TENANT_ID", getEnv("MICROSOFT_TENANT", "common")),
+		MicrosoftTenantID:     getEnv("MICROSOFT_TENANT_ID", getEnv("MICROSOFT_TENANT", "common")),
+		AllowedSignupDomains:  splitCSV(getEnv("ALLOWED_SIGNUP_DOMAINS", "")),
 
 		ZoomClientID:     getEnv("ZOOM_CLIENT_ID", ""),
 		ZoomClientSecret: getEnv("ZOOM_CLIENT_SECRET", ""),

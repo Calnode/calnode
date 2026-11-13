@@ -108,6 +108,18 @@ type bookPageData struct {
 	TermsURL      string // operator Terms URL; "" hides the footer link
 	// DemoMode shows the "public demo" banner + a noindex meta tag (see internal/demo).
 	DemoMode bool
+	// Single-use link token and optional prefill values (empty on normal /book/{slug} pages).
+	SingleUseToken string
+	PrefillName    string
+	PrefillEmail   string
+	PrefillDealID  string
+}
+
+type bookPrefill struct {
+	SingleUseToken string
+	Name           string
+	Email          string
+	DealID         string
 }
 
 // hostDisplay is one host's identity for the public booking page.
@@ -445,7 +457,22 @@ func (h *Handler) PublicEventType(w http.ResponseWriter, r *http.Request) {
 
 // BookPage renders the public booking page for a given event type slug.
 func (h *Handler) BookPage(w http.ResponseWriter, r *http.Request) {
-	slug := r.PathValue("slug")
+	h.renderBookPage(w, r, r.PathValue("slug"), false, bookPrefill{})
+}
+
+func (h *Handler) renderBookPage(w http.ResponseWriter, r *http.Request, slug string, allowPrivate bool, prefill bookPrefill) {
+	qp := r.URL.Query()
+	if qp.Has("name") {
+		prefill.Name = qp.Get("name")
+	}
+	if qp.Has("email") {
+		prefill.Email = qp.Get("email")
+	}
+	if qp.Has("dealId") {
+		prefill.DealID = qp.Get("dealId")
+	} else if qp.Has("deal_id") {
+		prefill.DealID = qp.Get("deal_id")
+	}
 
 	var (
 		etID           string
@@ -465,15 +492,19 @@ func (h *Handler) BookPage(w http.ResponseWriter, r *http.Request) {
 		allowPhoneCall bool
 		accentColor    string
 	)
-	err := h.db.QueryRowContext(r.Context(), `
+	query := `
 		SELECT et.id, et.name, COALESCE(et.description, ''),
 		       et.duration_minutes, et.location_type, COALESCE(et.location_value, ''),
 		       et.max_future_days, et.min_notice_minutes, et.routing_mode, u.name, COALESCE(u.avatar_url, ''),
 		       et.price_cents, et.currency, et.msg_greeting, et.allow_phone_call, u.booking_accent
 		FROM event_types et
 		JOIN users u ON u.id = et.user_id
-		WHERE et.slug = ? AND et.is_active = 1 AND et.is_public = 1`,
-		slug).Scan(&etID, &name, &description, &durMins, &locType, &locValue, &maxDays, &minNotice, &routingMode, &hostName, &avatarURL, &priceCents, &currency, &msgGreeting, &allowPhoneCall, &accentColor)
+		WHERE et.slug = ? AND et.is_active = 1`
+	if !allowPrivate {
+		query += ` AND et.is_public = 1`
+	}
+	err := h.db.QueryRowContext(r.Context(), query, slug).
+		Scan(&etID, &name, &description, &durMins, &locType, &locValue, &maxDays, &minNotice, &routingMode, &hostName, &avatarURL, &priceCents, &currency, &msgGreeting, &allowPhoneCall, &accentColor)
 
 	if errors.Is(err, sql.ErrNoRows) {
 		http.Error(w, "Page not found", http.StatusNotFound)
@@ -579,9 +610,13 @@ func (h *Handler) BookPage(w http.ResponseWriter, r *http.Request) {
 		LogoOpacity:   opacityCSS(brand.LogoOpacity),
 		BannerURL:     brand.BannerURL,
 		BannerOpacity: opacityCSS(brand.BannerOpacity),
-		PrivacyURL:    brand.PrivacyURL,
-		TermsURL:      brand.TermsURL,
-		DemoMode:      h.demoMode,
+		PrivacyURL:     brand.PrivacyURL,
+		TermsURL:       brand.TermsURL,
+		DemoMode:       h.demoMode,
+		SingleUseToken: prefill.SingleUseToken,
+		PrefillName:    prefill.Name,
+		PrefillEmail:   prefill.Email,
+		PrefillDealID:  prefill.DealID,
 	}
 
 	h.persistLangOverride(w, r)

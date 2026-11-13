@@ -503,6 +503,9 @@ type bookableEventType struct {
 	MinNoticeMinutes    int
 	MaxFutureDays       int
 	MaxActiveBookings   int
+	MaxPerDay           *int
+	MaxPerWeek          *int
+	OwnerTimezone       string
 	PriceCents          int
 	Currency            string
 	// ShowTakenSlots opts this event type into returning the starts a booking removed,
@@ -520,24 +523,33 @@ type bookableEventType struct {
 // BookPage), so an operator who unpublishes an event type stops it from being bookable
 // everywhere, not just hidden from its own page.
 func (h *Handler) loadBookableEventType(ctx context.Context, slug string) (*bookableEventType, error) {
+	return h.loadBookableEventTypeWithVisibility(ctx, slug, false)
+}
+
+func (h *Handler) loadBookableEventTypeWithVisibility(ctx context.Context, slug string, allowPrivate bool) (*bookableEventType, error) {
 	var et bookableEventType
 	var isActive, isPublic, showTaken int
+	var maxPerDay, maxPerWeek sql.NullInt64
 	err := h.db.QueryRowContext(ctx, `
-		SELECT id, user_id, name, duration_minutes, slot_interval_minutes,
-		       location_type, location_value, allow_phone_call, routing_mode, rr_strategy,
-		       buffer_before_minutes, buffer_after_minutes, min_notice_minutes, max_future_days,
-		       is_active, is_public, show_taken_slots, max_active_bookings, price_cents, currency,
-		       invite_delivery
-		FROM event_types WHERE slug = ?`, slug).
+		SELECT et.id, et.user_id, et.name, et.duration_minutes, et.slot_interval_minutes,
+		       et.location_type, et.location_value, et.allow_phone_call, et.routing_mode, et.rr_strategy,
+		       et.buffer_before_minutes, et.buffer_after_minutes, et.min_notice_minutes, et.max_future_days,
+		       et.is_active, et.is_public, et.show_taken_slots, et.max_active_bookings, et.price_cents, et.currency,
+		       et.invite_delivery, et.max_per_day, et.max_per_week, COALESCE(u.iana_timezone, 'UTC')
+		FROM event_types et
+		LEFT JOIN users u ON u.id = et.user_id
+		WHERE et.slug = ?`, slug).
 		Scan(&et.ID, &et.UserID, &et.Name, &et.DurationMinutes, &et.SlotIntervalMinutes,
 			&et.LocationType, &et.LocationValue, &et.AllowPhoneCall, &et.RoutingMode, &et.RRStrategy,
 			&et.BufferBeforeMinutes, &et.BufferAfterMinutes, &et.MinNoticeMinutes, &et.MaxFutureDays,
 			&isActive, &isPublic, &showTaken, &et.MaxActiveBookings, &et.PriceCents, &et.Currency,
-			&et.InviteDelivery)
-	if err != nil || isActive == 0 || isPublic == 0 {
+			&et.InviteDelivery, &maxPerDay, &maxPerWeek, &et.OwnerTimezone)
+	if err != nil || isActive == 0 || (!allowPrivate && isPublic == 0) {
 		return nil, errEventTypeNotFound
 	}
 	et.ShowTakenSlots = showTaken != 0
+	et.MaxPerDay = nullIntPtr(maxPerDay)
+	et.MaxPerWeek = nullIntPtr(maxPerWeek)
 	return &et, nil
 }
 
@@ -615,6 +627,9 @@ func (h *Handler) createBookingForSlug(ctx context.Context, slug string, startAt
 		Answers:             answers,
 		MaxActivePerInvitee: et.MaxActiveBookings,
 		MaxBookingsPerHour:  maxBookingsPerEmailPerHour,
+		MaxPerDay:           et.MaxPerDay,
+		MaxPerWeek:          et.MaxPerWeek,
+		EventTimezone:       et.OwnerTimezone,
 		InviteDelivery:      et.InviteDelivery,
 	})
 	if err != nil {
@@ -764,8 +779,9 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 		// Deliberately NOT named "company": browsers map that to the organization
 		// autofill entry (ignoring autocomplete="off") and fill this invisible field
 		// for real humans, who are then rejected as bots (#33).
-		Honeypot string `json:"hp_extra"`
-		Answers  []struct {
+		Honeypot       string `json:"hp_extra"`
+		SingleUseToken string `json:"single_use_token"`
+		Answers        []struct {
 			QuestionID string `json:"question_id"`
 			Value      string `json:"value"`
 		} `json:"answers"`
@@ -856,7 +872,8 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	et, err := h.loadBookableEventType(r.Context(), req.EventTypeSlug)
+	singleUseToken := strings.TrimSpace(req.SingleUseToken)
+	et, err := h.loadBookableEventTypeWithVisibility(r.Context(), req.EventTypeSlug, singleUseToken != "")
 	if err != nil {
 		h.writeError(w, http.StatusNotFound, "event type not found")
 		return
@@ -962,9 +979,21 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 		Answers:             answers,
 		MaxActivePerInvitee: et.MaxActiveBookings,
 		MaxBookingsPerHour:  maxBookingsPerEmailPerHour,
+		MaxPerDay:           et.MaxPerDay,
+		MaxPerWeek:          et.MaxPerWeek,
+		EventTimezone:       et.OwnerTimezone,
+		SingleUseToken:      singleUseToken,
 		InviteDelivery:      et.InviteDelivery,
 	})
 	if err != nil {
+		if errors.Is(err, booking.ErrSingleUseTokenGone) {
+			h.writeError(w, http.StatusGone, "This booking link has expired or has already been used")
+			return
+		}
+		if errors.Is(err, booking.ErrFrequencyCapReached) {
+			h.writeError(w, http.StatusConflict, "daily or weekly booking limit reached for this event type")
+			return
+		}
 		if errors.Is(err, booking.ErrDoubleBooked) {
 			h.writeError(w, http.StatusConflict, "this slot is no longer available")
 			return

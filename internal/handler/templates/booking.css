@@ -488,3 +488,205 @@
 .time-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(72px, 1fr)); gap: 8px; }
 .time-grid .slot-btn { padding: 12px 4px; font-variant-numeric: tabular-nums; }
 .cd.sel, .slot-btn.sel, .btn-primary { background: var(--booking-accent, #111827) !important; border-color: var(--booking-accent, #111827); color: var(--booking-accent-text, #fff) !important; }
+
+/* ── Theme switcher & Dark mode ─────────────────────────── */
+:root {
+  --fp-bg: #f3f4f6;
+  --fp-surface: #ffffff;
+  --fp-surface-muted: #f9fafb;
+  --fp-border: #e5e7eb;
+  --fp-text: #111827;
+  --fp-text-muted: #6b7280;
+  --fp-text-secondary: #4b5563;
+  --fp-shadow: 0 1px 3px rgba(0, 0, 0, .06), 0 12px 40px rgba(0, 0, 0, .1);
+}
+
+html.dark {
+  --fp-bg: #09090b;
+  --fp-surface: #18181b;
+  --fp-surface-muted: #27272a;
+  --fp-border: #27272a;
+  --fp-text: #f4f4f5;
+  --fp-text-muted: #a1a1aa;
+  --fp-text-secondary: #d4d4d8;
+  --fp-shadow: 0 1px 3px rgba(0, 0, 0, .4), 0 16px 44px rgba(0, 0, 0, .55);
+}
+
+.fp-theme-switcher {
+  position: fixed;
+  top: 14px;
+  right: 14px;
+  z-index: 50;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 10px;
+  border: 1px solid var(--fp-border);
+  background: var(--fp-surface);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, .08);
+}
+.fp-theme-switcher button {
+  border: 0;
+  background: transparent;
+  color: var(--fp-text-muted);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 9px;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: background-color 160ms ease-out, color 160ms ease-out;
+}
+.fp-theme-switcher button:hover {
+  color: var(--fp-text);
+}
+.fp-theme-switcher button.active {
+  background: var(--fp-text);
+  color: var(--fp-surface);
+}
+
+/* Micro-interactions & focus rings */
+.cd,
+.slot-btn,
+.btn-primary,
+.btn-secondary,
+.cal-nav button,
+.field input,
+.field textarea,
+.field select {
+  transition: background-color 160ms ease-out, border-color 160ms ease-out, color 160ms ease-out, transform 150ms ease-out, box-shadow 160ms ease-out;
+}
+.slot-btn:active,
+.btn-primary:active {
+  transform: scale(0.985);
+}
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--booking-accent, #111827);
+  outline-offset: 2px;
+}
+
+html.dark body {
+  background: var(--fp-bg);
+  color: var(--fp-text);
+}
+html.dark .card,
+html.dark .dir-card,
+html.dark .cookie-banner {
+  background: var(--fp-surface);
+  border-color: var(--fp-border);
+  box-shadow: var(--fp-shadow);
+}
+html.dark .info,
+html.dark .cal-col,
+html.dark .dir-item,
+html.dark .dir-members li {
+  border-color: var(--fp-border);
+}
+html.dark .business-name-text,
+html.dark .event-name,
+html.dark .month-label,
+html.dark #month-label,
+html.dark .section-title,
+html.dark .scheduled-time,
+html.dark .dir-title,
+html.dark .dir-members a,
+html.dark .dir-item-name,
+html.dark .powered-by a,
+html.dark .powered-by .cookie-link,
+html.dark .powered-by .lang-select {
+  color: var(--fp-text);
+}
+html.dark .host-name,
+html.dark .description,
+html.dark .desc-toggle,
+html.dark .dir-sub,
+html.dark .dir-item-meta,
+html.dark .dir-empty,
+html.dark .cookie-text {
+  color: var(--fp-text-muted);
+}
+html.dark .meta li,
+html.dark .description strong {
+  color: var(--fp-text-secondary);
+}
+html.dark .cal-nav button,
+html.dark .slot-btn,
+html.dark .btn-secondary,
+html.dark .cookie-btn,
+html.dark .field input,
+html.dark .field textarea,
+html.dark .field select,
+html.dark .tz-wrapper select {
+  background: var(--fp-surface-muted);
+  border-color: #3f3f46;
+  color: var(--fp-text);
+}
+html.dark .cal-nav button:hover:not(:disabled),
+html.dark .slot-btn:hover,
+html.dark .btn-secondary:hover,
+html.dark .cookie-btn:hover {
+  background: #3f3f46;
+  color: #ffffff;
+}
+html.dark .cd.avail {
+  background: #27272a;
+  color: #f4f4f5;
+}
+html.dark .cd.avail:hover {
+  background: #3f3f46;
+}
+html.dark .cd.past,
+html.dark .cd.unavail {
+  color: #52525b;
+}
+html.dark .time-periods {
+  background: #27272a;
+}
+html.dark .time-periods button {
+  color: #a1a1aa;
+}
+html.dark .time-periods button[aria-pressed="true"] {
+  background: #18181b;
+  color: #f4f4f5;
+}
+html.dark .dir-book {
+  background: #f4f4f5;
+  color: #09090b;
+}
+html.dark .demo-banner {
+  background: #422006;
+  border-color: #78350f;
+  color: #fde68a;
+}
+html.dark button:focus-visible,
+html.dark a:focus-visible,
+html.dark input:focus-visible,
+html.dark select:focus-visible,
+html.dark textarea:focus-visible {
+  outline-color: #e4e4e7;
+}
+
+@media (max-width: 767px) {
+  .fp-theme-switcher {
+    top: 10px;
+    right: 10px;
+  }
+  .fp-theme-switcher button {
+    padding: 4px 7px;
+    font-size: 11px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

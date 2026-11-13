@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"net/http"
@@ -9,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/calnode/calnode/internal/booking"
 	"github.com/calnode/calnode/internal/slots"
 )
 
@@ -68,7 +70,7 @@ func (h *Handler) GetSlots(w http.ResponseWriter, r *http.Request) {
 	// when the event type opted in; computeSlots enforces the second half.
 	res, err := h.computeSlots(r.Context(), slug, tzName,
 		r.URL.Query().Get("from"), r.URL.Query().Get("to"),
-		slotsWanted{Taken: true, NoticeGap: true})
+		slotsWanted{Taken: true, NoticeGap: true, SingleUseToken: r.URL.Query().Get("single_use_token")})
 	switch {
 	case errors.Is(err, errEventTypeNotFound):
 		h.writeError(w, http.StatusNotFound, "event type not found")
@@ -153,6 +155,8 @@ type slotsWanted struct {
 	Taken bool
 	// NoticeGap asks which days the minimum-notice rule took a bookable start from.
 	NoticeGap bool
+	// SingleUseToken optionally authorizes slot visibility for a private (is_public=0) event type.
+	SingleUseToken string
 }
 
 // computeSlots returns the bookable slots (and the candidate hosts' display map) for
@@ -162,6 +166,22 @@ type slotsWanted struct {
 // of the sentinel errors above on bad input, or a wrapped error on internal failure.
 func (h *Handler) computeSlots(ctx context.Context, slug, tzName, fromStr, toStr string, want slotsWanted) (slotsResult, error) {
 	et, err := h.loadBookableEventType(ctx, slug)
+	if errors.Is(err, errEventTypeNotFound) && strings.TrimSpace(want.SingleUseToken) != "" {
+		if candidate, cErr := h.loadBookableEventTypeWithVisibility(ctx, slug, true); cErr == nil {
+			var dummy string
+			if tErr := h.db.QueryRowContext(ctx, `
+				SELECT id FROM single_use_tokens
+				WHERE token = ? AND event_type_id = ?
+				  AND used_at IS NULL
+				  AND (expires_at IS NULL OR datetime(expires_at) > datetime(?))`,
+				strings.TrimSpace(want.SingleUseToken), candidate.ID, time.Now().UTC().Format(time.RFC3339Nano)).Scan(&dummy); tErr == nil {
+				et = candidate
+				err = nil
+			} else if !errors.Is(tErr, sql.ErrNoRows) {
+				err = tErr
+			}
+		}
+	}
 	if err != nil {
 		return slotsResult{}, err
 	}
@@ -269,6 +289,33 @@ func (h *Handler) computeSlots(ctx context.Context, slug, tzName, fromStr, toStr
 	result, err := slots.GenerateDetailed(req, slots.Extras{Taken: showsTaken, NoticeGap: want.NoticeGap})
 	if err != nil {
 		return slotsResult{}, fmt.Errorf("slots generate: %w", err)
+	}
+
+	if (et.MaxPerDay != nil && *et.MaxPerDay > 0) || (et.MaxPerWeek != nil && *et.MaxPerWeek > 0) {
+		capLoc := booking.LoadLocationOrUTC(et.OwnerTimezone)
+		rangeStart, _ := booking.ISOWeekWindow(dateFrom, capLoc)
+		_, rangeEnd := booking.ISOWeekWindow(dateTo.Add(24*time.Hour), capLoc)
+		if len(result.Free) > 0 {
+			firstStart, _ := booking.ISOWeekWindow(result.Free[0].Start, capLoc)
+			if firstStart.Before(rangeStart) {
+				rangeStart = firstStart
+			}
+			_, lastEnd := booking.ISOWeekWindow(result.Free[len(result.Free)-1].Start, capLoc)
+			if lastEnd.After(rangeEnd) {
+				rangeEnd = lastEnd
+			}
+		}
+		counts, err := booking.CountFrequencyBookings(ctx, h.db, et.ID, rangeStart, rangeEnd, capLoc)
+		if err != nil {
+			return slotsResult{}, fmt.Errorf("count frequency caps: %w", err)
+		}
+		filtered := make([]slots.Slot, 0, len(result.Free))
+		for _, s := range result.Free {
+			if !counts.Exceeded(s.Start, capLoc, et.MaxPerDay, et.MaxPerWeek) {
+				filtered = append(filtered, s)
+			}
+		}
+		result.Free = filtered
 	}
 
 	// Host metadata (name + avatar) for the candidate pool, so the booking page can

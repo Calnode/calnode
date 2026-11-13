@@ -27,6 +27,7 @@
   }
 </script>
 {{end}}
+{{template "themeHead"}}
 <link rel="stylesheet" href="/booking.css?v={{.CSSVersion}}">
 <style>
 /* Page chrome + manage-specific views (booking details, reschedule confirm, state
@@ -104,6 +105,7 @@ body {
 </style>
 </head>
 <body style="--booking-accent:{{.AccentColor}};--booking-accent-text:{{.AccentForeground}}">
+{{template "themeSwitcher"}}
 {{template "demoBanner" .}}
 
 {{template "businessHeader" .}}

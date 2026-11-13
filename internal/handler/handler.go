@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -36,10 +37,11 @@ type Handler struct {
 	baseURL           string
 	publicBaseURL     string
 	dataDir           string
-	authMu            sync.RWMutex
-	googleAuth        *oauth2.Config
-	microsoftAuth     *oauth2.Config
-	secureCookie      bool
+	authMu               sync.RWMutex
+	googleAuth           *oauth2.Config
+	microsoftAuth        *oauth2.Config
+	allowedSignupDomains []string
+	secureCookie         bool
 	llmMu             sync.RWMutex
 	llm               *llm.Client // nil when the optional LLM layer is off/unconfigured
 	zoomMu            sync.RWMutex
@@ -235,6 +237,33 @@ func (h *Handler) getMicrosoftAuth() *oauth2.Config {
 	h.authMu.RLock()
 	defer h.authMu.RUnlock()
 	return h.microsoftAuth
+}
+
+// SetAllowedSignupDomains configures the email domains permitted to auto-provision
+// member accounts on OAuth login (case-insensitive). Empty disables JIT provisioning.
+func (h *Handler) SetAllowedSignupDomains(domains []string) {
+	cleaned := make([]string, 0, len(domains))
+	for _, d := range domains {
+		d = strings.TrimPrefix(strings.ToLower(strings.TrimSpace(d)), "@")
+		if d != "" {
+			cleaned = append(cleaned, d)
+		}
+	}
+	h.authMu.Lock()
+	h.allowedSignupDomains = cleaned
+	h.authMu.Unlock()
+}
+
+// getAllowedSignupDomains returns a copy of the configured OAuth auto-provisioning domains.
+func (h *Handler) getAllowedSignupDomains() []string {
+	h.authMu.RLock()
+	defer h.authMu.RUnlock()
+	if len(h.allowedSignupDomains) == 0 {
+		return nil
+	}
+	out := make([]string, len(h.allowedSignupDomains))
+	copy(out, h.allowedSignupDomains)
+	return out
 }
 
 // SetWebhookSvc replaces the default ephemeral-key webhook service with one

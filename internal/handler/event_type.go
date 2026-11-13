@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -37,6 +38,8 @@ type eventTypeJSON struct {
 	MinNoticeMinutes    int     `json:"min_notice_minutes"`
 	MaxFutureDays       int     `json:"max_future_days"`
 	MaxActiveBookings   int     `json:"max_active_bookings"`
+	MaxPerDay           *int    `json:"max_per_day"`
+	MaxPerWeek          *int    `json:"max_per_week"`
 	IsActive            bool    `json:"is_active"`
 	// ShowTakenSlots renders already-booked times greyed out on the booking page
 	// instead of omitting them. Off by default: the slots endpoint is public, so this
@@ -106,6 +109,7 @@ func scanEventTypeRow(s rowScanner, trailing ...any) (*eventTypeJSON, error) {
 	var et eventTypeJSON
 	var desc, locVal, msgConf, msgCancel, msgResched, msgRemind, msgGreeting sql.NullString
 	var subjConf, subjCancel, subjResched, subjRemind sql.NullString
+	var maxPerDay, maxPerWeek sql.NullInt64
 	var isActive, isPublic, showTaken int
 
 	dests := []any{
@@ -119,6 +123,7 @@ func scanEventTypeRow(s rowScanner, trailing ...any) (*eventTypeJSON, error) {
 		&msgConf, &msgCancel, &msgResched, &msgRemind, &msgGreeting,
 		&subjConf, &subjCancel, &subjResched, &subjRemind,
 		&et.PriceCents, &et.Currency, &et.InviteDelivery, &et.DisplayOrder,
+		&maxPerDay, &maxPerWeek,
 	}
 	dests = append(dests, trailing...)
 	err := s.Scan(dests...)
@@ -164,8 +169,52 @@ func scanEventTypeRow(s rowScanner, trailing ...any) (*eventTypeJSON, error) {
 	if subjRemind.Valid {
 		et.SubjReminder = &subjRemind.String
 	}
+	et.MaxPerDay = nullIntPtr(maxPerDay)
+	et.MaxPerWeek = nullIntPtr(maxPerWeek)
 	et.Reminders = []int{} // initialise to non-nil so JSON encodes as [] not null
 	return &et, nil
+}
+
+func nullIntPtr(v sql.NullInt64) *int {
+	if !v.Valid {
+		return nil
+	}
+	n := int(v.Int64)
+	return &n
+}
+
+// nullableInt distinguishes an omitted JSON field from an explicit null or integer in PATCH payloads.
+type nullableInt struct {
+	set   bool
+	value *int
+}
+
+func (n *nullableInt) UnmarshalJSON(data []byte) error {
+	n.set = true
+	if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
+		n.value = nil
+		return nil
+	}
+	var v int
+	if err := json.Unmarshal(data, &v); err != nil {
+		return err
+	}
+	n.value = &v
+	return nil
+}
+
+// normalizeCap normalizes a nullable frequency cap (0 or nil clears to SQL NULL).
+func normalizeCap(v *int, field string) (any, string) {
+	if v == nil {
+		return nil, ""
+	}
+	if *v < 0 {
+		return nil, field + " cannot be negative (null or 0 = unlimited)"
+	}
+	if *v == 0 {
+		return nil, ""
+	}
+	return *v, ""
 }
 
 const etColumns = `id, slug, name, description,
@@ -177,7 +226,8 @@ const etColumns = `id, slug, name, description,
 	is_active, is_public, show_taken_slots, created_at,
 	msg_confirmation, msg_cancellation, msg_reschedule, msg_reminder, msg_greeting,
 	subj_confirmation, subj_cancellation, subj_reschedule, subj_reminder,
-	price_cents, currency, invite_delivery, display_order`
+	price_cents, currency, invite_delivery, display_order,
+	max_per_day, max_per_week`
 
 // selectETCols fetches a single event type without the caller-relative columns.
 const selectETCols = "SELECT " + etColumns + " FROM event_types"
@@ -280,6 +330,8 @@ func (h *Handler) CreateEventType(w http.ResponseWriter, r *http.Request) {
 		MinNoticeMinutes    *int    `json:"min_notice_minutes"`
 		MaxFutureDays       *int    `json:"max_future_days"`
 		MaxActiveBookings   *int    `json:"max_active_bookings"`
+		MaxPerDay           *int    `json:"max_per_day"`
+		MaxPerWeek          *int    `json:"max_per_week"`
 		AllowPhoneCall      *bool   `json:"allow_phone_call"`
 		ShowTakenSlots      *bool   `json:"show_taken_slots"`
 		InviteDelivery      *string `json:"invite_delivery"`
@@ -294,6 +346,16 @@ func (h *Handler) CreateEventType(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.MaxActiveBookings != nil && *req.MaxActiveBookings < 0 {
 		h.writeError(w, http.StatusBadRequest, "max_active_bookings cannot be negative (0 = unlimited)")
+		return
+	}
+	maxPerDayVal, capErr := normalizeCap(req.MaxPerDay, "max_per_day")
+	if capErr != "" {
+		h.writeError(w, http.StatusBadRequest, capErr)
+		return
+	}
+	maxPerWeekVal, capErr := normalizeCap(req.MaxPerWeek, "max_per_week")
+	if capErr != "" {
+		h.writeError(w, http.StatusBadRequest, capErr)
 		return
 	}
 	if req.DurationMinutes <= 0 {
@@ -386,12 +448,14 @@ func (h *Handler) CreateEventType(w http.ResponseWriter, r *http.Request) {
 		   slot_interval_minutes, location_type, location_value, allow_phone_call,
 		   routing_mode, buffer_before_minutes, buffer_after_minutes,
 		   min_notice_minutes, max_future_days, max_active_bookings, show_taken_slots, invite_delivery,
-		   msg_confirmation, msg_cancellation, msg_reschedule, msg_reminder, display_order)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		   msg_confirmation, msg_cancellation, msg_reschedule, msg_reminder, display_order,
+		   max_per_day, max_per_week)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		id, user.ID, req.Slug, req.Name, req.Description,
 		req.DurationMinutes, slotInterval, locType, req.LocationValue, req.AllowPhoneCall != nil && *req.AllowPhoneCall,
 		routingMode, bufBefore, bufAfter, minNotice, maxFuture, maxActive, showTaken, inviteDelivery,
-		defaultMsgConfirmation, defaultMsgCancellation, defaultMsgReschedule, defaultMsgReminder, req.DisplayOrder)
+		defaultMsgConfirmation, defaultMsgCancellation, defaultMsgReschedule, defaultMsgReminder, req.DisplayOrder,
+		maxPerDayVal, maxPerWeekVal)
 	if err != nil {
 		if db.IsUniqueViolation(err) {
 			h.writeError(w, http.StatusConflict, "slug already in use")
@@ -513,10 +577,12 @@ func (h *Handler) PatchEventType(w http.ResponseWriter, r *http.Request) {
 		RRStrategy          *string `json:"rr_strategy"`
 		BufferBeforeMinutes *int    `json:"buffer_before_minutes"`
 		BufferAfterMinutes  *int    `json:"buffer_after_minutes"`
-		MinNoticeMinutes    *int    `json:"min_notice_minutes"`
-		MaxFutureDays       *int    `json:"max_future_days"`
-		MaxActiveBookings   *int    `json:"max_active_bookings"`
-		IsActive            *bool   `json:"is_active"`
+		MinNoticeMinutes    *int        `json:"min_notice_minutes"`
+		MaxFutureDays       *int        `json:"max_future_days"`
+		MaxActiveBookings   *int        `json:"max_active_bookings"`
+		MaxPerDay           nullableInt `json:"max_per_day"`
+		MaxPerWeek          nullableInt `json:"max_per_week"`
+		IsActive            *bool       `json:"is_active"`
 		IsPublic            *bool   `json:"is_public"`
 		AllowPhoneCall      *bool   `json:"allow_phone_call"`
 		ShowTakenSlots      *bool   `json:"show_taken_slots"`
@@ -632,6 +698,22 @@ func (h *Handler) PatchEventType(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		set("max_active_bookings", *req.MaxActiveBookings)
+	}
+	if req.MaxPerDay.set {
+		v, capErr := normalizeCap(req.MaxPerDay.value, "max_per_day")
+		if capErr != "" {
+			h.writeError(w, http.StatusBadRequest, capErr)
+			return
+		}
+		set("max_per_day", v)
+	}
+	if req.MaxPerWeek.set {
+		v, capErr := normalizeCap(req.MaxPerWeek.value, "max_per_week")
+		if capErr != "" {
+			h.writeError(w, http.StatusBadRequest, capErr)
+			return
+		}
+		set("max_per_week", v)
 	}
 	if req.PriceCents != nil {
 		if *req.PriceCents < 0 {

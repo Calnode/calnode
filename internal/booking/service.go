@@ -151,6 +151,10 @@ func (s *Service) Create(ctx context.Context, p CreateParams) (*Booking, error) 
 		}
 	}
 
+	if err := enforceFrequencyCaps(ctx, tx, p); err != nil {
+		return nil, err
+	}
+
 	bookingID := uid.New()
 	inviteDelivery := p.InviteDelivery
 	if inviteDelivery == "" {
@@ -208,6 +212,27 @@ func (s *Service) Create(ctx context.Context, p CreateParams) (*Booking, error) 
 			uid.New(), bookingID, ans.QuestionID, ans.Value)
 		if err != nil {
 			return nil, fmt.Errorf("booking: insert answer: %w", err)
+		}
+	}
+
+	if token := strings.TrimSpace(p.SingleUseToken); token != "" {
+		res, err := tx.ExecContext(ctx, `
+			UPDATE single_use_tokens
+			SET used_at = ?, booking_id = ?
+			WHERE token = ?
+			  AND event_type_id = ?
+			  AND used_at IS NULL
+			  AND (expires_at IS NULL OR datetime(expires_at) > datetime(?))`,
+			now, bookingID, token, p.EventTypeID, now)
+		if err != nil {
+			return nil, fmt.Errorf("booking: burn single-use token: %w", err)
+		}
+		affected, err := res.RowsAffected()
+		if err != nil {
+			return nil, fmt.Errorf("booking: burn single-use token rows affected: %w", err)
+		}
+		if affected == 0 {
+			return nil, ErrSingleUseTokenGone
 		}
 	}
 

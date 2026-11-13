@@ -1,10 +1,11 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { api, type EventType } from '$lib/api';
+	import { api, type EventType, type SingleUseLink, type CreateSingleUseLinkPayload } from '$lib/api';
 	import { currentUser } from '$lib/stores';
 	import { t, tr } from '$lib/i18n';
 	import { Button, buttonVariants } from '$lib/components/ui/button';
 	import { ConfirmDialog } from '$lib/components/ui/confirm-dialog';
+	import * as Dialog from '$lib/components/ui/dialog';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Switch } from '$lib/components/ui/switch';
 	import { Input } from '$lib/components/ui/input';
@@ -138,6 +139,105 @@
 	function bookLink(slug: string) {
 		return `${window.location.origin}/book/${slug}`;
 	}
+
+	// ── Single-use ephemeral links ─────────────────────────────────────────────
+	let linkModalOpen = $state(false);
+	let linkEventType = $state<EventType | null>(null);
+	let singleUseLinks = $state<SingleUseLink[]>([]);
+	let linksLoading = $state(false);
+	let linkCreating = $state(false);
+	let revokingToken = $state('');
+	let linkForm = $state({
+		prefill_name: '',
+		prefill_email: '',
+		deal_id: '',
+		expires_in_hours: 168
+	});
+
+	function resolveSingleUseUrl(link: SingleUseLink) {
+		if (link.url && link.url.startsWith('http')) return link.url;
+		return `${window.location.origin}/t/${link.token}`;
+	}
+
+	async function copyText(text: string, msg = 'Copied 1-time link to clipboard') {
+		try {
+			await navigator.clipboard.writeText(text);
+			toast.success(msg);
+		} catch {
+			toast.error('Unable to copy automatically — please copy the link manually.');
+		}
+	}
+
+	async function openSingleUseModal(et: EventType) {
+		linkEventType = et;
+		linkForm = { prefill_name: '', prefill_email: '', deal_id: '', expires_in_hours: 168 };
+		linkModalOpen = true;
+		await loadSingleUseLinks(et.id);
+	}
+
+	async function loadSingleUseLinks(eventTypeId: string) {
+		linksLoading = true;
+		try {
+			const res = await api.get<{ single_use_links: SingleUseLink[] }>(
+				`/v1/event-types/${eventTypeId}/single-use-links`
+			);
+			singleUseLinks = res.single_use_links ?? [];
+		} catch (e: any) {
+			toast.error(e.message || 'Failed to load single-use links');
+			singleUseLinks = [];
+		} finally {
+			linksLoading = false;
+		}
+	}
+
+	async function createSingleUseLink() {
+		if (!linkEventType || linkCreating) return;
+		const hours = Number(linkForm.expires_in_hours);
+		if (!Number.isFinite(hours) || hours < 0) {
+			toast.error('Expiration hours cannot be negative.');
+			return;
+		}
+		linkCreating = true;
+		try {
+			const payload: CreateSingleUseLinkPayload = {
+				prefill_name: linkForm.prefill_name.trim(),
+				prefill_email: linkForm.prefill_email.trim(),
+				deal_id: linkForm.deal_id.trim(),
+				expires_in_hours: hours
+			};
+			const created = await api.post<SingleUseLink>(
+				`/v1/event-types/${linkEventType.id}/single-use-links`,
+				payload
+			);
+			singleUseLinks = [created, ...singleUseLinks];
+			linkForm = { prefill_name: '', prefill_email: '', deal_id: '', expires_in_hours: 168 };
+			await copyText(resolveSingleUseUrl(created), '1-Time Link created & copied!');
+		} catch (e: any) {
+			toast.error(e.message || 'Failed to create single-use link');
+		} finally {
+			linkCreating = false;
+		}
+	}
+
+	async function revokeSingleUseLink(token: string) {
+		if (revokingToken) return;
+		revokingToken = token;
+		try {
+			await api.del(`/v1/single-use-links/${token}`);
+			singleUseLinks = singleUseLinks.filter((l) => l.token !== token);
+			toast.success('Single-use link revoked');
+		} catch (e: any) {
+			toast.error(e.message || 'Failed to revoke link');
+		} finally {
+			revokingToken = '';
+		}
+	}
+
+	function linkStatus(link: SingleUseLink): 'used' | 'expired' | 'active' {
+		if (link.used_at) return 'used';
+		if (link.expires_at && new Date(link.expires_at).getTime() <= Date.now()) return 'expired';
+		return 'active';
+	}
 </script>
 
 <ConfirmDialog
@@ -248,18 +348,29 @@
 						{#if scope === 'all'}<td class="px-4 py-3 text-muted-foreground">{ownerLabel(et)}</td>{/if}
 						<td class="px-4 py-3 text-muted-foreground">{$t('common.minutesShort', { n: et.duration_minutes })}</td>
 						<td class="px-4 py-3">
-							<Tooltip.Provider>
-								<Tooltip.Root>
-									<Tooltip.Trigger
-										class={buttonVariants({ variant: 'ghost', size: 'icon' })}
-										onclick={() => window.open(bookLink(et.slug), '_blank')}
-									>
-										<!-- External link icon -->
-										<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-									</Tooltip.Trigger>
-									<Tooltip.Content>{bookLink(et.slug)}</Tooltip.Content>
-								</Tooltip.Root>
-							</Tooltip.Provider>
+							<div class="flex items-center gap-1.5">
+								<Tooltip.Provider>
+									<Tooltip.Root>
+										<Tooltip.Trigger
+											class={buttonVariants({ variant: 'ghost', size: 'icon' })}
+											onclick={() => window.open(bookLink(et.slug), '_blank')}
+										>
+											<!-- External link icon -->
+											<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+										</Tooltip.Trigger>
+										<Tooltip.Content>{bookLink(et.slug)}</Tooltip.Content>
+									</Tooltip.Root>
+								</Tooltip.Provider>
+								<Button
+									variant="outline"
+									size="sm"
+									class="h-7 px-2.5 text-xs"
+									onclick={() => openSingleUseModal(et)}
+									disabled={!et.is_active || !!et.archived}
+								>
+									1-Time Link
+								</Button>
+							</div>
 						</td>
 						<td class="px-4 py-3">
 							<Switch bind:checked={et.is_active} onCheckedChange={(v) => saveActive(et, v)} disabled={et.can_edit === false || et.archived} />
@@ -326,3 +437,87 @@
 	</div>
 	{/if}
 {/if}
+
+<Dialog.Root bind:open={linkModalOpen}>
+	<Dialog.Content class="max-w-lg">
+		<Dialog.Header>
+			<Dialog.Title>1-Time Booking Link{linkEventType ? ` — ${linkEventType.name}` : ''}</Dialog.Title>
+			<Dialog.Description>
+				Generate an ephemeral link that expires automatically after a single booking.
+			</Dialog.Description>
+		</Dialog.Header>
+
+		<div class="space-y-4 py-2">
+			<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+				<div class="space-y-1.5">
+					<Label for="su-name">Founder Name (optional)</Label>
+					<Input id="su-name" bind:value={linkForm.prefill_name} placeholder="Jane Founder" />
+				</div>
+				<div class="space-y-1.5">
+					<Label for="su-email">Founder Email (optional)</Label>
+					<Input id="su-email" type="email" bind:value={linkForm.prefill_email} placeholder="jane@startup.io" />
+				</div>
+				<div class="space-y-1.5">
+					<Label for="su-deal">Deal ID (optional)</Label>
+					<Input id="su-deal" bind:value={linkForm.deal_id} placeholder="deal_123" />
+				</div>
+				<div class="space-y-1.5">
+					<Label for="su-exp">Expires in (hours, 0 = never)</Label>
+					<Input id="su-exp" type="number" min="0" bind:value={linkForm.expires_in_hours} />
+				</div>
+			</div>
+			<Button class="w-full" onclick={createSingleUseLink} disabled={linkCreating}>
+				{linkCreating ? 'Generating...' : 'Generate & Copy 1-Time Link'}
+			</Button>
+
+			<div class="border-t pt-3">
+				<p class="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Recent 1-Time Links</p>
+				{#if linksLoading}
+					<p class="py-3 text-xs text-muted-foreground">Loading links...</p>
+				{:else if singleUseLinks.length === 0}
+					<p class="py-3 text-xs text-muted-foreground">No single-use links created for this event type yet.</p>
+				{:else}
+					<div class="max-h-56 space-y-2 overflow-y-auto pr-1">
+						{#each singleUseLinks as link (link.id)}
+							{@const st = linkStatus(link)}
+							<div class="flex items-center justify-between gap-2 rounded-md border bg-muted/20 px-3 py-2 text-xs">
+								<div class="min-w-0 flex-1">
+									<div class="flex items-center gap-1.5">
+										<Badge variant={st === 'active' ? 'default' : 'secondary'} class="text-[10px] capitalize">
+											{st}
+										</Badge>
+										<span class="truncate font-medium">
+											{link.prefill_name || link.prefill_email || link.token.slice(0, 10) + '…'}
+										</span>
+										{#if link.deal_id}
+											<span class="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">{link.deal_id}</span>
+										{/if}
+									</div>
+									<p class="mt-0.5 truncate font-mono text-[11px] text-muted-foreground">/t/{link.token}</p>
+								</div>
+								<div class="flex shrink-0 items-center gap-1">
+									{#if st === 'active'}
+										<Button variant="ghost" size="sm" class="h-7 px-2 text-xs" onclick={() => copyText(resolveSingleUseUrl(link))}>
+											Copy
+										</Button>
+									{/if}
+									{#if !link.used_at}
+										<Button
+											variant="ghost"
+											size="sm"
+											class="h-7 px-2 text-xs text-destructive hover:text-destructive"
+											disabled={revokingToken === link.token}
+											onclick={() => revokeSingleUseLink(link.token)}
+										>
+											Revoke
+										</Button>
+									{/if}
+								</div>
+							</div>
+						{/each}
+					</div>
+				{/if}
+			</div>
+		</div>
+	</Dialog.Content>
+</Dialog.Root>

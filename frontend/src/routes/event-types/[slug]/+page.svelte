@@ -92,6 +92,8 @@
 		buffer_before_minutes: 0, buffer_after_minutes: 0,
 		min_notice_minutes: 0, max_future_days: 60,
 		max_active_bookings: 1,
+		max_per_day: '' as number | '' | null,
+		max_per_week: '' as number | '' | null,
 		price_cents: 0, currency: 'usd',
 	});
 
@@ -343,6 +345,8 @@
 				min_notice_minutes: et.min_notice_minutes,
 				max_future_days: et.max_future_days,
 				max_active_bookings: et.max_active_bookings,
+				max_per_day: et.max_per_day ?? '',
+				max_per_week: et.max_per_week ?? '',
 				price_cents: et.price_cents ?? 0,
 				currency: et.currency ?? 'usd',
 			};
@@ -378,6 +382,16 @@
 		// including when the person is editing something else entirely.
 		if (form.slot_interval_minutes < 1) { toast.error(tr('eventTypeEditor.validation.slotInterval')); return; }
 		if (form.max_active_bookings < 0) { toast.error(tr('eventTypeEditor.validation.maxActive')); return; }
+		const maxPerDay = form.max_per_day === '' || form.max_per_day === null ? null : Number(form.max_per_day);
+		const maxPerWeek = form.max_per_week === '' || form.max_per_week === null ? null : Number(form.max_per_week);
+		if (maxPerDay !== null && (!Number.isFinite(maxPerDay) || maxPerDay < 0)) {
+			toast.error('Max bookings per day cannot be negative.');
+			return;
+		}
+		if (maxPerWeek !== null && (!Number.isFinite(maxPerWeek) || maxPerWeek < 0)) {
+			toast.error('Max bookings per week cannot be negative.');
+			return;
+		}
 		if (routingMode === 'round_robin' && rotationHosts.length === 0) {
 			toast.error(tr('eventTypeEditor.validation.rotation')); return;
 		}
@@ -405,6 +419,8 @@
 				min_notice_minutes: Number(form.min_notice_minutes),
 				max_future_days: Number(form.max_future_days),
 				max_active_bookings: Number(form.max_active_bookings),
+				max_per_day: maxPerDay === 0 ? null : maxPerDay,
+				max_per_week: maxPerWeek === 0 ? null : maxPerWeek,
 				price_cents: Math.max(0, Math.round(Number(priceMajor) * 100)) || 0,
 				currency: form.currency.trim().toLowerCase() || 'usd',
 				routing_mode: routingMode,
@@ -893,6 +909,20 @@
 					<Label for="et-max-active">{$t('eventTypeEditor.scheduling.maxActive')}</Label>
 					<Input id="et-max-active" type="number" min="0" bind:value={form.max_active_bookings} />
 					<p class="text-xs text-muted-foreground">{$t('eventTypeEditor.scheduling.maxActiveHint')}</p>
+				</div>
+			</div>
+			<div class="mt-6 border-t pt-5">
+				<h3 class="mb-1 text-sm font-medium">Frequency Caps</h3>
+				<p class="mb-4 text-xs text-muted-foreground">Limit total confirmed bookings for this event type in your timezone. Leave blank or 0 for unlimited.</p>
+				<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+					<div class="space-y-1.5">
+						<Label for="et-max-per-day">Max bookings per day</Label>
+						<Input id="et-max-per-day" type="number" min="0" placeholder="Unlimited" bind:value={form.max_per_day} />
+					</div>
+					<div class="space-y-1.5">
+						<Label for="et-max-per-week">Max bookings per week</Label>
+						<Input id="et-max-per-week" type="number" min="0" placeholder="Unlimited" bind:value={form.max_per_week} />
+					</div>
 				</div>
 			</div>
 		</div>

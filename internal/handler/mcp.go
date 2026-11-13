@@ -90,6 +90,8 @@ type eventTypeBrief struct {
 	DurationMinutes int    `json:"duration_minutes"`
 	LocationType    string `json:"location_type"`
 	Description     string `json:"description,omitempty"`
+	MaxPerDay       *int   `json:"max_per_day,omitempty"`
+	MaxPerWeek      *int   `json:"max_per_week,omitempty"`
 }
 
 type listEventTypesOut struct {
@@ -98,7 +100,7 @@ type listEventTypesOut struct {
 
 func (h *Handler) mcpListEventTypes(ctx context.Context, _ *mcp.CallToolRequest, _ listEventTypesIn) (*mcp.CallToolResult, listEventTypesOut, error) {
 	rows, err := h.db.QueryContext(ctx, `
-		SELECT slug, name, duration_minutes, location_type, COALESCE(description, '')
+		SELECT slug, name, duration_minutes, location_type, COALESCE(description, ''), max_per_day, max_per_week
 		FROM event_types
 		WHERE is_active = 1 AND is_public = 1
 		ORDER BY name`)
@@ -109,9 +111,12 @@ func (h *Handler) mcpListEventTypes(ctx context.Context, _ *mcp.CallToolRequest,
 	out := listEventTypesOut{EventTypes: []eventTypeBrief{}}
 	for rows.Next() {
 		var e eventTypeBrief
-		if err := rows.Scan(&e.ID, &e.Name, &e.DurationMinutes, &e.LocationType, &e.Description); err != nil {
+		var maxDay, maxWeek sql.NullInt64
+		if err := rows.Scan(&e.ID, &e.Name, &e.DurationMinutes, &e.LocationType, &e.Description, &maxDay, &maxWeek); err != nil {
 			return nil, listEventTypesOut{}, fmt.Errorf("list event types: scan: %w", err)
 		}
+		e.MaxPerDay = nullIntPtr(maxDay)
+		e.MaxPerWeek = nullIntPtr(maxWeek)
 		out.EventTypes = append(out.EventTypes, e)
 	}
 	return nil, out, rows.Err()
@@ -142,6 +147,8 @@ type getEventTypeOut struct {
 	Description     string               `json:"description,omitempty"`
 	DurationMinutes int                  `json:"duration_minutes"`
 	LocationType    string               `json:"location_type"`
+	MaxPerDay       *int                 `json:"max_per_day,omitempty"`
+	MaxPerWeek      *int                 `json:"max_per_week,omitempty"`
 	Hosts           []eventTypeHostBrief `json:"hosts,omitempty"`
 	Questions       []eventTypeQuestion  `json:"questions"`
 }
@@ -150,13 +157,16 @@ func (h *Handler) mcpGetEventType(ctx context.Context, _ *mcp.CallToolRequest, i
 	out := getEventTypeOut{ID: in.EventTypeID, Questions: []eventTypeQuestion{}}
 	var etID string
 	var isActive int
+	var maxDay, maxWeek sql.NullInt64
 	err := h.db.QueryRowContext(ctx, `
-		SELECT id, name, COALESCE(description, ''), duration_minutes, location_type, is_active
+		SELECT id, name, COALESCE(description, ''), duration_minutes, location_type, is_active, max_per_day, max_per_week
 		FROM event_types WHERE slug = ?`, in.EventTypeID).
-		Scan(&etID, &out.Name, &out.Description, &out.DurationMinutes, &out.LocationType, &isActive)
+		Scan(&etID, &out.Name, &out.Description, &out.DurationMinutes, &out.LocationType, &isActive, &maxDay, &maxWeek)
 	if err != nil || isActive == 0 {
 		return nil, getEventTypeOut{}, fmt.Errorf("event type not found: %s", in.EventTypeID)
 	}
+	out.MaxPerDay = nullIntPtr(maxDay)
+	out.MaxPerWeek = nullIntPtr(maxWeek)
 
 	// Intake questions, in form order. Materialize fully before the host queries below
 	// — the single-connection pool can't run a second query while this cursor is open.

@@ -47,3 +47,42 @@ func TestLoginMicrosoft_setsStateCookieAndRedirects(t *testing.T) {
 		t.Fatal("calnode_oauth_state cookie not set")
 	}
 }
+
+func TestLoginMicrosoft_tenantScopedAuthority(t *testing.T) {
+	t.Run("explicit tenant id", func(t *testing.T) {
+		h, _, _ := authTestSetup(t)
+		const tenant = "99999999-aaaa-bbbb-cccc-dddddddddddd"
+		h.SetMicrosoftAuth("client-id", "client-secret", tenant, "http://localhost/v1/auth/microsoft/callback", false)
+
+		req := httptest.NewRequest(http.MethodGet, "/v1/auth/microsoft/login", nil)
+		rec := httptest.NewRecorder()
+		h.LoginMicrosoft(rec, req)
+
+		if rec.Code != http.StatusFound {
+			t.Fatalf("status = %d; want 302", rec.Code)
+		}
+		loc := rec.Header().Get("Location")
+		wantPrefix := "https://login.microsoftonline.com/" + tenant + "/oauth2/v2.0/authorize"
+		if !strings.HasPrefix(loc, wantPrefix) {
+			t.Errorf("Location = %q; want prefix %q", loc, wantPrefix)
+		}
+	})
+
+	t.Run("empty falls back to common", func(t *testing.T) {
+		h, _, _ := authTestSetup(t)
+		h.SetMicrosoftAuth("client-id", "client-secret", "", "http://localhost/v1/auth/microsoft/callback", false)
+
+		req := httptest.NewRequest(http.MethodGet, "/v1/auth/microsoft/login", nil)
+		rec := httptest.NewRecorder()
+		h.LoginMicrosoft(rec, req)
+
+		if rec.Code != http.StatusFound {
+			t.Fatalf("status = %d; want 302", rec.Code)
+		}
+		loc := rec.Header().Get("Location")
+		wantPrefix := "https://login.microsoftonline.com/common/oauth2/v2.0/authorize"
+		if !strings.HasPrefix(loc, wantPrefix) {
+			t.Errorf("Location = %q; want prefix %q", loc, wantPrefix)
+		}
+	})
+}
