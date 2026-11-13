@@ -241,6 +241,10 @@
 		"addHours": "+ Ajouter des horaires",
 		"addBlock": "Ajouter un bloc",
 		"saving": "enregistrement…",
+		"eventTypes": {
+			"appliesTo": "S'applique à",
+			"allEventTypes": "Tous les types d'événements"
+		},
 		"blockError": {
 			"endAfterStart": "La fin doit être après le début"
 		},
