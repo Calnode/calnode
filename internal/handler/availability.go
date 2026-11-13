@@ -123,10 +123,10 @@ func (h *Handler) UpdateAvailabilityRule(w http.ResponseWriter, r *http.Request)
 	r.Body = http.MaxBytesReader(w, r.Body, 32<<10)
 
 	var req struct {
-		EventTypeId *string `json:"event_type_id"`
-		DayOfWeek   *int    `json:"day_of_week"`
-		StartTime   *string `json:"start_time"`
-		EndTime     *string `json:"end_time"`
+		EventTypeId json.RawMessage `json:"event_type_id"` // `nil` = leave alone, `null` = clear
+		DayOfWeek   *int            `json:"day_of_week"`
+		StartTime   *string         `json:"start_time"`
+		EndTime     *string         `json:"end_time"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.writeError(w, http.StatusBadRequest, "invalid JSON")
@@ -152,15 +152,14 @@ func (h *Handler) UpdateAvailabilityRule(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// As there's no good way to distinguish between "set etId to null" and "don't set etId" we're using a string of
-	// `null` to represent the former.
 	if req.EventTypeId != nil {
-		etID := req.EventTypeId
-		if *etID == "null" {
-			current.EventTypeID = nil
-		} else {
-			current.EventTypeID = req.EventTypeId
+		var etId *string
+		if err := json.Unmarshal(req.EventTypeId, &etId); err != nil {
+			h.writeError(w, http.StatusBadRequest, "event_type_id must be a string")
+			return
 		}
+
+		current.EventTypeID = etId
 	}
 
 	if req.DayOfWeek != nil {

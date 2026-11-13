@@ -100,7 +100,7 @@
 		block.saving = true;
 		try {
 			await api.patch(`/v1/availability-rules/${block.id}`, {
-				event_type_id: block.event_type_id === null ? "null" : block.event_type_id,
+				event_type_id: block.event_type_id === "null" ? null : block.event_type_id,
 				start_time: block.start_time,
 				end_time: block.end_time
 			});
