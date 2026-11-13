@@ -17,7 +17,6 @@
 		{ section: $t('settings.nav.section.workspace'), href: `${base}/settings/zoom`, label: $t('settings.nav.zoom'), adminOnly: true },
 		{ section: $t('settings.nav.section.workspace'), href: `${base}/settings/video`, label: $t('settings.nav.video'), adminOnly: true },
 		{ section: $t('settings.nav.section.workspace'), href: `${base}/settings/storage`, label: $t('settings.nav.storage'), adminOnly: true },
-		{ section: $t('settings.nav.section.workspace'), href: `${base}/settings/payments`, label: $t('settings.nav.payments'), adminOnly: true },
 		{ section: $t('settings.nav.section.workspace'), href: `${base}/settings/ai`, label: $t('settings.nav.ai'), adminOnly: true },
 		{ section: $t('settings.nav.section.workspace'), href: `${base}/settings/tracking`, label: $t('settings.nav.tracking'), adminOnly: true },
 	]);

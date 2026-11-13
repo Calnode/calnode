@@ -136,6 +136,14 @@
 			icon: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>`
 		},
 		{
+			id: 'payments',
+			section: null,
+			href: `${base}/settings/payments`,
+			label: $t('settings.nav.payments'),
+			adminOnly: true,
+			icon: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>`
+		},
+		{
 			id: 'settings',
 			section: null,
 			href: `${base}/settings`,
@@ -417,7 +425,7 @@
 
 		<!-- Main content -->
 		<main class="min-w-0 flex-1 overflow-y-auto bg-background" inert={sidebarOpen}>
-			<div class="mx-auto max-w-4xl px-4 py-4 sm:px-6 sm:py-6 lg:px-8 lg:py-8">
+			<div class="w-full px-4 py-4 sm:px-6 sm:py-6 lg:px-8 lg:py-6">
 				{@render children()}
 			</div>
 		</main>

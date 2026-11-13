@@ -68,3 +68,4 @@ __screenshots__/
 packaging/ns8/tests/outputs/
 __pycache__/
 calnode.key
+FUTURE_FEATURES.md

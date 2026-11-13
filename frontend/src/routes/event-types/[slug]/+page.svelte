@@ -62,6 +62,7 @@
 	const TABS = $derived([
 		{ id: 'general' as const, label: $t('eventTypeEditor.tabs.general') },
 		{ id: 'hosts' as const, label: $t('eventTypeEditor.tabs.hosts') },
+		{ id: 'payments' as const, label: $t('settings.nav.payments') },
 		{ id: 'notifications' as const, label: $t('eventTypeEditor.tabs.notifications') },
 		{ id: 'questions' as const, label: $t('eventTypeEditor.tabs.questions') },
 		{ id: 'embed' as const, label: $t('eventTypeEditor.tabs.embed') }
@@ -122,6 +123,76 @@
 
 	// Price is edited in major units (e.g. dollars); stored as integer cents.
 	let priceMajor = $state('0');
+	let paidEnabled = $state(false);
+
+	// Limits & buffers UX helpers (5-min dropdowns + toggles, mapped directly to existing DB columns)
+	const BUFFER_OPTIONS = [
+		{ value: 0, label: 'No buffer time' },
+		{ value: 5, label: '5 minutes' },
+		{ value: 10, label: '10 minutes' },
+		{ value: 15, label: '15 minutes' },
+		{ value: 20, label: '20 minutes' },
+		{ value: 25, label: '25 minutes' },
+		{ value: 30, label: '30 minutes' },
+		{ value: 45, label: '45 minutes' },
+		{ value: 60, label: '60 minutes' },
+		{ value: 90, label: '90 minutes' },
+		{ value: 120, label: '120 minutes' }
+	];
+	const NOTICE_OPTIONS = [
+		{ value: 0, label: 'No minimum notice' },
+		{ value: 5, label: '5 minutes' },
+		{ value: 10, label: '10 minutes' },
+		{ value: 15, label: '15 minutes' },
+		{ value: 30, label: '30 minutes' },
+		{ value: 45, label: '45 minutes' },
+		{ value: 60, label: '1 hour' },
+		{ value: 120, label: '2 hours' },
+		{ value: 180, label: '3 hours' },
+		{ value: 240, label: '4 hours' },
+		{ value: 360, label: '6 hours' },
+		{ value: 720, label: '12 hours' },
+		{ value: 1440, label: '24 hours' },
+		{ value: 2880, label: '48 hours' }
+	];
+	const INTERVAL_OPTIONS = [5, 10, 15, 20, 25, 30, 45, 60];
+
+	function optionLabel(opts: { value: number; label: string }[], v: number): string {
+		return opts.find((o) => o.value === Number(v))?.label ?? `${v} minutes`;
+	}
+
+	let freqEnabled = $state(false);
+	let futureLimitEnabled = $state(false);
+	let maxActiveEnabled = $state(false);
+
+	function toggleFreqEnabled(on: boolean) {
+		freqEnabled = on;
+		if (!on) {
+			form.max_per_day = '';
+			form.max_per_week = '';
+		} else if (!form.max_per_day && !form.max_per_week) {
+			form.max_per_day = 1;
+		}
+	}
+
+	function toggleFutureLimit(on: boolean) {
+		futureLimitEnabled = on;
+		form.max_future_days = on ? (Number(form.max_future_days) > 0 ? Number(form.max_future_days) : 30) : 0;
+	}
+
+	function toggleMaxActive(on: boolean) {
+		maxActiveEnabled = on;
+		form.max_active_bookings = on ? (Number(form.max_active_bookings) > 0 ? Number(form.max_active_bookings) : 1) : 0;
+	}
+
+	function togglePaidEnabled(on: boolean) {
+		paidEnabled = on;
+		if (!on) {
+			priceMajor = '0.00';
+		} else if (!(Number(priceMajor) > 0)) {
+			priceMajor = '25.00';
+		}
+	}
 
 	// True when the connected calendar will auto-generate the chosen platform's link.
 	const meetAutoGen = $derived(
@@ -352,6 +423,10 @@
 				currency: et.currency ?? 'usd',
 			};
 			priceMajor = ((et.price_cents ?? 0) / 100).toFixed(2);
+			paidEnabled = (et.price_cents ?? 0) > 0;
+			freqEnabled = !!((et.max_per_day && et.max_per_day > 0) || (et.max_per_week && et.max_per_week > 0));
+			futureLimitEnabled = (et.max_future_days ?? 0) > 0;
+			maxActiveEnabled = (et.max_active_bookings ?? 0) > 0;
 			reminders = et.reminders ?? [];
 			if (et.routing_mode === 'round_robin') { hostScope = 'people'; staffing = 'rotate'; }
 			else if (et.routing_mode === 'collective') { hostScope = 'people'; staffing = 'together'; }
@@ -721,33 +796,36 @@
 			</div>
 			<div class="space-y-1.5">
 				<Label for="et-slot">{$t('eventTypeEditor.general.slotInterval')}</Label>
-				<Input id="et-slot" type="number" min="1" step="5" bind:value={form.slot_interval_minutes} />
+				<Select.Root type="single" value={String(form.slot_interval_minutes)} onValueChange={(v) => { if (v) form.slot_interval_minutes = Number(v); }}>
+					<Select.Trigger id="et-slot" class="w-full">
+						{form.slot_interval_minutes === form.duration_minutes ? `Use event length (${form.duration_minutes} min)` : `${form.slot_interval_minutes} minutes`}
+					</Select.Trigger>
+					<Select.Content>
+						{#each INTERVAL_OPTIONS as mins}
+							<Select.Item value={String(mins)} label="{mins} minutes">{mins} minutes{mins === form.duration_minutes ? ' (default)' : ''}</Select.Item>
+						{/each}
+					</Select.Content>
+				</Select.Root>
 				<p class="text-xs text-muted-foreground">{$t('eventTypeEditor.general.slotIntervalHint')}</p>
 			</div>
 			<div class="col-span-2 space-y-1.5">
 				<Label for="et-desc">{$t('eventTypeEditor.general.description')}</Label>
 				<Textarea id="et-desc" bind:value={form.description} placeholder={$t('eventTypeEditor.general.descriptionPlaceholder')} rows={3} class="resize-y" />
 			</div>
-			<div class="space-y-1.5">
-				<p class="text-sm font-medium">{$t('eventTypeEditor.general.status')}</p>
-				<div class="flex items-center gap-2">
-					<Checkbox id="is-active" bind:checked={form.is_active} />
-					<Label for="is-active" class="cursor-pointer font-normal">{$t('eventTypeEditor.general.active')}</Label>
-				</div>
+			<div class="flex items-center justify-between rounded-md border px-3 py-2.5">
+				<Label for="is-active" class="cursor-pointer font-normal">{$t('eventTypeEditor.general.active')}</Label>
+				<Switch id="is-active" bind:checked={form.is_active} />
 			</div>
-			<div class="space-y-1.5">
-				<p class="text-sm font-medium">{$t('eventTypeEditor.general.visibility')}</p>
-				<div class="flex items-center gap-2">
-					<Checkbox id="is-public" bind:checked={form.is_public} />
-					<Label for="is-public" class="cursor-pointer font-normal">{$t('eventTypeEditor.general.public')}</Label>
-				</div>
+			<div class="flex items-center justify-between rounded-md border px-3 py-2.5">
+				<Label for="is-public" class="cursor-pointer font-normal">{$t('eventTypeEditor.general.public')}</Label>
+				<Switch id="is-public" bind:checked={form.is_public} />
 			</div>
 		</div>
 
 		<div class="mt-4 space-y-1.5">
-			<div class="flex items-center gap-2">
-				<Checkbox id="show-taken" bind:checked={form.show_taken_slots} />
+			<div class="flex items-center justify-between rounded-md border px-3 py-2.5">
 				<Label for="show-taken" class="cursor-pointer font-normal">{$t('eventTypeEditor.general.showTaken')}</Label>
+				<Switch id="show-taken" bind:checked={form.show_taken_slots} />
 			</div>
 			<p class="text-xs text-muted-foreground">
 				{$t('eventTypeEditor.general.showTakenHint')}
@@ -760,7 +838,10 @@
 		</div>
 
 		{#if isOnlineMeeting(form.location_type)}
-			<label class="flex items-center gap-3 text-sm"><input type="checkbox" bind:checked={allowPhoneCall} />{$t('eventTypeEditor.general.allowPhoneCall')}</label>
+			<div class="mt-4 flex items-center justify-between rounded-md border px-3 py-2.5">
+				<Label for="allow-phone" class="cursor-pointer font-normal">{$t('eventTypeEditor.general.allowPhoneCall')}</Label>
+				<Switch id="allow-phone" bind:checked={allowPhoneCall} />
+			</div>
 		{/if}
 		<!-- Location -->
 		<div class="mt-6 border-t pt-5">
@@ -894,76 +975,124 @@
 			{/if}
 		</div>
 
-		<!-- Price -->
-		<div class="mt-6 border-t pt-5">
-			<p class="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">{$t('eventTypeEditor.price.section')}</p>
-			<div class="grid grid-cols-2 gap-4">
-				<div class="space-y-1.5">
-					<Label for="et-price">{$t('eventTypeEditor.price.amount')}</Label>
-					<Input id="et-price" type="number" min="0" step="0.01" bind:value={priceMajor} placeholder="0.00" />
-				</div>
-				<div class="space-y-1.5">
-					<Label for="et-currency">{$t('eventTypeEditor.price.currency')}</Label>
-					<Input id="et-currency" type="text" maxlength={3} bind:value={form.currency} placeholder={$t('eventTypeEditor.price.currencyPlaceholder')} />
-				</div>
-			</div>
-			<p class="mt-2 text-xs text-muted-foreground">
-				<LinkedText
-					text={$t('eventTypeEditor.price.hint')}
-					links={{
-						stripe: {
-							href: '/admin/settings/payments',
-							text: $t('eventTypeEditor.price.stripeLink'),
-							class: 'underline'
-						}
-					}}
-				/>
-			</p>
-		</div>
-
-		<!-- Scheduling -->
-		<div class="mt-6 border-t pt-5">
-			<p class="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">{$t('eventTypeEditor.scheduling.section')}</p>
-			<div class="grid grid-cols-2 gap-4">
+		<!-- Limits & Buffers -->
+		<div class="mt-6 border-t pt-5 space-y-5">
+			<p class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Limits & buffers</p>
+			<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
 				<div class="space-y-1.5">
 					<Label for="et-buf-before">{$t('eventTypeEditor.scheduling.bufferBefore')}</Label>
-					<Input id="et-buf-before" type="number" min="0" step="5" bind:value={form.buffer_before_minutes} />
-					<p class="text-xs text-muted-foreground">{$t('eventTypeEditor.scheduling.bufferBeforeHint')}</p>
+					<Select.Root type="single" value={String(form.buffer_before_minutes)} onValueChange={(v) => { if (v !== undefined) form.buffer_before_minutes = Number(v); }}>
+						<Select.Trigger id="et-buf-before" class="w-full">{optionLabel(BUFFER_OPTIONS, form.buffer_before_minutes)}</Select.Trigger>
+						<Select.Content>
+							{#each BUFFER_OPTIONS as opt}
+								<Select.Item value={String(opt.value)} label={opt.label}>{opt.label}</Select.Item>
+							{/each}
+						</Select.Content>
+					</Select.Root>
 				</div>
 				<div class="space-y-1.5">
 					<Label for="et-buf-after">{$t('eventTypeEditor.scheduling.bufferAfter')}</Label>
-					<Input id="et-buf-after" type="number" min="0" step="5" bind:value={form.buffer_after_minutes} />
-					<p class="text-xs text-muted-foreground">{$t('eventTypeEditor.scheduling.bufferAfterHint')}</p>
+					<Select.Root type="single" value={String(form.buffer_after_minutes)} onValueChange={(v) => { if (v !== undefined) form.buffer_after_minutes = Number(v); }}>
+						<Select.Trigger id="et-buf-after" class="w-full">{optionLabel(BUFFER_OPTIONS, form.buffer_after_minutes)}</Select.Trigger>
+						<Select.Content>
+							{#each BUFFER_OPTIONS as opt}
+								<Select.Item value={String(opt.value)} label={opt.label}>{opt.label}</Select.Item>
+							{/each}
+						</Select.Content>
+					</Select.Root>
 				</div>
-				<div class="space-y-1.5">
+				<div class="space-y-1.5 sm:col-span-2">
 					<Label for="et-notice">{$t('eventTypeEditor.scheduling.minNotice')}</Label>
-					<Input id="et-notice" type="number" min="0" step="30" bind:value={form.min_notice_minutes} />
-					<p class="text-xs text-muted-foreground">{$t('eventTypeEditor.scheduling.minNoticeHint')}</p>
-				</div>
-				<div class="space-y-1.5">
-					<Label for="et-future">{$t('eventTypeEditor.scheduling.bookingWindow')}</Label>
-					<Input id="et-future" type="number" min="0" bind:value={form.max_future_days} />
-					<p class="text-xs text-muted-foreground">{$t('eventTypeEditor.scheduling.bookingWindowHint')}</p>
-				</div>
-				<div class="space-y-1.5">
-					<Label for="et-max-active">{$t('eventTypeEditor.scheduling.maxActive')}</Label>
-					<Input id="et-max-active" type="number" min="0" bind:value={form.max_active_bookings} />
-					<p class="text-xs text-muted-foreground">{$t('eventTypeEditor.scheduling.maxActiveHint')}</p>
+					<Select.Root type="single" value={String(form.min_notice_minutes)} onValueChange={(v) => { if (v !== undefined) form.min_notice_minutes = Number(v); }}>
+						<Select.Trigger id="et-notice" class="w-full">{optionLabel(NOTICE_OPTIONS, form.min_notice_minutes)}</Select.Trigger>
+						<Select.Content>
+							{#each NOTICE_OPTIONS as opt}
+								<Select.Item value={String(opt.value)} label={opt.label}>{opt.label}</Select.Item>
+							{/each}
+						</Select.Content>
+					</Select.Root>
 				</div>
 			</div>
-			<div class="mt-6 border-t pt-5">
-				<h3 class="mb-1 text-sm font-medium">Frequency Caps</h3>
-				<p class="mb-4 text-xs text-muted-foreground">Limit total confirmed bookings for this event type in your timezone. Leave blank or 0 for unlimited.</p>
-				<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-					<div class="space-y-1.5">
-						<Label for="et-max-per-day">Max bookings per day</Label>
-						<Input id="et-max-per-day" type="number" min="0" placeholder="Unlimited" bind:value={form.max_per_day} />
+
+			<!-- Limit booking frequency (Per Day & Per Week simultaneously) -->
+			<div class="rounded-lg border p-4 space-y-3">
+				<div class="flex items-center justify-between gap-3">
+					<div>
+						<p class="text-sm font-medium">Limit booking frequency</p>
+						<p class="text-xs text-muted-foreground">Limit how many times this event can be booked per day and/or per week.</p>
 					</div>
-					<div class="space-y-1.5">
-						<Label for="et-max-per-week">Max bookings per week</Label>
-						<Input id="et-max-per-week" type="number" min="0" placeholder="Unlimited" bind:value={form.max_per_week} />
-					</div>
+					<Switch checked={freqEnabled} onCheckedChange={toggleFreqEnabled} />
 				</div>
+				{#if freqEnabled}
+					<div class="space-y-2 pt-1">
+						{#if form.max_per_day !== '' && form.max_per_day !== null && form.max_per_day !== undefined}
+							<div class="flex items-center gap-2">
+								<Input type="number" min="1" class="w-24" bind:value={form.max_per_day} aria-label="Max bookings per day" />
+								<span class="flex-1 rounded-md border bg-muted/30 px-3 py-2 text-sm">Per Day</span>
+								<Button type="button" variant="ghost" size="icon" onclick={() => (form.max_per_day = '')} aria-label="Remove daily limit">
+									<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
+								</Button>
+							</div>
+						{/if}
+						{#if form.max_per_week !== '' && form.max_per_week !== null && form.max_per_week !== undefined}
+							<div class="flex items-center gap-2">
+								<Input type="number" min="1" class="w-24" bind:value={form.max_per_week} aria-label="Max bookings per week" />
+								<span class="flex-1 rounded-md border bg-muted/30 px-3 py-2 text-sm">Per Week</span>
+								<Button type="button" variant="ghost" size="icon" onclick={() => (form.max_per_week = '')} aria-label="Remove weekly limit">
+									<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
+								</Button>
+							</div>
+						{/if}
+						{#if !form.max_per_day || !form.max_per_week}
+							<Button
+								type="button"
+								variant="ghost"
+								size="sm"
+								class="h-8 px-2 text-xs"
+								onclick={() => {
+									if (!form.max_per_day) form.max_per_day = 1;
+									else if (!form.max_per_week) form.max_per_week = 3;
+								}}
+							>
+								+ Add limit
+							</Button>
+						{/if}
+					</div>
+				{/if}
+			</div>
+
+			<!-- Limit future bookings -->
+			<div class="rounded-lg border p-4 space-y-3">
+				<div class="flex items-center justify-between gap-3">
+					<div>
+						<p class="text-sm font-medium">Limit future bookings</p>
+						<p class="text-xs text-muted-foreground">Limit how far in the future (calendar days) this event can be booked.</p>
+					</div>
+					<Switch checked={futureLimitEnabled} onCheckedChange={toggleFutureLimit} />
+				</div>
+				{#if futureLimitEnabled}
+					<div class="flex items-center gap-2 pt-1">
+						<Input id="et-future" type="number" min="1" class="w-24" bind:value={form.max_future_days} />
+						<span class="text-sm text-muted-foreground">calendar days into the future</span>
+					</div>
+				{/if}
+			</div>
+
+			<!-- Limit upcoming bookings per booker -->
+			<div class="rounded-lg border p-4 space-y-3">
+				<div class="flex items-center justify-between gap-3">
+					<div>
+						<p class="text-sm font-medium">Limit upcoming bookings per booker</p>
+						<p class="text-xs text-muted-foreground">Limit the number of active bookings a booker can hold at once.</p>
+					</div>
+					<Switch checked={maxActiveEnabled} onCheckedChange={toggleMaxActive} />
+				</div>
+				{#if maxActiveEnabled}
+					<div class="flex items-center gap-2 pt-1">
+						<Input id="et-max-active" type="number" min="1" class="w-24" bind:value={form.max_active_bookings} />
+						<span class="text-sm text-muted-foreground">active bookings</span>
+					</div>
+				{/if}
 			</div>
 		</div>
 
@@ -976,57 +1105,41 @@
 	<h2 class="mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">{$t('eventTypeEditor.tabs.hosts')}</h2>
 	<div class="rounded-lg border bg-card p-6">
 		<div>
-			<p class="-mt-1 mb-4 text-sm text-muted-foreground">{$t('eventTypeEditor.hosts.intro')}</p>
-
-			<!-- Q1 — who can host -->
+			<!-- Q1 — Hosting -->
 			<div class="space-y-1.5">
-				<Label>{$t('eventTypeEditor.hosts.who')}</Label>
+				<Label>Hosting</Label>
 				<div class="inline-flex rounded-lg border bg-muted/40 p-0.5">
 					<button type="button" onclick={() => setScope('me')}
 						class="rounded-md px-3 py-1.5 text-sm font-medium transition-colors {hostScope === 'me' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground'}">
-						{editingForOwner ? $t('eventTypeEditor.hosts.justOwner', { owner: ownerLabel }) : $t('eventTypeEditor.hosts.justMe')}
+						{editingForOwner ? $t('eventTypeEditor.hosts.justOwner', { owner: ownerLabel }) : 'Just me'}
 					</button>
 					<button type="button" onclick={() => setScope('people')}
 						class="rounded-md px-3 py-1.5 text-sm font-medium transition-colors {hostScope === 'people' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground'}">
-						{$t('eventTypeEditor.hosts.specificPeople')}
+						Multiple hosts
 					</button>
 				</div>
-				<p class="text-xs text-muted-foreground">
-					{#if hostScope === 'me'}
-						{editingForOwner ? $t('eventTypeEditor.hosts.justOwnerHint', { owner: ownerLabel }) : $t('eventTypeEditor.hosts.justMeHint')}
-					{:else}
-						{$t('eventTypeEditor.hosts.peopleHint')}
-					{/if}
-				</p>
 			</div>
 
 			{#if hostScope === 'people'}
-				<!-- Q2 — how the meeting is staffed -->
+				<!-- Q2 — Assignment -->
 				<div class="mt-4 space-y-1.5">
-					<Label>{$t('eventTypeEditor.hosts.staffing')}</Label>
+					<Label>Assignment</Label>
 					<div class="inline-flex rounded-lg border bg-muted/40 p-0.5">
 						<button type="button" onclick={() => (staffing = 'rotate')}
 							class="rounded-md px-3 py-1.5 text-sm font-medium transition-colors {staffing === 'rotate' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground'}">
-							{$t('eventTypeEditor.hosts.rotate')}
+							Round robin
 						</button>
 						<button type="button" onclick={() => (staffing = 'together')}
 							class="rounded-md px-3 py-1.5 text-sm font-medium transition-colors {staffing === 'together' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground'}">
-							{$t('eventTypeEditor.hosts.together')}
+							Collective (all attend)
 						</button>
 					</div>
-					<p class="text-xs text-muted-foreground">
-						{#if staffing === 'rotate'}
-							{$t('eventTypeEditor.hosts.rotateHint')}
-						{:else}
-							{$t('eventTypeEditor.hosts.togetherHint')}
-						{/if}
-					</p>
 				</div>
 
 				{#if staffing === 'rotate'}
 					<div class="mt-4 space-y-3">
 						<div class="space-y-1.5">
-							<Label for="rr-strategy">{$t('eventTypeEditor.hosts.rrStrategy')}</Label>
+							<Label for="rr-strategy">Round-robin method</Label>
 							<Select.Root type="single" value={rrStrategy} onValueChange={(v) => { if (v) rrStrategy = v as Strategy; }}>
 								<Select.Trigger id="rr-strategy" class="w-full">
 									{RR_STRATEGIES.find((s) => s.value === rrStrategy)?.label ?? $t('common.select')}
@@ -1037,18 +1150,9 @@
 									{/each}
 								</Select.Content>
 							</Select.Root>
-							<p class="text-xs text-muted-foreground">
-								{#if rrStrategy === 'priority'}
-									{$t('eventTypeEditor.hosts.rrHint.priority')}
-								{:else if rrStrategy === 'soonest'}
-									{$t('eventTypeEditor.hosts.rrHint.soonest')}
-								{:else}
-									{$t('eventTypeEditor.hosts.rrHint.even')}
-								{/if}
-							</p>
 						</div>
 
-						<p class="text-sm font-medium">{$t('eventTypeEditor.hosts.rotationPeople')}</p>
+						<p class="text-sm font-medium">Team members</p>
 						{#if rotationHosts.length > 0}
 							<div class="space-y-2">
 								{#each rotationHosts as h, i (h.user_id)}
@@ -1299,12 +1403,51 @@
 {#if activeTab === 'hosts' && $currentUser?.is_admin && et?.owned !== false}
 	<div class="mt-6 space-y-3 border-t pt-5">
 		<Label for="transfer-owner">{$t('eventTypeEditor.transfer.title')}</Label>
-		<p class="text-sm text-muted-foreground">{$t('eventTypeEditor.transfer.hint')}</p>
+		<p class="text-xs text-muted-foreground">Reassign ownership to a saved required host (only available with no upcoming bookings).</p>
 		<select id="transfer-owner" bind:value={transferOwner} class="h-9 w-full rounded-md border bg-background px-3 text-sm">
 			<option value="">{$t('eventTypeEditor.transfer.select')}</option>
 			{#each transferHosts as host}<option value={host.user_id}>{host.name || host.email}</option>{/each}
 		</select>
 		<Button variant="outline" disabled={!transferOwner || transferring} onclick={transferEvent}>{transferring ? $t('eventTypeEditor.transfer.inProgress') : $t('eventTypeEditor.transfer.button')}</Button>
+	</div>
+{/if}
+
+{#if activeTab === 'payments'}
+	<div class="mb-8">
+		<h2 class="mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">{$t('settings.nav.payments')}</h2>
+		<div class="rounded-lg border bg-card p-6 space-y-4">
+			<div class="flex items-center justify-between gap-3">
+				<div>
+					<p class="text-sm font-medium">Paid booking</p>
+					<p class="text-xs text-muted-foreground">Require payment via Stripe when someone books this event.</p>
+				</div>
+				<Switch checked={paidEnabled} onCheckedChange={togglePaidEnabled} />
+			</div>
+			{#if paidEnabled}
+				<div class="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t pt-4">
+					<div class="space-y-1.5">
+						<Label for="et-price">{$t('eventTypeEditor.price.amount')}</Label>
+						<Input id="et-price" type="number" min="0" step="0.01" bind:value={priceMajor} placeholder="0.00" />
+					</div>
+					<div class="space-y-1.5">
+						<Label for="et-currency">{$t('eventTypeEditor.price.currency')}</Label>
+						<Input id="et-currency" type="text" maxlength={3} bind:value={form.currency} placeholder={$t('eventTypeEditor.price.currencyPlaceholder')} />
+					</div>
+				</div>
+			{/if}
+			<p class="text-xs text-muted-foreground">
+				<LinkedText
+					text={$t('eventTypeEditor.price.hint')}
+					links={{
+						stripe: {
+							href: '/admin/settings/payments',
+							text: $t('eventTypeEditor.price.stripeLink'),
+							class: 'underline'
+						}
+					}}
+				/>
+			</p>
+		</div>
 	</div>
 {/if}
 

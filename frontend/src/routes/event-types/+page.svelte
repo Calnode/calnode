@@ -11,6 +11,7 @@
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
 	import * as Tooltip from '$lib/components/ui/tooltip';
+	import * as Popover from '$lib/components/ui/popover';
 	import { toast } from 'svelte-sonner';
 
 	let items: EventType[] = $state([]);
@@ -80,11 +81,25 @@
 		}
 	}
 
+	let openMenuSlug = $state<string | null>(null);
+
 	async function saveActive(et: EventType, newActive: boolean) {
+		et.is_active = newActive;
 		try {
 			await api.patch(`/v1/event-types/${et.slug}`, { is_active: newActive });
+			toast.success(newActive ? 'Booking link enabled' : 'Booking link disabled');
 		} catch (e: any) {
 			et.is_active = !newActive; // revert optimistic update
+			toast.error(e.message || tr('eventTypes.toast.errors.status'));
+		}
+	}
+
+	async function savePublic(et: EventType, newPublic: boolean) {
+		try {
+			await api.patch(`/v1/event-types/${et.slug}`, { is_public: newPublic });
+			toast.success(newPublic ? 'Visible on public profile' : 'Hidden from public profile');
+		} catch (e: any) {
+			et.is_public = !newPublic; // revert optimistic update
 			toast.error(e.message || tr('eventTypes.toast.errors.status'));
 		}
 	}
@@ -227,14 +242,14 @@
 
 <svelte:head><title>{$t('eventTypes.headTitle')}</title></svelte:head>
 
-<div class="mb-8 flex items-center justify-between">
+<div class="mb-6 flex flex-wrap items-start justify-between gap-4">
 	<div>
 		<h1 class="text-2xl font-semibold tracking-tight">{$t('eventTypes.title')}</h1>
 		<p class="mt-1 text-sm text-muted-foreground">
 			{scope === 'all' ? $t('eventTypes.subtitle.all') : $t('eventTypes.subtitle.mine')}
 		</p>
 	</div>
-	<div class="flex shrink-0 items-center gap-2">
+	<div class="flex flex-wrap items-center gap-2">
 		{#if isAdmin}
 			<div class="inline-flex rounded-md border p-0.5">
 				<button
@@ -270,128 +285,140 @@
 			<p class="text-sm text-muted-foreground">{$t('eventTypes.filter.none', { filter: filterEmptyWord })}</p>
 		</div>
 	{:else}
-	<div class="rounded-lg border bg-card overflow-hidden">
-		<table class="w-full text-sm">
-			<thead>
-				<tr class="border-b">
-					<th class="px-4 pb-3 pt-3 text-left text-xs font-medium text-muted-foreground">{$t('eventTypes.table.name')}</th>
-					{#if scope === 'all'}<th class="px-4 pb-3 pt-3 text-left text-xs font-medium text-muted-foreground">{$t('eventTypes.table.owner')}</th>{/if}
-					<th class="px-4 pb-3 pt-3 text-left text-xs font-medium text-muted-foreground">{$t('eventTypes.table.duration')}</th>
-					<th class="px-4 pb-3 pt-3 text-left text-xs font-medium text-muted-foreground">{$t('eventTypes.table.bookingLink')}</th>
-					<th class="px-4 pb-3 pt-3 text-left text-xs font-medium text-muted-foreground">{$t('eventTypes.table.active')}</th>
-					<th class="px-4 pb-3 pt-3"></th>
-				</tr>
-			</thead>
-			<tbody class="divide-y">
-				{#each visible as et}
-					<tr class="transition-colors hover:bg-muted/30">
-						<td class="px-4 py-3">
-							<div class="flex items-center gap-2">
-								<span class="font-medium">{et.name}</span>
-								{#if et.owned === false && scope === 'mine'}
-									<Badge variant="secondary" class="text-[10px]">{$t('eventTypes.badge.youHost')}</Badge>
-								{/if}
-							</div>
-							<div class="text-xs text-muted-foreground">{et.slug}</div>
-						</td>
-						{#if scope === 'all'}<td class="px-4 py-3 text-muted-foreground">{ownerLabel(et)}</td>{/if}
-						<td class="px-4 py-3 text-muted-foreground">{$t('common.minutesShort', { n: et.duration_minutes })}</td>
-						<td class="px-4 py-3">
-							<div class="flex items-center gap-1.5">
-								<Tooltip.Provider>
-									<Tooltip.Root>
-										<Tooltip.Trigger
-											class={buttonVariants({ variant: 'ghost', size: 'icon' })}
-											onclick={() => window.open(bookLink(et.slug), '_blank')}
-										>
-											<!-- External link icon -->
-											<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-										</Tooltip.Trigger>
-										<Tooltip.Content>{bookLink(et.slug)}</Tooltip.Content>
-									</Tooltip.Root>
-								</Tooltip.Provider>
-								<Button
-									variant="outline"
-									size="sm"
-									class="h-7 px-2.5 text-xs"
-									onclick={() => mintAndCopyOneTimeLink(et)}
-									disabled={!et.is_active || !!et.archived || mintingId === et.id}
-								>
-									{mintingId === et.id ? 'Copying...' : '1-Time Link'}
-								</Button>
-								<Button
-									variant="ghost"
-									size="sm"
-									class="h-7 px-2 text-xs text-muted-foreground"
-									onclick={() => openSingleUseDrawer(et)}
-									title="Manage 1-time links"
-								>
-									Manage
-								</Button>
-							</div>
-						</td>
-						<td class="px-4 py-3">
-							<Switch bind:checked={et.is_active} onCheckedChange={(v) => saveActive(et, v)} disabled={et.can_edit === false || et.archived} />
-						</td>
-						<td class="px-4 py-3">
-							<Tooltip.Provider>
-								<div class="flex items-center justify-end gap-1">
-									<Tooltip.Root>
-										<Tooltip.Trigger
-											class={buttonVariants({ variant: 'ghost', size: 'icon' })}
-											onclick={() => window.location.href = '/admin/event-types/' + et.slug}
-										>
-											<!-- Gear/Settings icon -->
-											<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-										</Tooltip.Trigger>
-										<Tooltip.Content>{$t('eventTypes.tooltip.settings')}</Tooltip.Content>
-									</Tooltip.Root>
+	<div class="divide-y rounded-lg border bg-card">
+		{#each visible as et (et.id)}
+			<div class="flex flex-col gap-3 p-4 transition-colors hover:bg-muted/20 sm:flex-row sm:items-center sm:justify-between">
+				<a href="/admin/event-types/{et.slug}" class="min-w-0 flex-1 space-y-1">
+					<div class="flex flex-wrap items-center gap-2">
+						<span class="font-semibold text-foreground">{et.name}</span>
+						<span class="text-xs text-muted-foreground">/book/{et.slug}</span>
+						{#if et.owned === false && scope === 'mine'}
+							<Badge variant="secondary" class="text-[10px]">{$t('eventTypes.badge.youHost')}</Badge>
+						{/if}
+						{#if scope === 'all'}
+							<Badge variant="outline" class="text-[10px]">{ownerLabel(et)}</Badge>
+						{/if}
+					</div>
+					<div class="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+						<span class="inline-flex items-center gap-1 rounded bg-muted px-1.5 py-0.5 font-medium text-foreground/80">
+							{$t('common.minutesShort', { n: et.duration_minutes })}
+						</span>
+						{#if !et.is_public}
+							<span class="inline-flex items-center rounded bg-amber-500/10 px-1.5 py-0.5 font-medium text-amber-600 dark:text-amber-400">
+								Hidden
+							</span>
+						{/if}
+						{#if !et.is_active}
+							<span class="inline-flex items-center rounded bg-destructive/10 px-1.5 py-0.5 font-medium text-destructive">
+								Disabled
+							</span>
+						{/if}
+					</div>
+				</a>
 
-									{#if et.can_edit !== false}
-										<Tooltip.Root>
-											<Tooltip.Trigger
-												class={buttonVariants({ variant: 'ghost', size: 'icon' })}
-												onclick={() => duplicateEventType(et)}
-												disabled={duplicating === et.slug}
-											>
-												<!-- Copy icon -->
-												<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="8" width="14" height="14" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
-											</Tooltip.Trigger>
-											<Tooltip.Content>{$t('eventTypes.tooltip.duplicate')}</Tooltip.Content>
-										</Tooltip.Root>
-										<Tooltip.Root>
-											<Tooltip.Trigger
-												class={buttonVariants({ variant: 'ghost', size: 'icon' })}
-												onclick={() => archive(et, !et.archived)}
-											>
-												{#if et.archived}
-													<!-- Restore icon -->
-													<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="5" rx="1"/><path d="M4 9v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9"/><path d="M12 12v6"/><path d="M9 15l3-3 3 3"/></svg>
-												{:else}
-													<!-- Archive box icon -->
-													<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="5" rx="1"/><path d="M4 9v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9"/><path d="M10 13h4"/></svg>
-												{/if}
-											</Tooltip.Trigger>
-											<Tooltip.Content>{et.archived ? $t('eventTypes.tooltip.restore') : $t('eventTypes.tooltip.archive')}</Tooltip.Content>
-										</Tooltip.Root>
-										<Tooltip.Root>
-											<Tooltip.Trigger
-												class={buttonVariants({ variant: 'ghost', size: 'icon' })}
-												onclick={() => del(et.slug)}
-											>
-												<!-- Trash icon -->
-												<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
-											</Tooltip.Trigger>
-											<Tooltip.Content>{$t('eventTypes.tooltip.delete')}</Tooltip.Content>
-										</Tooltip.Root>
-									{/if}
-								</div>
-							</Tooltip.Provider>
-						</td>
-					</tr>
-				{/each}
-			</tbody>
-		</table>
+				<div class="flex shrink-0 items-center justify-between gap-2 sm:justify-end">
+					<div class="flex items-center gap-2 pr-1">
+						<span class="text-xs text-muted-foreground hidden md:inline">{et.is_public ? 'Public' : 'Hidden'}</span>
+						<Switch
+							bind:checked={et.is_public}
+							onCheckedChange={(v) => savePublic(et, v)}
+							disabled={et.can_edit === false || et.archived}
+							aria-label="Toggle public visibility for {et.name}"
+						/>
+					</div>
+
+					<div class="inline-flex items-center rounded-md border bg-background">
+						<Button
+							type="button"
+							variant="ghost"
+							size="icon"
+							class="h-8 w-8 rounded-none rounded-l-md border-r"
+							onclick={() => window.open(bookLink(et.slug), '_blank')}
+							title={bookLink(et.slug)}
+							aria-label="Open booking page"
+						>
+							<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+						</Button>
+						<Button
+							type="button"
+							variant="ghost"
+							size="icon"
+							class="h-8 w-8 rounded-none border-r"
+							onclick={() => copyText(bookLink(et.slug), 'Booking link copied to clipboard')}
+							title="Copy booking link"
+							aria-label="Copy booking link"
+						>
+							<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+						</Button>
+
+						<Popover.Root open={openMenuSlug === et.slug} onOpenChange={(o) => (openMenuSlug = o ? et.slug : null)}>
+							<Popover.Trigger
+								class="inline-flex h-8 w-8 items-center justify-center rounded-r-md text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+								aria-label="More actions"
+							>
+								<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+							</Popover.Trigger>
+							<Popover.Content align="end" class="w-56 p-1">
+								<button
+									type="button"
+									class="flex w-full items-center gap-2 rounded-sm px-2.5 py-1.5 text-left text-sm hover:bg-accent disabled:opacity-50"
+									disabled={!et.is_active || !!et.archived || mintingId === et.id}
+									onclick={() => { openMenuSlug = null; mintAndCopyOneTimeLink(et); }}
+								>
+									Create & copy 1-time link
+								</button>
+								<button
+									type="button"
+									class="flex w-full items-center gap-2 rounded-sm px-2.5 py-1.5 text-left text-sm hover:bg-accent"
+									onclick={() => { openMenuSlug = null; openSingleUseDrawer(et); }}
+								>
+									Manage 1-time links
+								</button>
+								<a
+									href="/admin/event-types/{et.slug}"
+									class="flex w-full items-center gap-2 rounded-sm px-2.5 py-1.5 text-left text-sm hover:bg-accent"
+									onclick={() => (openMenuSlug = null)}
+								>
+									Edit
+								</a>
+								{#if et.can_edit !== false}
+									<button
+										type="button"
+										class="flex w-full items-center gap-2 rounded-sm px-2.5 py-1.5 text-left text-sm hover:bg-accent disabled:opacity-50"
+										disabled={duplicating === et.slug}
+										onclick={() => { openMenuSlug = null; duplicateEventType(et); }}
+									>
+										Duplicate
+									</button>
+									<button
+										type="button"
+										class="flex w-full items-center gap-2 rounded-sm px-2.5 py-1.5 text-left text-sm hover:bg-accent"
+										onclick={() => { openMenuSlug = null; saveActive(et, !et.is_active); }}
+									>
+										{et.is_active ? 'Disable link' : 'Enable link'}
+									</button>
+									<button
+										type="button"
+										class="flex w-full items-center gap-2 rounded-sm px-2.5 py-1.5 text-left text-sm hover:bg-accent"
+										onclick={() => { openMenuSlug = null; archive(et, !et.archived); }}
+									>
+										{et.archived ? $t('eventTypes.tooltip.restore') : $t('eventTypes.tooltip.archive')}
+									</button>
+									<div class="my-1 border-t"></div>
+									<button
+										type="button"
+										class="flex w-full items-center gap-2 rounded-sm px-2.5 py-1.5 text-left text-sm text-destructive hover:bg-destructive/10"
+										onclick={() => { openMenuSlug = null; del(et.slug); }}
+									>
+										{$t('eventTypes.tooltip.delete')}
+									</button>
+								{/if}
+							</Popover.Content>
+						</Popover.Root>
+					</div>
+				</div>
+			</div>
+		{/each}
 	</div>
 	{/if}
 {/if}

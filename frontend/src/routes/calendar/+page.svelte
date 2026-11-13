@@ -5,6 +5,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
+	import { Switch } from '$lib/components/ui/switch';
 	import { ConfirmDialog } from '$lib/components/ui/confirm-dialog';
 	import { authStatus } from '$lib/stores';
 	import { t, tr } from '$lib/i18n';
@@ -95,9 +96,50 @@
 	let zoomDisconnecting = $state(false);
 	let zoomDisconnectOpen = $state(false);
 
+	let connCalendars = $state<Record<string, CalendarPick[]>>({});
+	let connCalendarsLoading = $state<Record<string, boolean>>({});
+	let savingSubCal = $state<string | null>(null);
+
+	async function loadConnectionCalendars(c: CalendarConnection) {
+		connCalendarsLoading = { ...connCalendarsLoading, [c.id]: true };
+		try {
+			const q = new URLSearchParams({ provider: c.provider, account: c.account_email ?? '' });
+			const res = await api.get<{ calendars: CalendarPick[] }>(
+				`/v1/calendar/connections/${c.id}/calendars?${q}`
+			);
+			connCalendars = { ...connCalendars, [c.id]: res.calendars ?? [] };
+		} catch (e: any) {
+			if (e?.status === 409) reauthNeeded = new Set(reauthNeeded).add(c.id);
+		} finally {
+			connCalendarsLoading = { ...connCalendarsLoading, [c.id]: false };
+		}
+	}
+
+	async function toggleSubCalConflict(c: CalendarConnection, cal: CalendarPick, checked: boolean) {
+		const list = connCalendars[c.id] ?? [];
+		const updated = list.map((item) => (item.id === cal.id ? { ...item, check_conflicts: checked } : item));
+		connCalendars = { ...connCalendars, [c.id]: updated };
+		savingSubCal = cal.id;
+		try {
+			await api.put(`/v1/calendar/connections/${c.id}/calendars`, {
+				provider: c.provider,
+				account_email: c.account_email ?? '',
+				calendars: updated
+			});
+		} catch (e: any) {
+			connCalendars = { ...connCalendars, [c.id]: list };
+			error = e.message || tr('common.failed');
+		} finally {
+			savingSubCal = null;
+		}
+	}
+
 	async function load() {
 		try {
 			status = await api.get<CalendarStatus>('/v1/calendar/status');
+			for (const c of status?.connections ?? []) {
+				loadConnectionCalendars(c);
+			}
 		} catch (e: any) {
 			error = e.message;
 		} finally {
@@ -297,7 +339,35 @@
 		</p>
 	</div>
 {:else}
-	<div class="max-w-xl space-y-6">
+	<div class="w-full max-w-3xl space-y-6">
+		{#snippet providerIcon(p: string)}
+			{#if p === 'google'}
+				<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" class="shrink-0" aria-hidden="true">
+					<path fill="#4285F4" d="M18 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z"/>
+					<path fill="#FFFFFF" d="M6 8h12v10H6z"/>
+					<path fill="#EA4335" d="M18 20l2-2v-3h-2z"/>
+					<path fill="#34A853" d="M6 18h12v2H6z"/>
+					<path fill="#FBBC04" d="M18 8h2v7h-2z"/>
+					<path fill="#1967D2" d="M9.7 15.2c-.5-.3-.8-.7-.9-1.2l1-.4c.1.3.2.5.4.7.2.2.5.2.7.2.3 0 .5-.1.7-.3.2-.2.3-.4.3-.7 0-.3-.1-.5-.3-.7-.2-.2-.5-.3-.8-.3h-.5v-1h.5c.3 0 .5-.1.7-.2.2-.2.3-.4.3-.6 0-.2-.1-.4-.3-.6-.2-.1-.4-.2-.6-.2-.3 0-.5.1-.6.2-.2.1-.3.3-.3.5l-.9-.4c.1-.4.4-.7.7-.9.3-.2.7-.4 1.2-.4.4 0 .7.1 1 .2.3.2.5.4.7.6.2.3.2.5.2.8 0 .3-.1.6-.2.8-.2.2-.3.4-.6.5.3.1.5.3.7.5.2.3.3.6.3.9 0 .4-.1.7-.3 1-.2.3-.5.5-.8.7-.3.2-.7.2-1.1.2-.5.1-.9 0-1.3-.3zM15.1 11.2l-1 .7-.5-.8 1.8-1.3h.7v6h-1v-4.6z"/>
+				</svg>
+			{:else if p === 'microsoft'}
+				<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" class="shrink-0" aria-hidden="true">
+					<rect x="9" y="3" width="12" height="18" rx="2" fill="#0364B8"/>
+					<path fill="#0078D4" d="M9 3h6v6H9z"/>
+					<path fill="#28A8EA" d="M15 3h6v6h-6z"/>
+					<path fill="#50D9FF" d="M15 9h6v6h-6z"/>
+					<path fill="#0078D4" d="M9 9h6v6H9z"/>
+					<path fill="#14447D" d="M9 15h12v6H9z"/>
+					<rect x="2" y="6" width="11" height="12" rx="2" fill="#0F6CBD"/>
+					<path fill="#FFFFFF" d="M7.5 9.2c-1.5 0-2.6 1.2-2.6 2.8s1.1 2.8 2.6 2.8 2.6-1.2 2.6-2.8-1.1-2.8-2.6-2.8zm0 4.5c-.8 0-1.4-.7-1.4-1.7s.6-1.7 1.4-1.7 1.4.7 1.4 1.7-.6 1.7-1.4 1.7z"/>
+				</svg>
+			{:else}
+				<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="shrink-0 text-muted-foreground" aria-hidden="true">
+					<rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+				</svg>
+			{/if}
+		{/snippet}
+
 		{#if connections.length > 0}
 			<!-- Connected calendars: all checked for conflicts; exactly one is the write destination. -->
 			<div class="divide-y rounded-lg border bg-card">
@@ -305,23 +375,9 @@
 					<div class="p-4">
 						<div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
 						<div class="flex min-w-0 items-center gap-3">
-							<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="shrink-0 text-muted-foreground">
-								<rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
-							</svg>
+							{@render providerIcon(c.provider)}
 							<div class="min-w-0">
-								<div class="flex flex-wrap items-center gap-2">
-									<p class="truncate font-medium">{c.account_email || label(c.provider)}</p>
-									<span class="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
-										<span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
-										Conflict Check Active
-									</span>
-									{#if c.is_destination}
-										<span class="inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
-											Primary Booking Target
-										</span>
-									{/if}
-								</div>
-								<p class="text-xs text-muted-foreground">{label(c.provider)} · {c.is_destination ? 'Writes new bookings & checked for conflicts' : 'Read-only for busy blocks'}</p>
+								<p class="truncate font-medium">{c.account_email || label(c.provider)}</p>
 								{#if reauthNeeded.has(c.id)}
 									<p class="text-xs font-medium text-destructive">{$t('calendar.reconnectNeeded')}</p>
 								{/if}
@@ -335,7 +391,28 @@
 							<Button variant="ghost" size="sm" onclick={() => askDisconnect(c)} disabled={busy}>{$t('calendar.disconnect')}</Button>
 						</div>
 						</div>
-						<div class="mt-2 pl-8">
+						<div class="mt-3 pl-8 space-y-2">
+							{#if connCalendarsLoading[c.id]}
+								<p class="text-xs text-muted-foreground">{$t('calendar.loadingCalendars')}</p>
+							{:else if (connCalendars[c.id] ?? []).length > 0}
+								<p class="text-xs text-muted-foreground">Toggle the calendars you want to check for conflicts:</p>
+								<div class="space-y-1.5">
+									{#each connCalendars[c.id] as sub (sub.id)}
+										<div class="flex items-center gap-2.5 text-sm">
+											<Switch
+												checked={sub.check_conflicts}
+												disabled={savingSubCal === sub.id}
+												onCheckedChange={(v) => toggleSubCalConflict(c, sub, v)}
+												aria-label="Check {sub.name} for conflicts"
+											/>
+											<span class="truncate">{sub.name}</span>
+											{#if sub.is_destination}
+												<span class="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">Adding events to</span>
+											{/if}
+										</div>
+									{/each}
+								</div>
+							{/if}
 							<button type="button" class="text-xs font-medium text-muted-foreground underline-offset-2 hover:underline" onclick={() => togglePicker(c)}>
 								{pickerConnId === c.id ? $t('calendar.hideCalendars') : $t('calendar.manageCalendars')}
 							</button>
@@ -393,9 +470,6 @@
 					</div>
 				{/each}
 			</div>
-			<p class="text-xs text-muted-foreground">
-				{$t('calendar.footer.manageHint')}
-			</p>
 		{/if}
 
 		<!-- Connect (another) calendar -->
@@ -409,9 +483,7 @@
 					<div class="rounded-lg border bg-card p-4">
 						<div class="flex items-center justify-between">
 							<div class="flex items-center gap-3">
-								<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="shrink-0 text-muted-foreground">
-									<rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
-								</svg>
+								{@render providerIcon('caldav')}
 								<p class="font-medium">{label('caldav')}</p>
 							</div>
 							<Button variant={connections.length > 0 ? 'outline' : 'default'} onclick={() => (caldavOpen = !caldavOpen)}>
@@ -460,9 +532,7 @@
 				{:else}
 					<div class="flex items-center justify-between rounded-lg border bg-card p-4">
 						<div class="flex items-center gap-3">
-							<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="shrink-0 text-muted-foreground">
-								<rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
-							</svg>
+							{@render providerIcon(p)}
 							<p class="font-medium">{label(p)}</p>
 						</div>
 						<Button variant={connections.length > 0 ? 'outline' : 'default'} onclick={() => (window.location.href = `/v1/calendar/connect?provider=${p}`)}>{$t('calendar.connectButton')}</Button>
@@ -472,9 +542,7 @@
 			{#each status?.unconfigured_providers ?? [] as p}
 				<div class="flex items-center justify-between rounded-lg border border-dashed bg-muted/20 p-4">
 					<div class="flex items-center gap-3">
-						<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="shrink-0 text-muted-foreground/60">
-							<rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
-						</svg>
+						{@render providerIcon(p)}
 						<div>
 							<p class="font-medium text-muted-foreground">{label(p)}</p>
 							<p class="text-xs text-muted-foreground">{$t('calendar.unconfigured')}</p>
@@ -490,9 +558,6 @@
 					{/if}
 				</div>
 			{/each}
-			{#if connections.length > 0}
-				<p class="text-xs text-muted-foreground">{$t('calendar.hint.multiCalendar')}</p>
-			{/if}
 		</div>
 		{/if}
 	</div>

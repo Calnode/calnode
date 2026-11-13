@@ -2,18 +2,30 @@ import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig } from 'vite';
 import tailwindcss from '@tailwindcss/vite';
 
+const apiProxy = {
+	target: 'http://localhost:3010',
+	changeOrigin: false,
+	configure: (proxy: any) => {
+		proxy.on('proxyReq', (proxyReq: any, req: any) => {
+			if (req.headers.host) {
+				proxyReq.setHeader('host', req.headers.host);
+			}
+		});
+	}
+};
+
 export default defineConfig({
 	plugins: [tailwindcss(), sveltekit()],
 	server: {
 		proxy: {
-			'/v1': 'http://localhost:3010',
-			'/book': 'http://localhost:3010',
-			'/t': 'http://localhost:3010',
-			'/manage': 'http://localhost:3010',
-			'/u': 'http://localhost:3010',
-			'/team': 'http://localhost:3010',
-			'/booking.css': 'http://localhost:3010',
-			'/embed.js': 'http://localhost:3010'
+			'/v1': apiProxy,
+			'/book': apiProxy,
+			'/t': apiProxy,
+			'/manage': apiProxy,
+			'/u': apiProxy,
+			'/team': apiProxy,
+			'/booking.css': apiProxy,
+			'/embed.js': apiProxy
 		}
 	}
 });
