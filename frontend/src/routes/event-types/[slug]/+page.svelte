@@ -164,24 +164,46 @@
 	}
 
 	let freqEnabled = $state(false);
+	let freqOrder = $state<('day' | 'week')[]>([]);
 	let futureLimitEnabled = $state(false);
 	let maxActiveEnabled = $state(false);
 
-	const freqMode = $derived<'day' | 'week' | 'both'>(
-		form.max_per_day && form.max_per_week ? 'both' : form.max_per_week ? 'week' : 'day'
-	);
+	function syncFreqFromForm() {
+		const next: ('day' | 'week')[] = [];
+		if (form.max_per_day !== '' && form.max_per_day !== null && form.max_per_day !== undefined) next.push('day');
+		if (form.max_per_week !== '' && form.max_per_week !== null && form.max_per_week !== undefined) next.push('week');
+		freqOrder = next;
+	}
 
-	function setFreqMode(mode: 'day' | 'week' | 'both') {
-		if (mode === 'day') {
-			if (!form.max_per_day) form.max_per_day = 1;
-			form.max_per_week = '';
-		} else if (mode === 'week') {
+	function setFreqRowUnit(idx: number, newUnit: 'day' | 'week') {
+		const oldUnit = freqOrder[idx];
+		if (!oldUnit || oldUnit === newUnit) return;
+		const val = oldUnit === 'day' ? form.max_per_day : form.max_per_week;
+		if (oldUnit === 'day') {
 			form.max_per_day = '';
-			if (!form.max_per_week) form.max_per_week = 3;
+			form.max_per_week = val || 1;
 		} else {
-			if (!form.max_per_day) form.max_per_day = 1;
-			if (!form.max_per_week) form.max_per_week = 3;
+			form.max_per_week = '';
+			form.max_per_day = val || 1;
 		}
+		freqOrder = freqOrder.map((u, i) => (i === idx ? newUnit : u));
+	}
+
+	function addFreqRow() {
+		if (!freqOrder.includes('day')) {
+			form.max_per_day = 1;
+			freqOrder = [...freqOrder, 'day'];
+		} else if (!freqOrder.includes('week')) {
+			form.max_per_week = 3;
+			freqOrder = [...freqOrder, 'week'];
+		}
+	}
+
+	function removeFreqRow(unit: 'day' | 'week') {
+		if (unit === 'day') form.max_per_day = '';
+		else form.max_per_week = '';
+		freqOrder = freqOrder.filter((u) => u !== unit);
+		if (freqOrder.length === 0) freqEnabled = false;
 	}
 
 	function toggleFreqEnabled(on: boolean) {
@@ -189,8 +211,10 @@
 		if (!on) {
 			form.max_per_day = '';
 			form.max_per_week = '';
-		} else if (!form.max_per_day && !form.max_per_week) {
+			freqOrder = [];
+		} else if (freqOrder.length === 0) {
 			form.max_per_day = 1;
+			freqOrder = ['day'];
 		}
 	}
 
@@ -444,6 +468,7 @@
 			priceMajor = ((et.price_cents ?? 0) / 100).toFixed(2);
 			paidEnabled = (et.price_cents ?? 0) > 0;
 			freqEnabled = !!((et.max_per_day && et.max_per_day > 0) || (et.max_per_week && et.max_per_week > 0));
+			syncFreqFromForm();
 			futureLimitEnabled = (et.max_future_days ?? 0) > 0;
 			maxActiveEnabled = (et.max_active_bookings ?? 0) > 0;
 			reminders = et.reminders ?? [];
@@ -1043,41 +1068,47 @@
 				</div>
 			</div>
 
-			<!-- Limit booking frequency (Per Day only, Per Week only, or Both) -->
+			<!-- Limit booking frequency (dynamic per-row dropdown: Per Day / Per Week) -->
 			<div class="rounded-lg border p-4 space-y-3">
 				<div class="flex items-center justify-between gap-3">
 					<div class="flex items-center gap-1.5 min-w-0">
 						<p class="text-sm font-medium">Limit booking frequency</p>
-						{@render infoTip('Limit how many times this event can be booked per day, per week, or both.')}
+						{@render infoTip('Limit how many times this event can be booked per day and/or per week.')}
 					</div>
 					<Switch checked={freqEnabled} onCheckedChange={toggleFreqEnabled} />
 				</div>
 				{#if freqEnabled}
-					<div class="space-y-3 pt-1">
-						<Select.Root type="single" value={freqMode} onValueChange={(v) => { if (v) setFreqMode(v as 'day' | 'week' | 'both'); }}>
-							<Select.Trigger class="w-full sm:w-64" aria-label="Frequency limit window">
-								{freqMode === 'both' ? 'Per Day & Per Week' : freqMode === 'week' ? 'Per Week only' : 'Per Day only'}
-							</Select.Trigger>
-							<Select.Content>
-								<Select.Item value="day" label="Per Day only">Per Day only</Select.Item>
-								<Select.Item value="week" label="Per Week only">Per Week only</Select.Item>
-								<Select.Item value="both" label="Per Day & Per Week">Per Day & Per Week</Select.Item>
-							</Select.Content>
-						</Select.Root>
-						<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-							{#if freqMode === 'day' || freqMode === 'both'}
-								<div class="flex items-center gap-2">
-									<Input type="number" min="1" class="w-24" bind:value={form.max_per_day} aria-label="Max bookings per day" />
-									<span class="text-sm text-muted-foreground">bookings per day</span>
-								</div>
-							{/if}
-							{#if freqMode === 'week' || freqMode === 'both'}
-								<div class="flex items-center gap-2">
-									<Input type="number" min="1" class="w-24" bind:value={form.max_per_week} aria-label="Max bookings per week" />
-									<span class="text-sm text-muted-foreground">bookings per week</span>
-								</div>
-							{/if}
-						</div>
+					<div class="space-y-2.5 pt-1">
+						{#each freqOrder as unit, idx (unit)}
+							{@const availableUnits = (['day', 'week'] as const).filter((u) => u === unit || !freqOrder.includes(u))}
+							<div class="flex items-center gap-2">
+								{#if unit === 'day'}
+									<Input type="number" min="1" class="w-20 shrink-0" bind:value={form.max_per_day} aria-label="Max bookings per day" />
+								{:else}
+									<Input type="number" min="1" class="w-20 shrink-0" bind:value={form.max_per_week} aria-label="Max bookings per week" />
+								{/if}
+								<Select.Root type="single" value={unit} onValueChange={(v) => { if (v) setFreqRowUnit(idx, v as 'day' | 'week'); }}>
+									<Select.Trigger class="w-40 min-w-0" aria-label="Frequency period">
+										{unit === 'day' ? 'Per Day' : 'Per Week'}
+									</Select.Trigger>
+									<Select.Content>
+										{#each availableUnits as opt}
+											<Select.Item value={opt} label={opt === 'day' ? 'Per Day' : 'Per Week'}>
+												{opt === 'day' ? 'Per Day' : 'Per Week'}
+											</Select.Item>
+										{/each}
+									</Select.Content>
+								</Select.Root>
+								<Button type="button" variant="ghost" size="icon" class="shrink-0 text-destructive hover:text-destructive" onclick={() => removeFreqRow(unit)} aria-label="Remove limit">
+									<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
+								</Button>
+							</div>
+						{/each}
+						{#if freqOrder.length < 2}
+							<Button type="button" variant="ghost" size="sm" class="h-8 px-2 text-xs" onclick={addFreqRow}>
+								+ Add limit
+							</Button>
+						{/if}
 					</div>
 				{/if}
 			</div>
