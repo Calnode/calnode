@@ -1,4 +1,6 @@
 <script lang="ts">
+	import type { Question } from '$lib/api';
+
 	let {
 		name = 'New Meeting',
 		description = '',
@@ -6,7 +8,10 @@
 		locationType = 'link',
 		locationValue = '',
 		hostName = 'Host',
-		hostAvatar = ''
+		hostAvatar = '',
+		mode = 'calendar',
+		allowPhoneCall = false,
+		questions = []
 	}: {
 		name?: string;
 		description?: string;
@@ -15,6 +20,9 @@
 		locationValue?: string;
 		hostName?: string;
 		hostAvatar?: string;
+		mode?: 'calendar' | 'form';
+		allowPhoneCall?: boolean;
+		questions?: Question[];
 	} = $props();
 
 	let selectedDay = $state(18);
@@ -66,29 +74,80 @@
 			</div>
 		</div>
 
-		<div class="rounded-lg border bg-background/60 p-3">
-			<div class="mb-2 flex items-center justify-between text-xs font-medium">
-				<span>November 2026</span>
-				<span class="text-[11px] text-muted-foreground">UTC</span>
+		{#if mode === 'form'}
+			<div class="rounded-lg border bg-background/60 p-3 space-y-2.5">
+				<div class="flex items-center justify-between border-b pb-2 text-[11px]">
+					<span class="font-medium text-foreground">Fri, Nov {selectedDay} · 10:00 AM</span>
+					<span class="text-muted-foreground">UTC</span>
+				</div>
+				<div class="space-y-2 text-[11px]">
+					<div>
+						<div class="mb-1 font-medium text-foreground">Your name <span class="text-destructive">*</span></div>
+						<div class="rounded border bg-background px-2 py-1.5 text-muted-foreground">Jane Doe</div>
+					</div>
+					<div>
+						<div class="mb-1 font-medium text-foreground">Email address <span class="text-destructive">*</span></div>
+						<div class="rounded border bg-background px-2 py-1.5 text-muted-foreground">jane@example.com</div>
+					</div>
+					{#if allowPhoneCall}
+						<div>
+							<div class="mb-1 font-medium text-foreground">Phone number <span class="text-muted-foreground font-normal">(optional)</span></div>
+							<div class="rounded border bg-background px-2 py-1.5 text-muted-foreground">+1 (555) 000-0000</div>
+						</div>
+					{/if}
+					{#each questions as q (q.id)}
+						<div>
+							{#if q.type === 'checkbox'}
+								<div class="flex items-center gap-1.5 py-0.5">
+									<div class="h-3.5 w-3.5 rounded border bg-background shrink-0"></div>
+									<span class="font-medium text-foreground">{q.label}{#if q.required} <span class="text-destructive">*</span>{/if}</span>
+								</div>
+							{:else if q.type === 'select'}
+								<div class="mb-1 font-medium text-foreground">{q.label}{#if q.required} <span class="text-destructive">*</span>{/if}</div>
+								<div class="flex items-center justify-between rounded border bg-background px-2 py-1.5 text-muted-foreground">
+									<span>{q.options?.[0] ?? 'Choose an option'}</span>
+									<span>▾</span>
+								</div>
+							{:else}
+								<div class="mb-1 font-medium text-foreground">{q.label}{#if q.required} <span class="text-destructive">*</span>{/if}</div>
+								<div class="rounded border bg-background px-2 py-2 text-muted-foreground">Answer...</div>
+							{/if}
+						</div>
+					{/each}
+					<div class="pt-1">
+						<div class="w-full rounded-md bg-primary py-1.5 text-center font-medium text-primary-foreground">
+							Confirm booking
+						</div>
+					</div>
+				</div>
 			</div>
-			<div class="grid grid-cols-7 gap-1 text-center text-[10px] text-muted-foreground">
-				{#each weekdays as wd}
-					<div class="py-0.5 font-medium">{wd}</div>
-				{/each}
-				{#each days as d}
-					<button
-						type="button"
-						onclick={() => (selectedDay = d)}
-						class="h-6 rounded text-[11px] font-medium transition-colors {selectedDay === d
-							? 'bg-primary text-primary-foreground'
-							: d % 7 === 0 || d % 7 === 6
-								? 'text-muted-foreground/40'
-								: 'hover:bg-muted text-foreground'}"
-					>
-						{d}
-					</button>
-				{/each}
+		{:else}
+			<div class="rounded-lg border bg-background/60 p-3">
+				<div class="mb-2 flex items-center justify-between text-xs font-medium">
+					<span>November 2026</span>
+					<span class="text-[11px] text-muted-foreground">UTC</span>
+				</div>
+				<div class="grid grid-cols-7 gap-1 text-center text-[10px] text-muted-foreground">
+					{#each weekdays as wd}
+						<div class="py-0.5 font-medium">{wd}</div>
+					{/each}
+					{#each days as d}
+						{@const isWeekend = d % 7 === 0 || d % 7 === 6}
+						<button
+							type="button"
+							disabled={isWeekend}
+							onclick={() => (selectedDay = d)}
+							class="h-6 rounded text-[11px] font-medium transition-colors {selectedDay === d
+								? 'bg-primary text-primary-foreground'
+								: isWeekend
+									? 'text-muted-foreground/35 cursor-default'
+									: 'bg-muted/60 text-foreground hover:bg-muted'}"
+						>
+							{d}
+						</button>
+					{/each}
+				</div>
 			</div>
-		</div>
+		{/if}
 	</div>
 </div>

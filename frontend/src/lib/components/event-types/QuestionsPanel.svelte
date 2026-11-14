@@ -12,7 +12,15 @@
 	import { toast } from 'svelte-sonner';
 	import { t, tr } from '$lib/i18n';
 
-	let { slug }: { slug: string } = $props();
+	let {
+		slug,
+		allowPhoneCall = false,
+		onQuestionsChange
+	}: {
+		slug: string;
+		allowPhoneCall?: boolean;
+		onQuestionsChange?: (items: Question[]) => void;
+	} = $props();
 
 	const QUESTION_TYPES = $derived([
 		{ value: 'text', label: $t('eventTypeEditor.questions.types.text') },
@@ -50,6 +58,10 @@
 	// side effect, which is why existing questions never showed up until you
 	// added a new one.
 	onMount(loadQuestions);
+
+	$effect(() => {
+		onQuestionsChange?.(questions);
+	});
 
 	function optionsArray(raw: string): string[] {
 		return raw.split('\n').map(s => s.trim()).filter(Boolean);
@@ -159,10 +171,39 @@
 	onConfirm={doDeleteQuestion}
 />
 
-<!-- Intake Questions -->
-<div>
-	<h2 class="mb-1 text-sm font-semibold uppercase tracking-wider text-muted-foreground">{$t('eventTypeEditor.questions.title')}</h2>
-	<p class="mb-3 text-sm text-muted-foreground">{$t('eventTypeEditor.questions.subtitle')}</p>
+<!-- Booking Form -->
+<div class="space-y-4">
+	<h2 class="mb-1 text-sm font-semibold uppercase tracking-wider text-muted-foreground">Booking form</h2>
+		<p class="mb-3 text-sm text-muted-foreground">{$t('eventTypeEditor.questions.subtitle')}</p>
+
+		<!-- Standard built-in fields -->
+		<div class="mb-4 rounded-lg border bg-card divide-y">
+			<div class="flex items-center justify-between px-4 py-2.5">
+				<div>
+					<div class="text-sm font-medium">Your name</div>
+					<div class="text-xs text-muted-foreground">Text</div>
+				</div>
+				<span class="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">Required</span>
+			</div>
+			<div class="flex items-center justify-between px-4 py-2.5">
+				<div>
+					<div class="text-sm font-medium">Email address</div>
+					<div class="text-xs text-muted-foreground">Email</div>
+				</div>
+				<span class="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">Required</span>
+			</div>
+			{#if allowPhoneCall}
+				<div class="flex items-center justify-between px-4 py-2.5">
+					<div>
+						<div class="text-sm font-medium">Phone number</div>
+						<div class="text-xs text-muted-foreground">Phone</div>
+					</div>
+					<span class="rounded-full border px-2 py-0.5 text-[11px] font-medium text-muted-foreground">Optional</span>
+				</div>
+			{/if}
+		</div>
+
+		<h3 class="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Custom questions</h3>
 
 	<div class="rounded-lg border bg-card overflow-hidden">
 		{#if qLoading}

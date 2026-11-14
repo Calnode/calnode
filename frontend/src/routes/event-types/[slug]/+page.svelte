@@ -3,7 +3,7 @@
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 	import { base } from '$app/paths';
-	import { api, type EventType, type EventTypeHost, type TeamMember, type Team, type CalendarStatus, type ZoomStatus, type SingleUseLink } from '$lib/api';
+	import { api, type EventType, type EventTypeHost, type TeamMember, type Team, type CalendarStatus, type ZoomStatus, type SingleUseLink, type Question } from '$lib/api';
 	import { currentUser } from '$lib/stores';
 	import { Button, buttonVariants } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
@@ -61,13 +61,15 @@
 	let et = $state<EventType | null>(null);
 	const TABS = $derived([
 		{ id: 'general' as const, label: $t('eventTypeEditor.tabs.general') },
+		{ id: 'limits' as const, label: 'Limits & buffers' },
 		{ id: 'hosts' as const, label: $t('eventTypeEditor.tabs.hosts') },
 		{ id: 'payments' as const, label: $t('settings.nav.payments') },
 		{ id: 'notifications' as const, label: $t('eventTypeEditor.tabs.notifications') },
-		{ id: 'questions' as const, label: $t('eventTypeEditor.tabs.questions') },
+		{ id: 'questions' as const, label: 'Booking form' },
 		{ id: 'embed' as const, label: $t('eventTypeEditor.tabs.embed') }
 	]);
 	let activeTab = $state<(typeof TABS)[number]['id']>('general');
+	let previewQuestions = $state<Question[]>([]);
 	let etLoading = $state(true);
 	let etError = $state('');
 	let etSaving = $state(false);
@@ -164,6 +166,23 @@
 	let freqEnabled = $state(false);
 	let futureLimitEnabled = $state(false);
 	let maxActiveEnabled = $state(false);
+
+	const freqMode = $derived<'day' | 'week' | 'both'>(
+		form.max_per_day && form.max_per_week ? 'both' : form.max_per_week ? 'week' : 'day'
+	);
+
+	function setFreqMode(mode: 'day' | 'week' | 'both') {
+		if (mode === 'day') {
+			if (!form.max_per_day) form.max_per_day = 1;
+			form.max_per_week = '';
+		} else if (mode === 'week') {
+			form.max_per_day = '';
+			if (!form.max_per_week) form.max_per_week = 3;
+		} else {
+			if (!form.max_per_day) form.max_per_day = 1;
+			if (!form.max_per_week) form.max_per_week = 3;
+		}
+	}
 
 	function toggleFreqEnabled(on: boolean) {
 		freqEnabled = on;
@@ -766,39 +785,63 @@
 	<!-- Focused Settings Pane (Center) -->
 	<div class="min-w-0 w-full">
 
+{#snippet infoTip(text: string)}
+	<Tooltip.Provider>
+		<Tooltip.Root>
+			<Tooltip.Trigger
+				type="button"
+				class="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-muted-foreground/70 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+				aria-label={text}
+			>
+				<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+			</Tooltip.Trigger>
+			<Tooltip.Content class="max-w-xs text-xs leading-relaxed">{text}</Tooltip.Content>
+		</Tooltip.Root>
+	</Tooltip.Provider>
+{/snippet}
+
 {#if activeTab === 'general'}
 <!-- General Settings -->
 <div class="mb-8">
 	<h2 class="mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">{$t('eventTypeEditor.general.section')}</h2>
-	<div class="rounded-lg border bg-card p-6">
-		<div class="grid grid-cols-2 gap-4">
-			<div class="space-y-1.5">
+	<div class="rounded-lg border bg-card p-4 sm:p-6">
+		<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+			<div class="space-y-1.5 min-w-0">
 				<Label for="et-name">{$t('eventTypeEditor.general.name')}</Label>
 				<Input id="et-name" bind:value={form.name} />
 			</div>
-			<div class="space-y-1.5">
-				<Label for="et-display-order">{$t('eventTypeEditor.general.directoryOrder')}</Label>
+			<div class="space-y-1.5 min-w-0">
+				<div class="flex items-center gap-1.5">
+					<Label for="et-display-order">{$t('eventTypeEditor.general.directoryOrder')}</Label>
+					{@render infoTip($t('eventTypeEditor.general.directoryOrderHint'))}
+				</div>
 				<Input id="et-display-order" type="number" step="1" bind:value={form.display_order} />
-				<p class="text-xs text-muted-foreground">{$t('eventTypeEditor.general.directoryOrderHint')}</p>
 			</div>
-			<div class="space-y-1.5 col-span-2">
-				<Label for="et-slug">{$t('eventTypeEditor.general.bookingLink')}</Label>
+			<div class="space-y-1.5 sm:col-span-2 min-w-0">
+				<div class="flex items-center gap-1.5">
+					<Label for="et-slug">{$t('eventTypeEditor.general.bookingLink')}</Label>
+					{@render infoTip($t('eventTypeEditor.general.slugHint'))}
+				</div>
 				<div class="flex items-center gap-1.5">
 					<span class="text-sm text-muted-foreground whitespace-nowrap">{$t('eventTypeEditor.general.bookingLinkPrefix')}</span>
-					<Input id="et-slug" bind:value={form.slug} />
+					<Input id="et-slug" class="min-w-0" bind:value={form.slug} />
 				</div>
-				<p class="text-xs text-muted-foreground">{$t('eventTypeEditor.general.slugHint')}</p>
 			</div>
-			<div class="space-y-1.5">
-				<Label for="et-dur">{$t('eventTypeEditor.general.duration')}</Label>
+			<div class="space-y-1.5 min-w-0">
+				<div class="flex items-center gap-1.5">
+					<Label for="et-dur">{$t('eventTypeEditor.general.duration')}</Label>
+					{@render infoTip($t('eventTypeEditor.general.durationHint'))}
+				</div>
 				<Input id="et-dur" type="number" min="5" step="5" bind:value={form.duration_minutes} />
-				<p class="text-xs text-muted-foreground">{$t('eventTypeEditor.general.durationHint')}</p>
 			</div>
-			<div class="space-y-1.5">
-				<Label for="et-slot">{$t('eventTypeEditor.general.slotInterval')}</Label>
+			<div class="space-y-1.5 min-w-0">
+				<div class="flex items-center gap-1.5">
+					<Label for="et-slot">{$t('eventTypeEditor.general.slotInterval')}</Label>
+					{@render infoTip($t('eventTypeEditor.general.slotIntervalHint'))}
+				</div>
 				<Select.Root type="single" value={String(form.slot_interval_minutes)} onValueChange={(v) => { if (v) form.slot_interval_minutes = Number(v); }}>
-					<Select.Trigger id="et-slot" class="w-full">
-						{form.slot_interval_minutes === form.duration_minutes ? `Use event length (${form.duration_minutes} min)` : `${form.slot_interval_minutes} minutes`}
+					<Select.Trigger id="et-slot" class="w-full min-w-0 overflow-hidden">
+						<span class="truncate">{form.slot_interval_minutes === form.duration_minutes ? `Use event length (${form.duration_minutes} min)` : `${form.slot_interval_minutes} minutes`}</span>
 					</Select.Trigger>
 					<Select.Content>
 						{#each INTERVAL_OPTIONS as mins}
@@ -806,35 +849,29 @@
 						{/each}
 					</Select.Content>
 				</Select.Root>
-				<p class="text-xs text-muted-foreground">{$t('eventTypeEditor.general.slotIntervalHint')}</p>
 			</div>
-			<div class="col-span-2 space-y-1.5">
+			<div class="sm:col-span-2 space-y-1.5 min-w-0">
 				<Label for="et-desc">{$t('eventTypeEditor.general.description')}</Label>
 				<Textarea id="et-desc" bind:value={form.description} placeholder={$t('eventTypeEditor.general.descriptionPlaceholder')} rows={3} class="resize-y" />
 			</div>
-			<div class="flex items-center justify-between rounded-md border px-3 py-2.5">
+			<div class="flex items-center justify-between gap-3 rounded-md border px-3 py-2.5 min-w-0">
 				<Label for="is-active" class="cursor-pointer font-normal">{$t('eventTypeEditor.general.active')}</Label>
 				<Switch id="is-active" bind:checked={form.is_active} />
 			</div>
-			<div class="flex items-center justify-between rounded-md border px-3 py-2.5">
+			<div class="flex items-center justify-between gap-3 rounded-md border px-3 py-2.5 min-w-0">
 				<Label for="is-public" class="cursor-pointer font-normal">{$t('eventTypeEditor.general.public')}</Label>
 				<Switch id="is-public" bind:checked={form.is_public} />
 			</div>
 		</div>
 
-		<div class="mt-4 space-y-1.5">
-			<div class="flex items-center justify-between rounded-md border px-3 py-2.5">
-				<Label for="show-taken" class="cursor-pointer font-normal">{$t('eventTypeEditor.general.showTaken')}</Label>
+		<div class="mt-4">
+			<div class="flex items-center justify-between gap-3 rounded-md border px-3 py-2.5">
+				<div class="flex items-center gap-1.5 min-w-0">
+					<Label for="show-taken" class="cursor-pointer font-normal">{$t('eventTypeEditor.general.showTaken')}</Label>
+					{@render infoTip($t('eventTypeEditor.general.showTakenHint') + (form.show_taken_slots ? ' ' + $t('eventTypeEditor.general.showTakenWarning') : ''))}
+				</div>
 				<Switch id="show-taken" bind:checked={form.show_taken_slots} />
 			</div>
-			<p class="text-xs text-muted-foreground">
-				{$t('eventTypeEditor.general.showTakenHint')}
-				{#if form.show_taken_slots}
-					<span class="text-amber-700 dark:text-amber-500">
-						{$t('eventTypeEditor.general.showTakenWarning')}
-					</span>
-				{/if}
-			</p>
 		</div>
 
 		{#if isOnlineMeeting(form.location_type)}
@@ -846,12 +883,12 @@
 		<!-- Location -->
 		<div class="mt-6 border-t pt-5">
 			<p class="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">{$t('eventTypeEditor.location.section')}</p>
-			<div class="grid grid-cols-2 gap-4">
-				<div class="space-y-1.5">
+			<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+				<div class="space-y-1.5 min-w-0">
 					<Label for="et-loc">{$t('eventTypeEditor.location.type')}</Label>
 					<Select.Root type="single" bind:value={form.location_type}>
-						<Select.Trigger id="et-loc" class="w-full">
-							{LOCATION_TYPES.find((lt) => lt.value === form.location_type)?.label ?? $t('common.select')}
+						<Select.Trigger id="et-loc" class="w-full min-w-0 overflow-hidden">
+							<span class="truncate">{LOCATION_TYPES.find((lt) => lt.value === form.location_type)?.label ?? $t('common.select')}</span>
 						</Select.Trigger>
 						<Select.Content>
 							{#each LOCATION_TYPES as lt}
@@ -860,51 +897,38 @@
 						</Select.Content>
 					</Select.Root>
 				</div>
-				<div class="space-y-1.5">
+				<div class="space-y-1.5 min-w-0">
 					{#if isOnlineMeeting(form.location_type)}
 						{@const platform = form.location_type === 'teams' ? $t('eventTypeEditor.location.types.teams') : $t('eventTypeEditor.location.types.googleMeet')}
-						<Label for="et-loc-val">{form.location_type === 'teams' ? $t('eventTypeEditor.location.labels.teamsLink') : $t('eventTypeEditor.location.labels.meetLink')}</Label>
-						{#if editingForOwner}
-							<p class="rounded-md border px-3 py-2 text-sm text-muted-foreground">
-								{$t('eventTypeEditor.location.hint.meet.ownerEditing', { platform, owner: ownerLabel })}
-							</p>
-						{:else if meetAutoGen}
-							<p class="rounded-md border border-green-600/20 bg-green-50 px-3 py-2 text-sm text-green-700">
-								{$t('eventTypeEditor.location.hint.meet.autoGen', { platform })}{#if form.location_type === 'teams'}{$t('eventTypeEditor.location.hint.meet.autoGenTeamsFallback')}{/if}
-							</p>
-						{:else}
-							<p class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-								{calStatus?.connected
+						{@const meetHint = editingForOwner
+							? $t('eventTypeEditor.location.hint.meet.ownerEditing', { platform, owner: ownerLabel })
+							: meetAutoGen
+								? $t('eventTypeEditor.location.hint.meet.autoGen', { platform }) + (form.location_type === 'teams' ? ' ' + $t('eventTypeEditor.location.hint.meet.autoGenTeamsFallback') : '')
+								: (calStatus?.connected
 									? $t(calStatus.provider === 'google' ? 'eventTypeEditor.location.hint.meet.manualGoogle' : 'eventTypeEditor.location.hint.meet.manualMicrosoft', { platform })
-									: $t('eventTypeEditor.location.hint.meet.noCalendar', { platform })}
-								{$t('eventTypeEditor.location.hint.meet.pasteFallback')}
-							</p>
-						{/if}
+									: $t('eventTypeEditor.location.hint.meet.noCalendar', { platform })) + ' ' + $t('eventTypeEditor.location.hint.meet.pasteFallback')}
+						<div class="flex items-center gap-1.5">
+							<Label for="et-loc-val">{form.location_type === 'teams' ? $t('eventTypeEditor.location.labels.teamsLink') : $t('eventTypeEditor.location.labels.meetLink')}</Label>
+							{@render infoTip(meetHint)}
+						</div>
 						<Input id="et-loc-val" bind:value={form.location_value} placeholder={meetAutoGen ? $t('eventTypeEditor.location.placeholder.optionalFallback') : $t('eventTypeEditor.location.placeholder.pasteMeet', { platform })} />
 					{:else if form.location_type === 'zoom'}
-						<Label for="et-loc-val">{$t('eventTypeEditor.location.labels.zoomLink')}</Label>
-						{#if editingForOwner}
-							<p class="rounded-md border px-3 py-2 text-sm text-muted-foreground">
-								{$t('eventTypeEditor.location.hint.zoom.ownerEditing', { owner: ownerLabel })}
-							</p>
-						{:else if zoomAutoGen}
-							<p class="rounded-md border border-green-600/20 bg-green-50 px-3 py-2 text-sm text-green-700">
-								{$t('eventTypeEditor.location.hint.zoom.autoGen')}
-							</p>
-						{:else}
-							<p class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-								{zoomStatus?.configured
-									? $t('eventTypeEditor.location.hint.zoom.connectCalendar')
-									: $t('eventTypeEditor.location.hint.zoom.notConfigured')}
-								{$t('eventTypeEditor.location.hint.zoom.pasteFallback')}
-							</p>
-						{/if}
+						{@const zoomHint = editingForOwner
+							? $t('eventTypeEditor.location.hint.zoom.ownerEditing', { owner: ownerLabel })
+							: zoomAutoGen
+								? $t('eventTypeEditor.location.hint.zoom.autoGen')
+								: (zoomStatus?.configured ? $t('eventTypeEditor.location.hint.zoom.connectCalendar') : $t('eventTypeEditor.location.hint.zoom.notConfigured')) + ' ' + $t('eventTypeEditor.location.hint.zoom.pasteFallback')}
+						<div class="flex items-center gap-1.5">
+							<Label for="et-loc-val">{$t('eventTypeEditor.location.labels.zoomLink')}</Label>
+							{@render infoTip(zoomHint)}
+						</div>
 						<Input id="et-loc-val" bind:value={form.location_value} placeholder={zoomAutoGen ? $t('eventTypeEditor.location.placeholder.optionalFallback') : $t('eventTypeEditor.location.placeholder.pasteZoom')} />
 					{:else if form.location_type === 'livekit'}
-						<Label>{$t('eventTypeEditor.location.labels.videoRoom')}</Label>
-						<p class="rounded-md border border-green-600/20 bg-green-50 px-3 py-2 text-sm text-green-700">
-							{$t('eventTypeEditor.location.hint.livekit')}
-						</p>
+						<div class="flex items-center gap-1.5">
+							<Label>{$t('eventTypeEditor.location.labels.videoRoom')}</Label>
+							{@render infoTip($t('eventTypeEditor.location.hint.livekit'))}
+						</div>
+						<p class="rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">Auto-generated per booking</p>
 					{:else}
 						<Label for="et-loc-val">{LOCATION_NEEDS_VALUE[form.location_type] ?? $t('eventTypeEditor.location.labels.details')}</Label>
 						<Input id="et-loc-val" bind:value={form.location_value} placeholder={LOCATION_PLACEHOLDER[form.location_type] ?? $t('eventTypeEditor.location.placeholder.optional')} />
@@ -974,15 +998,20 @@
 				</p>
 			{/if}
 		</div>
+	</div>
+</div>
+{/if}
 
-		<!-- Limits & Buffers -->
-		<div class="mt-6 border-t pt-5 space-y-5">
-			<p class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Limits & buffers</p>
+{#if activeTab === 'limits'}
+<!-- Limits & Buffers -->
+<div class="mb-8">
+	<h2 class="mb-3 text-sm font-semibold uppercase tracking-wider text-muted-foreground">Limits & buffers</h2>
+	<div class="rounded-lg border bg-card p-4 sm:p-6 space-y-5">
 			<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-				<div class="space-y-1.5">
+				<div class="space-y-1.5 min-w-0">
 					<Label for="et-buf-before">{$t('eventTypeEditor.scheduling.bufferBefore')}</Label>
 					<Select.Root type="single" value={String(form.buffer_before_minutes)} onValueChange={(v) => { if (v !== undefined) form.buffer_before_minutes = Number(v); }}>
-						<Select.Trigger id="et-buf-before" class="w-full">{optionLabel(BUFFER_OPTIONS, form.buffer_before_minutes)}</Select.Trigger>
+						<Select.Trigger id="et-buf-before" class="w-full min-w-0">{optionLabel(BUFFER_OPTIONS, form.buffer_before_minutes)}</Select.Trigger>
 						<Select.Content>
 							{#each BUFFER_OPTIONS as opt}
 								<Select.Item value={String(opt.value)} label={opt.label}>{opt.label}</Select.Item>
@@ -990,10 +1019,10 @@
 						</Select.Content>
 					</Select.Root>
 				</div>
-				<div class="space-y-1.5">
+				<div class="space-y-1.5 min-w-0">
 					<Label for="et-buf-after">{$t('eventTypeEditor.scheduling.bufferAfter')}</Label>
 					<Select.Root type="single" value={String(form.buffer_after_minutes)} onValueChange={(v) => { if (v !== undefined) form.buffer_after_minutes = Number(v); }}>
-						<Select.Trigger id="et-buf-after" class="w-full">{optionLabel(BUFFER_OPTIONS, form.buffer_after_minutes)}</Select.Trigger>
+						<Select.Trigger id="et-buf-after" class="w-full min-w-0">{optionLabel(BUFFER_OPTIONS, form.buffer_after_minutes)}</Select.Trigger>
 						<Select.Content>
 							{#each BUFFER_OPTIONS as opt}
 								<Select.Item value={String(opt.value)} label={opt.label}>{opt.label}</Select.Item>
@@ -1001,10 +1030,10 @@
 						</Select.Content>
 					</Select.Root>
 				</div>
-				<div class="space-y-1.5 sm:col-span-2">
+				<div class="space-y-1.5 sm:col-span-2 min-w-0">
 					<Label for="et-notice">{$t('eventTypeEditor.scheduling.minNotice')}</Label>
 					<Select.Root type="single" value={String(form.min_notice_minutes)} onValueChange={(v) => { if (v !== undefined) form.min_notice_minutes = Number(v); }}>
-						<Select.Trigger id="et-notice" class="w-full">{optionLabel(NOTICE_OPTIONS, form.min_notice_minutes)}</Select.Trigger>
+						<Select.Trigger id="et-notice" class="w-full min-w-0">{optionLabel(NOTICE_OPTIONS, form.min_notice_minutes)}</Select.Trigger>
 						<Select.Content>
 							{#each NOTICE_OPTIONS as opt}
 								<Select.Item value={String(opt.value)} label={opt.label}>{opt.label}</Select.Item>
@@ -1014,49 +1043,41 @@
 				</div>
 			</div>
 
-			<!-- Limit booking frequency (Per Day & Per Week simultaneously) -->
+			<!-- Limit booking frequency (Per Day only, Per Week only, or Both) -->
 			<div class="rounded-lg border p-4 space-y-3">
 				<div class="flex items-center justify-between gap-3">
-					<div>
+					<div class="flex items-center gap-1.5 min-w-0">
 						<p class="text-sm font-medium">Limit booking frequency</p>
-						<p class="text-xs text-muted-foreground">Limit how many times this event can be booked per day and/or per week.</p>
+						{@render infoTip('Limit how many times this event can be booked per day, per week, or both.')}
 					</div>
 					<Switch checked={freqEnabled} onCheckedChange={toggleFreqEnabled} />
 				</div>
 				{#if freqEnabled}
-					<div class="space-y-2 pt-1">
-						{#if form.max_per_day !== '' && form.max_per_day !== null && form.max_per_day !== undefined}
-							<div class="flex items-center gap-2">
-								<Input type="number" min="1" class="w-24" bind:value={form.max_per_day} aria-label="Max bookings per day" />
-								<span class="flex-1 rounded-md border bg-muted/30 px-3 py-2 text-sm">Per Day</span>
-								<Button type="button" variant="ghost" size="icon" onclick={() => (form.max_per_day = '')} aria-label="Remove daily limit">
-									<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
-								</Button>
-							</div>
-						{/if}
-						{#if form.max_per_week !== '' && form.max_per_week !== null && form.max_per_week !== undefined}
-							<div class="flex items-center gap-2">
-								<Input type="number" min="1" class="w-24" bind:value={form.max_per_week} aria-label="Max bookings per week" />
-								<span class="flex-1 rounded-md border bg-muted/30 px-3 py-2 text-sm">Per Week</span>
-								<Button type="button" variant="ghost" size="icon" onclick={() => (form.max_per_week = '')} aria-label="Remove weekly limit">
-									<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
-								</Button>
-							</div>
-						{/if}
-						{#if !form.max_per_day || !form.max_per_week}
-							<Button
-								type="button"
-								variant="ghost"
-								size="sm"
-								class="h-8 px-2 text-xs"
-								onclick={() => {
-									if (!form.max_per_day) form.max_per_day = 1;
-									else if (!form.max_per_week) form.max_per_week = 3;
-								}}
-							>
-								+ Add limit
-							</Button>
-						{/if}
+					<div class="space-y-3 pt-1">
+						<Select.Root type="single" value={freqMode} onValueChange={(v) => { if (v) setFreqMode(v as 'day' | 'week' | 'both'); }}>
+							<Select.Trigger class="w-full sm:w-64" aria-label="Frequency limit window">
+								{freqMode === 'both' ? 'Per Day & Per Week' : freqMode === 'week' ? 'Per Week only' : 'Per Day only'}
+							</Select.Trigger>
+							<Select.Content>
+								<Select.Item value="day" label="Per Day only">Per Day only</Select.Item>
+								<Select.Item value="week" label="Per Week only">Per Week only</Select.Item>
+								<Select.Item value="both" label="Per Day & Per Week">Per Day & Per Week</Select.Item>
+							</Select.Content>
+						</Select.Root>
+						<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+							{#if freqMode === 'day' || freqMode === 'both'}
+								<div class="flex items-center gap-2">
+									<Input type="number" min="1" class="w-24" bind:value={form.max_per_day} aria-label="Max bookings per day" />
+									<span class="text-sm text-muted-foreground">bookings per day</span>
+								</div>
+							{/if}
+							{#if freqMode === 'week' || freqMode === 'both'}
+								<div class="flex items-center gap-2">
+									<Input type="number" min="1" class="w-24" bind:value={form.max_per_week} aria-label="Max bookings per week" />
+									<span class="text-sm text-muted-foreground">bookings per week</span>
+								</div>
+							{/if}
+						</div>
 					</div>
 				{/if}
 			</div>
@@ -1064,9 +1085,9 @@
 			<!-- Limit future bookings -->
 			<div class="rounded-lg border p-4 space-y-3">
 				<div class="flex items-center justify-between gap-3">
-					<div>
+					<div class="flex items-center gap-1.5 min-w-0">
 						<p class="text-sm font-medium">Limit future bookings</p>
-						<p class="text-xs text-muted-foreground">Limit how far in the future (calendar days) this event can be booked.</p>
+						{@render infoTip('Limit how far in the future (calendar days) this event can be booked.')}
 					</div>
 					<Switch checked={futureLimitEnabled} onCheckedChange={toggleFutureLimit} />
 				</div>
@@ -1081,9 +1102,9 @@
 			<!-- Limit upcoming bookings per booker -->
 			<div class="rounded-lg border p-4 space-y-3">
 				<div class="flex items-center justify-between gap-3">
-					<div>
+					<div class="flex items-center gap-1.5 min-w-0">
 						<p class="text-sm font-medium">Limit upcoming bookings per booker</p>
-						<p class="text-xs text-muted-foreground">Limit the number of active bookings a booker can hold at once.</p>
+						{@render infoTip('Limit the number of active bookings a booker can hold at once.')}
 					</div>
 					<Switch checked={maxActiveEnabled} onCheckedChange={toggleMaxActive} />
 				</div>
@@ -1094,8 +1115,6 @@
 					</div>
 				{/if}
 			</div>
-		</div>
-
 	</div>
 </div>
 {/if}
@@ -1452,7 +1471,11 @@
 {/if}
 
 {#if activeTab === 'questions'}
-	<QuestionsPanel slug={slug ?? ''} />
+	<QuestionsPanel
+		slug={slug ?? ''}
+		allowPhoneCall={allowPhoneCall && isOnlineMeeting(form.location_type)}
+		onQuestionsChange={(items) => (previewQuestions = items)}
+	/>
 {/if}
 
 {#if activeTab === 'embed'}
@@ -1460,7 +1483,7 @@
 {/if}
 	</div>
 
-	<!-- Live Interactive Booking Preview (Right, collapsible on < 1280px) -->
+	<!-- Live Interactive Booking Preview (Right, hidden on mobile/tablet < 1280px) -->
 	<aside class="hidden w-80 shrink-0 xl:block">
 		<BookingPreviewCard
 			name={form.name}
@@ -1470,6 +1493,9 @@
 			locationValue={form.location_value}
 			hostName={$currentUser?.name ?? 'Host'}
 			hostAvatar={$currentUser?.avatar_url ?? ''}
+			mode={activeTab === 'questions' ? 'form' : 'calendar'}
+			allowPhoneCall={allowPhoneCall && isOnlineMeeting(form.location_type)}
+			questions={previewQuestions}
 		/>
 	</aside>
 </div>

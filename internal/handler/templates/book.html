@@ -41,7 +41,8 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 2.5rem 1rem 2rem;
+  justify-content: center;
+  padding: 2rem 1rem;
   gap: 1.25rem;
 }
 
@@ -62,16 +63,16 @@ body {
 
 /* ── Mobile ──────────────────────────────────────── */
 @media (max-width: 700px) {
-  body { padding: 0 0 1.5rem; align-items: center; gap: 1rem; }
-  .card { flex-direction: column; border-radius: 0; box-shadow: none; min-height: calc(100vh - 3rem); width: 100%; }
-  .info { width: 100%; border-right: none; border-bottom: 1px solid #e5e7eb; padding: 1.25rem 1rem; }
+  body { justify-content: flex-start; padding: 0 0 1.5rem; align-items: center; gap: 1rem; }
+  .card, .card.has-day, .card.is-confirm { flex-direction: column; border-radius: 0; box-shadow: none; min-height: calc(100vh - 3rem); width: 100%; max-width: 100%; }
+  .info, .card.is-confirm .info { width: 100%; border-right: none; border-bottom: 1px solid #e5e7eb; padding: 1.25rem 1rem; }
   .info .host-faces { margin-bottom: .25rem; }
   /* Full-width info panel: lay duration + location on one line (matches the embed widget). */
   .meta { flex-direction: row; flex-wrap: wrap; gap: .35rem .9rem; margin-top: .75rem; }
-  .cal-col { border-right: none; border-bottom: 1px solid #e5e7eb; padding: 1.25rem 1rem; }
+  .cal-col { border-right: none; border-bottom: 1px solid #e5e7eb; padding: 1.25rem 1rem; animation: calStepIn .2s ease; }
   .cal-grid { grid-template-columns: repeat(7, 1fr); width: 100%; }
   .ch, .cd { width: 100%; }
-  .right-col { padding: 1.25rem 1rem; }
+  .right-col, .card.has-day .right-col, .card.is-confirm .right-col { width: 100%; max-width: none; opacity: 1; padding: 1.25rem 1rem; flex: 1; animation: calStepIn .22s cubic-bezier(.16,1,.3,1); }
   /* Step-flow: show one section at a time (calendar ⇄ right pane). */
   .card.m-right .info, .card.m-right .cal-col { display: none; }
   .card.m-cal .right-col { display: none; }
@@ -367,6 +368,10 @@ body {
     ['slots-view', 'form-view', 'confirm-view'].forEach(v =>
       $(v).classList.toggle('hidden', v !== id)
     );
+    if (cardEl) {
+      cardEl.classList.add('has-day');
+      cardEl.classList.toggle('is-confirm', id === 'form-view' || id === 'confirm-view');
+    }
   }
 
   // Returning from Stripe Checkout (success_url): the payment was captured and the booking
