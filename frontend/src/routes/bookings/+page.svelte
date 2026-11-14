@@ -303,7 +303,7 @@
 		return new Date().toISOString().slice(0, 10);
 	}
 
-	// --- Cal.com-style List/Calendar view & client-side sorting (zero backend changes) ---
+	// --- List/Calendar view & client-side sorting (zero backend changes) ---
 	let viewMode = $state<'list' | 'calendar'>('list');
 	let sortField = $state<'start_at' | 'attendee' | 'event'>('start_at');
 	let sortDir = $state<'asc' | 'desc'>('asc');

@@ -374,7 +374,7 @@
 		}
 	}
 
-	// ── Cal.com-style Date Override Modal ──────────────────────────────────────
+	// ── Date Override Modal ───────────────────────────────────────────────────
 	let ovModalOpen = $state(false);
 	let ovCalMonth = $state(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
 	let ovSelectedDates = $state<Set<string>>(new Set());
