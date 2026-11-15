@@ -31,20 +31,20 @@
 	<p class="mt-1 text-sm text-muted-foreground">{$t('settings.subtitle')}</p>
 </div>
 
-<div class="flex gap-8">
-	<nav class="w-44 shrink-0">
-		<ul class="space-y-0.5">
+<div class="flex flex-col gap-6 md:flex-row md:gap-8">
+	<nav class="w-full shrink-0 md:w-44">
+		<ul class="flex gap-1 overflow-x-auto pb-2 md:block md:space-y-0.5 md:overflow-visible md:pb-0">
 			{#each visibleNavItems as item, i}
 				{#if item.section !== visibleNavItems[i - 1]?.section}
-					<li class="mb-1 px-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground/60 first:mt-0 mt-4">
+					<li class="mb-1 hidden px-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground/60 first:mt-0 mt-4 md:block">
 						{item.section}
 					</li>
 				{/if}
 				{@const active = $page.url.pathname.startsWith(item.href)}
-				<li>
+				<li class="shrink-0">
 					<a
 						href={item.href}
-						class="block rounded-md px-3 py-2 text-sm font-medium transition-colors
+						class="block whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium transition-colors
 							{active
 								? 'bg-accent text-accent-foreground'
 								: 'text-muted-foreground hover:bg-accent/50 hover:text-accent-foreground'}"

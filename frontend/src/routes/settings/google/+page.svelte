@@ -147,7 +147,7 @@
 					<p class="mt-0.5 text-xs text-muted-foreground">{$t('settings.google.oauth.subtitle')}</p>
 				</div>
 				{#if googleSettings !== null}
-					<span class="flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium {googleSettings.configured ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'}">
+					<span class="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-medium {googleSettings.configured ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'}">
 						<span class="h-1.5 w-1.5 rounded-full {googleSettings.configured ? 'bg-green-500' : 'bg-amber-400'}"></span>
 						{googleSettings.configured ? $t('common.configured') : $t('common.notConfigured')}
 					</span>
