@@ -272,7 +272,6 @@ body {
 
   const SLUG             = "{{.Slug}}";
   const SINGLE_USE_TOKEN = "{{.SingleUseToken}}";
-  const PREFILL_DEAL_ID  = "{{.PrefillDealID}}";
   const MAX_DAYS = {{.MaxFutureDays}};
   const PRICE_CENTS = {{.PriceCents}};
   const CURRENCY = "{{.Currency}}";
@@ -679,26 +678,13 @@ body {
   $('back-btn').addEventListener('click', () => showView('slots-view'));
   $('cal-back-btn').addEventListener('click', () => setStep('cal'));
 
-  // ── Pre-fill from single-use link / query string ─────────────────────────
+  // ── Pre-fill from query string ────────────────────────────────────────────
   (function () {
     const qp = new URLSearchParams(window.location.search);
     const fName = $('f-name');
     const fEmail = $('f-email');
     if (fName && qp.has('name')) fName.value = qp.get('name') || '';
     if (fEmail && qp.has('email')) fEmail.value = qp.get('email') || '';
-    const dealVal = qp.has('dealId')
-      ? (qp.get('dealId') || '')
-      : (qp.has('deal_id') ? (qp.get('deal_id') || '') : PREFILL_DEAL_ID);
-    if (dealVal) {
-      document.querySelectorAll('[data-qid]').forEach(el => {
-        const qid = (el.dataset.qid || '').toLowerCase();
-        const lbl = (el.querySelector('label')?.textContent || '').toLowerCase();
-        if (qid === 'dealid' || qid === 'deal_id' || lbl.includes('deal id') || lbl.includes('dealid')) {
-          const input = el.querySelector('input, textarea, select');
-          if (input && input.type !== 'checkbox' && !input.value) input.value = dealVal;
-        }
-      });
-    }
   })();
 
   // ── Booking form ──────────────────────────────────────────────────────────

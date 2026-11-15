@@ -28,7 +28,7 @@ func TestFinishOAuthLogin_allowedSignupDomainsJITProvisioning(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/v1/auth/microsoft/callback", nil)
 		rec := httptest.NewRecorder()
 
-		h.finishOAuthLogin(rec, req, "newuser@formaprime.vc")
+		h.finishOAuthLogin(rec, req, "newuser@example.com")
 		if rec.Code != http.StatusFound {
 			t.Fatalf("status = %d; want 302", rec.Code)
 		}
@@ -39,11 +39,11 @@ func TestFinishOAuthLogin_allowedSignupDomainsJITProvisioning(t *testing.T) {
 
 	t.Run("unclaimed instance skips JIT provisioning so claim remains available", func(t *testing.T) {
 		h := newInternalHandler(t)
-		h.SetAllowedSignupDomains([]string{"formaprime.vc"})
+		h.SetAllowedSignupDomains([]string{"example.com"})
 
 		req := httptest.NewRequest(http.MethodGet, "/v1/auth/microsoft/callback", nil)
 		rec := httptest.NewRecorder()
-		h.finishOAuthLogin(rec, req, "Partner@formaprime.vc")
+		h.finishOAuthLogin(rec, req, "Member@example.com")
 
 		if rec.Code != http.StatusFound {
 			t.Fatalf("status = %d; want 302", rec.Code)
@@ -55,14 +55,14 @@ func TestFinishOAuthLogin_allowedSignupDomainsJITProvisioning(t *testing.T) {
 
 	t.Run("matching domain provisions member and creates session", func(t *testing.T) {
 		h := newInternalHandler(t)
-		if _, err := h.db.Exec(`INSERT INTO users (id, email, name, iana_timezone, is_admin, is_owner, email_login) VALUES ('owner-1', 'owner@formaprime.vc', 'Owner', 'UTC', 1, 1, 1)`); err != nil {
+		if _, err := h.db.Exec(`INSERT INTO users (id, email, name, iana_timezone, is_admin, is_owner, email_login) VALUES ('owner-1', 'owner@example.com', 'Owner', 'UTC', 1, 1, 1)`); err != nil {
 			t.Fatalf("seed owner: %v", err)
 		}
-		h.SetAllowedSignupDomains([]string{"FormaPrime.VC"})
+		h.SetAllowedSignupDomains([]string{"Example.COM"})
 
 		req := httptest.NewRequest(http.MethodGet, "/v1/auth/microsoft/callback", nil)
 		rec := httptest.NewRecorder()
-		h.finishOAuthLogin(rec, req, "Partner@formaprime.vc")
+		h.finishOAuthLogin(rec, req, "Member@example.com")
 
 		if rec.Code != http.StatusFound {
 			t.Fatalf("status = %d; want 302 — body: %s", rec.Code, rec.Body.String())
@@ -83,12 +83,12 @@ func TestFinishOAuthLogin_allowedSignupDomainsJITProvisioning(t *testing.T) {
 
 		var name string
 		var isAdmin, isOwner int
-		if err := h.db.QueryRow(`SELECT name, is_admin, is_owner FROM users WHERE email = ?`, "partner@formaprime.vc").
+		if err := h.db.QueryRow(`SELECT name, is_admin, is_owner FROM users WHERE email = ?`, "member@example.com").
 			Scan(&name, &isAdmin, &isOwner); err != nil {
 			t.Fatalf("query provisioned user: %v", err)
 		}
-		if name != "partner" {
-			t.Errorf("name = %q; want partner", name)
+		if name != "member" {
+			t.Errorf("name = %q; want member", name)
 		}
 		if isAdmin != 0 || isOwner != 0 {
 			t.Errorf("role flags = (%d, %d); want (0, 0) for member", isAdmin, isOwner)
@@ -97,10 +97,10 @@ func TestFinishOAuthLogin_allowedSignupDomainsJITProvisioning(t *testing.T) {
 
 	t.Run("non-matching domain returns 403 Forbidden", func(t *testing.T) {
 		h := newInternalHandler(t)
-		if _, err := h.db.Exec(`INSERT INTO users (id, email, name, iana_timezone, is_admin, is_owner, email_login) VALUES ('owner-1', 'owner@formaprime.vc', 'Owner', 'UTC', 1, 1, 1)`); err != nil {
+		if _, err := h.db.Exec(`INSERT INTO users (id, email, name, iana_timezone, is_admin, is_owner, email_login) VALUES ('owner-1', 'owner@example.com', 'Owner', 'UTC', 1, 1, 1)`); err != nil {
 			t.Fatalf("seed owner: %v", err)
 		}
-		h.SetAllowedSignupDomains([]string{"formaprime.vc"})
+		h.SetAllowedSignupDomains([]string{"example.com"})
 
 		req := httptest.NewRequest(http.MethodGet, "/v1/auth/microsoft/callback", nil)
 		rec := httptest.NewRecorder()

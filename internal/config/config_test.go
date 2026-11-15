@@ -226,7 +226,7 @@ func TestLoad_microsoftTenantIDAndAllowedSignupDomains(t *testing.T) {
 
 	t.Setenv("MICROSOFT_TENANT", "legacy-tenant")
 	t.Setenv("MICROSOFT_TENANT_ID", "11111111-2222-3333-4444-555555555555")
-	t.Setenv("ALLOWED_SIGNUP_DOMAINS", "formaprime.vc, example.org ")
+	t.Setenv("ALLOWED_SIGNUP_DOMAINS", "example.com, example.org ")
 	cfg = config.Load()
 	if cfg.MicrosoftTenantID != "11111111-2222-3333-4444-555555555555" {
 		t.Errorf("MicrosoftTenantID = %q; want MICROSOFT_TENANT_ID", cfg.MicrosoftTenantID)
@@ -234,7 +234,7 @@ func TestLoad_microsoftTenantIDAndAllowedSignupDomains(t *testing.T) {
 	if cfg.MicrosoftTenant != cfg.MicrosoftTenantID {
 		t.Errorf("MicrosoftTenant = %q; want %q", cfg.MicrosoftTenant, cfg.MicrosoftTenantID)
 	}
-	if len(cfg.AllowedSignupDomains) != 2 || cfg.AllowedSignupDomains[0] != "formaprime.vc" || cfg.AllowedSignupDomains[1] != "example.org" {
-		t.Errorf("AllowedSignupDomains = %v; want [formaprime.vc example.org]", cfg.AllowedSignupDomains)
+	if len(cfg.AllowedSignupDomains) != 2 || cfg.AllowedSignupDomains[0] != "example.com" || cfg.AllowedSignupDomains[1] != "example.org" {
+		t.Errorf("AllowedSignupDomains = %v; want [example.com example.org]", cfg.AllowedSignupDomains)
 	}
 }

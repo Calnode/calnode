@@ -27,7 +27,7 @@ func seedAvailabilityWindow(t *testing.T, h interface {
 
 func TestEventTypeFrequencyCaps_slotsFilteringAnd409Conflict(t *testing.T) {
 	h, database, apiKey, userID := setupWorkspaceWithDB(t)
-	h.SetBaseURL("https://cal.formaprime.vc")
+	h.SetBaseURL("https://cal.example.com")
 	ctx := context.Background()
 
 	// Configure host timezone to America/New_York.
@@ -163,7 +163,7 @@ func TestEventTypeFrequencyCaps_slotsFilteringAnd409Conflict(t *testing.T) {
 
 func TestSingleUseLinks_lifecycleBookReplayAndManageReschedule(t *testing.T) {
 	h, database, apiKey, _ := setupWorkspaceWithDB(t)
-	h.SetBaseURL("https://cal.formaprime.vc")
+	h.SetBaseURL("https://cal.example.com")
 	ctx := context.Background()
 
 	// Seed an event type (even make it private to ensure /t/{token} and single_use_token handle private invites cleanly).
@@ -199,7 +199,7 @@ func TestSingleUseLinks_lifecycleBookReplayAndManageReschedule(t *testing.T) {
 	if err := json.Unmarshal(createRec.Body.Bytes(), &created); err != nil {
 		t.Fatalf("decode create link: %v", err)
 	}
-	if created.Token == "" || created.URL != "https://cal.formaprime.vc/t/"+created.Token {
+	if created.Token == "" || created.URL != "https://cal.example.com/t/"+created.Token {
 		t.Fatalf("unexpected link response: %+v", created)
 	}
 
