@@ -171,14 +171,25 @@
 			</div>
 
 			{#if googleSettings?.configured}
-				<div class="mt-5 border-t pt-4">
-					<p class="text-xs font-medium text-muted-foreground">{$t('settings.google.redirectUris.title')}</p>
-					<p class="mt-0.5 text-xs text-muted-foreground">{$t('settings.google.redirectUris.hint')}</p>
-					<code class="mt-2 block rounded bg-muted px-2 py-1 text-xs font-mono break-all">{redirectBase}/v1/calendar/callback</code>
-					<code class="mt-1 block rounded bg-muted px-2 py-1 text-xs font-mono break-all">{redirectBase}/v1/auth/callback</code>
-					{#if !isLocal}
-						<p class="mt-1.5 text-xs text-muted-foreground">{$t('settings.google.redirectUris.localhostHint')}</p>
-					{/if}
+				<div class="mt-5 rounded-md border bg-muted/30 p-3 space-y-2">
+					<p class="text-xs font-medium">{$t('settings.google.redirectUris.title')}</p>
+					{#each [`${redirectBase}/v1/calendar/callback`, `${redirectBase}/v1/auth/callback`] as uri}
+						<div class="flex items-center justify-between gap-2 text-xs">
+							<code class="truncate font-mono text-muted-foreground">{uri}</code>
+							<Button
+								type="button"
+								variant="outline"
+								size="sm"
+								class="h-7 shrink-0 px-2 text-xs"
+								onclick={() => {
+									navigator.clipboard.writeText(uri);
+									toast.success('Copied to clipboard');
+								}}
+							>
+								Copy
+							</Button>
+						</div>
+					{/each}
 				</div>
 			{/if}
 

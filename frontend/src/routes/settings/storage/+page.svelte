@@ -121,7 +121,7 @@
 				</div>
 				{#if settings}
 					{@const b = badge(settings.backups_configured)}
-					<span class="flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium {b.cls}">
+					<span class="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-medium {b.cls}">
 						<span class="h-1.5 w-1.5 rounded-full {b.dot}"></span>{b.text}
 					</span>
 				{/if}
@@ -145,7 +145,7 @@
 				</div>
 				{#if settings}
 					{@const b = badge(settings.recordings_storage_ready, $t('settings.storage.recordings.badge.ready'), $t('settings.storage.recordings.badge.noBucket'))}
-					<span class="flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium {b.cls}">
+					<span class="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-medium {b.cls}">
 						<span class="h-1.5 w-1.5 rounded-full {b.dot}"></span>{b.text}
 					</span>
 				{/if}
