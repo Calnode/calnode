@@ -183,9 +183,6 @@ func TestSingleUseLinks_lifecycleBookReplayAndManageReschedule(t *testing.T) {
 
 	// 1. POST /v1/event-types/{id}/single-use-links
 	createReq := authReq(http.MethodPost, "/v1/event-types/"+etID+"/single-use-links", `{
-		"prefill_name": "Jane Founder",
-		"prefill_email": "jane@acme.vc",
-		"deal_id": "deal_123",
 		"expires_in_hours": 168
 	}`, apiKey)
 	createReq.SetPathValue("id", etID)
@@ -215,8 +212,8 @@ func TestSingleUseLinks_lifecycleBookReplayAndManageReschedule(t *testing.T) {
 		t.Fatalf("ListSingleUseLinks: %d — %s", listRec.Code, listRec.Body.String())
 	}
 
-	// 3. GET /t/{token} renders book.html prefilled + allows URL query param overrides.
-	pageReq := httptest.NewRequest(http.MethodGet, "/t/"+created.Token+"?name=Override+Name", nil)
+	// 3. GET /t/{token} renders book.html prefilled via URL query params.
+	pageReq := httptest.NewRequest(http.MethodGet, "/t/"+created.Token+"?name=Override+Name&email=jane@acme.vc", nil)
 	pageReq.SetPathValue("token", created.Token)
 	pageRec := httptest.NewRecorder()
 	h.SingleUseBookPage(pageRec, pageReq)
@@ -224,7 +221,7 @@ func TestSingleUseLinks_lifecycleBookReplayAndManageReschedule(t *testing.T) {
 		t.Fatalf("GET /t/{token}: %d — %s", pageRec.Code, pageRec.Body.String())
 	}
 	htmlBody := pageRec.Body.String()
-	for _, want := range []string{created.Token, `value="Override Name"`, `value="jane@acme.vc"`, "deal_123"} {
+	for _, want := range []string{created.Token, `value="Override Name"`, `value="jane@acme.vc"`} {
 		if !strings.Contains(htmlBody, want) {
 			t.Errorf("GET /t/{token} body missing %q", want)
 		}

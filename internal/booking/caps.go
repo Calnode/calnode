@@ -79,6 +79,12 @@ func ISOWeekWindow(at time.Time, loc *time.Location) (time.Time, time.Time) {
 // falls near [rangeStartUTC, rangeEndUTC) (padded cleanly so timezone conversions never miss
 // boundary events) and buckets them into loc's calendar days and ISO weeks.
 func CountFrequencyBookings(ctx context.Context, q QueryRower, eventTypeID string, rangeStartUTC, rangeEndUTC time.Time, loc *time.Location) (FrequencyCounts, error) {
+	return CountFrequencyBookingsExcluding(ctx, q, eventTypeID, rangeStartUTC, rangeEndUTC, loc, "")
+}
+
+// CountFrequencyBookingsExcluding is like CountFrequencyBookings but excludes a
+// specific booking ID (used when rescheduling an existing booking).
+func CountFrequencyBookingsExcluding(ctx context.Context, q QueryRower, eventTypeID string, rangeStartUTC, rangeEndUTC time.Time, loc *time.Location, excludeBookingID string) (FrequencyCounts, error) {
 	if loc == nil {
 		loc = time.UTC
 	}
@@ -93,9 +99,10 @@ func CountFrequencyBookings(ctx context.Context, q QueryRower, eventTypeID strin
 		SELECT start_at FROM bookings
 		WHERE event_type_id = ?
 		  AND status != 'cancelled'
+		  AND (? = '' OR id != ?)
 		  AND datetime(start_at) >= datetime(?)
 		  AND datetime(start_at) < datetime(?)`,
-		eventTypeID, padStart, padEnd)
+		eventTypeID, excludeBookingID, excludeBookingID, padStart, padEnd)
 	if err != nil {
 		return counts, err
 	}
@@ -118,7 +125,7 @@ func CountFrequencyBookings(ctx context.Context, q QueryRower, eventTypeID strin
 	return counts, rows.Err()
 }
 
-func enforceFrequencyCaps(ctx context.Context, tx *sql.Tx, p CreateParams) error {
+func enforceFrequencyCaps(ctx context.Context, tx *sql.Tx, p CreateParams, excludeBookingID string) error {
 	var dbDay, dbWeek sql.NullInt64
 	var dbTZ string
 	err := tx.QueryRowContext(ctx, `
@@ -150,7 +157,7 @@ func enforceFrequencyCaps(ctx context.Context, tx *sql.Tx, p CreateParams) error
 	}
 	loc := LoadLocationOrUTC(tzName)
 	weekStart, weekEnd := ISOWeekWindow(p.StartAt, loc)
-	counts, err := CountFrequencyBookings(ctx, tx, p.EventTypeID, weekStart, weekEnd, loc)
+	counts, err := CountFrequencyBookingsExcluding(ctx, tx, p.EventTypeID, weekStart, weekEnd, loc, excludeBookingID)
 	if err != nil {
 		return fmt.Errorf("booking: frequency cap check: %w", err)
 	}

@@ -37,8 +37,27 @@ func TestFinishOAuthLogin_allowedSignupDomainsJITProvisioning(t *testing.T) {
 		}
 	})
 
+	t.Run("unclaimed instance skips JIT provisioning so claim remains available", func(t *testing.T) {
+		h := newInternalHandler(t)
+		h.SetAllowedSignupDomains([]string{"formaprime.vc"})
+
+		req := httptest.NewRequest(http.MethodGet, "/v1/auth/microsoft/callback", nil)
+		rec := httptest.NewRecorder()
+		h.finishOAuthLogin(rec, req, "Partner@formaprime.vc")
+
+		if rec.Code != http.StatusFound {
+			t.Fatalf("status = %d; want 302", rec.Code)
+		}
+		if got := rec.Header().Get("Location"); got != "/admin/login?error=no_account" {
+			t.Errorf("Location = %q; want /admin/login?error=no_account", got)
+		}
+	})
+
 	t.Run("matching domain provisions member and creates session", func(t *testing.T) {
 		h := newInternalHandler(t)
+		if _, err := h.db.Exec(`INSERT INTO users (id, email, name, iana_timezone, is_admin, is_owner, email_login) VALUES ('owner-1', 'owner@formaprime.vc', 'Owner', 'UTC', 1, 1, 1)`); err != nil {
+			t.Fatalf("seed owner: %v", err)
+		}
 		h.SetAllowedSignupDomains([]string{"FormaPrime.VC"})
 
 		req := httptest.NewRequest(http.MethodGet, "/v1/auth/microsoft/callback", nil)
@@ -78,6 +97,9 @@ func TestFinishOAuthLogin_allowedSignupDomainsJITProvisioning(t *testing.T) {
 
 	t.Run("non-matching domain returns 403 Forbidden", func(t *testing.T) {
 		h := newInternalHandler(t)
+		if _, err := h.db.Exec(`INSERT INTO users (id, email, name, iana_timezone, is_admin, is_owner, email_login) VALUES ('owner-1', 'owner@formaprime.vc', 'Owner', 'UTC', 1, 1, 1)`); err != nil {
+			t.Fatalf("seed owner: %v", err)
+		}
 		h.SetAllowedSignupDomains([]string{"formaprime.vc"})
 
 		req := httptest.NewRequest(http.MethodGet, "/v1/auth/microsoft/callback", nil)

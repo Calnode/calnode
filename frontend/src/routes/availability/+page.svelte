@@ -302,16 +302,17 @@
 			return;
 		}
 		day.error = '';
-		const toRemove = [...day.blocks];
-		day.blocks = [];
-		for (const b of toRemove) {
+		const remaining: DayBlock[] = [];
+		for (const b of day.blocks) {
 			if (!b.id) continue;
 			try {
 				await api.del(`/v1/availability-rules/${b.id}`);
 			} catch (e: any) {
 				day.error = e.message;
+				remaining.push(b);
 			}
 		}
+		day.blocks = remaining;
 	}
 
 	function openCopyMenu(dayOfWeek: number) {
@@ -350,17 +351,27 @@
 			for (const targetDow of copyTargets) {
 				const target = days[targetDow];
 				if (!target) continue;
-				for (const old of target.blocks) {
-					if (old.id) await api.del(`/v1/availability-rules/${old.id}`);
-				}
+				const oldBlocks = [...target.blocks];
 				const created: DayBlock[] = [];
-				for (const tb of templateBlocks) {
-					const r = await api.post<AvailabilityRule>('/v1/availability-rules', {
-						day_of_week: targetDow,
-						start_time: tb.start_time,
-						end_time: tb.end_time
-					});
-					created.push({ id: r.id, start_time: r.start_time, end_time: r.end_time, saving: false, error: '' });
+				try {
+					for (const tb of templateBlocks) {
+						const r = await api.post<AvailabilityRule>('/v1/availability-rules', {
+							day_of_week: targetDow,
+							start_time: tb.start_time,
+							end_time: tb.end_time
+						});
+						created.push({ id: r.id, start_time: r.start_time, end_time: r.end_time, saving: false, error: '' });
+					}
+				} catch (err) {
+					for (const c of created) {
+						if (c.id) {
+							try { await api.del(`/v1/availability-rules/${c.id}`); } catch {}
+						}
+					}
+					throw err;
+				}
+				for (const old of oldBlocks) {
+					if (old.id) await api.del(`/v1/availability-rules/${old.id}`);
 				}
 				target.blocks = created;
 				target.error = '';

@@ -87,14 +87,14 @@
       .filter(Boolean);
   }
 
-  async function addQuestion() {
+  async function addQuestion(): Promise<boolean> {
     if (!qForm.label.trim()) {
       toast.error(tr("eventTypeEditor.questions.validation.label"));
-      return;
+      return false;
     }
     if (qForm.type === "select" && optionsArray(qForm.options).length === 0) {
       toast.error(tr("eventTypeEditor.questions.validation.options"));
-      return;
+      return false;
     }
     qAdding = true;
     try {
@@ -107,8 +107,10 @@
       });
       qForm = { label: "", type: "text", options: "", required: false };
       await loadQuestions();
+      return true;
     } catch (e: any) {
       toast.error(e.message || tr("eventTypeEditor.questions.error.add"));
+      return false;
     } finally {
       qAdding = false;
     }
@@ -810,8 +812,7 @@
         type="button"
         disabled={qAdding}
         onclick={async () => {
-          await addQuestion();
-          if (!qForm.label) addQOpen = false;
+          if (await addQuestion()) addQOpen = false;
         }}
       >
         {qAdding

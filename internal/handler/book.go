@@ -566,6 +566,16 @@ func (h *Handler) renderBookPage(w http.ResponseWriter, r *http.Request, slug st
 	loc := h.resolveLocaleWithFallback(r, brand.FallbackLocale)
 	i18nJSON, _ := loc.JSON()
 
+	q := r.URL.Query()
+	prefillName := prefill.Name
+	if prefillName == "" {
+		prefillName = strings.TrimSpace(q.Get("name"))
+	}
+	prefillEmail := prefill.Email
+	if prefillEmail == "" {
+		prefillEmail = strings.TrimSpace(q.Get("email"))
+	}
+
 	data := bookPageData{
 		PhoneChoice:         allowPhoneCall && onlineMeetingLocation(locType),
 		AccentColor:         accentColor,
@@ -614,8 +624,8 @@ func (h *Handler) renderBookPage(w http.ResponseWriter, r *http.Request, slug st
 		TermsURL:       brand.TermsURL,
 		DemoMode:       h.demoMode,
 		SingleUseToken: prefill.SingleUseToken,
-		PrefillName:    prefill.Name,
-		PrefillEmail:   prefill.Email,
+		PrefillName:    prefillName,
+		PrefillEmail:   prefillEmail,
 		PrefillDealID:  prefill.DealID,
 	}
 

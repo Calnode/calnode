@@ -151,7 +151,7 @@ func (s *Service) Create(ctx context.Context, p CreateParams) (*Booking, error) 
 		}
 	}
 
-	if err := enforceFrequencyCaps(ctx, tx, p); err != nil {
+	if err := enforceFrequencyCaps(ctx, tx, p, ""); err != nil {
 		return nil, err
 	}
 
@@ -548,6 +548,13 @@ func (s *Service) Reschedule(ctx context.Context, bookingID string, newStart, ne
 		if busy {
 			return nil, ErrDoubleBooked
 		}
+	}
+
+	if err := enforceFrequencyCaps(ctx, tx, CreateParams{
+		EventTypeID: b.EventTypeID,
+		StartAt:     newStart,
+	}, bookingID); err != nil {
+		return nil, err
 	}
 
 	now := time.Now().UTC().Format(time.RFC3339Nano)

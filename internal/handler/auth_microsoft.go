@@ -16,16 +16,21 @@ import (
 // own scopes. Called from server.New when Microsoft credentials are configured.
 // secure should be true when BASE_URL starts with https://.
 func (h *Handler) SetMicrosoftAuth(clientID, clientSecret, tenant, redirectURL string, secure bool) {
+	clientID = strings.TrimSpace(clientID)
+	clientSecret = strings.TrimSpace(clientSecret)
 	tenant = strings.TrimSpace(tenant)
 	if tenant == "" {
 		tenant = "common"
 	}
-	cfg := &oauth2.Config{
-		ClientID:     clientID,
-		ClientSecret: clientSecret,
-		Endpoint:     microsoft.AzureADEndpoint(tenant),
-		RedirectURL:  redirectURL,
-		Scopes:       []string{"openid", "email", "profile", "User.Read"},
+	var cfg *oauth2.Config
+	if clientID != "" && clientSecret != "" {
+		cfg = &oauth2.Config{
+			ClientID:     clientID,
+			ClientSecret: clientSecret,
+			Endpoint:     microsoft.AzureADEndpoint(tenant),
+			RedirectURL:  redirectURL,
+			Scopes:       []string{"openid", "email", "profile", "User.Read"},
+		}
 	}
 	h.authMu.Lock()
 	h.microsoftAuth = cfg
@@ -91,18 +96,9 @@ type microsoftUserInfo struct {
 }
 
 // fetchMicrosoftEmail reads the signed-in account's email from Graph /me, preferring
-// the routable `mail` and falling back to the userPrincipalName. Lowercased to match
-// stored account emails.
-//
-// Unlike Google's userinfo endpoint (see auth_google.go), Graph /me has no self-asserted
-// "verified" boolean to check — but the trust model differs: Entra ID enforces domain
-// verification at the tenant level (an admin cannot set a tenant's domain suffix, and
-// therefore cannot mint `mail`/userPrincipalName addresses under it, without proving DNS
-// ownership to Microsoft), so both fields are already domain-verified for standard member
-// accounts. The one address shape that ISN'T a real, owned mailbox is a B2B guest's
-// UPN, which Microsoft synthesizes as "user_domain.com#EXT#@resourcetenant.onmicrosoft.com"
-// — rejected below so a guest identity in some other tenant can never be used as an email
-// to look up (and sign in as) an existing Calnode user.
+// userPrincipalName (which Entra ID constrains to the tenant's verified domains for
+// standard member accounts) and rejecting B2B guest UPNs ("...#EXT#@..."). Falls back
+// to `mail` only when userPrincipalName is absent.
 func fetchMicrosoftEmail(ctx context.Context, cfg *oauth2.Config, tok *oauth2.Token) (string, error) {
 	resp, err := cfg.Client(ctx, tok).Get("https://graph.microsoft.com/v1.0/me?$select=mail,userPrincipalName")
 	if err != nil {
@@ -116,13 +112,13 @@ func fetchMicrosoftEmail(ctx context.Context, cfg *oauth2.Config, tok *oauth2.To
 	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
 		return "", fmt.Errorf("auth: decode graph /me: %w", err)
 	}
-	email := strings.ToLower(strings.TrimSpace(info.Mail))
+	upn := strings.ToLower(strings.TrimSpace(info.UserPrincipalName))
+	if strings.Contains(upn, "#ext#") {
+		return "", fmt.Errorf("auth: Microsoft account is a B2B guest identity, not a verifiable email")
+	}
+	email := upn
 	if email == "" {
-		upn := strings.ToLower(strings.TrimSpace(info.UserPrincipalName))
-		if strings.Contains(upn, "#ext#") {
-			return "", fmt.Errorf("auth: Microsoft account is a B2B guest identity, not a verifiable email")
-		}
-		email = upn
+		email = strings.ToLower(strings.TrimSpace(info.Mail))
 	}
 	if email == "" {
 		return "", fmt.Errorf("auth: empty email from Microsoft")

@@ -688,7 +688,12 @@
     // applyStep toggles which panes show when narrow (step-flow). Wide = all visible.
     applyStep() {
       if (!this.card) return;
-      this.card.classList.remove('step', 'step-cal', 'step-right');
+      this.card.classList.remove('step', 'step-cal', 'step-right', 'has-day', 'is-confirm');
+      if (this.state.view === 'confirm') {
+        this.card.classList.add('is-confirm');
+      } else if (this.state.day || this.state.view === 'form') {
+        this.card.classList.add('has-day');
+      }
       if (!this.narrow) return;
       this.card.classList.add('step');
       // calendar step = day not yet chosen and not in form/confirm; else right pane.

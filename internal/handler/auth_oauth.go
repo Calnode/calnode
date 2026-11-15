@@ -61,6 +61,19 @@ func (h *Handler) finishOAuthLogin(w http.ResponseWriter, r *http.Request, email
 	err := h.db.QueryRowContext(r.Context(),
 		`SELECT id, archived_at FROM users WHERE email = ?`, email).Scan(&userID, &archivedAt)
 	if errors.Is(err, sql.ErrNoRows) {
+		// Never JIT-provision a non-owner member before the workspace has been claimed;
+		// otherwise /v1/auth/claim would see userCount > 0 and lock out the first owner.
+		var userCount int
+		if cntErr := h.db.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM users`).Scan(&userCount); cntErr != nil {
+			h.logger.ErrorContext(r.Context(), "auth: count users", "error", cntErr)
+			http.Redirect(w, r, "/admin/login?error=session", http.StatusFound)
+			return
+		}
+		if userCount == 0 {
+			h.logger.WarnContext(r.Context(), "auth: instance unclaimed, skipping JIT provisioning", "email", email)
+			http.Redirect(w, r, "/admin/login?error=no_account", http.StatusFound)
+			return
+		}
 		allowed := h.getAllowedSignupDomains()
 		if len(allowed) == 0 {
 			h.logger.WarnContext(r.Context(), "auth: no account for email", "email", email)
