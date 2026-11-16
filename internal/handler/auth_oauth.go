@@ -55,7 +55,12 @@ func (h *Handler) verifyOAuthState(w http.ResponseWriter, r *http.Request) bool 
 // allowedSignupDomains is configured, matching domains auto-provision a "member"
 // user and non-matching domains are rejected with 403 Forbidden.
 func (h *Handler) finishOAuthLogin(w http.ResponseWriter, r *http.Request, email string) {
+	h.finishOAuthLoginWithJITEmail(w, r, email, email)
+}
+
+func (h *Handler) finishOAuthLoginWithJITEmail(w http.ResponseWriter, r *http.Request, email, jitEmail string) {
 	email = strings.ToLower(strings.TrimSpace(email))
+	jitEmail = strings.ToLower(strings.TrimSpace(jitEmail))
 	var userID string
 	var archivedAt sql.NullString
 	err := h.db.QueryRowContext(r.Context(),
@@ -80,11 +85,12 @@ func (h *Handler) finishOAuthLogin(w http.ResponseWriter, r *http.Request, email
 			http.Redirect(w, r, "/admin/login?error=no_account", http.StatusFound)
 			return
 		}
-		if !emailDomainAllowed(email, allowed) {
-			h.logger.WarnContext(r.Context(), "auth: email domain not in allowed signup domains", "email", email)
+		if !emailDomainAllowed(jitEmail, allowed) {
+			h.logger.WarnContext(r.Context(), "auth: email domain not in allowed signup domains", "email", jitEmail)
 			h.writeError(w, http.StatusForbidden, "email domain is not allowed")
 			return
 		}
+		email = jitEmail
 		userID = uid.New()
 		name, _, _ := strings.Cut(email, "@")
 		if name == "" {
