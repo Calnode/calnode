@@ -88,12 +88,20 @@ func (h *Handler) CallbackMicrosoft(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	jitEmail := email
-	if strings.Contains(ma.Endpoint.AuthURL, "/common/") {
-		// Under multi-tenant "common", Graph `mail` is not tenant-domain-verified across
-		// arbitrary foreign tenants; only allow JIT provisioning against the Entra UPN.
+	if isMultiTenantMicrosoftAuthority(ma.Endpoint.AuthURL) {
+		// Under multi-tenant authorities (common, organizations, consumers), Graph `mail`
+		// is not tenant-domain-verified across arbitrary foreign tenants; only allow JIT
+		// provisioning against the Entra UPN.
 		jitEmail = upn
 	}
 	h.finishOAuthLoginWithJITEmail(w, r, email, jitEmail)
+}
+
+func isMultiTenantMicrosoftAuthority(authURL string) bool {
+	lower := strings.ToLower(authURL)
+	return strings.Contains(lower, "/common/") ||
+		strings.Contains(lower, "/organizations/") ||
+		strings.Contains(lower, "/consumers/")
 }
 
 type microsoftUserInfo struct {
