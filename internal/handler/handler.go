@@ -22,38 +22,38 @@ import (
 )
 
 type Handler struct {
-	db                *sql.DB
-	logger            *slog.Logger
-	bookingSvc        *booking.Service
-	mailer            mailer.Mailer
-	smtpConnectHost   string
-	smtpConnectPort   string
-	live              *mailer.Live // non-nil in production; nil in tests using a direct stub
-	encKey            [32]byte     // AES-256 key for encrypting secrets stored in the DB
-	calMu             sync.RWMutex
-	cal               *calendar.Service
-	calNudge          chan struct{} // buffered(1): wakes the calendar reconciler after a failed inline op
-	webhookSvc        *webhook.Service
-	baseURL           string
-	publicBaseURL     string
-	dataDir           string
+	db                   *sql.DB
+	logger               *slog.Logger
+	bookingSvc           *booking.Service
+	mailer               mailer.Mailer
+	smtpConnectHost      string
+	smtpConnectPort      string
+	live                 *mailer.Live // non-nil in production; nil in tests using a direct stub
+	encKey               [32]byte     // AES-256 key for encrypting secrets stored in the DB
+	calMu                sync.RWMutex
+	cal                  *calendar.Service
+	calNudge             chan struct{} // buffered(1): wakes the calendar reconciler after a failed inline op
+	webhookSvc           *webhook.Service
+	baseURL              string
+	publicBaseURL        string
+	dataDir              string
 	authMu               sync.RWMutex
 	googleAuth           *oauth2.Config
 	microsoftAuth        *oauth2.Config
 	allowedSignupDomains []string
 	secureCookie         bool
-	llmMu             sync.RWMutex
-	llm               *llm.Client // nil when the optional LLM layer is off/unconfigured
-	zoomMu            sync.RWMutex
-	zoom              *zoom.Client // nil when no Zoom app is configured
-	stripeMu          sync.RWMutex
-	stripe            *stripe.Client // nil when payments are unconfigured
-	livekitMu         sync.RWMutex
-	livekit           *livekit.Client // nil when LiveKit video is unconfigured
-	demoMode          bool            // true on the public demo instance: disables calendar/Zoom connect
-	demoResetInterval time.Duration
-	demoMu            sync.RWMutex
-	demoNextResetAt   time.Time
+	llmMu                sync.RWMutex
+	llm                  *llm.Client // nil when the optional LLM layer is off/unconfigured
+	zoomMu               sync.RWMutex
+	zoom                 *zoom.Client // nil when no Zoom app is configured
+	stripeMu             sync.RWMutex
+	stripe               *stripe.Client // nil when payments are unconfigured
+	livekitMu            sync.RWMutex
+	livekit              *livekit.Client // nil when LiveKit video is unconfigured
+	demoMode             bool            // true on the public demo instance: disables calendar/Zoom connect
+	demoResetInterval    time.Duration
+	demoMu               sync.RWMutex
+	demoNextResetAt      time.Time
 }
 
 // SetLiveKit swaps the active LiveKit client (nil disables built-in video rooms).

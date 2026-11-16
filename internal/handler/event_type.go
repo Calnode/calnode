@@ -565,41 +565,41 @@ func (h *Handler) PatchEventType(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 32<<10)
 
 	var req struct {
-		Slug                *string `json:"slug"`
-		Name                *string `json:"name"`
-		DisplayOrder        *int    `json:"display_order"`
-		Description         *string `json:"description"`
-		DurationMinutes     *int    `json:"duration_minutes"`
-		SlotIntervalMinutes *int    `json:"slot_interval_minutes"`
-		LocationType        *string `json:"location_type"`
-		LocationValue       *string `json:"location_value"`
-		RoutingMode         *string `json:"routing_mode"`
-		RRStrategy          *string `json:"rr_strategy"`
-		BufferBeforeMinutes *int    `json:"buffer_before_minutes"`
-		BufferAfterMinutes  *int    `json:"buffer_after_minutes"`
+		Slug                *string     `json:"slug"`
+		Name                *string     `json:"name"`
+		DisplayOrder        *int        `json:"display_order"`
+		Description         *string     `json:"description"`
+		DurationMinutes     *int        `json:"duration_minutes"`
+		SlotIntervalMinutes *int        `json:"slot_interval_minutes"`
+		LocationType        *string     `json:"location_type"`
+		LocationValue       *string     `json:"location_value"`
+		RoutingMode         *string     `json:"routing_mode"`
+		RRStrategy          *string     `json:"rr_strategy"`
+		BufferBeforeMinutes *int        `json:"buffer_before_minutes"`
+		BufferAfterMinutes  *int        `json:"buffer_after_minutes"`
 		MinNoticeMinutes    *int        `json:"min_notice_minutes"`
 		MaxFutureDays       *int        `json:"max_future_days"`
 		MaxActiveBookings   *int        `json:"max_active_bookings"`
 		MaxPerDay           nullableInt `json:"max_per_day"`
 		MaxPerWeek          nullableInt `json:"max_per_week"`
 		IsActive            *bool       `json:"is_active"`
-		IsPublic            *bool   `json:"is_public"`
-		AllowPhoneCall      *bool   `json:"allow_phone_call"`
-		ShowTakenSlots      *bool   `json:"show_taken_slots"`
-		InviteDelivery      *string `json:"invite_delivery"`
-		Archived            *bool   `json:"archived"`
-		MsgConfirmation     *string `json:"msg_confirmation"`
-		MsgCancellation     *string `json:"msg_cancellation"`
-		MsgReschedule       *string `json:"msg_reschedule"`
-		MsgReminder         *string `json:"msg_reminder"`
-		MsgGreeting         *string `json:"msg_greeting"`
-		SubjConfirmation    *string `json:"subj_confirmation"`
-		SubjCancellation    *string `json:"subj_cancellation"`
-		SubjReschedule      *string `json:"subj_reschedule"`
-		SubjReminder        *string `json:"subj_reminder"`
-		PriceCents          *int    `json:"price_cents"`
-		Currency            *string `json:"currency"`
-		Reminders           []int   `json:"reminders"` // nil = don't touch; [] = clear all
+		IsPublic            *bool       `json:"is_public"`
+		AllowPhoneCall      *bool       `json:"allow_phone_call"`
+		ShowTakenSlots      *bool       `json:"show_taken_slots"`
+		InviteDelivery      *string     `json:"invite_delivery"`
+		Archived            *bool       `json:"archived"`
+		MsgConfirmation     *string     `json:"msg_confirmation"`
+		MsgCancellation     *string     `json:"msg_cancellation"`
+		MsgReschedule       *string     `json:"msg_reschedule"`
+		MsgReminder         *string     `json:"msg_reminder"`
+		MsgGreeting         *string     `json:"msg_greeting"`
+		SubjConfirmation    *string     `json:"subj_confirmation"`
+		SubjCancellation    *string     `json:"subj_cancellation"`
+		SubjReschedule      *string     `json:"subj_reschedule"`
+		SubjReminder        *string     `json:"subj_reminder"`
+		PriceCents          *int        `json:"price_cents"`
+		Currency            *string     `json:"currency"`
+		Reminders           []int       `json:"reminders"` // nil = don't touch; [] = clear all
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		h.writeError(w, http.StatusBadRequest, "invalid JSON")

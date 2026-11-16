@@ -597,12 +597,12 @@ func (h *Handler) renderBookPage(w http.ResponseWriter, r *http.Request, slug st
 		DataLayerFields:  template.JS(dlFields), // #nosec G203 -- json.Marshal output, which escapes <,>,& by default; safe for embedding in a <script> block
 		QuestionsJSON:    template.JS(qjson),    // #nosec G203 -- json.Marshal output, which escapes <,>,& by default; safe for embedding in a <script> block
 
-		BusinessName:  brand.BusinessName,
-		LogoURL:       brand.LogoURL,
-		LogoHeight:    pageLogoHeight(brand.LogoHeight),
-		LogoOpacity:   opacityCSS(brand.LogoOpacity),
-		BannerURL:     brand.BannerURL,
-		BannerOpacity: opacityCSS(brand.BannerOpacity),
+		BusinessName:   brand.BusinessName,
+		LogoURL:        brand.LogoURL,
+		LogoHeight:     pageLogoHeight(brand.LogoHeight),
+		LogoOpacity:    opacityCSS(brand.LogoOpacity),
+		BannerURL:      brand.BannerURL,
+		BannerOpacity:  opacityCSS(brand.BannerOpacity),
 		PrivacyURL:     brand.PrivacyURL,
 		TermsURL:       brand.TermsURL,
 		DemoMode:       h.demoMode,
