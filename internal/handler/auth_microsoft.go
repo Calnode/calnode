@@ -96,9 +96,11 @@ type microsoftUserInfo struct {
 }
 
 // fetchMicrosoftEmail reads the signed-in account's email from Graph /me, preferring
-// userPrincipalName (which Entra ID constrains to the tenant's verified domains for
-// standard member accounts) and rejecting B2B guest UPNs ("...#EXT#@..."). Falls back
-// to `mail` only when userPrincipalName is absent.
+// the routable `mail` (so existing accounts keyed by mailbox address match even when
+// Entra UPNs use *.onmicrosoft.com) and falling back to userPrincipalName. B2B guest
+// UPNs ("...#EXT#@...") are always rejected. Note: when JIT provisioning is enabled
+// via ALLOWED_SIGNUP_DOMAINS, pair it with a specific Microsoft Tenant ID rather than
+// "common" so foreign Entra tenants cannot assert a matching `mail` attribute.
 func fetchMicrosoftEmail(ctx context.Context, cfg *oauth2.Config, tok *oauth2.Token) (string, error) {
 	resp, err := cfg.Client(ctx, tok).Get("https://graph.microsoft.com/v1.0/me?$select=mail,userPrincipalName")
 	if err != nil {
@@ -116,9 +118,9 @@ func fetchMicrosoftEmail(ctx context.Context, cfg *oauth2.Config, tok *oauth2.To
 	if strings.Contains(upn, "#ext#") {
 		return "", fmt.Errorf("auth: Microsoft account is a B2B guest identity, not a verifiable email")
 	}
-	email := upn
+	email := strings.ToLower(strings.TrimSpace(info.Mail))
 	if email == "" {
-		email = strings.ToLower(strings.TrimSpace(info.Mail))
+		email = upn
 	}
 	if email == "" {
 		return "", fmt.Errorf("auth: empty email from Microsoft")

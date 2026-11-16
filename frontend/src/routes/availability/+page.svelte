@@ -351,29 +351,42 @@
 			for (const targetDow of copyTargets) {
 				const target = days[targetDow];
 				if (!target) continue;
-				const oldBlocks = [...target.blocks];
-				const created: DayBlock[] = [];
+				const key = (b: { start_time: string; end_time: string }) => `${b.start_time}-${b.end_time}`;
+				const templateKeys = new Set(templateBlocks.map(key));
+				const existingByKey = new Map(target.blocks.map((b) => [key(b), b]));
+
+				const nextBlocks: DayBlock[] = [];
+				const newlyCreated: DayBlock[] = [];
 				try {
 					for (const tb of templateBlocks) {
+						const existing = existingByKey.get(key(tb));
+						if (existing) {
+							nextBlocks.push(existing);
+							continue;
+						}
 						const r = await api.post<AvailabilityRule>('/v1/availability-rules', {
 							day_of_week: targetDow,
 							start_time: tb.start_time,
 							end_time: tb.end_time
 						});
-						created.push({ id: r.id, start_time: r.start_time, end_time: r.end_time, saving: false, error: '' });
+						const block: DayBlock = { id: r.id, start_time: r.start_time, end_time: r.end_time, saving: false, error: '' };
+						nextBlocks.push(block);
+						newlyCreated.push(block);
 					}
 				} catch (err) {
-					for (const c of created) {
+					for (const c of newlyCreated) {
 						if (c.id) {
 							try { await api.del(`/v1/availability-rules/${c.id}`); } catch {}
 						}
 					}
 					throw err;
 				}
-				for (const old of oldBlocks) {
-					if (old.id) await api.del(`/v1/availability-rules/${old.id}`);
+				for (const old of target.blocks) {
+					if (old.id && !templateKeys.has(key(old))) {
+						await api.del(`/v1/availability-rules/${old.id}`);
+					}
 				}
-				target.blocks = created;
+				target.blocks = nextBlocks;
 				target.error = '';
 			}
 			copyOpenDay = null;

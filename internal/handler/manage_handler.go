@@ -262,6 +262,10 @@ func (h *Handler) RescheduleByToken(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusConflict, "that time slot is no longer available")
 		return
 	}
+	if errors.Is(err, booking.ErrFrequencyCapReached) {
+		h.writeError(w, http.StatusConflict, "this event type has reached its booking limit for that day or week")
+		return
+	}
 	if errors.Is(err, booking.ErrAlreadyCancelled) {
 		h.writeError(w, http.StatusConflict, "this booking has been cancelled")
 		return
