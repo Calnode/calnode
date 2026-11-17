@@ -35,11 +35,24 @@ concurrency:
   group: ns8-module-publish
   cancel-in-progress: false
 
-# Read-only by default. Only the build job writes, to push the module image
-# to GHCR (packages: write), and it says so itself.
-permissions:
-  contents: read
-
+# There is deliberately NO workflow-level `permissions:` block here.
+#
+# One was added in #231 for least privilege. It broke every run from a fork
+# pull request: the run failed during workflow expansion, so it was created with
+# ZERO jobs and produced no log and no annotation. Removing it restored them.
+# The symptom is worth knowing, because it does not look like a permissions
+# problem: the `validate` job below only needs `contents: read`, and it never ran
+# either, because nothing runs when the whole run is rejected.
+#
+# The combination is what matters, not either half. The build job asks for
+# `packages: write` to push the module image to GHCR, and a fork pull request can
+# never be granted a write token. On its own that is harmless, because GitHub
+# downgrades it and the job runs. Underneath a workflow-level cap, the same
+# request was observed to make GitHub reject the run before any job existed.
+#
+# Least privilege is not weakened by leaving this out: every job below declares
+# its own permissions, and the repository default is already `read`. Do not
+# re-add this as a tidy-up; that is exactly how the fork runs were lost.
 jobs:
   validate:
     runs-on: ubuntu-latest

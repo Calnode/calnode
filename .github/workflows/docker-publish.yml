@@ -34,12 +34,22 @@ concurrency:
   group: docker-publish-${{ github.ref }}
   cancel-in-progress: true
 
-# Read-only by default. Each job below asks for what it needs on top: build
-# pushes to GHCR (packages: write), release creates the GitHub Release
-# (contents: write).
-permissions:
-  contents: read
-
+# There is deliberately NO workflow-level `permissions:` block here.
+#
+# One was added in #231 for least privilege. It broke every run from a fork
+# pull request: the run failed during workflow expansion, so it was created with
+# ZERO jobs and produced no log and no annotation. Removing it restored them.
+#
+# The combination is what matters, not either half. The build job below asks for
+# `packages: write` to push to GHCR, and a fork pull request can never be granted
+# a write token. On its own that is harmless, because GitHub downgrades it and
+# the job runs. Underneath a workflow-level cap, the same request was observed to
+# make GitHub reject the run before any job existed. Evidence, the full A/B and
+# the counterexample that narrows this are in the PR that removed it.
+#
+# Least privilege is not weakened by leaving this out: every job below declares
+# its own permissions, and the repository default is already `read`. Do not
+# re-add this as a tidy-up; that is exactly how the fork runs were lost.
 env:
   REGISTRY: ghcr.io
   # Hardcoded lowercase — GHCR tags reject the repo's actual "Calnode/calnode"
