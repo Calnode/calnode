@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { api, type AvailabilityRule, type AvailabilityOverride } from '$lib/api';
+	import {api, type AvailabilityRule, type AvailabilityOverride, type EventType} from '$lib/api';
 	import { prefs, fmtDate, weekDays } from '$lib/prefs';
 	import { t, tr, localeTag } from '$lib/i18n';
 	import { Button, buttonVariants } from '$lib/components/ui/button';
@@ -33,7 +33,7 @@
 	}
 
 	// ── Weekly rules — 7-day model ────────────────────────────────────────────────
-	type DayBlock = { id: string; start_time: string; end_time: string; saving: boolean; error: string }
+	type DayBlock = { id: string; event_type_id: string, start_time: string; end_time: string; saving: boolean; error: string }
 	type DayState = { day_of_week: number; blocks: DayBlock[]; error: string }
 
 	let days: DayState[] = $state(
@@ -56,7 +56,7 @@
 			for (const day of days) { day.blocks = []; day.error = ''; }
 			for (const r of (res.items ?? [])) {
 				const day = days[r.day_of_week];
-				if (day) day.blocks.push({ id: r.id, start_time: r.start_time, end_time: r.end_time, saving: false, error: '' });
+				if (day) day.blocks.push({ id: r.id, event_type_id: r.event_type_id ?? 'null', start_time: r.start_time, end_time: r.end_time, saving: false, error: '' });
 			}
 			for (const day of days) {
 				day.blocks.sort((a, b) => a.start_time.localeCompare(b.start_time));
@@ -69,7 +69,7 @@
 	}
 
 	async function addBlock(day: DayState) {
-		day.blocks.push({ id: '', start_time: '09:00', end_time: '17:00', saving: true, error: '' });
+		day.blocks.push({ id: '', event_type_id: 'null', start_time: '09:00', end_time: '17:00', saving: true, error: '' });
 		// Operate on the element AS STORED in the reactive array (a proxy), not the literal we
 		// pushed — Svelte 5 proxies pushed objects, so mutating the local literal wouldn't update
 		// the UI (the "saving…" stuck-until-refresh bug).
@@ -100,6 +100,7 @@
 		block.saving = true;
 		try {
 			await api.patch(`/v1/availability-rules/${block.id}`, {
+				event_type_id: block.event_type_id === "null" ? null : block.event_type_id,
 				start_time: block.start_time,
 				end_time: block.end_time
 			});
@@ -274,7 +275,21 @@
 		}
 	}
 
+	let eventTypes = $state<{id: string; name: string}[]>([])
+	async function loadEventTypes() {
+		try {
+			const res = await api.get<{ items: EventType[] }>('/v1/event-types');
+			eventTypes = (res.items ?? []).map((et) => ({
+				id: et.id,
+				name: et.name,
+			}))
+		} catch (e: any) {
+
+		}
+	}
+
 	onMount(() => {
+		loadEventTypes()
 		loadRules();
 		loadOverrides();
 	});
@@ -288,6 +303,12 @@
 	// Time-of-day options for the start/end selects, formatted per the user's prefs.
 	let timeOptions = $derived(TIME_SLOTS.map((t) => ({ value: t, label: fmtTime(t) })));
 	function timeLabel(t: string) { return fmtTime(t); }
+	function eventName(id: string | null) {
+		if (id === null) {
+			return {id: null, name: "None"}
+		}
+		return eventTypes.find((et => et.id == id))
+	}
 </script>
 
 <ConfirmDialog
@@ -380,6 +401,30 @@
 										{:else if block.error}
 											<span class="text-xs text-destructive">{block.error}</span>
 										{/if}
+
+										<span class="text-muted-foreground">|</span>
+										<div class="text-sm font-normal text-muted-foreground">
+											{$t('availability.eventTypes.appliesTo')}:
+										</div>
+										<Select.Root
+											type="single"
+											bind:value={block.event_type_id}
+											onValueChange={() => updateBlock(block)}
+											disabled={block.saving || !block.id}
+										>
+											<Select.Trigger class="w-fit">
+												{#if block.event_type_id === "null"}
+													{$t('availability.eventTypes.allEventTypes')}
+												{:else}
+													{eventName(block.event_type_id)?.name ?? block.event_type_id}
+												{/if}
+											</Select.Trigger>
+											<Select.Content>
+												<Select.Item value="null" label="All">{$t('availability.eventTypes.allEventTypes')}</Select.Item>
+												{#each eventTypes as e}<Select.Item value={e.id} label={e.name}>{e.name}</Select.Item>{/each}
+											</Select.Content>
+										</Select.Root>
+
 										<Tooltip.Root>
 											<Tooltip.Trigger
 												class={buttonVariants({ variant: 'ghost', size: 'icon' })}
