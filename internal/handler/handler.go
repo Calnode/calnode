@@ -15,7 +15,7 @@ import (
 	"github.com/calnode/calnode/internal/livekit"
 	"github.com/calnode/calnode/internal/llm"
 	"github.com/calnode/calnode/internal/mailer"
-	"github.com/calnode/calnode/internal/stripe"
+	"github.com/calnode/calnode/internal/payments"
 	"github.com/calnode/calnode/internal/webhook"
 	"github.com/calnode/calnode/internal/zoom"
 )
@@ -44,8 +44,8 @@ type Handler struct {
 	llm               *llm.Client // nil when the optional LLM layer is off/unconfigured
 	zoomMu            sync.RWMutex
 	zoom              *zoom.Client // nil when no Zoom app is configured
-	stripeMu          sync.RWMutex
-	stripe            *stripe.Client // nil when payments are unconfigured
+	paymentsMu        sync.RWMutex
+	payments          payments.Provider // nil when payments are unconfigured
 	livekitMu         sync.RWMutex
 	livekit           *livekit.Client // nil when LiveKit video is unconfigured
 	demoMode          bool            // true on the public demo instance: disables calendar/Zoom connect
@@ -77,19 +77,19 @@ func (h *Handler) getLiveKit() *livekit.Client {
 	return h.livekit
 }
 
-// SetStripe swaps the active Stripe client (nil disables paid bookings). Hot-reloadable
-// from the Payments settings page.
-func (h *Handler) SetStripe(c *stripe.Client) {
-	h.stripeMu.Lock()
-	h.stripe = c
-	h.stripeMu.Unlock()
+// SetPaymentProvider swaps the active payment provider (nil disables paid bookings).
+// Hot-reloadable from the Payments settings page.
+func (h *Handler) SetPaymentProvider(p payments.Provider) {
+	h.paymentsMu.Lock()
+	h.payments = p
+	h.paymentsMu.Unlock()
 }
 
-// getStripe returns the active Stripe client, or nil when payments are unconfigured.
-func (h *Handler) getStripe() *stripe.Client {
-	h.stripeMu.RLock()
-	defer h.stripeMu.RUnlock()
-	return h.stripe
+// getPaymentProvider returns the active provider, or nil when payments are unconfigured.
+func (h *Handler) getPaymentProvider() payments.Provider {
+	h.paymentsMu.RLock()
+	defer h.paymentsMu.RUnlock()
+	return h.payments
 }
 
 // SetZoom swaps the active Zoom client (nil disables Zoom auto-minting). Hot-reloadable

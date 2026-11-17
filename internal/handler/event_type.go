@@ -640,7 +640,7 @@ func (h *Handler) PatchEventType(w http.ResponseWriter, r *http.Request) {
 		}
 		// A price is only bookable once payments are configured — block the footgun of a
 		// paid event type that no one can actually book.
-		if *req.PriceCents > 0 && h.getStripe() == nil {
+		if *req.PriceCents > 0 && h.getPaymentProvider() == nil {
 			h.writeError(w, http.StatusBadRequest, "connect Stripe in Settings → Payments before setting a price")
 			return
 		}
