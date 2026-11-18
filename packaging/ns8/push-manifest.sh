@@ -47,6 +47,50 @@ if [ "${#arches[@]}" -eq 0 ]; then
     exit 1
 fi
 
+# A network blip and a missing image both come back as a failed `manifest add`,
+# and telling them apart matters in both directions. Retrying a
+# genuine 404 hides a build that never ran. Reporting a TCP reset as a missing
+# tag sends the reader to rebuild and push an image that already exists, which
+# is real pointless work: that is exactly what a reset during this script's CI
+# selftest used to say.
+#
+# So: classify, retry only transport failures, and let the message name the case.
+retry_attempts="${RETRY_ATTEMPTS:-3}"
+retry_delay="${RETRY_DELAY:-5}"
+
+# Transport failures. Deliberately a specific list rather than a broad "error"
+# match, because the fallback has to stay fail-fast: anything we do not recognise
+# is a real failure, not something to retry until the job times out.
+is_network_error() {
+    grep -qiE 'connection reset|connection refused|i/o timeout|context deadline exceeded|timed out|temporary failure in name resolution|no such host|network is unreachable|tls handshake|unexpected eof|(^|[^0-9])(502|503|504)([^0-9]|$)|bad gateway|service unavailable|gateway timeout|internal server error'
+}
+
+# add_arch RETRIES the add, then records why it gave up in ADD_OUTPUT/ADD_KIND
+# so the caller can print the right message. Returns 0 on success.
+add_arch() {
+    local src="$1" attempt=1 delay="$retry_delay" output
+    while :; do
+        if output=$(buildah manifest add "${manifest}" "${src}" 2>&1); then
+            return 0
+        fi
+        if printf '%s' "$output" | is_network_error; then
+            if [ "$attempt" -lt "$retry_attempts" ]; then
+                echo "Registry unreachable (attempt ${attempt}/${retry_attempts})," \
+                     "retrying in ${delay}s: ${src}" >&2
+                sleep "$delay"
+                attempt=$((attempt + 1))
+                delay=$((delay * 2))
+                continue
+            fi
+            ADD_KIND=network
+        else
+            ADD_KIND=missing
+        fi
+        ADD_OUTPUT="$output"
+        return 1
+    done
+}
+
 for imagetag in "${imagetags[@]}"; do
     manifest="${repobase}/${reponame}:${imagetag}"
     # Drop any stale manifest so a retry cannot inherit old entries.
@@ -74,12 +118,21 @@ for imagetag in "${imagetags[@]}"; do
         #
         # Exactly two arguments: buildah 5.x takes only the list and the image,
         # with no instance-name argument.
-        if ! buildah manifest add "${manifest}" \
-             "${source_prefix}${repobase}/${reponame}:build-${arch}"; then
-            echo "Failed to add ${source_prefix}${repobase}/${reponame}:build-${arch}" \
-                 "to ${manifest}." >&2
-            echo "If that tag does not exist in the registry, run build-images.sh" \
-                 "with TARGETARCH=${arch} PUSH=1 first." >&2
+        if ! add_arch "${source_prefix}${repobase}/${reponame}:build-${arch}"; then
+            src="${source_prefix}${repobase}/${reponame}:build-${arch}"
+            # Show what the tool actually said, then say which case it is.
+            printf '%s\n' "${ADD_OUTPUT}" | tail -n 4 | sed 's/^/  /' >&2
+            if [ "${ADD_KIND}" = "network" ]; then
+                echo "The registry was unreachable while reading ${src}." >&2
+                echo "This is a TRANSPORT failure, not a missing image: the tag was" >&2
+                echo "never reported absent and nothing is wrong with the build. Do" >&2
+                echo "not rebuild or push the image. Re-run the job; if it keeps" >&2
+                echo "failing, check connectivity to the registry from this host." >&2
+            else
+                echo "Failed to add ${src}" "to ${manifest}." >&2
+                echo "If that tag does not exist in the registry, run build-images.sh" \
+                     "with TARGETARCH=${arch} PUSH=1 first." >&2
+            fi
             buildah manifest rm "${manifest}" 2>/dev/null || true
             exit 1
         fi
