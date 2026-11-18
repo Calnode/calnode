@@ -87,3 +87,12 @@ func TestBookingCSS_cacheModes(t *testing.T) {
 		t.Errorf("versioned Cache-Control = %q, want immutable", cc)
 	}
 }
+
+// Form controls take their font family from the UA stylesheet unless told otherwise, so
+// without this rule every button in the widget ignores the font the embedding page set
+// on <calnode-booking>. Nothing else in the suite renders CSS, so pin the rule itself.
+func TestBookingCSS_controlsInheritFontFamily(t *testing.T) {
+	if !strings.Contains(string(bookingCSS), "button, input, select, textarea { font-family: inherit; }") {
+		t.Error("booking.css no longer makes form controls inherit font-family; buttons fall back to the UA font inside the embed widget")
+	}
+}

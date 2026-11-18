@@ -11,6 +11,14 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
 
 ## [Unreleased]
 
+### Fixed
+
+- **Buttons and inputs in the booking UI now use the surrounding font.** Form controls
+  take their font family from the browser stylesheet, so day cells, time slots and the
+  confirm button rendered in the system font beside text in the page font. An embedder who
+  set `calnode-booking { font-family: … }` got the brand font everywhere except on the
+  controls. Sizes, weights and control heights are unchanged.
+
 ## [0.14.0] - 2026-11-08
 
 ### Added
