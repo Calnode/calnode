@@ -11,6 +11,25 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
 
 ## [Unreleased]
 
+### Upgrading
+
+- **Back up the database before upgrading.** This release includes a migration (`00072`)
+  that renames two columns on `bookings` and adds one. Migrations run automatically at
+  boot, so the upgrade is the moment to want a restore point that predates it.
+
+  - **Docker or Railway.** Take the backup deliberately rather than assuming a replica
+    exists somewhere, and prove it restores while the app is still on the old version: the
+    non-destructive drill in `DEPLOY.md` §6 restores to a scratch path without touching the
+    live database. If you run without `CALNODE_ENCRYPTION_KEY`, also copy
+    `/data/calnode.key`. The replica holds the database, not the key, and a restore without
+    it will not start.
+  - **NS8 module.** Run a module backup before pulling the new image. It captures
+    `volumes/calnode-data` and `state/calnode.env`, which is where the encryption key lives.
+
+  The migration has a down path that restores both column names and keeps the data, but a
+  backup is the only safety net for anything that goes wrong between the migration running
+  and your first check that existing bookings still look right.
+
 ### Added
 
 - **German without du or Sie (`de-x-neutral`).** An opt-in wording variant of the German
