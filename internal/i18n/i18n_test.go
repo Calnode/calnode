@@ -2,6 +2,7 @@ package i18n
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -48,6 +49,14 @@ func TestResolve(t *testing.T) {
 		{"empty header falls back to English", "", "", "en"},
 		{"garbage header falls back to English", "not a real header ;;;", "", "en"},
 		{"override wins over Accept-Language", "en", "es", "es"},
+		// The embed widget forwards a host page's lang attribute verbatim, and that is
+		// usually a regional tag Calnode has no file for.
+		{"regional override falls back to its primary language", "en", "de-DE", "de"},
+		{"regional override of an unsupported language is ignored", "es", "ja-JP", "es"},
+		// de-x-neutral is opt-in: selectable by code, never picked for a German browser.
+		{"neutral German can be selected by the ?lang override", "en", "de-x-neutral", "de-x-neutral"},
+		{"plain de is unaffected by de-x-neutral", "de", "", "de"},
+		{"de-DE is unaffected by de-x-neutral", "de-DE,de;q=0.9", "", "de"},
 		{"unsupported override is ignored", "es", "ja", "es"},
 		// ja isn't supported, but es (an acceptable lower-preference language) is — falling
 		// through to it beats giving up to the site default, per Accept-Language semantics.
@@ -465,5 +474,65 @@ func TestAllLocalesHaveMatchingFormatVerbs_allowsLegitimateReordering(t *testing
 				t.Errorf("legitimate translation %q was flagged: rendered as %q", c.translated, got)
 			}
 		})
+	}
+}
+
+// TestOptInVariantIsNotOffered pins what "opt-in" means for a wording variant: it loads
+// and resolves by code, and it is absent from everything a visitor is offered. If it
+// leaked into `supported`, the switcher would list "Deutsch" twice.
+func TestOptInVariantIsNotOffered(t *testing.T) {
+	const code = "de-x-neutral"
+	if Get(code) == nil {
+		t.Fatalf("%s.json is not loaded", code)
+	}
+	for _, o := range SupportedLocales() {
+		if o.Code == code {
+			t.Errorf("%s must not be offered in the language switcher", code)
+		}
+	}
+	seen := map[string]string{}
+	for _, o := range SupportedLocales() {
+		if prev, dup := seen[o.Name]; dup {
+			t.Errorf("locales %q and %q share the switcher name %q", prev, o.Code, o.Name)
+		}
+		seen[o.Name] = o.Code
+	}
+}
+
+// germanAddress matches a German pronoun of address in either register: formal
+// Sie/Ihnen/Ihr-, informal du/dir/dich/dein-. Case matters for the formal set, which is
+// what tells "Sie" (you) from "sie" (they, the cookies). \b is ASCII-only in RE2, which is
+// enough here: none of these words starts or ends with an umlaut.
+var germanAddress = regexp.MustCompile(`\b(Sie|Ihnen|Ihr[a-z]*|[Dd]u|[Dd]ir|[Dd]ich|[Dd]ein[a-z]*)\b`)
+
+// TestGermanNeutralVariant guards the one property de-x-neutral exists for: no string
+// addresses the booker as du or Sie. It also has to stay complete, because a key it
+// lacks falls back to English rather than to de.
+func TestGermanNeutralVariant(t *testing.T) {
+	de, neutral := Get("de"), Get("de-x-neutral")
+	if de == nil || neutral == nil {
+		t.Fatal("de and de-x-neutral must both ship")
+	}
+	for k := range de.strings {
+		if _, ok := neutral.strings[k]; !ok {
+			t.Errorf("de-x-neutral.json is missing %q, which de.json has; it would render in English", k)
+		}
+	}
+	for k, v := range neutral.strings {
+		if m := germanAddress.FindString(v); m != "" {
+			t.Errorf("de-x-neutral.json: %s addresses the booker (%q): %q", k, m, v)
+		}
+	}
+	// The guard has teeth: the formal catalogue it was derived from must trip it.
+	if !germanAddress.MatchString(de.strings["select_day_hint"]) {
+		t.Errorf("germanAddress no longer matches the formal de.json wording %q", de.strings["select_day_hint"])
+	}
+	// Dates are data, not register: the variant must format exactly as de does.
+	for k, v := range de.strings {
+		if strings.HasPrefix(k, "dow_short_") || strings.HasPrefix(k, "month_short_") || k == "date_format" || k == "clock_format" {
+			if neutral.strings[k] != v {
+				t.Errorf("de-x-neutral.json: %s = %q, de.json has %q", k, neutral.strings[k], v)
+			}
+		}
 	}
 }

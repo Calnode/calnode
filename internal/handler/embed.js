@@ -33,9 +33,12 @@
   // the /public call, matching the ?lang= override semantics on book.html/manage.html.
   // /public returns the resolved {locale, i18n} once; cached on the instance and reused
   // by every subsequent render, not refetched per-request.
+  // The attribute is sent whole: the server tries the exact code first and then the
+  // primary language (i18n.getOverride), so lang="de-DE" still selects de while
+  // lang="fr-CA" and lang="de-x-neutral" select their own catalogues. Trimming to the
+  // primary subtag here made those two unreachable from the widget.
   function langOverride(el) {
-    var v = el.getAttribute('lang');
-    return v ? v.split('-')[0] : '';
+    return el.getAttribute('lang') || '';
   }
   // t: pure lookup, not a method — mirrors internal/i18n.Locale.T (falls back to the
   // key itself if the string table hasn't loaded yet or the key is missing).
