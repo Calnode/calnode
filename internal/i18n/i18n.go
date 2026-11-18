@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"log"
 	"sort"
+	"strings"
 
 	"golang.org/x/text/language"
 	"golang.org/x/text/language/display"
@@ -99,6 +100,10 @@ func init() {
 	supportedCodes = append(supportedCodes, DefaultCode)
 	supported = append(supported, language.Make(DefaultCode))
 	for _, code := range otherCodes {
+		// An opt-in variant is complete but deliberately not offered; nothing to log.
+		if IsOptInVariant(code) {
+			continue
+		}
 		// A partial catalogue is allowed to exist and to be merged (see MinCoverage),
 		// but it is not offered to visitors until it is substantially translated.
 		if !offeredToVisitors(locales[code]) {
@@ -124,8 +129,23 @@ func Coverage(l *Locale) float64 {
 }
 
 // offeredToVisitors is the single place the floor is applied, so init and the tests
-// cannot disagree about what "offered" means.
-func offeredToVisitors(l *Locale) bool { return Coverage(l) >= MinCoverage }
+// cannot disagree about what "offered" means. Opt-in variants are never offered,
+// however complete (see IsOptInVariant).
+func offeredToVisitors(l *Locale) bool {
+	return !IsOptInVariant(l.Code) && Coverage(l) >= MinCoverage
+}
+
+// IsOptInVariant reports whether code names a wording variant of a language rather than
+// a language or a region: a BCP-47 private-use tag such as "de-x-neutral" (German with
+// no du/Sie address).
+//
+// A variant is the operator's choice, not the visitor's. Listing it would put "Deutsch"
+// in the switcher twice (display names ignore private-use subtags), and a browser never
+// asks for one in Accept-Language. So it stays out of `supported` entirely and is
+// reached only by an explicit code: ?lang=, the widget's lang attribute, or the
+// fallback-language setting through the API. The base language is unaffected by its
+// existence, which is the half that would otherwise break silently.
+func IsOptInVariant(code string) bool { return strings.Contains(code, "-x-") }
 
 // Default returns the fallback (English) locale.
 func Default() *Locale { return locales[DefaultCode] }
@@ -157,7 +177,8 @@ func SupportedLocales() []LocaleOption {
 
 // Resolve picks the best-supported locale for a request, given the raw Accept-Language
 // header value and an optional override (from a manual language-switcher cookie/param —
-// pass "" when there isn't one). An override wins outright if it's a supported code;
+// pass "" when there isn't one). An override wins outright if it's a supported code,
+// or a longer tag whose primary language is one ("de-DE" selects de);
 // otherwise falls back to Accept-Language matching, then English. Equivalent to
 // ResolveWithFallback with fallbackCode DefaultCode.
 func Resolve(acceptLanguage, override string) *Locale {
@@ -175,7 +196,7 @@ func Resolve(acceptLanguage, override string) *Locale {
 // fails outright, it just returns supported[0] (English, by construction — see the
 // ordering note in init()) at low/no confidence when nothing lines up.
 func ResolveWithFallback(acceptLanguage, override, fallbackCode string) *Locale {
-	if l := Get(override); l != nil {
+	if l := getOverride(override); l != nil {
 		return l
 	}
 	fallback := Get(fallbackCode)
@@ -194,6 +215,20 @@ func ResolveWithFallback(acceptLanguage, override, fallbackCode string) *Locale 
 		return l
 	}
 	return fallback // defensive: should be unreachable, but never return a nil Locale
+}
+
+// getOverride resolves an explicit language choice: the exact code first, so "fr-CA" and
+// "de-x-neutral" select their own files, then the primary language subtag, so a host
+// page's lang="de-DE" still selects de. The embed widget used to do that trimming
+// itself before sending ?lang=, which made every hyphenated locale unselectable there.
+func getOverride(code string) *Locale {
+	if l := Get(code); l != nil {
+		return l
+	}
+	if i := strings.IndexByte(code, '-'); i > 0 {
+		return Get(code[:i])
+	}
+	return nil
 }
 
 // T looks up key in this locale, falling back to English, then to the key itself so a

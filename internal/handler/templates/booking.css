@@ -10,6 +10,15 @@
  * padding removes default <ul>/<h1>/<p> spacing (component rules below set their own). */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* Form controls do not inherit the font family: the UA stylesheet gives <button>,
+ * <input>, <select> and <textarea> their own, so day cells, time slots and the
+ * confirm button rendered in the system UI font next to text in the page font. It
+ * shows most in the widget, where an embedder who sets `calnode-booking { font-family:
+ * … }` got the brand font on headings and labels but not on a single control. Only
+ * the family is inherited on purpose: every control below sets its own font-size and
+ * weight, and `font: inherit` would also pull in line-height and change their height. */
+button, input, select, textarea { font-family: inherit; }
+
 /* ── Brand banner ────────────────────────────────── */
 /* Full-width operator banner, shown above .card (below the logo, if any). Not
  * used by the embed widget — the widget carries no operator branding. */

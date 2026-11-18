@@ -46,6 +46,12 @@ not have to invent terminology that is already decided.
 The existing booker locales are deliberately split by market: `fr`/`de`/`it`/`pt` formal,
 `es`/`nl`/`sv` informal. Match the language, not the English.
 
+`de-x-neutral` is the one exception, and it is a third option rather than a change of side:
+German with no address at all (infinitive and nominal style, "Tag auswählen"), for
+operators whose own site does not say *Sie*. It is opt-in and never offered to visitors, so
+`de` remains the formal default. When a string changes in `de.json`, change it in
+`de-x-neutral.json` too, without the pronoun.
+
 ## Things that are not translated
 
 Brand names, URLs, protocol tokens (`STARTTLS`, `RSVP`, `PII`), third-party console labels

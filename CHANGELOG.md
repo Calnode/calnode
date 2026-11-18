@@ -11,6 +11,27 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
 
 ## [Unreleased]
 
+### Added
+
+- **German without du or Sie (`de-x-neutral`).** An opt-in wording variant of the German
+  booker catalogue that addresses nobody: "Tag auswählen" rather than "Wählen Sie einen
+  Tag". It is for operators whose own site is informal, where the formal widget stands out
+  and an informal one would be wrong for everyone else. `de` is unchanged and stays formal.
+  The variant is never offered in the language switcher or matched from `Accept-Language`;
+  select it with `?lang=de-x-neutral` or `<calnode-booking lang="de-x-neutral">`.
+
+### Fixed
+
+- **Buttons and inputs in the booking UI now use the surrounding font.** Form controls
+  take their font family from the browser stylesheet, so day cells, time slots and the
+  confirm button rendered in the system font beside text in the page font. An embedder who
+  set `calnode-booking { font-family: … }` got the brand font everywhere except on the
+  controls. Sizes, weights and control heights are unchanged.
+- **The embed widget's `lang` attribute accepts hyphenated locales.** The widget trimmed
+  the attribute to its primary subtag before sending it, so `lang="fr-CA"` loaded France
+  French. The attribute is now sent whole and the server falls back to the primary
+  language when there is no exact match, so `lang="de-DE"` still selects German.
+
 ## [0.14.0] - 2026-11-08
 
 ### Added

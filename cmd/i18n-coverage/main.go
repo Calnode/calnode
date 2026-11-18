@@ -99,7 +99,7 @@ func report(root string, c catalogue) error {
 	sort.Slice(rows, func(i, j int) bool { return rows[i].code < rows[j].code })
 
 	fmt.Printf("%s\n  %s (source %s.json, %d keys)\n\n", c.name, c.dir, sourceCode, len(source))
-	fmt.Printf("  %-7s %6s %8s %10s %8s\n", "code", "keys", "coverage", "status", "unknown")
+	fmt.Printf("  %-12s %6s %8s %10s %8s\n", "code", "keys", "coverage", "status", "unknown")
 	for _, r := range rows {
 		status := "source"
 		switch {
@@ -108,10 +108,13 @@ func report(root string, c catalogue) error {
 			status = "has unknown keys"
 		case c.floor > 0 && r.cover < c.floor:
 			status = "withheld"
+		case i18n.IsOptInVariant(r.code):
+			// Complete, but a wording variant: reachable by code only, never offered.
+			status = "opt-in"
 		default:
 			status = "offered"
 		}
-		fmt.Printf("  %-7s %6d %7.0f%% %10s %8d\n", r.code, r.keys, r.cover*100, status, r.unknown)
+		fmt.Printf("  %-12s %6d %7.0f%% %10s %8d\n", r.code, r.keys, r.cover*100, status, r.unknown)
 	}
 	if c.floor > 0 {
 		fmt.Printf("\n  floor: %.0f%% (below it a language is not offered; ?lang=<code> still works)\n", c.floor*100)
