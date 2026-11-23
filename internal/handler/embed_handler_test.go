@@ -96,3 +96,28 @@ func TestBookingCSS_controlsInheritFontFamily(t *testing.T) {
 		t.Error("booking.css no longer makes form controls inherit font-family; buttons fall back to the UA font inside the embed widget")
 	}
 }
+
+// #255: the host page can pass name/email so the booking form arrives pre-filled and
+// read-only. This is a source-level guard: the widget is a web component with no test
+// harness here, so what is pinned is that the attributes are still read and still
+// render as `readonly` (not `disabled`, which would drop the field from the tab order).
+func TestEmbedJS_identityPrefill(t *testing.T) {
+	h := &Handler{}
+	rec := httptest.NewRecorder()
+	h.EmbedJS(rec, httptest.NewRequest(http.MethodGet, "/embed.js", nil))
+	body := rec.Body.String()
+
+	for _, want := range []string{
+		`this.getAttribute('name')`,
+		`this.getAttribute('email')`,
+		`nameAttrs.readonly = 'readonly'`,
+		`emailAttrs.readonly = 'readonly'`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("embed.js no longer contains %q - identity prefill may have regressed", want)
+		}
+	}
+	if strings.Contains(body, `disabled = 'disabled'`) {
+		t.Error("identity fields use disabled, which removes them from the tab order; use readonly")
+	}
+}

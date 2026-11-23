@@ -13,6 +13,14 @@
  *   <script src="https://booking.example.com/embed.js" async></script>
  *   <calnode-booking slug="intro-call"></calnode-booking>        <!-- inline -->
  *   <button data-calnode-popup="intro-call">Book a call</button>  <!-- popup  -->
+ *
+ * Optional identity prefill (#255): when the host page already knows the booker, pass
+ * name/email and the form opens with those fields filled and read-only.
+ *
+ *   <calnode-booking slug="intro-call" name="John Doe" email="john@doe.com"></calnode-booking>
+ *
+ * Read-only is a convenience, not a guarantee: the booking endpoint still accepts
+ * whatever a request sends, so this does not prove who booked.
  */
 (function () {
   'use strict';
@@ -186,6 +194,9 @@
       if (this._mounted) return;
       this._mounted = true;
       this.slug = this.getAttribute('slug');
+      // Optional identity prefill (#255). Trimmed; empty means "leave the field editable".
+      this.prefillName = (this.getAttribute('name') || '').trim();
+      this.prefillEmail = (this.getAttribute('email') || '').trim();
       this.root = this.attachShadow({ mode: 'open' });
       var cssLink = el('link', { rel: 'stylesheet', href: BASE + '/booking.css' });
       // .clamp styling arrives with the stylesheet, so re-measure the description
@@ -597,8 +608,15 @@
       var form = el('form', { novalidate: 'novalidate' });
       var hp = el('input', { type: 'text', name: 'hp_extra', tabindex: '-1', autocomplete: 'off' });
       form.appendChild(el('div', { 'aria-hidden': 'true', style: 'position:absolute;left:-5000px;height:0;width:0;overflow:hidden;' }, [hp]));
-      var name = el('input', { type: 'text', required: 'required', autocomplete: 'name', placeholder: t(this.i18n, 'name_placeholder') });
-      var email = el('input', { type: 'email', required: 'required', autocomplete: 'email', placeholder: t(this.i18n, 'email_placeholder') });
+      // Pre-filled and locked when the host page supplied them. `readonly`, not
+      // `disabled`: the value still submits and the field stays focusable for screen
+      // readers, which disabled would remove from the tab order.
+      var nameAttrs = { type: 'text', required: 'required', autocomplete: 'name', placeholder: t(this.i18n, 'name_placeholder') };
+      if (self.prefillName) { nameAttrs.value = self.prefillName; nameAttrs.readonly = 'readonly'; }
+      var emailAttrs = { type: 'email', required: 'required', autocomplete: 'email', placeholder: t(this.i18n, 'email_placeholder') };
+      if (self.prefillEmail) { emailAttrs.value = self.prefillEmail; emailAttrs.readonly = 'readonly'; }
+      var name = el('input', nameAttrs);
+      var email = el('input', emailAttrs);
       form.appendChild(el('div', { class: 'field' }, [el('label', { text: t(this.i18n, 'name_label') }), name]));
       form.appendChild(el('div', { class: 'field' }, [el('label', { text: t(this.i18n, 'email_label') }), email]));
       var phone = el('input', { type: 'tel', maxlength: '40', autocomplete: 'tel', id: 'phone-call-number' });
