@@ -411,6 +411,8 @@ New public and assistant bookings recheck selected external calendars before com
 
 Google Meet and Teams event types can opt into `allow_phone_call`. Their booking page and widget then accept an optional `phone` value. A valid number selects a telephone appointment; leaving it empty preserves video. The booking stores its own location type so management pages, calendar retries, and paid confirmation do not generate a video link for a telephone appointment. Event duplication preserves the setting.
 
+The `phone_outbound` location type ("we'll call you") is the outbound counterpart: the host calls the attendee. The event type carries no number (`validateLocation` requires none); the booking page and widget show a required `phone` field instead, and `CreateBooking` refuses a missing or invalid number with HTTP 400 rather than falling back to another meeting type. A valid number is stored exactly like the `allow_phone_call` path (`bookings.location_type = "phone"`, `location_value = "tel:<number>"`), so calendar events, emails, webhooks and the manage page treat it as an ordinary telephone appointment. The manage page needs no field of its own: a reschedule keeps the booking's stored number. The shared booking core (`createBookingForSlug`) refuses these event types, because the assistant and MCP cannot collect the number, and the booking page and widget hide the assistant for them.
+
 `internal/booking/service.go` (transactions) + `internal/handler/booking_handler.go`
 (HTTP + async side effects).
 

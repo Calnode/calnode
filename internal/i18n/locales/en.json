@@ -63,6 +63,7 @@
   "duration_hr_min": "%d hr %d min",
   "location_video_meeting": "Video meeting",
   "location_phone": "Phone Call",
+  "location_phone_outbound": "Phone Call (we'll call you)",
   "location_in_person": "In Person",
   "location_video_call": "Video Call",
 
@@ -169,6 +170,8 @@
   "time_afternoon": "Afternoon",
   "time_evening": "Evening",
   "phone_call_number": "Phone number (optional, for a phone call)",
+  "phone_outbound_number": "Your phone number (we'll call you)",
+  "err_phone_required": "Please enter your phone number so we can call you.",
   "calendar_degraded_notice": "Some calendar information couldn't be loaded, so availability may be incomplete.",
 
   "directory_book": "Book",

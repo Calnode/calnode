@@ -620,7 +620,15 @@
       form.appendChild(el('div', { class: 'field' }, [el('label', { text: t(this.i18n, 'name_label') }), name]));
       form.appendChild(el('div', { class: 'field' }, [el('label', { text: t(this.i18n, 'email_label') }), email]));
       var phone = el('input', { type: 'tel', maxlength: '40', autocomplete: 'tel', id: 'phone-call-number' });
-      if (this.info.allow_phone_call) form.appendChild(el('div', { class: 'field' }, [el('label', { for: 'phone-call-number', text: t(this.i18n, 'phone_call_number') }), phone]));
+      // "We'll call you" event types require the number; the optional allow_phone_call
+      // field keeps its own label. Same rule as book.html, checked again on the server.
+      var phoneRequired = !!this.info.phone_required;
+      if (phoneRequired) {
+        phone.required = true;
+        form.appendChild(el('div', { class: 'field' }, [el('label', { for: 'phone-call-number', html: esc(t(this.i18n, 'phone_outbound_number')) + ' <span class="required-star">*</span>' }), phone]));
+      } else if (this.info.allow_phone_call) {
+        form.appendChild(el('div', { class: 'field' }, [el('label', { for: 'phone-call-number', text: t(this.i18n, 'phone_call_number') }), phone]));
+      }
       var qInputs = [];
       this.questions.forEach(function (q) {
         var inp, field;
@@ -649,6 +657,10 @@
       form.addEventListener('submit', function (e) {
         e.preventDefault();
         errBox.textContent = '';
+        if (phoneRequired && !phone.value.trim()) {
+          errBox.textContent = t(self.i18n, 'required_fields_error');
+          return;
+        }
         cta.disabled = true; cta.textContent = t(self.i18n, 'confirming');
         var answers = [];
         qInputs.forEach(function (x) {

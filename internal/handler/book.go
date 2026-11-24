@@ -44,7 +44,10 @@ type bookQuestion struct {
 }
 
 type bookPageData struct {
-	PhoneChoice      bool
+	PhoneChoice bool
+	// PhoneRequired is the "we'll call you" location: the same phone field, but required,
+	// because the attendee's number is the only way the host can reach them.
+	PhoneRequired    bool
 	AccentColor      string
 	AccentForeground string
 	Slug             string
@@ -311,6 +314,8 @@ func locationLabel(locType, locValue string, loc *i18n.Locale) string {
 		return loc.T("location_video_meeting")
 	case "phone":
 		return loc.T("location_phone")
+	case phoneOutboundLocation:
+		return loc.T("location_phone_outbound")
 	case "in_person":
 		if locValue != "" {
 			return locValue
@@ -420,6 +425,7 @@ func (h *Handler) PublicEventType(w http.ResponseWriter, r *http.Request) {
 		"duration_label":            durationLabel(durMins, loc),
 		"location_type":             locType,
 		"allow_phone_call":          allowPhoneCall && onlineMeetingLocation(locType),
+		"phone_required":            locType == phoneOutboundLocation,
 		"booking_accent":            accentColor,
 		"booking_accent_foreground": accentForeground(accentColor),
 		"location_label":            locationLabel(locType, locValue, loc),
@@ -430,7 +436,9 @@ func (h *Handler) PublicEventType(w http.ResponseWriter, r *http.Request) {
 		// would leave it rebuilding a plural-aware label the server already has (#20).
 		"min_notice_minutes": minNotice,
 		"min_notice_label":   noticeLabel(minNotice, loc),
-		"assistant_enabled":  h.getLLM() != nil,
+		// The assistant cannot collect the attendee's number, so it is off for "we'll call
+		// you" event types rather than offered and then refused at the last step.
+		"assistant_enabled":  h.getLLM() != nil && locType != phoneOutboundLocation,
 		"assistant_greeting": assistantGreeting(msgGreeting, loc),
 		"price_cents":        priceCents,
 		"currency":           currency,
@@ -537,6 +545,7 @@ func (h *Handler) BookPage(w http.ResponseWriter, r *http.Request) {
 
 	data := bookPageData{
 		PhoneChoice:         allowPhoneCall && onlineMeetingLocation(locType),
+		PhoneRequired:       locType == phoneOutboundLocation,
 		AccentColor:         accentColor,
 		AccentForeground:    accentForeground(accentColor),
 		Slug:                slug,
@@ -561,7 +570,7 @@ func (h *Handler) BookPage(w http.ResponseWriter, r *http.Request) {
 		MaxFutureDays:       maxDays,
 		Questions:           questions,
 		BookingLogicJS:      template.JS(bookingLogicJS), // #nosec G203 -- our own bundled JS source constant, not user input
-		AssistantEnabled:    h.getLLM() != nil,
+		AssistantEnabled:    h.getLLM() != nil && locType != phoneOutboundLocation,
 		AssistantDisclosure: loc.T("assistant_disclosure"),
 		AssistantGreeting:   assistantGreeting(msgGreeting, loc),
 		CSSVersion:          bookingCSSVersion,

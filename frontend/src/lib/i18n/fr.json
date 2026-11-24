@@ -1642,6 +1642,7 @@
 				"googleMeet": "Google Meet",
 				"livekit": "Calnode Video (LiveKit)",
 				"phone": "Appel téléphonique",
+				"phoneOutbound": "Nous appelons le participant",
 				"link": "Lien vidéo",
 				"inPerson": "En personne"
 			},
@@ -1651,6 +1652,7 @@
 				"meetLink": "Lien Meet",
 				"teamsLink": "Lien Teams",
 				"phone": "Numéro de téléphone",
+				"attendeePhone": "Numéro de téléphone du participant",
 				"address": "Adresse",
 				"details": "Détails",
 				"videoRoom": "Salle vidéo"
@@ -1682,7 +1684,8 @@
 					"notConfigured": "Zoom n'est pas configuré pour cet espace de travail (un administrateur peut l'ajouter dans Paramètres → Zoom),",
 					"pasteFallback": "ou collez un lien Zoom ci-dessous à utiliser pour chaque réservation."
 				},
-				"livekit": "Une salle vidéo sécurisée est créée automatiquement pour chaque réservation — aucun lien n'est nécessaire. Les invités rejoignent dans le navigateur. (Configurez le serveur dans Paramètres → Vidéo.)"
+				"livekit": "Une salle vidéo sécurisée est créée automatiquement pour chaque réservation — aucun lien n'est nécessaire. Les invités rejoignent dans le navigateur. (Configurez le serveur dans Paramètres → Vidéo.)",
+				"phoneOutbound": "Le formulaire de réservation demande au participant son numéro de téléphone (obligatoire). Vous l'appelez à l'heure réservée ; le numéro est le lieu de la réservation et figure dans l'événement d'agenda et les e-mails sous forme de lien cliquable."
 			}
 		},
 		"invite": {

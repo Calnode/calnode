@@ -72,6 +72,12 @@ func onlineMeetingLocation(locType string) bool {
 	return locType == "google_meet" || locType == "teams"
 }
 
+// phoneOutboundLocation is the event-type location where the host calls the attendee.
+// It exists only on the event type: every booking on it requires the attendee's number
+// and is stored as location_type "phone" with "tel:<number>", the same shape as the
+// allow_phone_call path, so everything downstream of the booking treats it as a phone call.
+const phoneOutboundLocation = "phone_outbound"
+
 // providerMintsPlatform reports whether a connected calendar provider can natively
 // auto-generate the meeting link for the given online location type: Google Meet
 // only from a Google calendar, Microsoft Teams only from a Microsoft calendar. When
@@ -222,6 +228,9 @@ func (h *Handler) validateLocation(ctx context.Context, ownerID, locType string,
 		if !validPhone(link) {
 			return fmt.Errorf("enter a valid phone number")
 		}
+		return nil
+	case phoneOutboundLocation:
+		// The attendee supplies the number at booking time; the event type needs none.
 		return nil
 	default: // in_person and anything else: no value requirement
 		return nil
@@ -481,6 +490,11 @@ var errNoHostAvailable = errors.New("no active host can take this booking")
 // only be booked through the Stripe Checkout flow on the booking page (agents can't pay).
 var errPaymentRequired = errors.New("this event requires payment; please book on the booking page")
 
+// errPhoneRequired is returned by the shared booking core for "we'll call you" event types:
+// the assistant and MCP have no way to collect the attendee's number, and booking without
+// one would leave the host with nobody to call.
+var errPhoneRequired = errors.New("this event requires the attendee's phone number; please book on the booking page")
+
 // bookableEventType is the event_types fields the booking-creation and slot-computation
 // paths need. loadBookableEventType is their one shared query — createBookingForSlug,
 // CreateBooking, and computeSlots each used to hand-write their own column subset, which
@@ -567,6 +581,9 @@ func (h *Handler) createBookingForSlug(ctx context.Context, slug string, startAt
 	// can't pay, so they can't book a paid event.
 	if et.PriceCents > 0 {
 		return nil, errPaymentRequired
+	}
+	if et.LocationType == phoneOutboundLocation {
+		return nil, errPhoneRequired
 	}
 	// The attendee's own locale (set by the assistant from the page's resolved language;
 	// empty for MCP callers, which i18n.Get turns into nil → English).
@@ -899,7 +916,21 @@ func (h *Handler) CreateBooking(w http.ResponseWriter, r *http.Request) {
 	// Resolve candidate hosts by routing mode: rotation hosts for round-robin,
 	// required hosts otherwise. Archived hosts are excluded by resolveEventTypeHosts.
 	req.Phone = strings.TrimSpace(req.Phone)
-	if req.Phone != "" {
+	switch {
+	case et.LocationType == phoneOutboundLocation:
+		// The host calls the attendee, so the number is required. A missing or invalid one
+		// is refused, never downgraded to another meeting type.
+		if req.Phone == "" {
+			h.writeError(w, http.StatusBadRequest, loc.T("err_phone_required"))
+			return
+		}
+		if len(req.Phone) > 40 || !validPhone(req.Phone) {
+			h.writeError(w, http.StatusBadRequest, "invalid telephone number")
+			return
+		}
+		et.LocationType = "phone"
+		locValue = "tel:" + req.Phone
+	case req.Phone != "":
 		if !et.AllowPhoneCall || !onlineMeetingLocation(et.LocationType) || len(req.Phone) > 40 || !validPhone(req.Phone) {
 			h.writeError(w, http.StatusBadRequest, "invalid telephone number")
 			return

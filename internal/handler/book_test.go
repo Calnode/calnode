@@ -146,6 +146,7 @@ func TestBookPage_locationLabels(t *testing.T) {
 		{"google_meet", "https://meet.google.com/abc-defg-hij", "Google Meet"},
 		{"teams", "https://teams.microsoft.com/l/meetup-join/x", "Microsoft Teams"},
 		{"phone", "+1 555 123 4567", "Phone Call"},
+		{"phone_outbound", "", "Phone Call (we"}, // the attendee gives the number at booking
 		{"in_person", "123 Main St", "123 Main St"},
 		{"in_person", "", "In Person"}, // in-person value stays optional
 		{"custom_video", "https://example.com/room", "Video Call"},
