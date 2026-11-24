@@ -47,6 +47,7 @@ type managePageData struct {
 	LocationLabel   string
 	PriceLabel      string // empty on manage → the eventMeta partial omits the price row
 	MaxFutureDays   int
+	NextAvailable   bool // show the "next available" button above the time list (#254)
 	DurationMinutes int
 	CurrentStartISO string // RFC3339 for JS
 	OrganizerTZ     string
@@ -97,13 +98,14 @@ func (h *Handler) ManagePage(w http.ResponseWriter, r *http.Request) {
 
 	var etName, etSlug, locType, locValue string
 	var durMins, maxDays, minNotice int
+	var showNext bool
 	var hostName, accentColor string
 	if err := h.db.QueryRowContext(r.Context(), `
 		SELECT et.name, et.slug, et.duration_minutes, et.max_future_days, et.min_notice_minutes,
-		       et.location_type, COALESCE(et.location_value,''), u.name, u.booking_accent
+		       et.location_type, COALESCE(et.location_value,''), u.name, u.booking_accent, et.show_next_available
 		FROM event_types et JOIN users u ON u.id = et.user_id
 		WHERE et.id = ?`, b.EventTypeID).
-		Scan(&etName, &etSlug, &durMins, &maxDays, &minNotice, &locType, &locValue, &hostName, &accentColor); err != nil {
+		Scan(&etName, &etSlug, &durMins, &maxDays, &minNotice, &locType, &locValue, &hostName, &accentColor, &showNext); err != nil {
 		h.logger.ErrorContext(r.Context(), "manage page: load event type", "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
@@ -157,6 +159,7 @@ func (h *Handler) ManagePage(w http.ResponseWriter, r *http.Request) {
 		DurationLabel:    durationLabel(durMins, loc),
 		LocationLabel:    locationLabel(locType, locValue, loc),
 		MaxFutureDays:    maxDays,
+		NextAvailable:    showNext,
 		DurationMinutes:  durMins,
 		CurrentStartISO:  b.StartAt.UTC().Format(time.RFC3339),
 		OrganizerTZ:      orgTZ,

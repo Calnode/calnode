@@ -227,6 +227,25 @@ button, input, select, textarea { font-family: inherit; }
    not read as a warning either. Set on all three booking surfaces. */
 .notice-hint { margin-top: .625rem; color: #6b7280; }
 
+/* The "next available" button (#254). Same box as a time button (.slot-btn) so it reads as part
+   of the picker: it opens that day, it is not a text link. */
+.next-available {
+  display: block; width: 100%; margin: 0 0 .75rem; padding: .625rem 1rem;
+  border: 1.5px solid #e5e7eb; background: #fff; border-radius: 8px;
+  font: inherit; font-size: .875rem; font-weight: 500; text-align: center;
+  color: #111827; cursor: pointer; transition: border-color .15s, background .15s;
+}
+.next-available:hover { border-color: #111827; background: #f9fafb; }
+.next-available:focus-visible { outline: 2px solid #111827; outline-offset: 2px; }
+.next-available.hidden { display: none; }
+/* The calendar-column copy is for narrow screens only: there the calendar step hides the
+   right column, so the link would otherwise be out of sight. */
+.next-available-m { display: none; }
+@media (max-width: 700px) {
+  .next-available { display: none; }
+  .next-available-m:not(.hidden) { display: block; }
+}
+
 /* Form */
 .back-btn {
   display: inline-flex; align-items: center; gap: .25rem;

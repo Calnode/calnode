@@ -167,6 +167,7 @@ body {
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
       {{call .T "back"}}
     </button>
+    {{if .NextAvailable}}<button type="button" class="next-available next-available-m hidden"></button>{{end}}
     {{template "calendarGrid" .}}
   </section>
 
@@ -186,6 +187,7 @@ body {
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
         {{call .T "back"}}
       </button>
+      {{if .NextAvailable}}<button type="button" class="next-available hidden"></button>{{end}}
       <p class="slots-header" id="slots-date">{{call .T "select_a_date"}}</p>
       <div id="slots-list" class="slots-list"><p class="hint">{{call .T "pick_day_hint"}}</p></div>
     </div>
@@ -545,6 +547,51 @@ body {
     showView('confirm-reschedule-view');
   });
 
+
+  // ── Next available (#254) ─────────────────────────────────────────────────
+  // A button above the time list that opens the soonest free day, for event types that opt in. The
+  // answer comes from the FREE list only (never the merged free+taken view), walks forward
+  // month by month but never past maxDate, and says nothing at all when it cannot be sure:
+  // a failed request or a degraded calendar check is not the same as "nothing is available".
+  const SHOW_NEXT = {{.NextAvailable}};
+  let nextAvailable = null;
+  let nextAvailableRun = 0; // a newer search (timezone change) supersedes an older one in flight
+  async function loadNextAvailable() {
+    const els = document.querySelectorAll('.next-available');
+    if (!SHOW_NEXT || !els.length) return;
+    const run = ++nextAvailableRun;
+    nextAvailable = null;
+    els.forEach(el => el.classList.add('hidden'));
+    for (const mo of BookingLogic.monthsToProbe(today, maxDate)) {
+      let data;
+      try {
+        const from = toDateStr(mo.year, mo.month, 1);
+        const to = toDateStr(mo.year, mo.month, new Date(mo.year, mo.month + 1, 0).getDate());
+        const r = await fetch(`/v1/event-types/${SLUG}/slots?from=${from}&to=${to}&tz=${encodeURIComponent(TZ)}`);
+        if (!r.ok) return;
+        data = await r.json();
+      } catch { return; }
+      if (run !== nextAvailableRun) return;
+      if (data.degraded) return;
+      const hit = BookingLogic.earliestFreeSlot(data.slots, TZ, CURRENT_ISO);
+      if (hit) {
+        nextAvailable = hit;
+        const text = BookingLogic.fmt(t('next_available_hint'), [
+          BookingLogic.formatDay(hit.slot.start, TZ, 'short', LOCALE), fmtTime(hit.slot.start)
+        ]);
+        els.forEach(el => { el.textContent = text; el.classList.remove('hidden'); });
+        return;
+      }
+    }
+  }
+  document.querySelectorAll('.next-available').forEach(el => el.addEventListener('click', async () => {
+    if (!nextAvailable) return;
+    const [y, m, d] = nextAvailable.day.split('-').map(Number);
+    navYear = y; navMonth = m - 1;
+    await loadMonthAvailability(navYear, navMonth);
+    pickDate(nextAvailable.day, y, m - 1, d);
+  }));
+
   // ── Navigation ──────────────────────────────────────────────────────────────
   $('reschedule-btn').addEventListener('click', () => {
     showView('reschedule-view');
@@ -554,6 +601,7 @@ body {
       $('slots-list').innerHTML = `<p class="hint">${t('pick_day_hint')}</p>`;
     }
     loadMonthAvailability(navYear, navMonth);
+    loadNextAvailable();
   });
   $('cancel-btn').addEventListener('click', () => showView('cancel-confirm-view'));
   // In the reschedule slots step on mobile, "Back" returns to the calendar step;
@@ -675,6 +723,7 @@ body {
       }
       // If the picker is open, rebuild the day cache for the new tz, then re-render.
       if (!$('reschedule-view').classList.contains('hidden')) {
+        loadNextAvailable();
         await loadMonthAvailability(navYear, navMonth);
         if (pickedDate) {
           const ds = toDateStr(pickedDate.getFullYear(), pickedDate.getMonth(), pickedDate.getDate());

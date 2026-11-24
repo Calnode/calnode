@@ -39,6 +39,13 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
   The variant is never offered in the language switcher or matched from `Accept-Language`;
   select it with `?lang=de-x-neutral` or `<calnode-booking lang="de-x-neutral">`.
 
+- **Next available time on the booking page.** A per-event-type setting, off by default,
+  adds a button above the time list, such as "Next available: Wed, Dec 9, 10:00 AM", that
+  opens that day. It is worked out from the free times only, walks forward month by month
+  but never past `max_future_days`, and shows nothing when the availability check failed or
+  was degraded, rather than implying there is none. It appears on the booking and reschedule
+  pages. The embed widget does not have it yet. Proposed in discussion #254.
+
 ### Fixed
 
 - **Buttons and inputs in the booking UI now use the surrounding font.** Form controls

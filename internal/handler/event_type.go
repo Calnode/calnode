@@ -42,6 +42,9 @@ type eventTypeJSON struct {
 	// instead of omitting them. Off by default: the slots endpoint is public, so this
 	// makes the host's booked hours legible to anyone with the link (#19).
 	ShowTakenSlots bool `json:"show_taken_slots"`
+	// ShowNextAvailable shows the next free time above the booking page's time list, as a
+	// button that opens that day. Off by default (#254).
+	ShowNextAvailable bool `json:"show_next_available"`
 	// InviteDelivery is who sends the booker's calendar invite: "calendar" (each host's
 	// connected calendar, from the host's own address), "calnode" (Calnode's own .ics,
 	// from the instance sender, so no host address reaches the booker) or "none" (no one:
@@ -106,7 +109,7 @@ func scanEventTypeRow(s rowScanner, trailing ...any) (*eventTypeJSON, error) {
 	var et eventTypeJSON
 	var desc, locVal, msgConf, msgCancel, msgResched, msgRemind, msgGreeting sql.NullString
 	var subjConf, subjCancel, subjResched, subjRemind sql.NullString
-	var isActive, isPublic, showTaken int
+	var isActive, isPublic, showTaken, showNext int
 
 	dests := []any{
 		&et.ID, &et.Slug, &et.Name, &desc,
@@ -115,7 +118,7 @@ func scanEventTypeRow(s rowScanner, trailing ...any) (*eventTypeJSON, error) {
 		&et.RoutingMode, &et.RRStrategy,
 		&et.BufferBeforeMinutes, &et.BufferAfterMinutes,
 		&et.MinNoticeMinutes, &et.MaxFutureDays, &et.MaxActiveBookings,
-		&isActive, &isPublic, &showTaken, &et.CreatedAt,
+		&isActive, &isPublic, &showTaken, &showNext, &et.CreatedAt,
 		&msgConf, &msgCancel, &msgResched, &msgRemind, &msgGreeting,
 		&subjConf, &subjCancel, &subjResched, &subjRemind,
 		&et.PriceCents, &et.Currency, &et.InviteDelivery, &et.DisplayOrder,
@@ -137,6 +140,7 @@ func scanEventTypeRow(s rowScanner, trailing ...any) (*eventTypeJSON, error) {
 	et.IsActive = isActive != 0
 	et.IsPublic = isPublic != 0
 	et.ShowTakenSlots = showTaken != 0
+	et.ShowNextAvailable = showNext != 0
 	if msgConf.Valid {
 		et.MsgConfirmation = &msgConf.String
 	}
@@ -174,7 +178,7 @@ const etColumns = `id, slug, name, description,
 	routing_mode, rr_strategy,
 	buffer_before_minutes, buffer_after_minutes,
 	min_notice_minutes, max_future_days, max_active_bookings,
-	is_active, is_public, show_taken_slots, created_at,
+	is_active, is_public, show_taken_slots, show_next_available, created_at,
 	msg_confirmation, msg_cancellation, msg_reschedule, msg_reminder, msg_greeting,
 	subj_confirmation, subj_cancellation, subj_reschedule, subj_reminder,
 	price_cents, currency, invite_delivery, display_order`
@@ -282,6 +286,7 @@ func (h *Handler) CreateEventType(w http.ResponseWriter, r *http.Request) {
 		MaxActiveBookings   *int    `json:"max_active_bookings"`
 		AllowPhoneCall      *bool   `json:"allow_phone_call"`
 		ShowTakenSlots      *bool   `json:"show_taken_slots"`
+		ShowNextAvailable   *bool   `json:"show_next_available"`
 		InviteDelivery      *string `json:"invite_delivery"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -357,6 +362,10 @@ func (h *Handler) CreateEventType(w http.ResponseWriter, r *http.Request) {
 	if req.ShowTakenSlots != nil && *req.ShowTakenSlots {
 		showTaken = 1
 	}
+	showNext := 0
+	if req.ShowNextAvailable != nil && *req.ShowNextAvailable {
+		showNext = 1
+	}
 	inviteDelivery := booking.InviteByCalendar
 	if req.InviteDelivery != nil {
 		mode, ok := normalizeInviteDelivery(*req.InviteDelivery)
@@ -385,12 +394,12 @@ func (h *Handler) CreateEventType(w http.ResponseWriter, r *http.Request) {
 		  (id, user_id, slug, name, description, duration_minutes,
 		   slot_interval_minutes, location_type, location_value, allow_phone_call,
 		   routing_mode, buffer_before_minutes, buffer_after_minutes,
-		   min_notice_minutes, max_future_days, max_active_bookings, show_taken_slots, invite_delivery,
+		   min_notice_minutes, max_future_days, max_active_bookings, show_taken_slots, show_next_available, invite_delivery,
 		   msg_confirmation, msg_cancellation, msg_reschedule, msg_reminder, display_order)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		id, user.ID, req.Slug, req.Name, req.Description,
 		req.DurationMinutes, slotInterval, locType, req.LocationValue, req.AllowPhoneCall != nil && *req.AllowPhoneCall,
-		routingMode, bufBefore, bufAfter, minNotice, maxFuture, maxActive, showTaken, inviteDelivery,
+		routingMode, bufBefore, bufAfter, minNotice, maxFuture, maxActive, showTaken, showNext, inviteDelivery,
 		defaultMsgConfirmation, defaultMsgCancellation, defaultMsgReschedule, defaultMsgReminder, req.DisplayOrder)
 	if err != nil {
 		if db.IsUniqueViolation(err) {
@@ -520,6 +529,7 @@ func (h *Handler) PatchEventType(w http.ResponseWriter, r *http.Request) {
 		IsPublic            *bool   `json:"is_public"`
 		AllowPhoneCall      *bool   `json:"allow_phone_call"`
 		ShowTakenSlots      *bool   `json:"show_taken_slots"`
+		ShowNextAvailable   *bool   `json:"show_next_available"`
 		InviteDelivery      *string `json:"invite_delivery"`
 		Archived            *bool   `json:"archived"`
 		MsgConfirmation     *string `json:"msg_confirmation"`
@@ -677,6 +687,13 @@ func (h *Handler) PatchEventType(w http.ResponseWriter, r *http.Request) {
 			v = 1
 		}
 		set("show_taken_slots", v)
+	}
+	if req.ShowNextAvailable != nil {
+		v := 0
+		if *req.ShowNextAvailable {
+			v = 1
+		}
+		set("show_next_available", v)
 	}
 	var newInviteDelivery string
 	if req.InviteDelivery != nil {

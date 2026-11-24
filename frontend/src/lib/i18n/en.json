@@ -1631,6 +1631,8 @@
 			"showTaken": "Show booked times as unavailable",
 			"showTakenHint": "Booked times appear struck through on the booking page instead of being hidden, so visitors can see the calendar filling up. Only times inside your working hours are shown, never the rest of your day.",
 			"showTakenWarning": "Anyone with the booking link can see which hours are taken.",
+			"showNextAvailable": "Show the next available time",
+			"showNextAvailableHint": "Adds a button above the time list, such as \"Next available: Wed, Nov 18, 10:00\", that opens that day. It uses the same times a visitor can already see.",
 			"allowPhoneCall": "Let invitees choose a phone call by entering their number"
 		},
 		"location": {

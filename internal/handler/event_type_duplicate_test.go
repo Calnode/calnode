@@ -31,6 +31,7 @@ type duplicateResponse struct {
 	IsActive            bool    `json:"is_active"`
 	IsPublic            bool    `json:"is_public"`
 	ShowTakenSlots      bool    `json:"show_taken_slots"`
+	ShowNextAvailable   bool    `json:"show_next_available"`
 	Archived            bool    `json:"archived"`
 	MsgConfirmation     *string `json:"msg_confirmation"`
 	SubjConfirmation    *string `json:"subj_confirmation"`
@@ -61,7 +62,7 @@ func seedRichEventType(t *testing.T, database *sql.DB, ownerID, memberID string)
 		  duration_minutes, slot_interval_minutes, location_type, location_value,
 		  routing_mode, rr_strategy, buffer_before_minutes, buffer_after_minutes,
 		  min_notice_minutes, max_future_days, max_active_bookings, seat_limit,
-		  is_active, is_public, show_taken_slots,
+		  is_active, is_public, show_taken_slots, show_next_available,
 		  msg_confirmation, msg_cancellation, msg_reschedule, msg_reminder, msg_greeting,
 		  subj_confirmation, subj_cancellation, subj_reschedule, subj_reminder,
 		  price_cents, currency)
@@ -70,7 +71,7 @@ func seedRichEventType(t *testing.T, database *sql.DB, ownerID, memberID string)
 		  45, 15, 'phone', '+15550100',
 		  'round_robin', 'priority', 10, 20,
 		  240, 45, 3, 4,
-		  1, 0, 1,
+		  1, 0, 1, 1,
 		  'See you soon', 'Sorry to miss you', 'New time below', 'Coming up',
 		  'Hi! When suits you?',
 		  'Confirmed: intro', 'Cancelled: intro', 'Moved: intro', 'Reminder: intro',
@@ -184,6 +185,9 @@ func TestDuplicateEventType_copiesTheRowAndEveryChildDataset(t *testing.T) {
 	}
 	if !got.ShowTakenSlots {
 		t.Error("show_taken_slots: got false; want the source's true")
+	}
+	if !got.ShowNextAvailable {
+		t.Error("show_next_available: got false; want the source's true")
 	}
 	if got.MsgConfirmation == nil || *got.MsgConfirmation != "See you soon" {
 		t.Errorf("msg_confirmation: got %v", got.MsgConfirmation)
@@ -598,7 +602,7 @@ func TestDuplicateEventType_handlesEveryEventTypeColumn(t *testing.T) {
 		"buffer_before_minutes": true, "buffer_after_minutes": true,
 		"min_notice_minutes": true, "max_future_days": true,
 		"max_active_bookings": true, "seat_limit": true,
-		"is_public": true, "show_taken_slots": true,
+		"is_public": true, "show_taken_slots": true, "show_next_available": true,
 		"msg_confirmation": true, "msg_cancellation": true, "msg_reschedule": true,
 		"msg_reminder": true, "msg_greeting": true,
 		"subj_confirmation": true, "subj_cancellation": true, "subj_reschedule": true,
