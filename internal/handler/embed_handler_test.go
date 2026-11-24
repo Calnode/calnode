@@ -121,3 +121,25 @@ func TestEmbedJS_identityPrefill(t *testing.T) {
 		t.Error("identity fields use disabled, which removes them from the tab order; use readonly")
 	}
 }
+
+// TestEmbedJS_phoneOutboundRequired pins the widget half of the "we'll call you" location:
+// the widget builds its own form, so the required number field and its client-side check
+// live here separately from book.html. The server refuses a missing number either way
+// (TestBookingPhoneOutbound); this keeps the widget from offering a form that can only fail.
+func TestEmbedJS_phoneOutboundRequired(t *testing.T) {
+	h := &Handler{}
+	rec := httptest.NewRecorder()
+	h.EmbedJS(rec, httptest.NewRequest(http.MethodGet, "/embed.js", nil))
+	body := rec.Body.String()
+
+	for _, want := range []string{
+		`this.info.phone_required`,
+		`phone.required = true`,
+		`'phone_outbound_number'`,
+		`if (phoneRequired && !phone.value.trim())`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("embed.js no longer contains %q - the required phone field may have regressed", want)
+		}
+	}
+}
