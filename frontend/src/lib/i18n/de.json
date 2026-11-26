@@ -1,0 +1,1927 @@
+{
+	"common": {
+		"loading": "Wird geladen…",
+		"saving": "Wird gespeichert…",
+		"save": "Speichern",
+		"cancel": "Abbrechen",
+		"close": "Schließen",
+		"confirm": "Bestätigen",
+		"remove": "Entfernen",
+		"delete": "Löschen",
+		"copy": "Kopieren",
+		"copied": "Kopiert!",
+		"copiedShort": "Kopiert",
+		"failed": "Fehlgeschlagen",
+		"refresh": "Aktualisieren",
+		"previous": "Zurück",
+		"next": "Weiter",
+		"clear": "Zurücksetzen",
+		"clearFilters": "Filter zurücksetzen",
+		"never": "Nie",
+		"adminRequired": "Admin-Zugriff erforderlich.",
+		"or": "oder",
+		"yes": "Ja",
+		"no": "Nein",
+		"emDash": "—",
+		"attendeeFallback": "Teilnehmer",
+		"storedSecretPlaceholder": "•••••••• (gespeichert)",
+		"leaveBlankKeep": "Gespeichert — leer lassen, um den Wert beizubehalten.",
+		"notConfigured": "Nicht konfiguriert",
+		"configured": "Konfiguriert",
+		"active": "Aktiv",
+		"inactive": "Inaktiv",
+		"select": "Auswählen…",
+		"search": "Suchen…",
+		"noResults": "Keine Ergebnisse.",
+		"confirmDialog": {
+			"defaultTitle": "Sind Sie sicher?",
+			"defaultConfirm": "Bestätigen",
+			"defaultCancel": "Abbrechen"
+		},
+		"datePicker": {
+			"pickDate": "Datum auswählen",
+			"sameDay": "Gleicher Tag"
+		},
+		"combobox": {
+			"searchPlaceholder": "Suchen…"
+		},
+		"copyClipboardError": "Kopieren in die Zwischenablage fehlgeschlagen",
+		"copyManualHint": "Kopieren fehlgeschlagen. Markieren Sie die URL und kopieren Sie sie manuell.",
+		"optional": "(optional)",
+		"minutesShort": "{n} Min.",
+		"undo": "Rückgängig",
+		"uploading": "Wird hochgeladen…",
+		"sending": "Wird gesendet…",
+		"testing": "Wird getestet…"
+	},
+	"layout": {
+		"loading": "Wird geladen…",
+		"signOut": "Abmelden",
+		"reportIssue": "Problem melden",
+		"nav": {
+			"section": {
+				"scheduling": "Terminplanung",
+				"team": "Team",
+				"developer": "Entwickler"
+			},
+			"home": "Start",
+			"eventTypes": "Terminarten",
+			"availability": "Verfügbarkeit",
+			"bookings": "Buchungen",
+			"calendar": "Kalender",
+			"recordings": "Aufzeichnungen",
+			"members": "Mitglieder",
+			"teams": "Teams",
+			"apiKeys": "API-Schlüssel",
+			"connectedApps": "Verbundene Apps",
+			"webhooks": "Webhooks",
+			"settings": "Einstellungen"
+		},
+		"reportDialog": {
+			"title": "Problem melden",
+			"description": "Bitte durchsuchen Sie zuerst die vorhandenen Meldungen — das Problem wurde möglicherweise bereits gemeldet oder wird schon bearbeitet. Der Tracker ist für reproduzierbare Fehler in Calnode gedacht; für Hilfe bei der Einrichtung oder Fragen wie „Wie kann ich …?“ nutzen Sie bitte stattdessen die Discussions.",
+			"searchIssues": "Vorhandene Meldungen durchsuchen",
+			"reportBug": "Fehler melden"
+		},
+		"headTitleSuffix": "Calnode"
+	},
+	"demo": {
+		"banner": {
+			"title": "Öffentliche Demo",
+			"body": "die Daten hier sind für alle sichtbar und werden automatisch zurückgesetzt. Geben Sie nichts Privates ein.",
+			"viewSource": "Quellcode ansehen"
+		},
+		"resetButton": "Demo jetzt zurücksetzen",
+		"resetting": "Wird zurückgesetzt…",
+		"confirm": {
+			"title": "Demo jetzt zurücksetzen?",
+			"description": "Alle Terminarten, Buchungen und Einstellungen werden gelöscht und durch neue Beispieldaten ersetzt. Dies geschieht außerdem automatisch in regelmäßigen Abständen.",
+			"confirm": "Demo zurücksetzen"
+		},
+		"toast": {
+			"resetSuccess": "Demo zurückgesetzt — wird neu geladen…",
+			"resetFailed": "Zurücksetzen fehlgeschlagen"
+		}
+	},
+	"dashboard": {
+		"headTitle": "Übersicht — Calnode",
+		"title": "Übersicht",
+		"subtitleReady": "Ihre Buchungsseite ist online und bereit zum Teilen.",
+		"bookingLinkSingular": "Ihr Buchungslink",
+		"bookingLinksPlural": "Ihre Buchungslinks",
+		"profilePage": "Ihre Profilseite",
+		"gettingStarted": {
+			"title": "Erste Schritte",
+			"subtitle": "Erledigen Sie diese Schritte, dann können Sie Buchungen annehmen."
+		},
+		"checklist": {
+			"connectCalendar": "Kalender verbinden",
+			"connectCalendarHintConfigured": "Calnode prüft Ihren Kalender, um Doppelbuchungen zu vermeiden.",
+			"connectCalendarHintUnconfigured": "Google Kalender muss eingerichtet werden — Details finden Sie auf der Seite „Kalender“.",
+			"availability": "Verfügbarkeit festlegen",
+			"availabilityHint": "Legen Sie fest, zu welchen Zeiten andere bei Ihnen buchen können.",
+			"eventType": "Erste Terminart erstellen",
+			"eventTypeHint": "Eine Terminart legt Dauer, Ort und Verfügbarkeit einer Buchung fest.",
+			"shareLink": "Buchungslink teilen",
+			"shareLinkHintReady": "Ihre Seite ist online. Teilen Sie sie und nehmen Sie Buchungen an.",
+			"shareLinkHintWaiting": "Verfügbar, sobald Sie eine Terminart erstellt haben."
+		}
+	},
+	"bookings": {
+		"headTitle": "Buchungen — Calnode",
+		"title": "Buchungen",
+		"subtitle": {
+			"mine": "Termine, bei denen Sie Gastgeber sind.",
+			"all": "Alle Termine im Arbeitsbereich."
+		},
+		"refresh": "Aktualisieren",
+		"refreshAria": "Buchungen aktualisieren",
+		"scope": {
+			"mine": "Meine Buchungen",
+			"all": "Alle Buchungen"
+		},
+		"empty": {
+			"title": "Noch keine Buchungen",
+			"description": "Buchungen erscheinen hier, sobald Teilnehmer einen Termin bei Ihnen buchen.",
+			"noUpcoming": "Keine anstehenden Buchungen.",
+			"noPast": "Keine vergangenen Buchungen."
+		},
+		"filter": {
+			"upcoming": "Anstehend ({count})",
+			"past": "Vergangen ({count})",
+			"allEventTypes": "Alle Terminarten",
+			"allHosts": "Alle Gastgeber",
+			"allTeams": "Alle Teams",
+			"anyStatus": "Alle Status",
+			"status": {
+				"confirmed": "Bestätigt",
+				"rescheduled": "Verschoben",
+				"cancelled": "Storniert"
+			},
+			"noMatch": "Keine Buchungen entsprechen diesen Filtern.",
+			"noTimeFilter": "Keine Buchungen ({when}).",
+			"eventTypeAria": "Nach Terminart filtern",
+			"hostAria": "Nach Gastgeber filtern",
+			"teamAria": "Nach Team filtern",
+			"statusAria": "Nach Status filtern"
+		},
+		"table": {
+			"attendee": "Teilnehmer",
+			"host": "Gastgeber",
+			"event": "Terminart",
+			"startTime": "Beginn",
+			"status": "Status"
+		},
+		"payment": {
+			"paid": "Bezahlt",
+			"refunded": "Erstattet",
+			"pending": "Zahlung ausstehend"
+		},
+		"badge": {
+			"refunded": "erstattet",
+			"unpaid": "unbezahlt",
+			"guestAccepted": "Gast: zugesagt",
+			"guestMaybe": "Gast: vielleicht",
+			"guestDeclined": "Gast: abgesagt"
+		},
+		"tooltip": {
+			"hideResponses": "Antworten ausblenden",
+			"showResponses": "Antworten anzeigen",
+			"reschedule": "Verschieben",
+			"cancel": "Buchung stornieren"
+		},
+		"cancelReschedule": "Verschieben abbrechen",
+		"details": {
+			"title": "Details",
+			"bookedOn": "Gebucht am",
+			"payment": "Zahlung",
+			"location": "Ort"
+		},
+		"intake": {
+			"title": "Antworten auf Fragen",
+			"empty": "Für diese Buchung liegen keine Antworten auf Fragen vor.",
+			"loading": "Wird geladen…"
+		},
+		"reschedule": {
+			"title": "Verschieben — {name}",
+			"newDate": "Neues Datum",
+			"pickDate": "Datum auswählen",
+			"loadingSlots": "Zeitfenster werden geladen…",
+			"noSlots": "An diesem Datum sind keine Zeitfenster verfügbar.",
+			"confirm": "Bestätigen — {time}",
+			"inProgress": "Wird verschoben…"
+		},
+		"pagination": "{start}–{end} von {total}",
+		"confirmCancel": {
+			"title": "Diese Buchung stornieren?",
+			"description": "Der Teilnehmer wird benachrichtigt und das Zeitfenster wird wieder frei. Dies kann nicht rückgängig gemacht werden.",
+			"confirm": "Buchung stornieren",
+			"cancel": "Buchung behalten"
+		},
+		"status": {
+			"confirmed": "bestätigt",
+			"cancelled": "storniert"
+		}
+	},
+	"availability": {
+		"headTitle": "Verfügbarkeit — Calnode",
+		"title": "Verfügbarkeit",
+		"subtitle": "Legen Sie Ihre wöchentlichen Arbeitszeiten fest und sperren Sie einzelne Tage.",
+		"weeklyHours": "Wöchentliche Arbeitszeiten",
+		"days": {
+			"sunday": "Sonntag",
+			"monday": "Montag",
+			"tuesday": "Dienstag",
+			"wednesday": "Mittwoch",
+			"thursday": "Donnerstag",
+			"friday": "Freitag",
+			"saturday": "Samstag"
+		},
+		"noHours": "Keine Zeiten festgelegt",
+		"addHours": "+ Zeiten hinzufügen",
+		"addBlock": "Zeitblock hinzufügen",
+		"saving": "wird gespeichert…",
+		"eventTypes": {
+			"appliesTo": "Gilt für",
+			"allEventTypes": "Alle Terminarten"
+		},
+		"blockError": {
+			"endAfterStart": "Das Ende muss nach dem Beginn liegen"
+		},
+		"override": {
+			"type": {
+				"dayOff": "Freier Tag",
+				"outOfOffice": "Abwesend",
+				"customHours": "Individuelle Zeiten"
+			}
+		},
+		"confirmRemoveOverride": {
+			"title": "Datumsausnahme entfernen?",
+			"description": "Für dieses Datum gelten wieder Ihre regulären wöchentlichen Arbeitszeiten."
+		},
+		"confirmRemoveSpan": {
+			"title": "Diesen Abwesenheitszeitraum entfernen?",
+			"description": "Alle Tage in diesem Zeitraum sind wieder buchbar."
+		},
+		"overrides": {
+			"title": "Datumsausnahmen",
+			"subtitle": "Sperren Sie ein bestimmtes Datum oder legen Sie dafür individuelle Zeiten fest.",
+			"overlapWarning": "Überlappende Zeitblöcke ({dates}) werden zu einem Zeitraum zusammengefasst — kürzen Sie sie, falls das nicht beabsichtigt war.",
+			"table": {
+				"date": "Datum",
+				"type": "Art",
+				"duration": "Dauer"
+			},
+			"empty": "Noch keine Datumsausnahmen.",
+			"form": {
+				"date": "Datum",
+				"toOptional": "Bis (optional)",
+				"type": "Art",
+				"from": "Von",
+				"to": "Bis"
+			},
+			"adding": "Wird hinzugefügt…",
+			"add": "Ausnahme hinzufügen",
+			"splitHint": "Geteilter Tag? Fügen Sie einen Zeitblock hinzu und danach einen weiteren für dasselbe Datum.",
+			"duration": {
+				"oneDay": "1 Tag",
+				"days": "{count} Tage"
+			}
+		},
+		"tooltip": {
+			"remove": "Entfernen",
+			"delete": "Löschen",
+			"deleteSpan": "Zeitraum löschen"
+		},
+		"validation": {
+			"dateRequired": "Das Datum ist erforderlich.",
+			"customHoursTimes": "Für individuelle Zeiten sind Start- und Endzeit erforderlich.",
+			"endAfterStart": "Die Endzeit muss nach der Startzeit liegen.",
+			"endDate": "Das Enddatum muss am oder nach dem Startdatum liegen."
+		}
+	},
+	"calendar": {
+		"headTitle": "Kalender — Calnode",
+		"title": "Kalender",
+		"subtitle": "Verbinden Sie ein oder mehrere Konten. Legen Sie fest, welche Kalender auf Konflikte geprüft werden und in welchen einen Kalender Buchungen eingetragen werden.",
+		"connectedSuccess": "Kalender erfolgreich verbunden.",
+		"noProvider": {
+			"title": "Kein Kalenderanbieter konfiguriert",
+			"body": "Hinterlegen Sie Google-OAuth-Zugangsdaten unter {google} oder legen Sie die Microsoft-Zugangsdaten (Outlook) über Umgebungsvariablen fest und starten Sie anschließend den Server neu.",
+			"googleLink": "Einstellungen → Google OAuth"
+		},
+		"provider": {
+			"google": "Google Kalender",
+			"microsoft": "Microsoft 365 (Outlook)",
+			"caldav": "CalDAV (Apple iCloud, Fastmail, Nextcloud)"
+		},
+		"setup": {
+			"google": "Einrichtung unter Einstellungen → Google OAuth",
+			"microsoft": "Siehe Einrichtungsanleitung"
+		},
+		"checkedForConflicts": "auf Konflikte geprüft",
+		"reconnectNeeded": "Neue Verbindung erforderlich — trennen Sie die Verbindung und verbinden Sie den Kalender erneut.",
+		"addBookingsHere": "Buchungen hier eintragen",
+		"disconnect": "Trennen",
+		"manageCalendars": "Kalender verwalten",
+		"hideCalendars": "Kalender ausblenden",
+		"loadingCalendars": "Kalender werden geladen…",
+		"noCalendars": "Für dieses Konto wurden keine Kalender gefunden.",
+		"picker": {
+			"instructions": "Markieren Sie die Kalender, die auf Konflikte geprüft werden sollen, und wählen Sie den Kalender, in den Buchungen eingetragen werden (erneut auswählen, um die Auswahl aufzuheben).",
+			"check": "Prüfen",
+			"destination": "Ziel",
+			"calendar": "Kalender",
+			"primary": "(Hauptkalender)",
+			"readOnly": "(schreibgeschützt)",
+			"checkAria": "{name} auf Konflikte prüfen",
+			"destinationAria": "Buchungen in {name} eintragen (erneut auswählen, um die Auswahl aufzuheben)"
+		},
+		"saving": "Wird gespeichert…",
+		"confirmDisconnect": {
+			"title": "Diesen Kalender trennen?",
+			"description": "Calnode prüft ihn dann nicht mehr auf Konflikte. War er Ihr Buchungskalender, wird automatisch ein anderer verbundener Kalender dafür verwendet.",
+			"confirm": "Trennen"
+		},
+		"confirmZoomDisconnect": {
+			"title": "Zoom trennen?",
+			"description": "Neue Ihnen zugewiesene Buchungen mit Zoom als Ort erhalten dann keinen automatisch erzeugten Konferenzlink."
+		},
+		"demoDisabled": "Das Verbinden von Kalendern ist in der Demo deaktiviert.",
+		"connectAnother": "Weiteren Kalender verbinden",
+		"connect": "Kalender verbinden",
+		"connectButton": "Verbinden",
+		"connecting": "Wird verbunden…",
+		"connectCalendar": "Kalender verbinden",
+		"caldav": {
+			"provider": "Anbieter",
+			"icloud": "Apple iCloud",
+			"fastmail": "Fastmail",
+			"custom": "Nextcloud / andere (eigene URL)",
+			"serverUrl": "Server-URL",
+			"serverPlaceholder": "https://cloud.example.com/remote.php/dav",
+			"username": "Benutzername / E-Mail",
+			"usernamePlaceholder": "name@icloud.com",
+			"appPassword": "App-spezifisches Passwort",
+			"icloudHelp": "App-spezifisches Passwort unter appleid.apple.com erstellen",
+			"fastmailHelp": "App-Passwort in den Fastmail-Einstellungen erstellen",
+			"passwordHint": "Verwenden Sie ein App-Passwort Ihres Anbieters, nicht Ihr Anmeldepasswort.",
+			"passwordSuffix": "— Ihr normales Passwort funktioniert nicht.",
+			"err": {
+				"server": "Geben Sie die URL Ihres CalDAV-Servers ein.",
+				"credentials": "Benutzername und App-Passwort sind beide erforderlich.",
+				"connect": "Verbindung fehlgeschlagen. Prüfen Sie Server, Benutzername und App-Passwort."
+			}
+		},
+		"unconfigured": "Auf dieser Instanz nicht eingerichtet",
+		"hint": {
+			"multiCalendar": "Verbinden Sie einen privaten und einen beruflichen Kalender (oder beide Anbieter), damit nichts doppelt gebucht wird."
+		},
+		"footer": {
+			"manageHint": "Über „Kalender verwalten“ legen Sie für jedes Konto fest, welche seiner Kalender auf Konflikte geprüft werden. Bestätigte Buchungen (und automatisch erzeugte Konferenzlinks) werden in das Konto eingetragen, das mit „Buchungen hier eintragen“ markiert ist."
+		},
+		"zoom": {
+			"title": "Zoom",
+			"subtitle": "Verbinden Sie Ihr Zoom-Konto, damit Buchungen mit Zoom als Ort einen echten, unter Ihrem Konto erstellten Konferenzlink erhalten.",
+			"connectedSuccess": "Zoom erfolgreich verbunden.",
+			"connected": "Verbunden",
+			"disconnecting": "Wird getrennt…"
+		}
+	},
+	"members": {
+		"headTitle": "Mitglieder — Calnode",
+		"title": "Mitglieder",
+		"subtitle": "Verwalten Sie Mitglieder, Rollen und Einladungen des Arbeitsbereichs.",
+		"invite": {
+			"toggleCancel": "Abbrechen",
+			"toggleOpen": "Mitglied einladen",
+			"formTitle": "Mitglied einladen",
+			"linkGenerated": "Einladungslink erstellt",
+			"emailSent": "Eine Einladungs-E-Mail wurde an {email} gesendet.",
+			"smtpManual": "SMTP ist nicht konfiguriert — teilen Sie diesen Link direkt mit {email}.",
+			"emailLabel": "E-Mail-Adresse",
+			"emailPlaceholder": "name@example.com",
+			"generating": "Wird erstellt…",
+			"generate": "Einladungslink erstellen",
+			"noteManual": "E-Mail ist nicht konfiguriert — kopieren Sie diesen Link und senden Sie ihn manuell.",
+			"validation": {
+				"email": "E-Mail-Adresse ist erforderlich."
+			}
+		},
+		"section": {
+			"members": "Mitglieder",
+			"pendingInvites": "Ausstehende Einladungen"
+		},
+		"showArchived": "Archivierte anzeigen",
+		"hideArchived": "Archivierte ausblenden",
+		"empty": "Noch keine Mitglieder.",
+		"table": {
+			"name": "Name",
+			"role": "Rolle",
+			"teams": "Teams",
+			"page": "Profilseite",
+			"auth": "Anmeldung",
+			"joined": "Beigetreten",
+			"email": "E-Mail",
+			"expires": "Läuft ab"
+		},
+		"role": {
+			"owner": "Inhaber",
+			"admin": "Admin",
+			"member": "Mitglied"
+		},
+		"badge": {
+			"archived": "Archiviert",
+			"google": "Google",
+			"microsoft": "Microsoft",
+			"email": "E-Mail"
+		},
+		"you": "(Sie)",
+		"noPublicPageTitle": "Keine öffentliche Seite — Handle im Profil des Mitglieds festlegen",
+		"archivedBy": "Archiviert von {name}",
+		"restore": "Wiederherstellen",
+		"passwordUpdated": "Passwort aktualisiert",
+		"passwordPlaceholder": "Neues Passwort",
+		"setPassword": "Festlegen",
+		"makeMember": "Zum Mitglied machen",
+		"makeAdmin": "Zum Admin machen",
+		"transferOwnership": "Inhaberschaft übertragen",
+		"resetPassword": "Passwort zurücksetzen",
+		"archive": "Archivieren",
+		"resend": "Erneut senden",
+		"revoke": "Widerrufen",
+		"resendHint": "„Erneut senden“ erzeugt einen neuen Link, setzt die Gültigkeit von 7 Tagen zurück und verschickt ihn erneut per E-Mail — der bisherige Link funktioniert dann nicht mehr.",
+		"expiresDaysLeft": "(noch {days} Tg.)",
+		"resolve": {
+			"title": "Anstehende Termine von {name} bearbeiten",
+			"description": {
+				"one": "Noch {count} anstehender Termin. Weisen Sie ihn einem anderen Mitglied zu oder stornieren Sie ihn. Sobald alle Termine erledigt sind, wird das Mitglied automatisch archiviert.",
+				"other": "Noch {count} anstehende Termine. Weisen Sie jeden einem anderen Mitglied zu oder stornieren Sie ihn. Sobald alle Termine erledigt sind, wird das Mitglied automatisch archiviert."
+			},
+			"reassignTo": "Neu zuweisen an…",
+			"reassign": "Neu zuweisen",
+			"cancelMeeting": "Termin stornieren",
+			"noTargets": "Keine anderen aktiven Mitglieder für eine Neuzuweisung vorhanden — Termine können nur storniert werden.",
+			"cancelAll": "Alle verbleibenden stornieren",
+			"doneLater": "Später erledigen"
+		},
+		"confirm": {
+			"revoke": {
+				"title": "Einladung widerrufen?",
+				"description": "Der Link funktioniert ab sofort nicht mehr.",
+				"confirm": "Widerrufen"
+			},
+			"archive": {
+				"title": "{name} archivieren?",
+				"description": "Das Mitglied verliert sofort den Zugriff, und seine Terminarten werden deaktiviert. Datensatz und Verlauf bleiben erhalten — Sie können das Mitglied später wiederherstellen.",
+				"confirm": "Archivieren"
+			},
+			"transfer": {
+				"title": "Inhaberschaft an {name} übertragen?",
+				"description": "Sie werden Admin, und das gewählte Mitglied wird Inhaber des Arbeitsbereichs. Nur der Inhaber kann dies tun.",
+				"confirm": "Inhaberschaft übertragen"
+			}
+		},
+		"toast": {
+			"inviteResent": "Einladung erneut an {email} gesendet",
+			"newLink": "Neuer Link für {email} erstellt",
+			"roleAdmin": "{name} ist jetzt Admin",
+			"roleMember": "{name} ist jetzt Mitglied",
+			"newOwner": "{name} ist jetzt Inhaber",
+			"archived": "Mitglied archiviert",
+			"restored": "{name} wiederhergestellt",
+			"errors": {
+				"resend": "Einladung konnte nicht erneut gesendet werden",
+				"role": "Rolle konnte nicht geändert werden",
+				"transfer": "Inhaberschaft konnte nicht übertragen werden",
+				"archive": "Mitglied konnte nicht archiviert werden",
+				"restore": "Mitglied konnte nicht wiederhergestellt werden"
+			}
+		},
+		"validation": {
+			"password": "Passwort ist erforderlich."
+		}
+	},
+	"teams": {
+		"headTitle": "Teams — Calnode",
+		"title": "Teams",
+		"subtitle": "Fassen Sie Mitglieder für Terminarten mit Round Robin oder Gruppenterminen zusammen.",
+		"newTeam": "Neues Team",
+		"newTeamForm": {
+			"title": "Neues Team"
+		},
+		"nameLabel": "Teamname",
+		"namePlaceholder": "z. B. Vertrieb",
+		"creating": "Wird erstellt…",
+		"create": "Team erstellen",
+		"empty": {
+			"title": "Noch keine Teams",
+			"description": "Erstellen Sie ein Team, um Mitglieder für Round Robin oder Gruppentermine zusammenzufassen."
+		},
+		"manage": "Verwalten",
+		"close": "Schließen",
+		"rename": "Umbenennen",
+		"members": {
+			"title": "Mitglieder",
+			"empty": "Dieses Team hat noch keine Mitglieder.",
+			"column": "Mitglied",
+			"routingPriority": "Zuweisungspriorität",
+			"remove": "Entfernen"
+		},
+		"addMember": "Mitglied hinzufügen…",
+		"add": "Hinzufügen",
+		"allMembersInTeam": "Alle aktiven Mitglieder sind bereits in diesem Team.",
+		"routingHint": "Niedrigere Zuweisungspriorität = wird früher bevorzugt (gilt für die Zuweisung nach Priorität; bei Round Robin entscheidet bei Gleichstand die Auslastung).",
+		"memberCount": {
+			"one": "{count} Mitglied",
+			"other": "{count} Mitglieder"
+		},
+		"confirm": {
+			"delete": {
+				"title": "„{name}“ löschen?",
+				"description": "Das Team wird entfernt und die Zuordnung seiner Mitglieder aufgehoben. Die Mitglieder selbst und ihre Buchungen sind nicht betroffen. Terminarten, die dieses Team für die Zuweisung nutzen, sind danach keinem Team mehr zugeordnet.",
+				"confirm": "Löschen"
+			}
+		},
+		"toast": {
+			"nameRequired": "Teamname ist erforderlich",
+			"nameEmpty": "Der Name darf nicht leer sein"
+		}
+	},
+	"eventTypes": {
+		"headTitle": "Terminarten — Calnode",
+		"title": "Terminarten",
+		"subtitle": {
+			"mine": "Verwalten Sie die Terminarten, die andere bei Ihnen buchen können.",
+			"all": "Alle Terminarten im Arbeitsbereich. Als Admin können Sie jede davon bearbeiten."
+		},
+		"scope": {
+			"mine": "Meine Terminarten",
+			"all": "Alle Terminarten"
+		},
+		"new": {
+			"toggleCancel": "Abbrechen",
+			"toggleOpen": "Neue Terminart",
+			"title": "Neue Terminart",
+			"name": "Name",
+			"namePlaceholder": "30-Minuten-Gespräch",
+			"slug": "URL-Kürzel",
+			"slugPlaceholder": "30-min-gespraech",
+			"duration": "Dauer (Minuten)",
+			"description": "Beschreibung (optional)",
+			"descriptionPlaceholder": "Kurze Beschreibung…",
+			"creating": "Wird erstellt…",
+			"create": "Terminart erstellen"
+		},
+		"empty": {
+			"title": "Noch keine Terminarten",
+			"description": "Erstellen Sie Ihre erste Terminart, um Buchungen anzunehmen."
+		},
+		"filter": {
+			"active": "Aktiv ({count})",
+			"archived": "Archiviert ({count})",
+			"none": "Keine Terminarten mit Status „{filter}“."
+		},
+		"table": {
+			"name": "Name",
+			"owner": "Inhaber",
+			"duration": "Dauer",
+			"bookingLink": "Buchungslink",
+			"active": "Aktiv"
+		},
+		"badge": {
+			"youHost": "Sie sind Gastgeber"
+		},
+		"owner": {
+			"you": "Sie"
+		},
+		"tooltip": {
+			"settings": "Einstellungen",
+			"duplicate": "Duplizieren",
+			"restore": "Wiederherstellen",
+			"archive": "Archivieren",
+			"delete": "Löschen"
+		},
+		"confirm": {
+			"delete": {
+				"title": "Terminart löschen?",
+				"description": "Die Terminart und ihr Buchungslink werden dauerhaft entfernt. Bestehende Buchungen sind nicht betroffen."
+			}
+		},
+		"toast": {
+			"validation": "URL-Kürzel, Name und Dauer sind erforderlich.",
+			"duplicated": "Als „{slug}“ dupliziert. Inaktiv, bis Sie die Terminart aktivieren.",
+			"archived": "Terminart archiviert",
+			"restored": "Terminart wiederhergestellt",
+			"errors": {
+				"load": "Terminarten konnten nicht geladen werden",
+				"create": "Terminart konnte nicht erstellt werden",
+				"status": "Status konnte nicht aktualisiert werden",
+				"update": "Terminart konnte nicht aktualisiert werden",
+				"duplicate": "Terminart konnte nicht dupliziert werden",
+				"delete": "Terminart konnte nicht gelöscht werden"
+			}
+		}
+	},
+	"recordings": {
+		"headTitle": "Aufzeichnungen — Calnode",
+		"title": "Aufzeichnungen",
+		"subtitle": "Aufzeichnungen von Videokonferenzen in Calnode. Die Dateien liegen in Ihrem Speicher-Bucket; die Links unten sind nur kurz gültig. Die Dateinamen beim Herunterladen enthalten das Datum der Konferenz in UTC.",
+		"deleteAll": "Alle löschen",
+		"deleting": "Wird gelöscht…",
+		"empty": {
+			"title": "Noch keine Aufzeichnungen",
+			"description": "Sobald ein Gastgeber eine Videokonferenz aufzeichnet, erscheint sie hier."
+		},
+		"searchPlaceholder": "Nach Teilnehmer, Raum oder Datum suchen…",
+		"noMatch": "Keine Aufzeichnungen zu „{query}“ gefunden.",
+		"notes": {
+			"aiSummary": "Notizen (KI-Zusammenfassung)",
+			"regenerate": "Neu erstellen",
+			"checking": "Wird geprüft…",
+			"refresh": "Aktualisieren",
+			"loading": "Notizen werden geladen…",
+			"emptyAi": "Die KI-Zusammenfassung ist leer (das Modell hat keine verwertbaren Notizen geliefert). Versuchen Sie „Neu erstellen“ oder öffnen Sie das Transkript für die Rohfassung.",
+			"blocked": {
+				"notetakerOff": "Der Notizassistent ist deaktiviert.",
+				"noDeepgram": "Es ist kein Deepgram-API-Schlüssel hinterlegt.",
+				"noLlm": "Kein LLM konfiguriert — die Notizen entstehen, indem ein LLM das Transkript zusammenfasst."
+			},
+			"pending": "Noch keine Notizen — sie erscheinen einige Minuten nach einer aufgezeichneten Konferenz. Klicken Sie auf „Aktualisieren“, um erneut zu prüfen.",
+			"label": "Notizen"
+		},
+		"hideNotes": "Notizen ausblenden",
+		"transcript": {
+			"deepgram": "Transkript (Deepgram)",
+			"loading": "Transkript wird geladen…",
+			"empty": "Noch kein Transkript — es wird direkt nach einer aufgezeichneten Konferenz erstellt (erfordert den aktivierten Notizassistenten und einen Deepgram-Schlüssel unter Einstellungen → Video).",
+			"label": "Transkript"
+		},
+		"hideTranscript": "Transkript ausblenden",
+		"consent": {
+			"title": "Aufzeichnungshinweis — wer ihn bestätigt hat",
+			"loading": "Einwilligungsprotokoll wird geladen…",
+			"empty": "Für diese Konferenz wurden keine Einwilligungsantworten erfasst. Bestätigungen werden nur erfasst, solange die Aufzeichnung läuft.",
+			"guest": "Gast",
+			"left": "Verlassen",
+			"continued": "Fortgesetzt",
+			"label": "Einwilligung"
+		},
+		"hideConsent": "Einwilligung ausblenden",
+		"download": "Herunterladen",
+		"notReady": "Noch nicht bereit",
+		"confirm": {
+			"deleteOne": {
+				"title": "Aufzeichnung löschen?",
+				"description": "Dadurch werden die Videodatei, ihr Transkript und die Notizen der Buchung endgültig entfernt. Dies kann nicht rückgängig gemacht werden."
+			},
+			"deleteAll": {
+				"title": "Alle Aufzeichnungen löschen?",
+				"description": {
+					"one": "Dadurch wird {count} Aufzeichnung endgültig gelöscht — Dateien, Transkripte und Notizen. Laufende Aufzeichnungen bleiben erhalten. Dies kann nicht rückgängig gemacht werden.",
+					"other": "Dadurch werden {count} Aufzeichnungen endgültig gelöscht — Dateien, Transkripte und Notizen. Laufende Aufzeichnungen bleiben erhalten. Dies kann nicht rückgängig gemacht werden."
+				},
+				"confirm": "Alle löschen"
+			}
+		},
+		"toast": {
+			"copied": "{label} kopiert",
+			"deleted": "Aufzeichnung gelöscht",
+			"notesRegenerated": "Notizen neu erstellt",
+			"notesEmpty": "Die Zusammenfassung ist leer — siehe Transkript.",
+			"nothingToDelete": "Nichts zu löschen (laufende Aufzeichnungen bleiben erhalten).",
+			"deletePartial": {
+				"one": {
+					"one": "{deleted} Aufzeichnung gelöscht; {failed} konnte nicht gelöscht werden.",
+					"other": "{deleted} Aufzeichnung gelöscht; {failed} konnten nicht gelöscht werden."
+				},
+				"other": {
+					"one": "{deleted} Aufzeichnungen gelöscht; {failed} konnte nicht gelöscht werden.",
+					"other": "{deleted} Aufzeichnungen gelöscht; {failed} konnten nicht gelöscht werden."
+				}
+			},
+			"deleteAll": {
+				"one": "{count} Aufzeichnung gelöscht.",
+				"other": "{count} Aufzeichnungen gelöscht."
+			}
+		},
+		"error": {
+			"load": "Aufzeichnungen konnten nicht geladen werden",
+			"loadNotes": "Notizen konnten nicht geladen werden",
+			"regen": "Notizen konnten nicht neu erstellt werden",
+			"loadTranscript": "Transkript konnte nicht geladen werden",
+			"loadConsent": "Einwilligungsprotokoll konnte nicht geladen werden",
+			"deleteOne": "Aufzeichnung konnte nicht gelöscht werden",
+			"deleteAll": "Aufzeichnungen konnten nicht gelöscht werden"
+		},
+		"link": {
+			"settingsVideo": "Einstellungen → Video",
+			"settingsAi": "Einstellungen → KI"
+		}
+	},
+	"webhooks": {
+		"headTitle": "Webhooks — Calnode",
+		"title": "Webhooks",
+		"subtitle": "Erhalten Sie Benachrichtigungen zu Buchungsereignissen in Echtzeit.",
+		"new": {
+			"toggleCancel": "Abbrechen",
+			"toggleOpen": "Neuer Webhook",
+			"title": "Neuer Webhook",
+			"urlLabel": "Endpunkt-URL",
+			"urlPlaceholder": "https://your-server.com/hooks/calnode",
+			"eventsTitle": "Zu sendende Ereignisse",
+			"fieldsTitle": "Zu sendende Daten — entfernen Sie das Häkchen bei allem, was nicht übermittelt werden soll",
+			"fieldsPii": "· personenbezogene Daten",
+			"piiBadge": "PII",
+			"creating": "Wird erstellt…",
+			"create": "Webhook erstellen"
+		},
+		"empty": {
+			"title": "Keine Webhooks",
+			"description": "Fügen Sie einen Webhook hinzu, um Benachrichtigungen zu Buchungsereignissen in Echtzeit zu erhalten."
+		},
+		"table": {
+			"url": "URL",
+			"events": "Ereignisse",
+			"fields": "Felder",
+			"status": "Status",
+			"created": "Erstellt"
+		},
+		"fieldsCount": "Felder: {count}",
+		"tooltip": {
+			"deliveries": "Letzte Zustellungen",
+			"hideDeliveries": "Zustellungen ausblenden",
+			"delete": "Webhook löschen"
+		},
+		"deliveries": {
+			"loading": "Zustellungen werden geladen…",
+			"empty": "Für diesen Webhook gibt es noch keine Zustellungen.",
+			"event": "Ereignis",
+			"http": "HTTP",
+			"attempts": "Versuche",
+			"lastAttempt": "Letzter Versuch",
+			"status": "Status"
+		},
+		"confirm": {
+			"delete": {
+				"title": "Webhook löschen?",
+				"description": "Der Endpunkt empfängt ab sofort keine Ereignisse mehr."
+			}
+		},
+		"validation": {
+			"url": "URL ist erforderlich.",
+			"https": "Die URL muss mit https:// beginnen.",
+			"events": "Wählen Sie mindestens ein Ereignis aus."
+		},
+		"fieldGroup": {
+			"booking": "Buchung",
+			"payment": "Zahlung",
+			"eventType": "Terminart",
+			"host": "Gastgeber",
+			"attendee": "Teilnehmer",
+			"intake": "Fragen"
+		},
+		"fields": {
+			"booking": {
+				"id": "Buchungsreferenz",
+				"status": "Status",
+				"start_at": "Beginn",
+				"end_at": "Ende",
+				"created_at": "Erstellt am",
+				"location_value": "Ort",
+				"cancellation_reason": "Stornierungsgrund",
+				"previous_start_at": "Vorheriger Beginn (Verschiebung)",
+				"previous_end_at": "Vorheriges Ende (Verschiebung)",
+				"rsvp_status": "RSVP-Antwort (booking.rsvp)",
+				"invite_delivery": "Einladung versendet über (calendar, calnode, none)"
+			},
+			"payment": {
+				"payment_status": "Zahlungsstatus",
+				"amount_paid_cents": "Gezahlter Betrag (Cent)",
+				"amount_paid_currency": "Währung"
+			},
+			"eventType": {
+				"event_type_slug": "URL-Kürzel der Terminart",
+				"event_type_name": "Name der Terminart"
+			},
+			"host": {
+				"host_id": "Gastgeber-ID",
+				"host_name": "Name des Gastgebers",
+				"host_email": "E-Mail des Gastgebers"
+			},
+			"attendee": {
+				"attendee_name": "Name des Teilnehmers",
+				"attendee_email": "E-Mail des Teilnehmers",
+				"attendee_timezone": "Zeitzone des Teilnehmers"
+			},
+			"intake": {
+				"answers": "Antworten auf Fragen"
+			}
+		},
+		"badge": {
+			"personalData": "· personenbezogene Daten"
+		}
+	},
+	"connections": {
+		"headTitle": "Verbundene Apps — Calnode",
+		"title": "Verbundene Apps",
+		"subtitle": "KI-Agenten und andere Apps, die Sie per Anmeldung mit Ihren Terminplanungswerkzeugen (MCP) verbunden haben.",
+		"connect": {
+			"title": "App verbinden",
+			"description": "Fügen Sie diese URL in einer beliebigen MCP-fähigen App als benutzerdefinierten Konnektor hinzu und melden Sie sich an, wenn Sie dazu aufgefordert werden. Die App erscheint unten, sobald Sie sie genehmigt haben."
+		},
+		"mcpUrlAria": "URL des MCP-Konnektors",
+		"claudeHint": "In Claude: Öffnen Sie Settings → Connectors → Add custom connector, fügen Sie die URL ein und melden Sie sich mit Ihrem Calnode-Konto an, um den Zugriff zu autorisieren. Der Zugriff ist auf Ihre eigene Rolle beschränkt und kann hier jederzeit widerrufen werden.",
+		"empty": {
+			"title": "Keine verbundenen Apps",
+			"description": "Fügen Sie Calnode über die obige URL einer MCP-fähigen App hinzu. Sobald Sie die App genehmigt haben, erscheint sie hier."
+		},
+		"table": {
+			"app": "App",
+			"connected": "Verbunden",
+			"lastUsed": "Zuletzt verwendet"
+		},
+		"tooltip": {
+			"disconnect": "Trennen"
+		},
+		"confirm": {
+			"title": "App trennen?",
+			"description": "„{name}“ trennen? Die App verliert sofort den Zugriff auf Ihre Terminplanungswerkzeuge und muss erneut verbunden werden, um ihn wiederzuerlangen."
+		}
+	},
+	"apiKeys": {
+		"headTitle": "API-Schlüssel — Calnode",
+		"title": "API-Schlüssel",
+		"subtitle": "Authentifizieren Sie CLI-Werkzeuge und Integrationen.",
+		"new": {
+			"toggleCancel": "Abbrechen",
+			"toggleOpen": "Neuer Schlüssel",
+			"title": "Neuer API-Schlüssel",
+			"nameLabel": "Name des Schlüssels",
+			"namePlaceholder": "z. B. CI/CD-Pipeline",
+			"creating": "Wird erstellt…",
+			"create": "Schlüssel erstellen"
+		},
+		"created": {
+			"banner": "Schlüssel erstellt — kopieren Sie ihn jetzt. Er wird nicht erneut angezeigt."
+		},
+		"copyToClipboard": "In die Zwischenablage kopieren",
+		"empty": {
+			"title": "Keine API-Schlüssel",
+			"description": "Erstellen Sie einen Schlüssel, um CLI-Werkzeuge und Integrationen zu authentifizieren."
+		},
+		"table": {
+			"name": "Name",
+			"created": "Erstellt",
+			"lastUsed": "Zuletzt verwendet"
+		},
+		"tooltip": {
+			"revoke": "Schlüssel widerrufen"
+		},
+		"confirm": {
+			"title": "API-Schlüssel widerrufen?",
+			"description": "„{name}“ widerrufen? Alle Integrationen, die ihn verwenden, funktionieren sofort nicht mehr.",
+			"confirm": "Widerrufen"
+		},
+		"validation": {
+			"name": "Der Name ist erforderlich."
+		}
+	},
+	"auth": {
+		"login": {
+			"headTitle": "Anmelden — Calnode",
+			"title": "Bei Calnode anmelden",
+			"google": "Mit Google anmelden",
+			"microsoft": "Mit Microsoft anmelden",
+			"email": "E-Mail",
+			"password": "Passwort",
+			"forgotPassword": "Passwort vergessen?",
+			"submit": "Anmelden",
+			"submitting": "Anmeldung läuft…",
+			"magicEmail": "E-Mail",
+			"magicPlaceholder": "name@example.com",
+			"magicSubmit": "Anmeldelink per E-Mail senden",
+			"magicSending": "Wird gesendet…",
+			"magicHint": "Ein einmaliger Anmeldelink, kein Passwort erforderlich.",
+			"magicDefaultMessage": "Falls ein Konto mit dieser E-Mail-Adresse existiert, ist ein Anmeldelink unterwegs.",
+			"magicInvalidEmail": "Geben Sie zuerst eine gültige E-Mail-Adresse ein.",
+			"loading": "Wird geladen…",
+			"enteringDemo": "Demo wird gestartet…",
+			"noMethods": "Es sind keine Anmeldemethoden konfiguriert. Wenden Sie sich an Ihren Administrator.",
+			"error": {
+				"generic": "Ein Fehler ist aufgetreten. Bitte versuchen Sie es erneut.",
+				"loginFailed": "Anmeldung fehlgeschlagen. Bitte versuchen Sie es erneut."
+			},
+			"oauth": {
+				"state": "Anmeldung fehlgeschlagen: ungültiger Sitzungsstatus. Bitte versuchen Sie es erneut.",
+				"denied": "Sie haben den Zugriff verweigert. Für die Verwaltung ist eine Anmeldung erforderlich.",
+				"oauth": "OAuth-Fehler. Bitte versuchen Sie es erneut.",
+				"userinfo": "Ihr Profil konnte nicht abgerufen werden. Bitte versuchen Sie es erneut.",
+				"noAccount": "Für Ihre E-Mail-Adresse wurde kein Calnode-Konto gefunden. Wenden Sie sich an Ihren Admin.",
+				"archived": "Ihr Konto wurde archiviert. Wenn Sie dies für einen Fehler halten, wenden Sie sich bitte an den Admin Ihres Arbeitsbereichs.",
+				"session": "Es konnte keine Sitzung erstellt werden. Bitte versuchen Sie es erneut.",
+				"link": "Dieser Anmeldelink ist ungültig oder abgelaufen. Fordern Sie unten einen neuen an."
+			}
+		},
+		"claim": {
+			"headTitle": "Calnode einrichten",
+			"title": "Willkommen bei Calnode",
+			"subtitle": "Sie sind die erste Person hier — legen Sie Ihr Inhaberkonto an.",
+			"name": "Vollständiger Name",
+			"email": "E-Mail",
+			"password": "Passwort",
+			"passwordHint": "Mindestens 8 Zeichen",
+			"submit": "Inhaberkonto anlegen",
+			"submitting": "Konto wird angelegt…",
+			"error": "Einrichtung fehlgeschlagen. Bitte versuchen Sie es erneut."
+		},
+		"invite": {
+			"headTitle": "Einladung annehmen — Calnode",
+			"title": "Sie wurden eingeladen",
+			"checking": "Ihre Einladung wird geprüft…",
+			"invalid": "Dieser Einladungslink ist abgelaufen oder wurde bereits verwendet. Bitten Sie Ihren Admin, Ihnen einen neuen zu senden.",
+			"forEmail": "Diese Einladung gilt für {email}. Sie kann von niemand anderem verwendet werden.",
+			"name": "Vollständiger Name",
+			"email": "E-Mail",
+			"password": "Passwort",
+			"passwordHint": "Mindestens 8 Zeichen",
+			"submit": "Konto anlegen",
+			"submitting": "Konto wird angelegt…",
+			"error": "Die Einrichtung konnte nicht abgeschlossen werden. Bitte versuchen Sie es erneut."
+		},
+		"forgot": {
+			"headTitle": "Passwort vergessen — Calnode",
+			"title": "Passwort vergessen?",
+			"subtitle": "Geben Sie die E-Mail-Adresse Ihres Kontos ein. Wir senden Ihnen einen Link, mit dem Sie ein neues Passwort festlegen können.",
+			"email": "E-Mail",
+			"placeholder": "name@example.com",
+			"submit": "Link zum Zurücksetzen senden",
+			"submitting": "Wird gesendet…",
+			"back": "Zurück zur Anmeldung",
+			"defaultMessage": "Falls ein Konto mit dieser E-Mail-Adresse existiert, ist ein Link zum Zurücksetzen des Passworts unterwegs.",
+			"invalidEmail": "Geben Sie zuerst eine gültige E-Mail-Adresse ein."
+		},
+		"reset": {
+			"headTitle": "Neues Passwort festlegen — Calnode",
+			"title": "Neues Passwort festlegen",
+			"subtitle": "Wählen Sie ein Passwort mit mindestens 8 Zeichen.",
+			"password": "Neues Passwort",
+			"confirm": "Neues Passwort bestätigen",
+			"submit": "Neues Passwort festlegen",
+			"submitting": "Wird festgelegt…",
+			"missingToken": "In diesem Link zum Zurücksetzen fehlt das Token. Fordern Sie unten einen neuen an.",
+			"requestNew": "Neuen Link zum Zurücksetzen anfordern",
+			"tooShort": "Das Passwort muss mindestens 8 Zeichen lang sein.",
+			"mismatch": "Die beiden Passwörter stimmen nicht überein.",
+			"failed": "Ihr Passwort konnte nicht zurückgesetzt werden. Der Link ist möglicherweise abgelaufen.",
+			"retry": "Ihr Passwort konnte nicht zurückgesetzt werden. Bitte versuchen Sie es erneut."
+		}
+	},
+	"settings": {
+		"headTitle": "Einstellungen — Calnode",
+		"title": "Einstellungen",
+		"subtitle": "Verwalten Sie Ihr Profil, Ihre Präferenzen und Integrationen.",
+		"nav": {
+			"section": {
+				"account": "Ihr Konto",
+				"workspace": "Arbeitsbereich"
+			},
+			"profile": "Profil",
+			"notifications": "Benachrichtigungen",
+			"branding": "Erscheinungsbild",
+			"email": "E-Mail",
+			"google": "Google OAuth",
+			"zoom": "Zoom",
+			"video": "Video",
+			"storage": "Speicher",
+			"payments": "Zahlungen",
+			"ai": "KI",
+			"tracking": "Tracking"
+		},
+		"profile": {
+			"loading": "Wird geladen…",
+			"section": {
+				"profile": "Profil",
+				"preferences": "Präferenzen"
+			},
+			"photo": {
+				"title": "Profilbild",
+				"hint": "Klicken Sie auf Ihr Profilbild, um {action} · Anzeige in 400×400, quadratische Bilder eignen sich daher am besten · JPEG, PNG, GIF oder WebP, max. 5 MB · wird als JPEG gespeichert",
+				"actionUpload": "ein Foto hochzuladen",
+				"actionReplace": "das Foto zu ersetzen",
+				"replaceTitle": "Foto ersetzen",
+				"uploadTitle": "Foto hochladen",
+				"remove": "Foto entfernen"
+			},
+			"accent": {
+				"label": "Akzentfarbe für Buchungsseiten",
+				"hint": "Wird auf Ihren Buchungsseiten verwendet."
+			},
+			"name": {
+				"label": "Name",
+				"placeholder": "Ihr Name",
+				"hint": "Ihr persönlicher Name, der als Gastgeber des Termins angezeigt wird. Ihre Unternehmensmarke (Logo, Firmenname) legen Sie separat unter Einstellungen → Erscheinungsbild fest."
+			},
+			"handle": {
+				"label": "Buchungskürzel",
+				"placeholder": "z. B. wynne",
+				"publicPage": "Ihre öffentliche Buchungsseite:",
+				"noPage": "Leer lassen, um keine Seite anzulegen."
+			},
+			"email": {
+				"label": "E-Mail"
+			},
+			"timezone": {
+				"label": "Zeitzone",
+				"placeholder": "Zeitzone auswählen…",
+				"searchPlaceholder": "Zeitzonen durchsuchen…",
+				"hint": "Wird zur Berechnung der verfügbaren Zeitfenster auf Ihren Buchungsseiten verwendet."
+			},
+			"timeFormat": {
+				"label": "Zeitformat",
+				"12h": "12 Stunden",
+				"12hHint": "1:30 PM",
+				"24h": "24 Stunden",
+				"24hHint": "13:30"
+			},
+			"weekStart": {
+				"label": "Erster Wochentag"
+			},
+			"dateFormat": {
+				"label": "Datumsformat",
+				"dmy": "TT/MM/JJJJ",
+				"mdy": "MM/TT/JJJJ",
+				"ymd": "JJJJ-MM-TT"
+			},
+			"crop": {
+				"replaceTitle": "Foto ersetzen",
+				"uploadTitle": "Foto hochladen",
+				"description": "Ziehen oder mit zwei Fingern zoomen, um den Ausschnitt anzupassen. Der zugeschnittene Bereich wird gespeichert.",
+				"previewAlt": "Zuschnittvorschau",
+				"uploading": "Wird hochgeladen…",
+				"save": "Foto speichern"
+			},
+			"toast": {
+				"avatarUpdated": "Profilbild aktualisiert",
+				"settingsSaved": "Einstellungen gespeichert"
+			},
+			"error": {
+				"load": "Profil konnte nicht geladen werden",
+				"upload": "Profilbild konnte nicht hochgeladen werden",
+				"removeAvatar": "Profilbild konnte nicht entfernt werden",
+				"save": "Einstellungen konnten nicht gespeichert werden"
+			},
+			"language": {
+				"label": "Sprache",
+				"hint": "Die Sprache der Verwaltungsoberfläche. Öffentliche Buchungsseiten richten sich weiterhin nach dem Browser des jeweiligen Besuchers.",
+				"en": "English",
+				"fr": "Français"
+			}
+		},
+		"notifications": {
+			"loading": "Wird geladen…",
+			"title": "Benachrichtigungen",
+			"subtitle": "Legen Sie fest, welche E-Mails Sie und Ihre Teilnehmer erhalten.",
+			"section": {
+				"attendees": "E-Mails an Ihre Teilnehmer",
+				"host": "E-Mails an Sie"
+			},
+			"attendee": {
+				"confirmation": "Buchungsbestätigung",
+				"cancellation": "Stornierungsmitteilung",
+				"reschedule": "Mitteilung bei Verschiebung",
+				"reminder": "Erinnerungs-E-Mails"
+			},
+			"host": {
+				"newBooking": "Neue Buchung eingegangen",
+				"cancelled": "Buchung storniert",
+				"rescheduled": "Termin verschoben"
+			},
+			"toast": {
+				"saved": "Einstellungen gespeichert"
+			},
+			"error": {
+				"load": "Einstellungen konnten nicht geladen werden",
+				"save": "Einstellungen konnten nicht gespeichert werden"
+			}
+		},
+		"branding": {
+			"title": "Erscheinungsbild",
+			"intro": "Ihr Logo erscheint oben in den Buchungsbestätigungen per E-Mail sowie auf Ihren öffentlichen Buchungsseiten und den Seiten zur Buchungsverwaltung. Ohne Logo wird stattdessen der Firmenname als Schriftzug angezeigt.",
+			"businessName": {
+				"label": "Firmenname",
+				"placeholder": "Orchestratr",
+				"hint": "Wird verwendet, wenn kein Logo vorhanden ist. Bleibt das Feld leer, wird „Calnode“ angezeigt."
+			},
+			"logo": {
+				"label": "Logo",
+				"replaceTitle": "Logo ersetzen",
+				"uploadTitle": "Logo hochladen",
+				"clickUpload": "Klicken, um ein Logo hochzuladen",
+				"alt": "Logo",
+				"size": "Größe",
+				"opacity": "Deckkraft",
+				"remove": "Logo entfernen",
+				"hint": "Klicken Sie auf das Feld, um ein Logo hochzuladen. Die Anzeige erfolgt in bis zu 600×160, daher eignen sich Formate, die breiter als hoch sind, am besten. Ein PNG mit transparentem Hintergrund wirkt auf hellem Hintergrund am besten. Jede Form ist möglich — Sie können das Bild im nächsten Schritt zuschneiden. JPEG, PNG, GIF oder WebP, max. 5 MB; das Bild wird als PNG neu kodiert. Passen Sie Größe und Deckkraft an (die Vorschau wird sofort aktualisiert) und speichern Sie anschließend."
+			},
+			"banner": {
+				"label": "Banner",
+				"replaceTitle": "Banner ersetzen",
+				"uploadTitle": "Banner hochladen",
+				"clickUpload": "Klicken, um ein Banner hochzuladen",
+				"alt": "Banner",
+				"remove": "Banner entfernen",
+				"hint": "Wird in voller Breite unter Ihrem Logo in Buchungs-E-Mails sowie auf Ihren öffentlichen Buchungsseiten und den Seiten zur Buchungsverwaltung angezeigt — ohne Banner entfällt dieser Bereich vollständig. Die Anzeige erfolgt in bis zu 1600×800, daher eignen sich breite Bilder am besten. JPEG, PNG, GIF oder WebP, max. 5 MB; das Bild wird als PNG neu kodiert."
+			},
+			"legal": {
+				"title": "Rechtliche Links",
+				"intro": "Links zu Ihrer eigenen Datenschutzerklärung und Ihren Nutzungsbedingungen. Sie erscheinen in der Fußzeile Ihrer öffentlichen Buchungsseite, und Ihre Datenschutzerklärung wird im Cookie-Banner verlinkt. Für Buchungen über Ihre Calnode-Instanz sind Sie datenschutzrechtlich Verantwortlicher — diese Links verweisen Besucher lediglich auf Ihre Richtlinien.",
+				"privacy": {
+					"label": "URL der Datenschutzerklärung",
+					"placeholder": "https://example.com/privacy"
+				},
+				"terms": {
+					"label": "URL der Nutzungsbedingungen",
+					"placeholder": "https://example.com/terms"
+				},
+				"blankHint": "Lassen Sie ein Feld leer, um den jeweiligen Link auszublenden. Erforderlich ist eine vollständige http(s)://-URL."
+			},
+			"language": {
+				"title": "Sprache",
+				"intro": "Ihre öffentlichen Buchungsseiten und E-Mails werden für jeden Besucher übersetzt — die meisten sehen automatisch die Sprache ihres Browsers. Diese Einstellung legt fest, was ein Besucher sieht, wenn sein Browser eine Sprache anfordert, die nicht unterstützt wird (z. B. könnte ein Betreiber mit überwiegend spanischsprachiger Kundschaft hier Spanisch statt Englisch bevorzugen).",
+				"fallback": {
+					"label": "Ersatzsprache"
+				}
+			},
+			"crop": {
+				"logoTitle": "Logo zuschneiden",
+				"bannerTitle": "Banner zuschneiden",
+				"description": "Ziehen Sie, um den Ausschnitt anzupassen, oder speichern Sie direkt, um das ganze Bild zu verwenden.",
+				"previewAlt": "Zuschnittvorschau",
+				"saveLogo": "Logo speichern",
+				"saveBanner": "Banner speichern"
+			},
+			"toast": {
+				"logoUploaded": "Logo hochgeladen",
+				"bannerUploaded": "Banner hochgeladen",
+				"logoRemoved": "Logo entfernt",
+				"bannerRemoved": "Banner entfernt",
+				"saved": "Erscheinungsbild gespeichert"
+			},
+			"error": {
+				"load": "Einstellungen zum Erscheinungsbild konnten nicht geladen werden",
+				"save": "Einstellungen zum Erscheinungsbild konnten nicht gespeichert werden",
+				"upload": "Hochladen fehlgeschlagen: {target}",
+				"removeLogo": "Logo konnte nicht entfernt werden",
+				"removeBanner": "Banner konnte nicht entfernt werden"
+			}
+		},
+		"email": {
+			"title": "E-Mail",
+			"subtitle": "So versendet Calnode Buchungs-E-Mails.",
+			"transport": {
+				"resend": "Versand über die Resend-API",
+				"smtp": "Versand über SMTP",
+				"none": "Nicht konfiguriert"
+			},
+			"resend": {
+				"title": "Resend-API-Schlüssel",
+				"hint": "Versendet über HTTPS statt über SMTP. Nutzen Sie diese Option, wenn Ihr Hosting-Anbieter SMTP blockiert.",
+				"removeKey": "Schlüssel entfernen",
+				"willRemove": "Wird beim Speichern entfernt; danach wird SMTP verwendet.",
+				"railwayHint": "Viele Hosting-Anbieter (darunter Railway unterhalb des Pro-Tarifs) blockieren ausgehendes SMTP vollständig — das sieht genauso aus wie ein falsches Passwort. Mit einem API-Schlüssel umgehen Sie dieses Problem."
+			},
+			"smtp": {
+				"dimmedHint": "E-Mails werden über die Resend-API versendet, daher sind diese SMTP-Einstellungen nicht aktiv. Sie bleiben erhalten, damit Sie durch Entfernen des Schlüssels oben wieder zurückwechseln können.",
+				"host": "SMTP-Server",
+				"hostPlaceholder": "smtp.gmail.com",
+				"port": "Port",
+				"portPlaceholder": "587",
+				"username": "Benutzername",
+				"usernamePlaceholder": "you@example.com",
+				"password": "Passwort",
+				"passwordPlaceholder": "Passwort eingeben",
+				"fromAddress": "Absenderadresse",
+				"fromAddressPlaceholder": "bookings@example.com",
+				"fromName": "Absendername",
+				"fromNamePlaceholder": "Calnode",
+				"tlsSection": "TLS / Verschlüsselung",
+				"starttls": "STARTTLS",
+				"starttlsHint": "Empfohlen für Port 587",
+				"implicitTls": "Implizites TLS",
+				"implicitTlsHint": "Für Port 465 (SSL)"
+			},
+			"sendTest": "Test-E-Mail senden",
+			"rsvp": {
+				"title": "RSVP-Erfassung",
+				"subtitle": "Für Terminarten, deren Einladungen Calnode versendet. Die Antworten der Teilnehmer (Ja / Nein / Vielleicht) gelangen über Resend zurück und werden bei der Buchung angezeigt.",
+				"on": "Aktiv",
+				"off": "Inaktiv",
+				"fullAccessKey": "Erfordert oben einen Resend-API-Schlüssel mit der Berechtigung „Full access“: Calnode nutzt ihn, um den Webhook einzurichten und Antworten abzurufen. Ein Schlüssel, der nur zum Versenden berechtigt ist, kann beides nicht.",
+				"address": {
+					"label": "RSVP-Adresse",
+					"placeholder": "rsvp@reply.example.com",
+					"hint": "Eine Adresse auf einer Subdomain, für die Sie in Resend den E-Mail-Empfang eingerichtet haben (Resend → „Domains“ → „enable receiving“, anschließend den zugehörigen MX-Eintrag anlegen). Jede Einladung erhält eine eigene private Variante dieser Adresse, damit Antworten der richtigen Buchung zugeordnet werden."
+				},
+				"webhook": {
+					"title": "Resend-Webhook",
+					"connected": "Verbunden: Resend stellt Antworten an {url} zu.",
+					"rerun": "Einrichtung erneut ausführen",
+					"removeSecret": "Geheimnis entfernen",
+					"clearOnSave": "Das gespeicherte Geheimnis wird beim Speichern entfernt; die RSVP-Erfassung wird deaktiviert.",
+					"autoSetupHint": "Calnode kann den Webhook in Ihrem Resend-Konto anlegen und sein Signaturgeheimnis speichern.",
+					"setupButton": "Webhook in Resend einrichten",
+					"checking": "Wird geprüft…",
+					"settingUp": "Wird eingerichtet…",
+					"hideManual": "Manuelle Schritte ausblenden",
+					"showManual": "Manuell einrichten",
+					"manual": {
+						"step1": "Öffnen Sie in Resend „Webhooks“ und wählen Sie „Add webhook“.",
+						"endpointLabel": "Endpunkt-URL:",
+						"step3": "Ereignis: email.received.",
+						"step4": "Kopieren Sie das Signaturgeheimnis des Webhooks, fügen Sie es hier ein und speichern Sie:"
+					},
+					"secretPlaceholder": "whsec_..."
+				}
+			},
+			"toast": {
+				"saved": "E-Mail-Einstellungen gespeichert",
+				"webhookCreated": "Webhook in Resend angelegt",
+				"webhookExisting": "Mit Ihrem bestehenden Resend-Webhook verbunden",
+				"testSent": "Test-E-Mail an {email} gesendet"
+			},
+			"error": {
+				"load": "E-Mail-Einstellungen konnten nicht geladen werden",
+				"save": "E-Mail-Einstellungen konnten nicht gespeichert werden",
+				"webhook": "Der Webhook konnte nicht in Resend eingerichtet werden.",
+				"testSaveFirst": "Speichern Sie zuerst Ihre Einstellungen und versuchen Sie es dann erneut.",
+				"test": "Test-E-Mail konnte nicht gesendet werden"
+			}
+		},
+		"google": {
+			"originMismatch": {
+				"title": "Diese Seite wird unter einer anderen Domain aufgerufen, als für Calnode konfiguriert ist",
+				"body": "Sie rufen {browserOrigin} auf, aber BASE_URL dieses Servers ist auf {baseUrl} gesetzt. Die Weiterleitungs-URIs unten werden aus BASE_URL erzeugt — wenn {browserOrigin} Ihre tatsächliche Domain ist (zum Beispiel, nachdem Sie eine eigene Domain auf diese Instanz verwiesen haben), aktualisieren Sie die Umgebungsvariable bzw. das Geheimnis BASE_URL bei Ihrem Hosting-Anbieter, stellen Sie die Anwendung neu bereit und laden Sie diese Seite anschließend neu."
+			},
+			"setup": {
+				"title": "Einrichtungsanleitung",
+				"step1": "Öffnen Sie {console}. Falls Sie noch kein Projekt haben, legen Sie eines an — der Name ist beliebig.",
+				"console": "console.cloud.google.com",
+				"step2": "Gehen Sie zu „APIs & Services“ → „Library“, suchen Sie nach „Google Calendar API“ und aktivieren Sie sie.",
+				"step3": "Gehen Sie zu „APIs & Services“ → „OAuth consent screen“. Wählen Sie „External“ (oder „Internal“, wenn Sie Google Workspace nutzen). Geben Sie den App-Namen und Ihre E-Mail-Adresse ein und speichern Sie.",
+				"step3Testing": "Solange sich die App im Status „Testing“ befindet, können sich nur Google-Konten verbinden, die als Testnutzer hinzugefügt wurden, und Google begrenzt dies auf 100 Nutzer. Sobald Ihre Teammitglieder ihre Kalender verbinden möchten, klicken Sie auf „Publish app“, um die Begrenzung aufzuheben (für „Internal“-/Workspace-Apps gibt es keine Begrenzung). Siehe {guide}.",
+				"guide": "die Anleitung von Google",
+				"step4": "Gehen Sie zu „Credentials“ → „Create Credentials“ → „OAuth client ID“. Wählen Sie als Anwendungstyp „Web application“.",
+				"step5": "Fügen Sie unter „Authorised redirect URIs“ beide unten angezeigten Weiterleitungs-URLs hinzu. Klicken Sie auf „Create“. Kopieren Sie die angezeigte Client ID und das Client Secret.",
+				"step5Localhost": "Wenn Sie Calnode auch lokal betreiben, fügen Sie zusätzlich die Varianten http://localhost:3000/… beider URIs hinzu.",
+				"step6": "Fügen Sie beides in das Formular unten ein und speichern Sie."
+			},
+			"oauth": {
+				"title": "Google OAuth",
+				"subtitle": "Ermöglicht die Anmeldung mit Google und die Integration von Google Kalender."
+			},
+			"clientId": "Client ID",
+			"clientIdPlaceholder": "123456789-abc.apps.googleusercontent.com",
+			"clientSecret": "Client Secret",
+			"clientSecretPlaceholder": "Client Secret eingeben",
+			"redirectUris": {
+				"title": "Autorisierte Weiterleitungs-URIs",
+				"hint": "Diese müssen in Google Cloud bei Ihrem OAuth-Client eingetragen sein („Credentials“ → Ihr Client → „Authorised redirect URIs“).",
+				"localhostHint": "Wenn Sie Calnode auch lokal betreiben, fügen Sie zusätzlich die Varianten http://localhost:3000/… hinzu."
+			},
+			"toast": {
+				"saved": "Gespeichert — verbinden Sie Ihr Konto jetzt auf der Seite „Kalender“"
+			},
+			"error": {
+				"load": "Google-Einstellungen konnten nicht geladen werden",
+				"save": "Google-Einstellungen konnten nicht gespeichert werden"
+			}
+		},
+		"zoom": {
+			"setup": {
+				"title": "Einrichtungsanleitung",
+				"step1": "Öffnen Sie den {marketplace} und melden Sie sich mit Ihrem Zoom-Konto an. Klicken Sie auf „Develop“ → „Build App“.",
+				"marketplace": "Zoom App Marketplace",
+				"step2": "Wählen Sie eine „General App“ (User-managed OAuth). Solange sie nicht veröffentlicht ist, lässt Zoom nur Nutzer innerhalb des Zoom-Kontos, dem die App gehört, eine Verbindung herstellen; Gastgeber mit eigenen, separaten Zoom-Konten benötigen eine veröffentlichte App (siehe DEPLOY.md, „Zoom meeting links“). Falls Zoom damit nicht infrage kommt: Die integrierte Videokonferenz benötigt überhaupt keine Zoom-App — siehe {videoDocs}.",
+				"videoDocs": "docs/VIDEO.md",
+				"step3": "Setzen Sie unter „OAuth“ die „Redirect URL for OAuth“ auf die unten angezeigte URL (und tragen Sie sie zusätzlich in die „OAuth allow list“ ein).",
+				"step4": "Fügen Sie unter „Scopes“ den Scope meeting:write hinzu (Meetings im Namen des Nutzers erstellen, aktualisieren und löschen).",
+				"step5": "Kopieren Sie die Client ID und das Client Secret aus „Basic Information“ der App, fügen Sie beides unten ein und speichern Sie."
+			},
+			"title": "Zoom",
+			"subtitle": "Ermöglicht jedem Gastgeber, sein eigenes Zoom-Konto zu verbinden, damit Buchungen mit dem Ort Zoom automatisch einen echten Meeting-Link erhalten.",
+			"clientId": "Client ID",
+			"clientIdPlaceholder": "abcdEFGhij-KLmnOPqrS",
+			"clientSecret": "Client Secret",
+			"clientSecretPlaceholder": "Client Secret eingeben",
+			"redirect": {
+				"title": "Weiterleitungs-URL",
+				"hint": "Diese URL muss in Ihrer Zoom-App eingetragen sein („OAuth“ → „Redirect URL“ + „OAuth allow list“)."
+			},
+			"multiMemberWarning": "Einschränkung bei mehreren Mitgliedern: Mit einer unveröffentlichten App können sich nur Zoom-Nutzer verbinden, die zum selben Zoom-Konto gehören wie der Inhaber dieser App — Mitglieder aus anderen Konten werden von Zoom abgewiesen, bevor Calnode überhaupt beteiligt ist. Optionen: {zoomDocs} (die integrierte Videokonferenz benötigt überhaupt keine Zoom-App).",
+			"zoomDocs": "docs/ZOOM.md",
+			"toast": {
+				"saved": "Gespeichert — jeder Gastgeber kann Zoom jetzt auf der Seite „Kalender“ verbinden"
+			},
+			"error": {
+				"load": "Zoom-Einstellungen konnten nicht geladen werden",
+				"save": "Zoom-Einstellungen konnten nicht gespeichert werden"
+			}
+		},
+		"video": {
+			"setup": {
+				"title": "Einrichtungsanleitung",
+				"step1": "Erstellen Sie ein kostenloses Projekt unter {cloud} (oder betreiben Sie einen eigenen {selfHosted} — mit denselben Feldern).",
+				"cloud": "cloud.livekit.io",
+				"selfHosted": "selbst gehosteten Server",
+				"step2": "Kopieren Sie die WebSocket-URL des Projekts (etwa wss://yourproject.livekit.cloud) sowie einen API-Schlüssel und das zugehörige Geheimnis.",
+				"step3": "Fügen Sie die Werte unten ein und speichern Sie. Buchungen mit „Calnode Video (LiveKit)“ erhalten dann einen integrierten Raum — eine Verbindung pro Gastgeber ist nicht nötig."
+			},
+			"livekit": {
+				"title": "Calnode Video (LiveKit)",
+				"subtitle": "Integrierte Videokonferenzen auf Ihrem LiveKit-Server. Jede Buchung erhält einen Raumlink; Gäste nehmen im Browser teil — ohne Konto oder App."
+			},
+			"serverUrl": "Server-URL",
+			"serverUrlPlaceholder": "wss://yourproject.livekit.cloud",
+			"apiKey": "API-Schlüssel",
+			"apiKeyPlaceholder": "APIxxxxxxxx",
+			"apiSecret": "API-Geheimnis",
+			"apiSecretPlaceholder": "API-Geheimnis eingeben",
+			"disconnect": "Verbindung trennen",
+			"recording": {
+				"needStorage": "Für Besprechungsaufzeichnungen muss zuerst ein Objektspeicher eingerichtet werden.",
+				"enableHint": "Der Objektspeicher ist bereit — aktivieren Sie Aufzeichnungen, damit Gastgeber Besprechungen aufzeichnen können.",
+				"goStorage": "Zu Einstellungen → Speicher"
+			},
+			"webhook": {
+				"title": "Webhook (empfohlen)",
+				"subtitle": "Registrieren Sie diese URL in LiveKit, damit Aufzeichnungen mit korrekter Dauer abgeschlossen werden und sauber enden, sobald eine Besprechung beendet wird. Aufzeichnungen funktionieren auch ohne Webhook — damit laufen sie aber zuverlässig.",
+				"step1": "1. Öffnen Sie in LiveKit Cloud „Project → Settings → Webhooks“ ({docs}).",
+				"docs": "Dokumentation",
+				"step2": "2. Fügen Sie einen Webhook mit der obigen URL hinzu und hinterlegen Sie denselben API-Schlüssel, den Sie hier eingegeben haben — er signiert die Ereignisse, sodass Calnode sie prüfen kann.",
+				"step3": "3. Speichern Sie. LiveKit sendet alle Projektereignisse an diese eine URL; Calnode prüft jede Signatur und verarbeitet die Ereignisse, die Aufzeichnungen betreffen."
+			},
+			"notetaker": {
+				"title": "KI-Besprechungsnotizen (Notizassistent)",
+				"subtitle": "Aufgezeichnete Besprechungen werden anschließend transkribiert und zu Notizen an der Buchung zusammengefasst (mit Ihrem konfigurierten LLM). Voraussetzungen: aktivierte Aufzeichnung, ein konfiguriertes LLM und ein Deepgram-Schlüssel.",
+				"deepgram": {
+					"label": "Deepgram-API-Schlüssel",
+					"placeholder": "Deepgram-API-Schlüssel eingeben",
+					"hint": "Erhältlich unter {deepgram}.",
+					"console": "console.deepgram.com"
+				}
+			},
+			"toast": {
+				"saved": "Gespeichert — „Calnode Video (LiveKit)“ ist jetzt als Ort für Terminarten auswählbar",
+				"webhookCopied": "Webhook-URL kopiert",
+				"copyFailed": "Kopieren fehlgeschlagen — bitte manuell markieren und kopieren",
+				"disconnected": "LiveKit-Verbindung getrennt",
+				"notetakerSaved": "Einstellungen des Notizassistenten gespeichert"
+			},
+			"error": {
+				"load": "Videoeinstellungen konnten nicht geladen werden",
+				"save": "Videoeinstellungen konnten nicht gespeichert werden",
+				"notetakerSave": "Einstellungen des Notizassistenten konnten nicht gespeichert werden",
+				"disconnect": "Verbindung konnte nicht getrennt werden"
+			}
+		},
+		"storage": {
+			"intro": "Der Objektspeicher wird an zwei Stellen genutzt — für Datenbanksicherungen und für Besprechungsaufzeichnungen. Beide verwenden denselben Bucket.",
+			"setup": {
+				"title": "Einrichtungsanleitung",
+				"step1": "Legen Sie bei einem beliebigen S3-kompatiblen Objektspeicher-Anbieter einen Bucket an — zum Beispiel {r2}, {b2} oder {s3}. In diesen Bucket schreiben sowohl die Datenbanksicherungen als auch die Besprechungsaufzeichnungen.",
+				"r2": "Cloudflare R2",
+				"b2": "Backblaze B2",
+				"s3": "AWS S3",
+				"step2": "Erzeugen Sie für diesen Bucket eine Zugriffsschlüssel-ID und einen geheimen Zugriffsschlüssel.",
+				"step3": "Hierfür gibt es kein Formular — legen Sie die Litestream-Umgebungsvariablen bzw. -Geheimnisse bei Ihrem Hosting-Anbieter fest und stellen Sie die Anwendung anschließend neu bereit.",
+				"step3EndpointHint": "Bei allen Anbietern außer AWS S3 (R2, B2, MinIO usw.) setzen Sie zusätzlich LITESTREAM_ENDPOINT auf die S3-kompatible Endpunkt-URL des Anbieters. LITESTREAM_REGION ist optional — nur manche Anbieter benötigen sie.",
+				"step4": "Laden Sie diese Seite neu — sobald unten „Konfiguriert“ angezeigt wird, können Sie darunter die Besprechungsaufzeichnungen aktivieren."
+			},
+			"backups": {
+				"title": "Datenbanksicherungen (Litestream)",
+				"subtitle": "Fortlaufende SQLite-Replikation in Ihren Bucket. Wird bei der Bereitstellung über Umgebungsvariablen konfiguriert.",
+				"bucket": "Bucket",
+				"endpoint": "Endpunkt",
+				"notConfiguredHint": "Setzen Sie LITESTREAM_REPLICA_URL und die Zugangsdaten, um Sicherungen zu aktivieren — siehe Einrichtungsanleitung oben."
+			},
+			"recordings": {
+				"title": "Besprechungsaufzeichnungen",
+				"subtitle": "LiveKit-Videoaufzeichnungen werden in den Sicherungs-Bucket unter dem Präfix {prefix} hochgeladen.",
+				"badge": {
+					"ready": "Speicher bereit",
+					"noBucket": "Kein Bucket"
+				},
+				"allow": "Gastgebern das Aufzeichnen von Besprechungen erlauben",
+				"allowHint": "Der Gastgeber erhält in der Videokonferenz eine Aufnahmeschaltfläche; alle Beteiligten sehen den Hinweis „Recording“.",
+				"needBucket": "Richten Sie zuerst die Sicherungen ein (siehe Einrichtungsanleitung oben) — Aufzeichnungen benötigen einen Bucket."
+			},
+			"toast": {
+				"saved": "Gespeichert"
+			},
+			"error": {
+				"load": "Speichereinstellungen konnten nicht geladen werden",
+				"save": "Speichern fehlgeschlagen"
+			}
+		},
+		"payments": {
+			"setup": {
+				"title": "Einrichtungsanleitung",
+				"step1": "Kopieren Sie im {dashboard} den geheimen Schlüssel (Secret key) und den veröffentlichbaren Schlüssel (Publishable key).",
+				"dashboard": "Stripe Dashboard → Developers → API keys",
+				"step2": "Öffnen Sie „Developers → Webhooks → Add endpoint“ und tragen Sie als URL den unten angezeigten Endpunkt ein. Abonnieren Sie die Ereignisse checkout.session.completed und checkout.session.expired.",
+				"step3": "Kopieren Sie das Signaturgeheimnis des Endpunkts (Signing secret, whsec_…), fügen Sie alle drei Werte unten ein und speichern Sie."
+			},
+			"stripe": {
+				"title": "Stripe",
+				"subtitle": "Ermöglicht kostenpflichtige Buchungen. Bei einer Terminart mit Preis wird der Teilnehmer zu Stripe Checkout weitergeleitet, bevor das Zeitfenster bestätigt wird."
+			},
+			"secretKey": "Geheimer Schlüssel",
+			"secretKeyPlaceholder": "sk_live_… oder sk_test_…",
+			"publishableKey": "Veröffentlichbarer Schlüssel",
+			"publishableKeyPlaceholder": "pk_live_… oder pk_test_…",
+			"webhookSecret": "Webhook-Signaturgeheimnis",
+			"webhookSecretPlaceholder": "whsec_…",
+			"webhookEndpoint": {
+				"title": "Webhook-Endpunkt",
+				"hint": "Registrieren Sie ihn in Stripe unter „Developers → Webhooks“."
+			},
+			"disconnect": "Verbindung trennen",
+			"confirmDisconnect": {
+				"title": "Stripe-Zugangsdaten entfernen?",
+				"description": "Kostenpflichtige Terminarten können dann nicht mehr gebucht werden.",
+				"confirm": "Entfernen"
+			},
+			"toast": {
+				"saved": "Gespeichert — legen Sie für eine Terminart einen Preis fest, um Zahlungen zu erheben",
+				"disconnected": "Stripe-Verbindung getrennt"
+			},
+			"error": {
+				"load": "Zahlungseinstellungen konnten nicht geladen werden",
+				"save": "Zahlungseinstellungen konnten nicht gespeichert werden",
+				"disconnect": "Verbindung konnte nicht getrennt werden"
+			}
+		},
+		"ai": {
+			"assistant": {
+				"title": "KI-Buchungsassistent",
+				"subtitle": "Ermöglicht die Buchung per Chat auf Ihren Buchungsseiten. Verwenden Sie Ihr eigenes Modell — jeden OpenAI-kompatiblen Endpunkt (ein gehostetes oder ein selbst betriebenes Modell). Standardmäßig deaktiviert; ist der Assistent nicht verfügbar, nutzen Teilnehmer einfach den Kalender."
+			},
+			"status": {
+				"active": "Aktiv",
+				"configuredOff": "Konfiguriert (deaktiviert)"
+			},
+			"endpoint": {
+				"label": "API-Endpunkt",
+				"placeholder": "https://api.openai.com/v1",
+				"hint": "OpenAI-kompatible Basis-URL; der Client hängt /chat/completions an."
+			},
+			"model": {
+				"label": "Modell",
+				"placeholder": "gpt-4o-mini / claude-haiku-4-5 / gemini-flash …"
+			},
+			"apiKey": {
+				"label": "API-Schlüssel",
+				"placeholder": "API-Schlüssel eingeben (bei lokalen Endpunkten optional)"
+			},
+			"enable": {
+				"label": "KI-Funktionen aktivieren",
+				"hint": "Aktiviert die Buchung per Chat auf Ihren Buchungsseiten."
+			},
+			"testConnection": "Verbindung testen",
+			"instructions": {
+				"title": "Anweisungen für den Assistenten",
+				"subtitle": "Zusätzliche Vorgaben — Tonfall, geschäftlicher Kontext, Gebote und Verbote. Sie werden an die integrierten Anweisungen angehängt (diese steuern Buchungsablauf und Sicherheit und können nicht bearbeitet werden).",
+				"label": "Zusätzliche Anweisungen",
+				"placeholder": "z. B. Antworten Sie herzlich und professionell. Wir sind eine Anwaltskanzlei — erwähnen Sie, dass Beratungsgespräche vertraulich sind.",
+				"languageHint": "Der Assistent antwortet automatisch in der Sprache des jeweiligen Besuchers. Anweisungen in einer anderen Sprache als der Ihrer Besucher funktionieren, sind aber etwas weniger zuverlässig — die besten Ergebnisse erzielen Sie, wenn Sie sie in der Sprache verfassen, die die meisten Ihrer Besucher sprechen."
+			},
+			"basePrompt": {
+				"summary": "Integrierte Basisanweisungen anzeigen (schreibgeschützt)"
+			},
+			"privacy": "Datenschutz: Der Assistent erhält ausschließlich berechnete Verfügbarkeitszeiträume und öffentliche Angaben zu Terminarten — niemals die Titel Ihrer Kalendereinträge, Teilnehmer oder andere private Daten. Bei strengen Anforderungen an den Datenspeicherort richten Sie den Endpunkt auf eine Inferenz-Infrastruktur unter Ihrer Kontrolle.",
+			"toast": {
+				"savedOn": "Gespeichert — KI ist aktiv",
+				"saved": "Gespeichert",
+				"testOk": "Verbindung erfolgreich ({ms} ms)",
+				"testFailed": "Test fehlgeschlagen: {error}",
+				"needEndpointModel": "Geben Sie zuerst einen Endpunkt und ein Modell ein"
+			},
+			"error": {
+				"load": "KI-Einstellungen konnten nicht geladen werden",
+				"save": "KI-Einstellungen konnten nicht gespeichert werden",
+				"test": "Testanfrage fehlgeschlagen"
+			}
+		},
+		"tracking": {
+			"ga": {
+				"title": "Google Analytics & Tag Manager",
+				"subtitle": "Geben Sie eine ID ein, und Calnode lädt das offizielle Tag automatisch auf Ihrer Buchungsseite — Sie müssen keinen Code einfügen, und die CSP der Seite wird für Sie angepasst. Lassen Sie ein Feld leer, um das jeweilige Tag zu deaktivieren."
+			},
+			"gtm": {
+				"label": "GTM-Container-ID",
+				"placeholder": "GTM-XXXXXXX",
+				"hint": "Empfohlen — verwaltet GA4- und Ads-Tags. Lösen Sie diese über das unten beschriebene dataLayer-Ereignis calnode_booking_confirmed aus."
+			},
+			"ga4": {
+				"label": "GA4-Mess-ID",
+				"placeholder": "G-XXXXXXXXXX",
+				"hint": "Lädt GA4 direkt. Buchungen lösen ein purchase- bzw. generate_lead-Ereignis mit Umsatz aus."
+			},
+			"inject": {
+				"title": "Code-Einbindung (head)",
+				"subtitle": "Roher HTML-/JS-Code, der in den <head> Ihrer öffentlichen Buchungs- und Buchungsverwaltungsseiten eingefügt wird — für alle Tags, die oben nicht abgedeckt sind (Meta Pixel, Plausible, eigene). Er wird im Browser der Besucher ausgeführt; nur Admins können ihn festlegen.",
+				"headHtml": "<head>-HTML",
+				"headPlaceholder": "<!-- Fügen Sie hier Ihr GTM-/GA4-/Meta-Pixel-Snippet ein -->"
+			},
+			"csp": {
+				"label": "Zulässige Ursprünge",
+				"optional": "(optional)",
+				"placeholder": "https://www.googletagmanager.com https://*.google-analytics.com",
+				"hint": "Leer lassen, um bei aktiver Einbindung jeden https:-Ursprung zuzulassen — die einfachste Variante, über GTM verwaltete Tags funktionieren dann ohne Weiteres. Tragen Sie Ursprünge ein (durch Leerzeichen getrennt), um die CSP der Seite auf genau diese zu beschränken; Tags anderer Domains werden dann blockiert."
+			},
+			"datalayer": {
+				"title": "dataLayer-Ereignisse",
+				"subtitle": "Überträgt calnode_booking_confirmed / _cancelled / _rescheduled in window.dataLayer, damit GTM darauf reagieren kann.",
+				"fieldsHint": "Zu übermittelnde Felder — entfernen Sie das Häkchen bei allem, was nicht an den Browser bzw. GTM weitergegeben werden soll."
+			},
+			"fields": {
+				"booking_id": "Buchungsreferenz",
+				"event_type_slug": "URL-Kürzel der Terminart",
+				"event_type_name": "Name der Terminart",
+				"start_at": "Beginn",
+				"end_at": "Ende",
+				"status": "Status",
+				"location": "Ort",
+				"host_name": "Name des Gastgebers",
+				"attendee_name": "Name des Teilnehmers",
+				"attendee_email": "E-Mail-Adresse des Teilnehmers",
+				"attendee_timezone": "Zeitzone des Teilnehmers",
+				"answers": "Antworten auf Fragen",
+				"value": "Umsatz / Betrag",
+				"currency": "Währung",
+				"is_paid": "Kennzeichen „bezahlt“",
+				"transaction_id": "Transaktions-ID"
+			},
+			"piiBadge": "PII",
+			"toast": {
+				"saved": "Tracking-Einstellungen gespeichert"
+			},
+			"error": {
+				"load": "Tracking-Einstellungen konnten nicht geladen werden",
+				"save": "Tracking-Einstellungen konnten nicht gespeichert werden"
+			}
+		}
+	},
+	"eventTypeEditor": {
+		"headTitle": "{name} — Terminart — Calnode",
+		"back": "Terminarten",
+		"previewTooltip": "Vorschau der Buchungsseite",
+		"tabs": {
+			"general": "Allgemein",
+			"hosts": "Gastgeber",
+			"notifications": "Benachrichtigungen",
+			"questions": "Fragen",
+			"embed": "Einbettung"
+		},
+		"readOnly": {
+			"banner": "hat diese Terminart erstellt.",
+			"messageThem": "Schreiben Sie eine Nachricht",
+			"messageRequest": "und bitten Sie um Änderungen.",
+			"managedByOwner": "Diese Terminart wird von ihrem Inhaber verwaltet. Wenden Sie sich an ihn, um Änderungen anzufragen.",
+			"labels": {
+				"name": "Name",
+				"description": "Beschreibung",
+				"duration": "Dauer",
+				"slotInterval": "Startintervall",
+				"location": "Ort",
+				"routing": "Zuweisung",
+				"status": "Status",
+				"bookingPage": "Buchungsseite"
+			},
+			"status": {
+				"active": "Aktiv",
+				"inactive": "Inaktiv",
+				"listed": "Gelistet",
+				"unlisted": "Nicht gelistet (nur per Link)"
+			},
+			"durationSuffix": " Min."
+		},
+		"adminEditing": {
+			"banner": "Sie bearbeiten als Admin die Terminart von {owner}. Sie gehört weiterhin dieser Person, und Ihre eigenen Kalender- und Zoom-Verbindungen spielen dabei keine Rolle."
+		},
+		"general": {
+			"section": "Allgemein",
+			"name": "Name",
+			"directoryOrder": "Reihenfolge im Verzeichnis",
+			"directoryOrderHint": "Legt die Reihenfolge dieser Terminart nur auf den öffentlichen Personen- und Teamseiten fest — nicht in der Admin-Liste und nicht auf der Buchungsseite. Niedrigere Zahlen stehen zuerst; bei gleichen Zahlen wird nach Name sortiert.",
+			"bookingLink": "Buchungslink",
+			"bookingLinkPrefix": "/book/",
+			"slugHint": "Bis zur ersten Buchung änderbar; danach ist der Link bereits im Umlauf. Vor allem direkt nach dem Duplizieren nützlich, da die Kopie mit -copy am Ende angelegt wird.",
+			"duration": "Dauer (Minuten)",
+			"durationHint": "Wie lange der Termin dauert.",
+			"slotInterval": "Startintervall (Minuten)",
+			"slotIntervalHint": "Wie oft eine Buchung beginnen kann. Meist identisch mit der Dauer. Wählen Sie einen kleineren Wert, um mehr Startzeiten anzubieten, oder einen größeren, damit Zeitfenster zur vollen Stunde beginnen.",
+			"description": "Beschreibung",
+			"descriptionPlaceholder": "Optional — unterstützt **fett** und *kursiv* (Markdown)",
+			"status": "Status",
+			"active": "Aktiv (nimmt Buchungen an)",
+			"visibility": "Sichtbarkeit",
+			"public": "Öffentlich (auf der Buchungsseite sichtbar)",
+			"showTaken": "Gebuchte Zeiten als nicht verfügbar anzeigen",
+			"showTakenHint": "Gebuchte Zeiten erscheinen auf der Buchungsseite durchgestrichen, statt ausgeblendet zu werden, sodass Besucher sehen, wie sich der Kalender füllt. Angezeigt werden nur Zeiten innerhalb Ihrer Arbeitszeiten, nie der Rest Ihres Tages.",
+			"showTakenWarning": "Jeder mit dem Buchungslink kann sehen, welche Stunden belegt sind.",
+			"allowPhoneCall": "Teilnehmern erlauben, durch Angabe ihrer Nummer einen Telefonanruf zu wählen"
+		},
+		"location": {
+			"section": "Ort",
+			"type": "Art",
+			"types": {
+				"zoom": "Zoom",
+				"teams": "Microsoft Teams",
+				"googleMeet": "Google Meet",
+				"livekit": "Calnode Video (LiveKit)",
+				"phone": "Telefonanruf",
+				"link": "Videolink",
+				"inPerson": "Vor Ort"
+			},
+			"labels": {
+				"meetingUrl": "Konferenz-URL",
+				"zoomLink": "Zoom-Link",
+				"meetLink": "Meet-Link",
+				"teamsLink": "Teams-Link",
+				"phone": "Telefonnummer",
+				"address": "Adresse",
+				"details": "Details",
+				"videoRoom": "Videoraum"
+			},
+			"placeholder": {
+				"optional": "Optional",
+				"zoomRequired": "https://…zoom.us/j/… (Pflichtfeld)",
+				"linkRequired": "https://… (Pflichtfeld)",
+				"phoneRequired": "+49 30 12345678 (Pflichtfeld)",
+				"addressOptional": "Adresse (optional)",
+				"optionalFallback": "Optionaler Ersatzlink",
+				"pasteMeet": "{platform}-Link einfügen",
+				"pasteZoom": "https://…zoom.us/j/…"
+			},
+			"hint": {
+				"meet": {
+					"ownerEditing": "Für jede Buchung wird ein {platform}-Link erzeugt, sofern der verbundene Kalender von {owner} das kann. Andernfalls fügen Sie unten einen Link ein; beim Speichern wird dies mit dem Konto der Person abgeglichen.",
+					"autoGen": "Für jede Buchung wird automatisch ein {platform}-Link über Ihren verbundenen Kalender erzeugt.",
+					"autoGenTeamsFallback": " Private Microsoft-Konten können keine Teams-Links erzeugen — fügen Sie unten einen als Ersatz hinzu.",
+					"manualGoogle": "Ihr verbundener Kalender ist ein Google-Kalender, daher wird kein {platform}-Link automatisch erzeugt.",
+					"manualMicrosoft": "Ihr verbundener Kalender ist ein Microsoft-Kalender, daher wird kein {platform}-Link automatisch erzeugt.",
+					"noCalendar": "Es ist kein Kalender verbunden, daher kann kein {platform}-Link automatisch erzeugt werden.",
+					"pasteFallback": "Fügen Sie unten einen Link ein; er wird dann für jede Buchung verwendet."
+				},
+				"zoom": {
+					"ownerEditing": "Für jede Buchung wird ein Zoom-Meeting erstellt, sofern der Gastgeber Zoom verbunden hat. Ist unten kein Link eingetragen, wird beim Speichern geprüft, ob bei {owner} Zoom verbunden ist.",
+					"autoGen": "Für jede Buchung wird automatisch ein Zoom-Meeting über das verbundene Zoom-Konto des zugewiesenen Gastgebers erstellt.",
+					"connectCalendar": "Verbinden Sie Ihr Zoom-Konto auf der Seite „Kalender“, damit Konferenzlinks automatisch erzeugt werden,",
+					"notConfigured": "Zoom ist für diesen Arbeitsbereich nicht eingerichtet (ein Admin kann es unter Einstellungen → Zoom hinzufügen),",
+					"pasteFallback": "oder fügen Sie unten einen Zoom-Link ein, der für jede Buchung verwendet wird."
+				},
+				"livekit": "Für jede Buchung wird automatisch ein sicherer Videoraum erstellt — kein Link nötig. Gäste nehmen im Browser teil. (Den Server richten Sie unter Einstellungen → Video ein.)"
+			}
+		},
+		"invite": {
+			"section": "Kalendereinladung",
+			"sentBy": "Gesendet von",
+			"delivery": {
+				"calendar": "Kalender des Gastgebers",
+				"calnode": "Calnode, aus Ihrem Arbeitsbereich",
+				"none": "Ihr eigenes System"
+			},
+			"hint": {
+				"calnode": "Teilnehmer erhalten die Einladung vom E-Mail-Absender Ihres Arbeitsbereichs ({email}), nie von der eigenen Adresse eines Gastgebers. Gastgeber sehen den Termin weiterhin mit dem Konferenzlink in ihrem eigenen Kalender.",
+				"none": "Weder der Kalender des Gastgebers noch Calnode sendet dem Teilnehmer eine Einladung — für den Fall, dass Ihr eigenes System das übernimmt. Gastgeber sehen den Termin weiterhin mit dem Konferenzlink in ihrem eigenen Kalender.",
+				"calendar": "Der verbundene Kalender des Gastgebers lädt den Teilnehmer ein, daher zeigt die Einladung die eigene E-Mail-Adresse des Gastgebers. Wählen Sie Calnode, um die Adressen der Gastgeber privat zu halten oder als Team zu buchen."
+			},
+			"appliesNewOnly": "Gilt nur für neue Buchungen. Bestehende Buchungen behalten die Versandart, mit der sie gesendet wurden.",
+			"emailNotSetup": "E-Mail ist nicht eingerichtet, daher erhalten Teilnehmer keine Einladung. Fügen Sie unter {email} einen Absender hinzu.",
+			"onlineNoneWarning": "Diese Terminart bucht eine Online-Konferenz, daher hat jede Buchung einen Teilnahmelink, den Calnode nicht an den Teilnehmer sendet. Übernehmen Sie dessen location_value aus dem Webhook booking.created in Ihre eigene Bestätigung.",
+			"settingsEmailLink": "Einstellungen → E-Mail"
+		},
+		"confirmNone": {
+			"title": "Dem Teilnehmer gar keine Einladung senden?",
+			"description": "In diesem Arbeitsbereich ist keine E-Mail eingerichtet. Calnode sendet dem Teilnehmer für diese Terminart daher keine E-Mails, und auch der Kalender des Gastgebers lädt ihn nicht ein. Der Teilnehmer hört nur dann von Ihnen, wenn Ihr eigenes System die Bestätigung sendet.",
+			"confirm": "Eigenes System verwenden"
+		},
+		"price": {
+			"section": "Preis",
+			"amount": "Betrag",
+			"currency": "Währung",
+			"currencyPlaceholder": "eur",
+			"hint": "Für eine kostenlose Terminart bei 0 belassen. Mit Preis werden Teilnehmer zu Stripe Checkout weitergeleitet, bevor das Zeitfenster bestätigt wird — dafür muss {stripe} verbunden sein.",
+			"stripeLink": "Stripe"
+		},
+		"scheduling": {
+			"section": "Terminplanung",
+			"bufferBefore": "Puffer davor (Min.)",
+			"bufferBeforeHint": "Blockierte Zeit vor jedem Termin",
+			"bufferAfter": "Puffer danach (Min.)",
+			"bufferAfterHint": "Blockierte Zeit nach jedem Termin",
+			"minNotice": "Mindestvorlauf (Min.)",
+			"minNoticeHint": "z. B. 60 = Buchungen müssen mindestens 1 Std. in der Zukunft liegen",
+			"bookingWindow": "Buchungszeitraum (Tage)",
+			"bookingWindowHint": "Wie weit im Voraus gebucht werden kann. 0 = unbegrenzt",
+			"maxActive": "Max. aktive Buchungen pro Person",
+			"maxActiveHint": "Anstehende Buchungen, die ein Teilnehmer (per E-Mail-Adresse) gleichzeitig haben kann. 0 = unbegrenzt"
+		},
+		"hosts": {
+			"intro": "Wer diese Terminart ausrichten kann und wie Termine besetzt werden.",
+			"who": "Wer kann Gastgeber sein?",
+			"justMe": "Nur ich",
+			"justOwner": "Nur {owner}",
+			"specificPeople": "Bestimmte Personen",
+			"staffing": "Wie soll der Termin besetzt werden?",
+			"rotate": "Abwechselnd zuweisen",
+			"together": "Alle nehmen teil",
+			"rrStrategy": "Wer ausgewählt wird",
+			"rr": {
+				"even": "Gleichmäßig — wenigste anstehende Buchungen",
+				"priority": "Priorität — oben in der Liste zuerst",
+				"soonest": "Früheste Verfügbarkeit"
+			},
+			"rotationPeople": "Personen in der Rotation",
+			"whoAttends": "Wer nimmt teil",
+			"required": "Erforderlich",
+			"optional": "Optional",
+			"addMember": "Mitglied hinzufügen",
+			"addTeam": "Team hinzufügen",
+			"selectMember": "Mitglied auswählen…",
+			"selectTeam": "Team auswählen…",
+			"noMembers": "Keine Mitglieder verfügbar",
+			"noTeams": "Keine Teams",
+			"moveUp": "Nach oben",
+			"moveDown": "Nach unten",
+			"justMeHint": "Jede Buchung wird Ihnen zugewiesen.",
+			"justOwnerHint": "Jede Buchung wird {owner} zugewiesen.",
+			"peopleHint": "Wählen Sie, wer diese Buchungen übernehmen kann — fügen Sie einzelne Mitglieder oder ein ganzes Team hinzu.",
+			"rotateHint": "Pro Zeitfenster wird eine verfügbare Person gebucht; so verteilen sich die Buchungen auf die Gruppe.",
+			"togetherHint": "Alle nehmen am selben Termin teil. Ein Zeitfenster wird nur angeboten, wenn alle erforderlichen Personen frei sind.",
+			"rrHint": {
+				"even": "Verteilt Buchungen gleichmäßig — gebucht wird, wer die wenigsten anstehenden Termine hat.",
+				"priority": "Gebucht wird die am weitesten oben stehende freie Person; ist sie belegt, geht es in der Liste weiter nach unten.",
+				"soonest": "Bietet das früheste Zeitfenster an, das jemand aus der Gruppe frei hat."
+			},
+			"rotationEmpty": "Fügen Sie der Rotation Personen oder ein Team hinzu.",
+			"togetherEmpty": "Fügen Sie die Personen hinzu, die an diesem Termin teilnehmen.",
+			"requiredExplain": "Erforderliche Gastgeber nehmen immer teil und müssen frei sein, damit ein Zeitfenster angeboten wird.",
+			"optionalExplain": "Optionale Gastgeber nehmen nur teil, wenn sie frei sind — sie blockieren nie ein Zeitfenster."
+		},
+		"notifications": {
+			"reminders": "Erinnerungen",
+			"remindersHint": "Senden Sie Teilnehmern vor dem Termin eine Erinnerungs-E-Mail. Ohne eigene Einstellung standardmäßig 24 Stunden vorher.",
+			"addReminder": "+ Erinnerung hinzufügen",
+			"customMessages": "Benutzerdefinierte Nachrichten",
+			"customMessagesHint": "Fügen Sie optional einen Hinweis hinzu, der an die jeweilige E-Mail-Art angehängt wird.",
+			"msg": {
+				"confirmation": "Buchungsbestätigung",
+				"cancellation": "Stornierungsmitteilung",
+				"reschedule": "Mitteilung bei Verschiebung",
+				"reminder": "Erinnerungs-E-Mail"
+			},
+			"subjectOptional": "Betreff (optional — leer lassen für den Standardbetreff)",
+			"notePlaceholder": "Eigenen Hinweis für Teilnehmer hinzufügen…",
+			"hidePreview": "Vorschau ausblenden",
+			"showPreview": "E-Mail-Vorschau anzeigen",
+			"sendTest": "Test-E-Mail senden",
+			"sendingTest": "Wird gesendet…",
+			"testSent": "Test-E-Mail an Ihr Postfach gesendet.",
+			"smtpNotConfigured": "SMTP ist nicht konfiguriert — {smtp}.",
+			"assistantGreeting": "Begrüßung des Buchungsassistenten",
+			"assistantGreetingHint": "Der erste Satz des Buchungsassistenten auf der Buchungsseite dieser Terminart. Leer lassen, um die integrierte Begrüßung zu verwenden, die automatisch in die Sprache des Besuchers übersetzt wird; eine eigene Begrüßung wird in jeder Sprache genau so angezeigt, wie sie eingegeben wurde.",
+			"greetingPlaceholder": "Hallo! Sagen Sie mir ungefähr, wann Sie sich treffen möchten…",
+			"subjectPlaceholder": {
+				"confirmation": "Buchung bestätigt: {name}",
+				"cancellation": "Buchung storniert: {name}",
+				"reschedule": "Termin verschoben: {name}",
+				"reminder": "Erinnerung: {name} steht bevor"
+			},
+			"smtpNotConfiguredLink": "richten Sie es in den Einstellungen ein"
+		},
+		"transfer": {
+			"title": "Inhaberschaft übertragen",
+			"hint": "Wählen Sie einen gespeicherten erforderlichen Gastgeber. Die Buchungs-URL bleibt gleich. Die Übertragung ist nur möglich, wenn keine anstehenden Buchungen vorhanden sind. Kalenderverbindungen und die globale Verfügbarkeit bleiben beim jeweiligen Konto.",
+			"select": "Neuen Inhaber auswählen",
+			"button": "Inhaberschaft übertragen",
+			"inProgress": "Wird übertragen…"
+		},
+		"save": "Änderungen speichern",
+		"saveInProgress": "Wird gespeichert…",
+		"toast": {
+			"saved": "Änderungen gespeichert",
+			"transferred": "Terminart übertragen",
+			"saveFailed": "Änderungen konnten nicht gespeichert werden"
+		},
+		"validation": {
+			"directoryOrder": "Die Reihenfolge im Verzeichnis muss eine ganze Zahl sein.",
+			"name": "Name ist erforderlich.",
+			"duration": "Die Dauer muss mindestens 5 Minuten betragen.",
+			"slotInterval": "Das Startintervall muss mindestens 1 Minute betragen.",
+			"maxActive": "Die maximale Zahl aktiver Buchungen darf nicht negativ sein (0 = unbegrenzt).",
+			"rotation": "Fügen Sie der Rotation mindestens eine Person hinzu",
+			"collective": "Fügen Sie mindestens einen erforderlichen Gastgeber hinzu (jemanden, der immer teilnimmt)"
+		},
+		"questions": {
+			"title": "Fragen",
+			"subtitle": "Erfassen Sie bei der Buchung Informationen von Teilnehmern.",
+			"empty": "Noch keine Fragen.",
+			"table": {
+				"number": "#",
+				"question": "Frage",
+				"type": "Typ",
+				"required": "Erforderlich"
+			},
+			"types": {
+				"text": "Text",
+				"checkbox": "Kontrollkästchen (ja/nein)",
+				"select": "Auswahlliste"
+			},
+			"label": "Bezeichnung",
+			"options": "Optionen (eine pro Zeile)",
+			"optionsPlaceholder": "Option A\nOption B\nOption C",
+			"labelPlaceholder": "z. B. Worum geht es im Termin?",
+			"add": "Frage hinzufügen",
+			"adding": "Wird hinzugefügt…",
+			"tooltip": {
+				"edit": "Bearbeiten",
+				"remove": "Entfernen"
+			},
+			"confirm": {
+				"title": "Frage entfernen?",
+				"description": "„{label}“ wird aus dem Buchungsformular dieser Terminart entfernt."
+			},
+			"validation": {
+				"label": "Bezeichnung ist erforderlich.",
+				"options": "Für Fragen mit Auswahlliste ist mindestens eine Option erforderlich.",
+				"optionsShort": "Mindestens eine Option ist erforderlich."
+			},
+			"error": {
+				"load": "Fragen konnten nicht geladen werden",
+				"add": "Frage konnte nicht hinzugefügt werden",
+				"save": "Frage konnte nicht gespeichert werden",
+				"delete": "Frage konnte nicht gelöscht werden"
+			}
+		},
+		"embed": {
+			"title": "Einbettung",
+			"subtitle": "Binden Sie dieses Buchungs-Widget in Ihre Website ein — es wird direkt in der Seite dargestellt, ohne iframe. Vor </body> einfügen.",
+			"inline": {
+				"label": "Inline",
+				"hint": "Bettet den Buchungskalender direkt in die Seite ein."
+			},
+			"popup": {
+				"label": "Popup-Schaltfläche",
+				"hint": "Eine Schaltfläche, die das Buchungs-Widget in einem Dialogfenster öffnet."
+			},
+			"footer": "Das Widget ruft die öffentliche Buchungs-API dieser Instanz auf. Um festzulegen, welche Websites es einbetten dürfen, setzen Sie EMBED_ALLOWED_ORIGINS.",
+			"buttonText": "Termin buchen"
+		},
+		"reminders": {
+			"option": {
+				"1h": "1 Stunde vorher",
+				"2h": "2 Stunden vorher",
+				"4h": "4 Stunden vorher",
+				"8h": "8 Stunden vorher",
+				"12h": "12 Stunden vorher",
+				"24h": "24 Stunden vorher",
+				"48h": "2 Tage vorher",
+				"72h": "3 Tage vorher",
+				"168h": "1 Woche vorher"
+			}
+		},
+		"preview": {
+			"sampleAttendee": "Alex Johnson",
+			"sampleHost": "Gastgeber",
+			"sampleEventFallback": "Mein Termin",
+			"locationLine": "Ort: {value}",
+			"confirmation": {
+				"body": "Hallo {attendee},\n\nIhre Buchung wurde bestätigt.\n\nTermin:   {event}\nMit:      {host}\nBeginn:   {start}\nEnde:     {end}{location}\n\nBuchungsreferenz: preview-test\n\nZum Stornieren besuchen Sie:\n[Buchungsseite]{note}\n— Calnode"
+			},
+			"cancellation": {
+				"body": "Hallo {attendee},\n\nIhre Buchung wurde storniert.\n\nTermin:   {event}\nMit:      {host}\nBeginn:   {start}\nEnde:     {end}\n\nZum erneuten Buchen besuchen Sie:\n[Buchungsseite]{note}\n— Calnode"
+			},
+			"reschedule": {
+				"body": "Hallo {attendee},\n\nIhr Termin wurde verschoben.\n\nTermin:   {event}\nMit:      {host}\nBisher:   {prev}\nNeu:      {start}\nEnde:     {end}{location}\n\nBuchungsreferenz: preview-test{note}\n— Calnode"
+			},
+			"reminder": {
+				"body": "Hallo {attendee},\n\nwir erinnern Sie an Ihren bevorstehenden Termin.\n\nTermin:   {event}\nMit:      {host}\nBeginn:   {start}\nEnde:     {end}{location}\n\nBuchungsreferenz: preview-test{note}\n— Calnode"
+			},
+			"sampleStart": "Morgen, 14:00 UTC",
+			"samplePrev": "Heute, 14:00 UTC",
+			"sampleEnd": "Morgen, {time} UTC",
+			"signature": "— Calnode"
+		},
+		"ownerFallback": "dem Inhaber",
+		"error": {
+			"transfer": "Terminart konnte nicht übertragen werden",
+			"loadHosts": "Gastgeber konnten nicht geladen werden",
+			"loadMembers": "Mitglieder konnten nicht geladen werden",
+			"loadTeams": "Teams konnten nicht geladen werden",
+			"loadTeamMembers": "Teammitglieder konnten nicht geladen werden"
+		}
+	}
+}

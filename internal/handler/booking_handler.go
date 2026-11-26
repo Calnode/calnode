@@ -1097,6 +1097,8 @@ func (h *Handler) hostPrefsOrDefault(ctx context.Context, bookingID, userID stri
 func (h *Handler) hostBookingData(ctx context.Context, base mailer.BookingData, host assignedHost, inviteMode string, updatedAt time.Time) mailer.BookingData {
 	hd := base
 	hd.HostName, hd.HostEmail = host.Name, host.Email
+	// Host emails use the operator's language (the configured fallback locale), not the attendee's.
+	hd.HostLocale = i18n.Get(h.loadBranding(ctx).FallbackLocale)
 	h.applyHostInvite(ctx, &hd, inviteMode, host.UserID)
 	hd.ICSSequence = int(updatedAt.Unix())
 	return hd

@@ -494,7 +494,7 @@
 		const endTime     = new Date(Date.UTC(2026, 0, 1, endH24, endMin)).toLocaleTimeString(localeTag(), {
 			hour: '2-digit',
 			minute: '2-digit',
-			hour12: localeTag() !== 'fr',
+			hour12: localeTag() === 'en',
 			timeZone: 'UTC'
 		});
 		const end         = tr('eventTypeEditor.preview.sampleEnd', { time: endTime });

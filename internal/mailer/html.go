@@ -82,13 +82,13 @@ var htmlConfirmOrg = content(`{{define "content"}}
 {{end}}`)
 
 var htmlConfirmHost = content(`{{define "content"}}
-<p style="margin:0 0 4px;">Hi {{.HostName}},</p>
-<p style="margin:0 0 20px;color:#52525b;">You have a new booking.</p>
+<p style="margin:0 0 4px;">{{.Tf "email_greeting" .HostName}}</p>
+<p style="margin:0 0 20px;color:#52525b;">{{.T "email_host_new_lead"}}</p>
 {{template "cardOpen" .}}
-<tr>` + labelTD + `Event</td><td style="padding:5px 0;font-weight:500;vertical-align:top;">{{.EventTypeName}}</td></tr>
-<tr>` + labelTD + `With</td>` + valueTD + `{{.OrganizerName}} &lt;{{.OrganizerEmail}}&gt;</td></tr>
-<tr>` + labelTD + `When</td>` + valueTD + `{{.WhenFmt}}</td></tr>
-{{if .LocationValue}}<tr>` + labelTD + `Location</td><td style="padding:5px 0;vertical-align:top;word-break:break-word;">{{.LocationValue}}</td></tr>{{end}}
+<tr>` + labelTD + `{{.T "email_label_event"}}</td><td style="padding:5px 0;font-weight:500;vertical-align:top;">{{.EventTypeName}}</td></tr>
+<tr>` + labelTD + `{{.T "email_label_with"}}</td>` + valueTD + `{{.OrganizerName}} &lt;{{.OrganizerEmail}}&gt;</td></tr>
+<tr>` + labelTD + `{{.T "email_label_when"}}</td>` + valueTD + `{{.WhenFmt}}</td></tr>
+{{if .LocationValue}}<tr>` + labelTD + `{{.T "email_label_location"}}</td><td style="padding:5px 0;vertical-align:top;word-break:break-word;">{{.LocationValue}}</td></tr>{{end}}
 {{template "cardClose" .}}
 {{template "ref" .}}
 {{end}}`)
@@ -107,13 +107,13 @@ var htmlCancelOrg = content(`{{define "content"}}
 {{end}}`)
 
 var htmlCancelHost = content(`{{define "content"}}
-<p style="margin:0 0 4px;">Hi {{.HostName}},</p>
-<p style="margin:0 0 20px;color:#52525b;">A booking has been cancelled.</p>
+<p style="margin:0 0 4px;">{{.Tf "email_greeting" .HostName}}</p>
+<p style="margin:0 0 20px;color:#52525b;">{{.T "email_host_cancelled_lead"}}</p>
 {{template "cardOpen" .}}
-<tr>` + labelTD + `Event</td><td style="padding:5px 0;font-weight:500;vertical-align:top;">{{.EventTypeName}}</td></tr>
-<tr>` + labelTD + `With</td>` + valueTD + `{{.OrganizerName}} &lt;{{.OrganizerEmail}}&gt;</td></tr>
-<tr>` + labelTD + `When</td>` + valueTD + `{{.WhenFmt}}</td></tr>
-{{if .CancellationReason}}<tr>` + labelTD + `Reason</td>` + valueTD + `{{.CancellationReason}}</td></tr>{{end}}
+<tr>` + labelTD + `{{.T "email_label_event"}}</td><td style="padding:5px 0;font-weight:500;vertical-align:top;">{{.EventTypeName}}</td></tr>
+<tr>` + labelTD + `{{.T "email_label_with"}}</td>` + valueTD + `{{.OrganizerName}} &lt;{{.OrganizerEmail}}&gt;</td></tr>
+<tr>` + labelTD + `{{.T "email_label_when"}}</td>` + valueTD + `{{.WhenFmt}}</td></tr>
+{{if .CancellationReason}}<tr>` + labelTD + `{{.T "email_label_reason"}}</td>` + valueTD + `{{.CancellationReason}}</td></tr>{{end}}
 {{template "cardClose" .}}
 {{template "ref" .}}
 {{end}}`)
@@ -135,14 +135,14 @@ var htmlRescheduleOrg = content(`{{define "content"}}
 {{end}}`)
 
 var htmlRescheduleHost = content(`{{define "content"}}
-<p style="margin:0 0 4px;">Hi {{.HostName}},</p>
-<p style="margin:0 0 20px;color:#52525b;">A booking has been rescheduled.</p>
+<p style="margin:0 0 4px;">{{.Tf "email_greeting" .HostName}}</p>
+<p style="margin:0 0 20px;color:#52525b;">{{.T "email_host_rescheduled_lead"}}</p>
 {{template "cardOpen" .}}
-<tr>` + labelTD + `Event</td><td style="padding:5px 0;font-weight:500;vertical-align:top;">{{.EventTypeName}}</td></tr>
-<tr>` + labelTD + `With</td>` + valueTD + `{{.OrganizerName}} &lt;{{.OrganizerEmail}}&gt;</td></tr>
-<tr><td style="color:#a1a1aa;padding:5px 0;width:84px;vertical-align:top;text-decoration:line-through;">Was</td><td style="padding:5px 0;vertical-align:top;color:#a1a1aa;text-decoration:line-through;">{{.PreviousStartFmt}}</td></tr>
-<tr>` + labelTD + `Now</td><td style="padding:5px 0;font-weight:500;vertical-align:top;">{{.WhenFmt}}</td></tr>
-{{if .LocationValue}}<tr>` + labelTD + `Location</td><td style="padding:5px 0;vertical-align:top;word-break:break-word;">{{.LocationValue}}</td></tr>{{end}}
+<tr>` + labelTD + `{{.T "email_label_event"}}</td><td style="padding:5px 0;font-weight:500;vertical-align:top;">{{.EventTypeName}}</td></tr>
+<tr>` + labelTD + `{{.T "email_label_with"}}</td>` + valueTD + `{{.OrganizerName}} &lt;{{.OrganizerEmail}}&gt;</td></tr>
+<tr><td style="color:#a1a1aa;padding:5px 0;width:84px;vertical-align:top;text-decoration:line-through;">{{.T "email_label_was"}}</td><td style="padding:5px 0;vertical-align:top;color:#a1a1aa;text-decoration:line-through;">{{.PreviousStartFmt}}</td></tr>
+<tr>` + labelTD + `{{.T "email_label_now"}}</td><td style="padding:5px 0;font-weight:500;vertical-align:top;">{{.WhenFmt}}</td></tr>
+{{if .LocationValue}}<tr>` + labelTD + `{{.T "email_label_location"}}</td><td style="padding:5px 0;vertical-align:top;word-break:break-word;">{{.LocationValue}}</td></tr>{{end}}
 {{template "cardClose" .}}
 {{template "ref" .}}
 {{end}}`)

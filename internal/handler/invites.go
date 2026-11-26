@@ -105,11 +105,9 @@ func (h *Handler) issueInvite(ctx context.Context, email, adminName, adminID str
 	if h.isEmailEnabled() {
 		_ = h.mailer.Send(ctx, mailer.Message{
 			To:      []string{email},
-			Subject: "You've been invited to Calnode",
-			Text: "You've been invited to join Calnode by " + adminName + ".\n\n" +
-				"Click the link below to set up your account. The link expires in 7 days " +
-				"and is locked to this email address.\n\n" + inviteURL + "\n\n" +
-				"If you weren't expecting this invite, you can safely ignore this email.",
+			Subject: h.operatorLocale(ctx).T("email_invite_subject"),
+			Text: h.operatorLocale(ctx).Tf("email_invite_text", adminName) + "\n\n" + inviteURL + "\n\n" +
+				h.operatorLocale(ctx).T("email_invite_ignore"),
 		})
 	}
 	return id, inviteURL, expiresAt, nil

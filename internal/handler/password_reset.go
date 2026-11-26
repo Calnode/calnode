@@ -8,6 +8,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/calnode/calnode/internal/i18n"
+	"html"
 	"net/http"
 	"strings"
 	"time"
@@ -78,7 +80,7 @@ func (h *Handler) sendPasswordReset(ctx context.Context, userID, email string) {
 
 	link := h.baseURL + "/admin/reset-password?token=" + raw
 	if h.mailer != nil {
-		if err := h.mailer.Send(ctx, resetPasswordMessage(email, link)); err != nil {
+		if err := h.mailer.Send(ctx, resetPasswordMessage(h.operatorLocale(ctx), email, link)); err != nil {
 			h.logger.ErrorContext(ctx, "password reset: send email", "error", err, "user_id", userID)
 		}
 	}
@@ -171,17 +173,19 @@ func (h *Handler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 }
 
 // resetPasswordMessage builds the reset-link email (multipart text + minimal HTML).
-func resetPasswordMessage(to, link string) mailer.Message {
+// resetPasswordMessage builds the password-reset email in the operator's language (loc; nil = English).
+func resetPasswordMessage(loc *i18n.Locale, to, link string) mailer.Message {
+	esc := html.EscapeString
 	return mailer.Message{
 		To:      []string{to},
-		Subject: "Reset your Calnode password",
-		Text: "Click the link below to set a new Calnode password. It expires in 1 hour and can be used once.\n\n" +
-			link + "\n\nIf you didn't request this, you can ignore this email — your password stays unchanged.",
+		Subject: loc.T("email_reset_subject"),
+		Text:    loc.T("email_reset_text") + "\n\n" + link + "\n\n" + loc.T("email_reset_ignore"),
 		HTML: fmt.Sprintf(`<div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;color:#111827;line-height:1.5">`+
-			`<p>Click the button below to set a new Calnode password. It expires in 1 hour and can be used once.</p>`+
-			`<p style="margin:24px 0"><a href="%s" style="background:#111827;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;display:inline-block;font-weight:600">Set a new password</a></p>`+
-			`<p style="font-size:13px;color:#6b7280">Or paste this link into your browser:<br><a href="%s">%s</a></p>`+
-			`<p style="font-size:13px;color:#6b7280">If you didn't request this, you can ignore this email — your password stays unchanged.</p></div>`,
-			link, link, link),
+			`<p>%s</p>`+
+			`<p style="margin:24px 0"><a href="%s" style="background:#111827;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;display:inline-block;font-weight:600">%s</a></p>`+
+			`<p style="font-size:13px;color:#6b7280">%s<br><a href="%s">%s</a></p>`+
+			`<p style="font-size:13px;color:#6b7280">%s</p></div>`,
+			esc(loc.T("email_reset_html_intro")), link, esc(loc.T("email_reset_button")), esc(loc.T("email_link_paste")), link, link,
+			esc(loc.T("email_reset_ignore"))),
 	}
 }
