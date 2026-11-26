@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/calnode/calnode/internal/i18n"
 )
@@ -68,5 +69,48 @@ func TestSendConfirmation_nilLocaleDefaultsToEnglish(t *testing.T) {
 	org := cap.all()[0]
 	if !strings.Contains(org.Text, "Hi Bob Booker,") {
 		t.Errorf("nil Locale should default to English: %q", org.Text)
+	}
+}
+
+// TestHostEmails_followHostLocale: host-facing emails use BookingData.HostLocale (the
+// operator's configured fallback language), never the attendee's. nil keeps them English,
+// which is what the test above covers.
+func TestHostEmails_followHostLocale(t *testing.T) {
+	cap := &captureMailer{}
+	d := testBookingData()
+	d.Locale = i18n.Get("es")
+	d.HostLocale = i18n.Get("de")
+	d.CancellationReason = "Terminkonflikt"
+	d.PreviousStartAt = d.StartAt.Add(-24 * time.Hour)
+	for _, send := range []func(context.Context, Mailer, BookingData) error{SendConfirmationToHost, SendCancellationToHost, SendRescheduleToHost} {
+		if err := send(context.Background(), cap, d); err != nil {
+			t.Fatalf("send: %v", err)
+		}
+	}
+	msgs := cap.all()
+	if len(msgs) != 3 {
+		t.Fatalf("got %d messages; want 3", len(msgs))
+	}
+	wants := []struct{ subject, lead string }{
+		{"Neue Buchung: ", "Sie haben eine neue Buchung."},
+		{"Buchung storniert: ", "Eine Buchung wurde storniert."},
+		{"Termin verschoben: ", "Ein Termin wurde verschoben."},
+	}
+	for i, w := range wants {
+		m := msgs[i]
+		if !strings.HasPrefix(m.Subject, w.subject) || !strings.Contains(m.Subject, " mit ") {
+			t.Errorf("msg %d subject = %q; want German host subject", i, m.Subject)
+		}
+		for _, body := range []string{m.Text, m.HTML} {
+			if !strings.Contains(body, w.lead) {
+				t.Errorf("msg %d body missing German lead %q", i, w.lead)
+			}
+			if strings.Contains(body, "Hola") || strings.Contains(body, "Hi ") {
+				t.Errorf("msg %d body not in the host's language: %q", i, body)
+			}
+		}
+		if !strings.Contains(m.HTML, `lang="de"`) {
+			t.Errorf("msg %d HTML missing lang=de", i)
+		}
 	}
 }

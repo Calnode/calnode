@@ -2,6 +2,9 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import en from './en.json' with { type: 'json' };
 import fr from './fr.json' with { type: 'json' };
+import de from './de.json' with { type: 'json' };
+
+const TRANSLATIONS = { fr, de } as const;
 import {
 	isAdminLocale,
 	matchAdminLocale,
@@ -63,32 +66,41 @@ function flatten(obj: unknown, prefix = ''): Record<string, string> {
 	return out;
 }
 
-describe('admin i18n catalogs', () => {
-	test('French has the same keys as English', () => {
-		const enKeys = Object.keys(flatten(en)).sort();
-		const frKeys = Object.keys(flatten(fr)).sort();
-		assert.deepEqual(frKeys, enKeys);
-	});
+/** Every [key, value] of English and all translations, keys prefixed with the catalog index. */
+function allEntries(): [string, string][] {
+	return [en, ...Object.values(TRANSLATIONS)].flatMap((catalog, i) =>
+		Object.entries(flatten(catalog)).map(([k, v]): [string, string] => [`${i}:${k}`, v])
+	);
+}
 
-	test('placeholders match between English and French', () => {
-		const ph = /\{(\w+)\}/g;
-		const names = (s: string) => new Set([...s.matchAll(ph)].map((m) => m[1]));
-		const enFlat = flatten(en);
-		const frFlat = flatten(fr);
-		const mismatches: string[] = [];
-		for (const [key, value] of Object.entries(enFlat)) {
-			const a = names(value);
-			const b = names(frFlat[key] ?? '');
-			if (a.size !== b.size || [...a].some((n) => !b.has(n))) {
-				mismatches.push(key);
+describe('admin i18n catalogs', () => {
+	for (const [code, catalog] of Object.entries(TRANSLATIONS)) {
+		test(`${code} has the same keys as English`, () => {
+			const enKeys = Object.keys(flatten(en)).sort();
+			const keys = Object.keys(flatten(catalog)).sort();
+			assert.deepEqual(keys, enKeys);
+		});
+
+		test(`placeholders match between English and ${code}`, () => {
+			const ph = /\{(\w+)\}/g;
+			const names = (s: string) => new Set([...s.matchAll(ph)].map((m) => m[1]));
+			const enFlat = flatten(en);
+			const flat = flatten(catalog);
+			const mismatches: string[] = [];
+			for (const [key, value] of Object.entries(enFlat)) {
+				const a = names(value);
+				const b = names(flat[key] ?? '');
+				if (a.size !== b.size || [...a].some((n) => !b.has(n))) {
+					mismatches.push(`${code}:${key}`);
+				}
 			}
-		}
-		assert.deepEqual(mismatches, []);
-	});
+			assert.deepEqual(mismatches, []);
+		});
+	}
 
 	test('catalogs do not bake "(s)" plurals', () => {
 		const baked: string[] = [];
-		for (const [key, value] of Object.entries({ ...flatten(en), ...flatten(fr) })) {
+		for (const [key, value] of allEntries()) {
 			if (/\w\(s\)/.test(value) && !value.includes('http(s)')) baked.push(key);
 		}
 		assert.deepEqual(baked, []);
@@ -97,11 +109,10 @@ describe('admin i18n catalogs', () => {
 	test('linked sentences keep the same {placeholders} in both locales', () => {
 		const ph = /\{(\w+)\}/g;
 		const names = (s: string) => [...s.matchAll(ph)].map((m) => m[1]);
-		const enFlat = flatten(en);
-		const frFlat = flatten(fr);
+		const flats = [en, ...Object.values(TRANSLATIONS)].map((catalog) => flatten(catalog));
 		const missing: string[] = [];
 		for (const [key, expected] of Object.entries(LINKED_SENTENCES)) {
-			for (const catalog of [enFlat, frFlat]) {
+			for (const catalog of flats) {
 				const got = names(catalog[key] ?? '');
 				if (expected.some((n) => !got.includes(n))) missing.push(key);
 			}
@@ -110,11 +121,10 @@ describe('admin i18n catalogs', () => {
 	});
 
 	test('link-text keys exist and are plain text', () => {
-		const enFlat = flatten(en);
-		const frFlat = flatten(fr);
+		const flats = [en, ...Object.values(TRANSLATIONS)].map((catalog) => flatten(catalog));
 		const bad: string[] = [];
 		for (const key of LINK_TEXT_KEYS) {
-			for (const catalog of [enFlat, frFlat]) {
+			for (const catalog of flats) {
 				const value = catalog[key] ?? '';
 				if (!value || /\{(\w+)\}/.test(value) || /<\/?a[\s>]/.test(value)) bad.push(key);
 			}
@@ -124,7 +134,7 @@ describe('admin i18n catalogs', () => {
 
 	test('catalogs do not embed HTML anchors', () => {
 		const html: string[] = [];
-		for (const [key, value] of Object.entries({ ...flatten(en), ...flatten(fr) })) {
+		for (const [key, value] of allEntries()) {
 			if (/<\/?a[\s>]/i.test(value) || /href\s*=/.test(value)) html.push(key);
 		}
 		assert.deepEqual(html, []);
@@ -156,7 +166,8 @@ describe('locale matching', () => {
 	test('isAdminLocale only accepts shipped codes', () => {
 		assert.equal(isAdminLocale('en'), true);
 		assert.equal(isAdminLocale('fr'), true);
-		assert.equal(isAdminLocale('de'), false);
+		assert.equal(isAdminLocale('ja'), false);
+		assert.equal(isAdminLocale('de'), true);
 		assert.equal(isAdminLocale('fr-CA'), false);
 	});
 
@@ -164,7 +175,8 @@ describe('locale matching', () => {
 		assert.equal(matchAdminLocale('fr-CA'), 'fr');
 		assert.equal(matchAdminLocale('fr-FR'), 'fr');
 		assert.equal(matchAdminLocale('en-GB'), 'en');
-		assert.equal(matchAdminLocale('de-DE'), null);
+		assert.equal(matchAdminLocale('de-DE'), 'de');
+		assert.equal(matchAdminLocale('ja-JP'), null);
 	});
 
 	test('stored preference wins over the browser', () => {
@@ -174,8 +186,9 @@ describe('locale matching', () => {
 
 	test('browser language is used when nothing is stored', () => {
 		assert.equal(resolveInitialLocale(null, ['fr-CA', 'en']), 'fr');
-		assert.equal(resolveInitialLocale(null, ['de-DE', 'fr']), 'fr');
-		assert.equal(resolveInitialLocale(null, ['de-DE', 'ja']), 'en');
+		assert.equal(resolveInitialLocale(null, ['ja-JP', 'fr']), 'fr');
+		assert.equal(resolveInitialLocale(null, ['de-AT', 'fr']), 'de');
+		assert.equal(resolveInitialLocale(null, ['ja-JP', 'ko']), 'en');
 	});
 
 	test('unknown stored value falls through to the browser, then English', () => {

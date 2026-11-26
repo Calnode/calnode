@@ -18,23 +18,23 @@ not have to invent terminology that is already decided.
 
 ## Core terms
 
-| Concept | English | French (booker) | French (admin) | Notes |
-|---|---|---|---|---|
-| booking (the object) | booking | réservation | réservation | Never "rendez-vous" for the object. |
-| to book (verb) | book | réserver | réserver | |
-| event type | event type | - | type de rendez-vous | **divergent**: the booker has no public name for it. |
-| host | host | - | hôte | The booker addresses the booker, not the host. |
-| attendee / booker | attendee | - | participant | Use "participant" in admin; the booker is "vous". |
-| team | team | équipe | équipe | |
-| team member | team member | membre de l'équipe | membre | |
-| availability | availability | disponibilités | disponibilités | Plural in French. |
-| slot / time slot | slot | créneau | créneau | |
-| timezone | timezone | fuseau horaire | fuseau horaire | |
-| reschedule | reschedule | reprogrammer | reprogrammer | Noun: "reprogrammation". |
-| cancel | cancel | annuler | annuler | Noun: "annulation". |
-| round robin | round robin | - | tourniquet | French admin uses "tourniquet"; do not calque "tourner entre eux". |
-| reminder | reminder | rappel | rappel | |
-| directory | directory | - | annuaire | Only the person and team pages. |
+| Concept | English | French (booker) | French (admin) | German (booker) | German (admin) | Notes |
+|---|---|---|---|---|---|---|
+| booking (the object) | booking | réservation | réservation | Buchung | Buchung | Never "rendez-vous" for the object. |
+| to book (verb) | book | réserver | réserver | buchen | buchen | |
+| event type | event type | - | type de rendez-vous | - | Terminart | **divergent**: the booker has no public name for it. |
+| host | host | - | hôte | Gastgeber | Gastgeber | The booker addresses the booker, not the host. |
+| attendee / booker | attendee | - | participant | - | Teilnehmer | Use "participant" in admin; the booker is "vous". |
+| team | team | équipe | équipe | Team | Team | |
+| team member | team member | membre de l'équipe | membre | Teammitglied | Mitglied | |
+| availability | availability | disponibilités | disponibilités | Verfügbarkeit | Verfügbarkeit | Plural in French. |
+| slot / time slot | slot | créneau | créneau | Termin / Zeit | Zeitfenster | |
+| timezone | timezone | fuseau horaire | fuseau horaire | Zeitzone | Zeitzone | |
+| reschedule | reschedule | reprogrammer | reprogrammer | verschieben | verschieben | Noun: "reprogrammation". |
+| cancel | cancel | annuler | annuler | stornieren | stornieren | Noun: "annulation". |
+| round robin | round robin | - | tourniquet | - | Round Robin | French admin uses "tourniquet"; do not calque "tourner entre eux". |
+| reminder | reminder | rappel | rappel | Erinnerung | Erinnerung | |
+| directory | directory | - | annuaire | - | Verzeichnis | Only the person and team pages. |
 
 ## Register
 
@@ -45,6 +45,9 @@ not have to invent terminology that is already decided.
 
 The existing booker locales are deliberately split by market: `fr`/`de`/`it`/`pt` formal,
 `es`/`nl`/`sv` informal. Match the language, not the English.
+
+German follows the same split: booker `de` formal (*Sie*), admin `de` formal and terse. A booking is
+*verschoben* (moved), not *umgebucht*: the latter reads as travel rebooking.
 
 `de-x-neutral` is the one exception, and it is a third option rather than a change of side:
 German with no address at all (infinitive and nominal style, "Tag auswählen"), for

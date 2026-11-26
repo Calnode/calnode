@@ -73,6 +73,10 @@ type BookingData struct {
 	// attendee-facing only, same "public-facing" scope as book.html/manage.html/embed.js;
 	// host is the operator, out of scope (see internal-docs/i18n-plan.md).
 	Locale *i18n.Locale
+	// HostLocale is the language of host-facing emails: the operator's configured fallback
+	// language (server_settings.fallback_locale), set by the caller. nil keeps host emails in
+	// English, the previous behaviour.
+	HostLocale *i18n.Locale
 }
 
 // locale returns d.Locale, or English if unset.
@@ -239,10 +243,10 @@ func SendConfirmationToHost(ctx context.Context, m Mailer, d BookingData) error 
 		return nil
 	}
 	d.HideManageLink = true
-	d.Locale = nil // host emails stay English regardless of the attendee's locale — see BookingData.Locale
+	d.Locale = d.HostLocale // the operator's language, never the attendee's — see BookingData.HostLocale
 	msg := Message{
 		To:      []string{d.HostEmail},
-		Subject: "New booking: " + d.EventTypeName + " with " + d.OrganizerName,
+		Subject: d.Tf("email_host_subject_new", d.EventTypeName, d.OrganizerName),
 		Text:    render(confirmHostTmpl, d),
 		HTML:    renderHTML(htmlConfirmHost, d),
 	}
@@ -298,10 +302,10 @@ func SendCancellationToHost(ctx context.Context, m Mailer, d BookingData) error 
 		return nil
 	}
 	d.HideManageLink = true
-	d.Locale = nil // host emails stay English regardless of the attendee's locale — see BookingData.Locale
+	d.Locale = d.HostLocale // the operator's language, never the attendee's — see BookingData.HostLocale
 	msg := Message{
 		To:      []string{d.HostEmail},
-		Subject: "Booking cancelled: " + d.EventTypeName + " with " + d.OrganizerName,
+		Subject: d.Tf("email_host_subject_cancelled", d.EventTypeName, d.OrganizerName),
 		Text:    render(cancelHostTmpl, d),
 		HTML:    renderHTML(htmlCancelHost, d),
 	}
@@ -355,10 +359,10 @@ func SendRescheduleToHost(ctx context.Context, m Mailer, d BookingData) error {
 		return nil
 	}
 	d.HideManageLink = true
-	d.Locale = nil // host emails stay English regardless of the attendee's locale — see BookingData.Locale
+	d.Locale = d.HostLocale // the operator's language, never the attendee's — see BookingData.HostLocale
 	msg := Message{
 		To:      []string{d.HostEmail},
-		Subject: "Booking rescheduled: " + d.EventTypeName + " with " + d.OrganizerName,
+		Subject: d.Tf("email_host_subject_rescheduled", d.EventTypeName, d.OrganizerName),
 		Text:    render(rescheduleHostTmpl, d),
 		HTML:    renderHTML(htmlRescheduleHost, d),
 	}
@@ -461,17 +465,17 @@ var confirmOrgTmpl = template.Must(template.New("confirm-org").Parse(
 `))
 
 var confirmHostTmpl = template.Must(template.New("confirm-host").Parse(
-	`Hi {{.HostName}},
+	`{{.Tf "email_greeting" .HostName}}
 
-You have a new booking.
+{{.T "email_host_new_lead"}}
 
-Event:    {{.EventTypeName}}
-With:     {{.OrganizerName}} <{{.OrganizerEmail}}>
-Start:    {{.StartFmt}}
-End:      {{.EndFmt}}{{if .LocationValue}}
-Location: {{.LocationValue}}{{end}}
+{{.T "email_label_event"}}:    {{.EventTypeName}}
+{{.T "email_label_with"}}:     {{.OrganizerName}} <{{.OrganizerEmail}}>
+{{.T "email_label_start"}}:    {{.StartFmt}}
+{{.T "email_label_end"}}:      {{.EndFmt}}{{if .LocationValue}}
+{{.T "email_label_location"}}: {{.LocationValue}}{{end}}
 
-Booking reference: {{.BookingID}}
+{{.Tf "email_booking_reference" .BookingID}}
 
 — Calnode
 `))
@@ -497,17 +501,17 @@ var cancelOrgTmpl = template.Must(template.New("cancel-org").Parse(
 `))
 
 var cancelHostTmpl = template.Must(template.New("cancel-host").Parse(
-	`Hi {{.HostName}},
+	`{{.Tf "email_greeting" .HostName}}
 
-A booking has been cancelled.
+{{.T "email_host_cancelled_lead"}}
 
-Event:    {{.EventTypeName}}
-With:     {{.OrganizerName}} <{{.OrganizerEmail}}>
-Start:    {{.StartFmt}}
-End:      {{.EndFmt}}{{if .CancellationReason}}
-Reason:   {{.CancellationReason}}{{end}}
+{{.T "email_label_event"}}:    {{.EventTypeName}}
+{{.T "email_label_with"}}:     {{.OrganizerName}} <{{.OrganizerEmail}}>
+{{.T "email_label_start"}}:    {{.StartFmt}}
+{{.T "email_label_end"}}:      {{.EndFmt}}{{if .CancellationReason}}
+{{.T "email_label_reason"}}:   {{.CancellationReason}}{{end}}
 
-Booking reference: {{.BookingID}}
+{{.Tf "email_booking_reference" .BookingID}}
 
 — Calnode
 `))
@@ -540,18 +544,18 @@ var rescheduleOrgTmpl = template.Must(template.New("reschedule-org").Parse(
 `))
 
 var rescheduleHostTmpl = template.Must(template.New("reschedule-host").Parse(
-	`Hi {{.HostName}},
+	`{{.Tf "email_greeting" .HostName}}
 
-A booking has been rescheduled.
+{{.T "email_host_rescheduled_lead"}}
 
-Event:    {{.EventTypeName}}
-With:     {{.OrganizerName}} <{{.OrganizerEmail}}>
-Was:      {{.PreviousStartFmt}}
-Now:      {{.StartFmt}}
-End:      {{.EndFmt}}{{if .LocationValue}}
-Location: {{.LocationValue}}{{end}}
+{{.T "email_label_event"}}:    {{.EventTypeName}}
+{{.T "email_label_with"}}:     {{.OrganizerName}} <{{.OrganizerEmail}}>
+{{.T "email_label_was"}}:      {{.PreviousStartFmt}}
+{{.T "email_label_now"}}:      {{.StartFmt}}
+{{.T "email_label_end"}}:      {{.EndFmt}}{{if .LocationValue}}
+{{.T "email_label_location"}}: {{.LocationValue}}{{end}}
 
-Booking reference: {{.BookingID}}
+{{.Tf "email_booking_reference" .BookingID}}
 
 — Calnode
 `))

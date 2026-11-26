@@ -156,7 +156,8 @@ describe('locale matching', () => {
 	test('isAdminLocale only accepts shipped codes', () => {
 		expect(isAdminLocale('en')).toBe(true);
 		expect(isAdminLocale('fr')).toBe(true);
-		expect(isAdminLocale('de')).toBe(false);
+		expect(isAdminLocale('ja')).toBe(false);
+		expect(isAdminLocale('de')).toBe(true);
 		expect(isAdminLocale('fr-CA')).toBe(false);
 	});
 
@@ -164,7 +165,8 @@ describe('locale matching', () => {
 		expect(matchAdminLocale('fr-CA')).toBe('fr');
 		expect(matchAdminLocale('fr-FR')).toBe('fr');
 		expect(matchAdminLocale('en-GB')).toBe('en');
-		expect(matchAdminLocale('de-DE')).toBe(null);
+		expect(matchAdminLocale('de-DE')).toBe('de');
+		expect(matchAdminLocale('ja-JP')).toBe(null);
 	});
 
 	test('stored preference wins over the browser', () => {
@@ -174,8 +176,9 @@ describe('locale matching', () => {
 
 	test('browser language is used when nothing is stored', () => {
 		expect(resolveInitialLocale(null, ['fr-CA', 'en'])).toBe('fr');
-		expect(resolveInitialLocale(null, ['de-DE', 'fr'])).toBe('fr');
-		expect(resolveInitialLocale(null, ['de-DE', 'ja'])).toBe('en');
+		expect(resolveInitialLocale(null, ['ja-JP', 'fr'])).toBe('fr');
+		expect(resolveInitialLocale(null, ['de-AT', 'fr'])).toBe('de');
+		expect(resolveInitialLocale(null, ['ja-JP', 'ko'])).toBe('en');
 	});
 
 	test('unknown stored value falls through to the browser, then English', () => {

@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/calnode/calnode/internal/i18n"
@@ -56,4 +57,11 @@ func (h *Handler) persistLangOverride(w http.ResponseWriter, r *http.Request) {
 		Name: langCookie, Value: code, Path: "/",
 		MaxAge: 365 * 24 * 60 * 60, HttpOnly: true, SameSite: http.SameSiteLaxMode, Secure: h.secureCookie,
 	})
+}
+
+// operatorLocale is the language for operator- and team-facing emails (login link, password
+// reset, invitation, test email, host notifications): the configured fallback locale. nil
+// (no or unknown setting) means English, the previous behaviour.
+func (h *Handler) operatorLocale(ctx context.Context) *i18n.Locale {
+	return i18n.Get(h.loadBranding(ctx).FallbackLocale)
 }

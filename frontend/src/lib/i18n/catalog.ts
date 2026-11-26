@@ -10,10 +10,12 @@
 
 import en from './en.json' with { type: 'json' };
 import fr from './fr.json' with { type: 'json' };
+import de from './de.json' with { type: 'json' };
 
 export const ADMIN_LOCALES = [
 	{ code: 'en', name: 'English' },
-	{ code: 'fr', name: 'Français' }
+	{ code: 'fr', name: 'Français' },
+	{ code: 'de', name: 'Deutsch' }
 ] as const;
 
 export type AdminLocale = (typeof ADMIN_LOCALES)[number]['code'];
@@ -22,7 +24,7 @@ export const STORAGE_KEY = 'calnode-admin-locale';
 
 type Catalog = Record<string, unknown>;
 
-const catalogs: Record<AdminLocale, Catalog> = { en, fr };
+const catalogs: Record<AdminLocale, Catalog> = { en, fr, de };
 
 const localeSet = new Set<string>(ADMIN_LOCALES.map((l) => l.code));
 
