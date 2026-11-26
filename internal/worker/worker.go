@@ -289,7 +289,8 @@ func (w *Worker) processJob(ctx context.Context, typ, payload string) error {
 
 func (w *Worker) sendReminder(ctx context.Context, payload string) error {
 	var p struct {
-		BookingID string `json:"booking_id"`
+		BookingID   string `json:"booking_id"`
+		HoursBefore int    `json:"hours_before"`
 	}
 	if err := json.Unmarshal([]byte(payload), &p); err != nil {
 		return fmt.Errorf("worker: reminder: parse payload: %w", err)
@@ -300,18 +301,18 @@ func (w *Worker) sendReminder(ctx context.Context, payload string) error {
 	// Skip if booking is deleted or no longer confirmed.
 	var d mailer.BookingData
 	d.BookingID = p.BookingID
-	var startAt, endAt, status string
+	var startAt, endAt, status, hostID, createdAt string
 	var locVal, msgReminder, subjReminder sql.NullString
 	var notifyReminder int
 	err := w.db.QueryRowContext(ctx, `
-		SELECT b.status, b.start_at, b.end_at, b.location_value,
+		SELECT b.status, b.start_at, b.end_at, b.location_value, b.host_id, b.created_at,
 		       et.name, et.slug, et.msg_reminder, et.subj_reminder,
 		       u.name, u.email, COALESCE(u.notify_reminder, 1)
 		FROM bookings b
 		JOIN event_types et ON et.id = b.event_type_id
 		JOIN users u ON u.id = b.host_id
 		WHERE b.id = ?`, p.BookingID).
-		Scan(&status, &startAt, &endAt, &locVal,
+		Scan(&status, &startAt, &endAt, &locVal, &hostID, &createdAt,
 			&d.EventTypeName, &d.EventTypeSlug, &msgReminder, &subjReminder,
 			&d.HostName, &d.HostEmail, &notifyReminder)
 	if err == sql.ErrNoRows {
@@ -344,6 +345,10 @@ func (w *Worker) sendReminder(ctx context.Context, payload string) error {
 		d.SubjectOverride = subjReminder.String
 	}
 
+	if err := w.enqueueReminderWebhook(ctx, p.BookingID, p.HoursBefore, hostID, status, createdAt, d); err != nil {
+		return err
+	}
+
 	// Load organizer attendee.
 	var locale string
 	orgErr := w.db.QueryRowContext(ctx, `
@@ -367,6 +372,37 @@ func (w *Worker) sendReminder(ctx context.Context, payload string) error {
 
 	if err := mailer.SendReminder(ctx, w.mailer, d); err != nil {
 		return fmt.Errorf("worker: reminder: send: %w", err)
+	}
+	return nil
+}
+
+// enqueueReminderWebhook raises booking.reminder for the reminder being sent. It runs
+// after the same checks that gate the email (booking still confirmed, host's
+// notify_reminder on), so an external SMS/push sender stays off whenever the email
+// would. It runs before the email: if sending the email fails the job retries, and the
+// delivery key (booking, hours_before, start) collapses the second enqueue, so the
+// receiver never gets the same reminder twice. A reschedule changes start_at and
+// therefore the key, so the new time gets its own reminder.
+func (w *Worker) enqueueReminderWebhook(ctx context.Context, bookingID string, hoursBefore int,
+	hostID, status, createdAt string, d mailer.BookingData) error {
+	start := d.StartAt.UTC().Format(time.RFC3339)
+	created := createdAt
+	if t, err := time.Parse(time.RFC3339Nano, createdAt); err == nil {
+		created = t.UTC().Format(time.RFC3339)
+	}
+	key := fmt.Sprintf("booking.reminder|%s|%d|%s", bookingID, hoursBefore, start)
+	if err := w.svc.EnqueueOnce(ctx, "booking.reminder", webhook.BookingPayload{
+		ID:            bookingID,
+		EventTypeSlug: d.EventTypeSlug,
+		HostID:        hostID,
+		StartAt:       start,
+		EndAt:         d.EndAt.UTC().Format(time.RFC3339),
+		Status:        status,
+		LocationValue: d.LocationValue,
+		CreatedAt:     created,
+		HoursBefore:   hoursBefore,
+	}, key); err != nil {
+		return fmt.Errorf("worker: reminder: enqueue booking.reminder webhook: %w", err)
 	}
 	return nil
 }

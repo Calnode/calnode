@@ -800,7 +800,15 @@ as the desired state:
 - `internal/webhook`: enqueues `booking.created` / `.cancelled` / `.rescheduled`
   plus the notetaker events `recording.completed` / `transcript.ready` / `notes.ready`
   (reference payloads — booking-shaped, keyed by id; consumers fetch the artifact body
-  via REST/MCP). There is **no** `booking.reminder` webhook event. Deliveries are signed
+  via REST/MCP). **`booking.reminder`** fires from the `reminder.send` job, once per
+  configured `hours_before`, so an external SMS/push sender stays stateless: Calnode keeps
+  owning scheduling, reschedules and cancellations, the receiver only delivers. It passes
+  the same gates as the reminder email (booking still `confirmed`, host's
+  `notify_reminder` on) and carries `hours_before` in `data` whatever the webhook's field
+  selection. It is enqueued **before** the email with `EnqueueOnce`: the delivery ID is
+  derived from (webhook, booking, `hours_before`, `start_at`) and inserted with
+  `INSERT OR IGNORE`, so a job retried after a failed email collapses instead of
+  delivering twice, while a reschedule (new `start_at`) gets its own event. Deliveries are signed
   **HMAC-SHA256**, header `X-Calnode-Signature` (+ `X-Calnode-Event`/`-Delivery`),
   secret stored encrypted. The worker's HTTP client is **SSRF-guarded** (resolves
   DNS, blocks private/loopback/CGNAT/ULA IPs, dials the resolved IP to avoid
