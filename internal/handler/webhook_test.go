@@ -54,6 +54,19 @@ func TestCreateWebhook_bothEvents(t *testing.T) {
 	}
 }
 
+func TestCreateWebhook_bookingReminderEvent(t *testing.T) {
+	h, apiKey, _ := setupWorkspace(t)
+
+	req := authReq(http.MethodPost, "/v1/webhooks",
+		`{"url":"https://example.com/hook","events":["booking.reminder"]}`, apiKey)
+	rec := httptest.NewRecorder()
+	h.RequireAuth(h.CreateWebhook)(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d; want 201 — %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestCreateWebhook_missingURL_returns400(t *testing.T) {
 	h, apiKey, _ := setupWorkspace(t)
 

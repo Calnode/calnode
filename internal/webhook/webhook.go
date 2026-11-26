@@ -59,6 +59,10 @@ const (
 	FieldInviteDelivery  = "invite_delivery"
 )
 
+// FieldHoursBefore is not selectable: it describes the event (which reminder fired)
+// rather than the booking, so booking.reminder always carries it and nothing else does.
+const FieldHoursBefore = "hours_before"
+
 // AllFields is every selectable field, in payload order. Used to validate config
 // and (UI) to render the checkbox list.
 var AllFields = []string{
@@ -133,6 +137,10 @@ type BookingPayload struct {
 	// RSVPStatus is the booker's answer to a Calnode-sent invite (accepted, declined,
 	// tentative); set on booking.rsvp only.
 	RSVPStatus string `json:"rsvp_status,omitempty"`
+	// HoursBefore is which configured reminder fired (the event type's hours_before);
+	// set on booking.reminder only, and always sent with it whatever the webhook's field
+	// selection, since a sender that fires at 24h and 2h has to tell them apart.
+	HoursBefore int `json:"hours_before,omitempty"`
 }
 
 type Service struct {
@@ -370,6 +378,9 @@ func buildData(bd enrichedBooking, fields []string) map[string]any {
 			out[f] = bd.core.AmountPaidCents
 		}
 	}
+	if bd.core.HoursBefore > 0 {
+		out[FieldHoursBefore] = bd.core.HoursBefore
+	}
 	return out
 }
 
@@ -377,6 +388,32 @@ func buildData(bd enrichedBooking, fields []string) map[string]any {
 // and creates a webhook_deliveries + jobs row pair for each. Failures are
 // soft-errors (caller logs; a booking is already committed).
 func (s *Service) Enqueue(ctx context.Context, event string, p BookingPayload) error {
+	return s.enqueue(ctx, event, p, "")
+}
+
+// EnqueueOnce is Enqueue for an event that a retried job may raise more than once.
+// Each delivery's ID is derived from the webhook ID and key instead of being random, and
+// is inserted with INSERT OR IGNORE, so a second call with the same key creates neither
+// a delivery nor a job for a webhook that already has one. The ID is also what receivers
+// see in X-Calnode-Delivery, so it stays stable for them too.
+func (s *Service) EnqueueOnce(ctx context.Context, event string, p BookingPayload, key string) error {
+	if key == "" {
+		return errors.New("webhook: EnqueueOnce needs a key")
+	}
+	return s.enqueue(ctx, event, p, key)
+}
+
+// deliveryIDFor derives a UUID-shaped delivery ID (version 5 bits, SHA-256 based) from
+// the webhook and the caller's key, so it fits wherever a random delivery ID does.
+func deliveryIDFor(webhookID, key string) string {
+	sum := sha256.Sum256([]byte(webhookID + "\x00" + key))
+	b := sum[:16]
+	b[6] = (b[6] & 0x0f) | 0x50
+	b[8] = (b[8] & 0x3f) | 0x80
+	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
+}
+
+func (s *Service) enqueue(ctx context.Context, event string, p BookingPayload, key string) error {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, events, fields FROM webhooks
 		WHERE user_id = ? AND is_active = 1`, p.HostID)
@@ -456,12 +493,20 @@ func (s *Service) Enqueue(ctx context.Context, event string, p BookingPayload) e
 		}
 
 		deliveryID := uid.New()
+		insert := `INSERT INTO webhook_deliveries (id, webhook_id, booking_id, event, payload, status)
+			VALUES (?, ?, ?, ?, ?, 'pending')`
+		if key != "" {
+			deliveryID = deliveryIDFor(wh.id, key)
+			insert = `INSERT OR IGNORE INTO webhook_deliveries (id, webhook_id, booking_id, event, payload, status)
+			VALUES (?, ?, ?, ?, ?, 'pending')`
+		}
 		jobID := uid.New()
-		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO webhook_deliveries (id, webhook_id, booking_id, event, payload, status)
-			VALUES (?, ?, ?, ?, ?, 'pending')`,
-			deliveryID, wh.id, bookingIDArg, event, string(payloadBytes)); err != nil {
+		res, err := tx.ExecContext(ctx, insert, deliveryID, wh.id, bookingIDArg, event, string(payloadBytes))
+		if err != nil {
 			return fmt.Errorf("webhook: insert delivery: %w", err)
+		}
+		if n, err := res.RowsAffected(); err == nil && n == 0 {
+			continue // EnqueueOnce: this webhook already has the delivery for key
 		}
 		jobPayload, _ := json.Marshal(map[string]string{"webhook_delivery_id": deliveryID})
 		if _, err := tx.ExecContext(ctx, `
