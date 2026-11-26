@@ -2164,13 +2164,35 @@ func (h *Handler) loadHostPrefs(ctx context.Context, hostID string) (hostPrefs, 
 	return p, nil
 }
 
-// enqueueReminder inserts a reminder.send job scheduled hoursBefore hours before startAt.
-// If the computed run_at has already passed, the job fires on the next poll cycle.
-func (h *Handler) enqueueReminder(ctx context.Context, bookingID string, startAt time.Time, hoursBefore int) error {
+// reminderGrace is how far in the past a reminder's moment may be and still be sent.
+// It absorbs clock skew and job timing: a reminder due two minutes ago still goes out
+// on the next poll. Anything older is skipped, see reminderRunAt.
+const reminderGrace = 5 * time.Minute
+
+// reminderRunAt returns when the reminder hoursBefore hours before startAt should run,
+// and false when that moment passed more than reminderGrace ago. Such a reminder is
+// skipped, never sent late: a booking made five hours out with reminders [24, 2] would
+// otherwise get the 24-hour reminder ("tomorrow") right next to the confirmation email.
+// The confirmation already covers that window. A run_at inside the grace window is
+// clamped to now.
+func reminderRunAt(startAt time.Time, hoursBefore int, now time.Time) (time.Time, bool) {
 	runAt := startAt.UTC().Add(-time.Duration(hoursBefore) * time.Hour)
-	now := time.Now().UTC()
+	now = now.UTC()
+	if runAt.Before(now.Add(-reminderGrace)) {
+		return time.Time{}, false
+	}
 	if runAt.Before(now) {
 		runAt = now
+	}
+	return runAt, true
+}
+
+// enqueueReminder inserts a reminder.send job scheduled hoursBefore hours before startAt.
+// A reminder whose moment has already passed is skipped (reminderRunAt).
+func (h *Handler) enqueueReminder(ctx context.Context, bookingID string, startAt time.Time, hoursBefore int) error {
+	runAt, ok := reminderRunAt(startAt, hoursBefore, time.Now())
+	if !ok {
+		return nil
 	}
 
 	payload, err := json.Marshal(map[string]any{"booking_id": bookingID, "hours_before": hoursBefore})
@@ -2221,6 +2243,7 @@ func (h *Handler) enqueueBookingReminders(ctx context.Context, etID, bookingID s
 // replaceReminderJobs atomically deletes all non-running reminder jobs for a
 // booking and inserts fresh ones based on the event type's configured reminder
 // list. Falls back to a single 24-hour reminder when no explicit list is set.
+// Reminders whose moment has already passed are skipped.
 func (h *Handler) replaceReminderJobs(ctx context.Context, bookingID, etID string, newStart time.Time) error {
 	// Load the hours list first (read-only, outside the write transaction).
 	rows, err := h.db.QueryContext(ctx,
@@ -2258,11 +2281,13 @@ func (h *Handler) replaceReminderJobs(ctx context.Context, bookingID, etID strin
 		return fmt.Errorf("replace reminder jobs: delete: %w", err)
 	}
 
-	now := time.Now().UTC()
+	// A reschedule onto a nearer slot must not fire reminders whose moment has
+	// already passed, same as on create (reminderRunAt).
+	now := time.Now()
 	for _, hb := range hours {
-		runAt := newStart.UTC().Add(-time.Duration(hb) * time.Hour)
-		if runAt.Before(now) {
-			runAt = now
+		runAt, ok := reminderRunAt(newStart, hb, now)
+		if !ok {
+			continue
 		}
 		payload, err := json.Marshal(map[string]any{"booking_id": bookingID, "hours_before": hb})
 		if err != nil {
