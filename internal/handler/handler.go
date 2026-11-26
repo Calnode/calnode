@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"log/slog"
+	"net"
 	"net/http"
 	"sync"
 	"time"
@@ -52,6 +53,9 @@ type Handler struct {
 	demoResetInterval time.Duration
 	demoMu            sync.RWMutex
 	demoNextResetAt   time.Time
+
+	// webhookAllowedCIDRs: private networks webhooks may target (WEBHOOK_ALLOWED_CIDRS).
+	webhookAllowedCIDRs []*net.IPNet
 }
 
 // SetLiveKit swaps the active LiveKit client (nil disables built-in video rooms).
@@ -241,6 +245,13 @@ func (h *Handler) getMicrosoftAuth() *oauth2.Config {
 // backed by the configured encryption key.
 func (h *Handler) SetWebhookSvc(svc *webhook.Service) {
 	h.webhookSvc = svc
+}
+
+// SetWebhookAllowedCIDRs sets the private networks a webhook URL may resolve to
+// (WEBHOOK_ALLOWED_CIDRS). The worker gets the same list, so a URL accepted here is
+// judged by the same rule when it is delivered to.
+func (h *Handler) SetWebhookAllowedCIDRs(allowed []*net.IPNet) {
+	h.webhookAllowedCIDRs = allowed
 }
 
 // isEmailEnabled reports whether a real SMTP sender is configured.

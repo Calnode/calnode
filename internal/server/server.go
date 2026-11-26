@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"log/slog"
+	"net"
 	"net/http"
 	"time"
 
@@ -175,6 +176,8 @@ func BuildHandler(ctx context.Context, cfg *config.Config, db *sql.DB, logger *s
 	h.SetMailer(live, cfg.BaseURL)
 
 	drain := func() {}
+	webhookAllowed := parseWebhookAllowedCIDRs(cfg.WebhookAllowedCIDRs, logger)
+	h.SetWebhookAllowedCIDRs(webhookAllowed)
 	whs, err := webhook.New(db, cfg.EncryptionKey)
 	if err != nil {
 		logger.Error("webhook: init failed", "error", err)
@@ -187,7 +190,8 @@ func BuildHandler(ctx context.Context, cfg *config.Config, db *sql.DB, logger *s
 		if publicURL == "" {
 			publicURL = cfg.BaseURL
 		}
-		wrk := worker.New(db, whs, logger, worker.WithMailer(live), worker.WithPublicURL(publicURL))
+		wrk := worker.New(db, whs, logger, worker.WithMailer(live), worker.WithPublicURL(publicURL),
+			worker.WithWebhookAllowedCIDRs(webhookAllowed))
 		// Notetaker jobs live in the handler package (they need LLM/S3/encKey).
 		wrk.RegisterHandler("notetaker.transcribe", h.JobNotetakerTranscribe)
 		wrk.RegisterHandler("notetaker.summarize", h.JobNotetakerSummarize)
@@ -682,4 +686,31 @@ func seedSMTPToDB(db *sql.DB, cfg *config.Config, encKey [32]byte, logger *slog.
 	if n, _ := res.RowsAffected(); n > 0 {
 		logger.Info("mailer: seeded SMTP settings from env vars into database (env vars can now be removed)")
 	}
+}
+
+// parseWebhookAllowedCIDRs parses WEBHOOK_ALLOWED_CIDRS with the same rules as
+// TRUSTED_PROXY_CIDRS (a bare address is one host). A bad entry is logged and dropped,
+// which fails closed: that network simply stays blocked. An entry covering the cloud
+// metadata address gets a warning, because it reads as if it unblocked it and it does
+// not (netutil.ResolveSafeAllowing refuses link-local first).
+func parseWebhookAllowedCIDRs(entries []string, logger *slog.Logger) []*net.IPNet {
+	allowed, err := ParseTrustedProxies(entries)
+	if err != nil {
+		logger.Error("WEBHOOK_ALLOWED_CIDRS: ignoring unparseable entries", "error", err)
+	}
+	metadata := net.ParseIP("169.254.169.254")
+	for _, n := range allowed {
+		if n.Contains(metadata) {
+			logger.Warn("WEBHOOK_ALLOWED_CIDRS: link-local / cloud metadata addresses stay blocked whatever is listed", "cidr", n.String())
+		}
+	}
+	if len(allowed) > 0 {
+		// Log what was parsed, not what was written: a dropped entry must not read as allowed.
+		cidrs := make([]string, len(allowed))
+		for i, n := range allowed {
+			cidrs[i] = n.String()
+		}
+		logger.Info("webhooks may be delivered to these private networks", "cidrs", cidrs)
+	}
+	return allowed
 }

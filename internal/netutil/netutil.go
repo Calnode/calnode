@@ -16,6 +16,16 @@ import (
 // addresses directly (not re-resolve the hostname) to avoid a DNS-rebinding gap
 // between this check and the connection.
 func ResolveSafe(ctx context.Context, host string) ([]net.IPAddr, error) {
+	return ResolveSafeAllowing(ctx, host, nil)
+}
+
+// ResolveSafeAllowing is ResolveSafe with an operator-approved exception list
+// (WEBHOOK_ALLOWED_CIDRS): a private address inside one of allowed passes, so a
+// webhook can reach a sibling container on the operator's own network. Every address
+// host resolves to must pass, as in ResolveSafe. A nil list is exactly ResolveSafe.
+//
+// The list can never unblock the cloud metadata service: see blockedWebhookIP.
+func ResolveSafeAllowing(ctx context.Context, host string, allowed []*net.IPNet) ([]net.IPAddr, error) {
 	addrs, err := net.DefaultResolver.LookupIPAddr(ctx, host)
 	if err != nil {
 		return nil, fmt.Errorf("resolve %q: %w", host, err)
@@ -24,11 +34,34 @@ func ResolveSafe(ctx context.Context, host string) ([]net.IPAddr, error) {
 		return nil, fmt.Errorf("%q resolved to no addresses", host)
 	}
 	for _, a := range addrs {
-		if IsPrivateIP(a.IP) {
+		if blockedWebhookIP(a.IP, allowed) {
 			return nil, fmt.Errorf("%q resolved to a private or loopback address", host)
 		}
 	}
 	return addrs, nil
+}
+
+// blockedWebhookIP reports whether a webhook may not be delivered to ip.
+//
+// The link-local range (169.254.0.0/16, fe80::/10, where cloud metadata services
+// hand out instance credentials), AWS's IPv6 metadata address and the unspecified
+// address are refused FIRST and unconditionally, before the allowlist is consulted.
+// That order is the security property, not a detail: an operator listing
+// 169.254.0.0/16, or 0.0.0.0/0, must still not unblock 169.254.169.254. Keep it if
+// this is ever refactored.
+func blockedWebhookIP(ip net.IP, allowed []*net.IPNet) bool {
+	if IsLinkLocal(ip) || ip.IsUnspecified() {
+		return true
+	}
+	if !IsPrivateIP(ip) {
+		return false
+	}
+	for _, n := range allowed {
+		if n.Contains(ip) {
+			return false
+		}
+	}
+	return true
 }
 
 // ResolveNotMetadata resolves host and rejects it only if it maps to a link-local
@@ -106,6 +139,16 @@ func CheckHostnameNotMetadata(ctx context.Context, host string) error {
 // a third party's receiving endpoint, not infrastructure the operator runs).
 func SafeTransport(logger *slog.Logger, logMsg string) http.RoundTripper {
 	return dialGuardTransport(ResolveSafe, logger, logMsg)
+}
+
+// SafeTransportAllowing is SafeTransport with ResolveSafeAllowing's exception list,
+// for webhook delivery when the operator set WEBHOOK_ALLOWED_CIDRS. The dial-time
+// check is the same as the save-time one, so a hostname that re-resolves elsewhere
+// after the URL was saved is judged again on the address actually dialled.
+func SafeTransportAllowing(logger *slog.Logger, logMsg string, allowed []*net.IPNet) http.RoundTripper {
+	return dialGuardTransport(func(ctx context.Context, host string) ([]net.IPAddr, error) {
+		return ResolveSafeAllowing(ctx, host, allowed)
+	}, logger, logMsg)
 }
 
 // MetadataSafeTransport is SafeTransport's narrower sibling: it blocks only cloud

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"time"
 
@@ -46,6 +47,22 @@ func (w *Worker) RegisterHandler(typ string, fn func(context.Context, string) er
 // WithHTTPClient overrides the default SSRF-safe HTTP client. Intended for testing only.
 func WithHTTPClient(c *http.Client) func(*Worker) {
 	return func(w *Worker) { w.httpClient = c }
+}
+
+// WithWebhookAllowedCIDRs lets webhook delivery reach these private networks
+// (WEBHOOK_ALLOWED_CIDRS). The dial-time guard stays on for everything else; see
+// netutil.SafeTransportAllowing.
+func WithWebhookAllowedCIDRs(allowed []*net.IPNet) func(*Worker) {
+	return func(w *Worker) {
+		if len(allowed) > 0 {
+			// A new client rather than a mutated one, so a client handed in through
+			// WithHTTPClient is never altered behind its owner's back.
+			w.httpClient = &http.Client{
+				Timeout:   w.httpClient.Timeout,
+				Transport: netutil.SafeTransportAllowing(w.logger, "worker: webhook SSRF block", allowed),
+			}
+		}
+	}
 }
 
 // WithMailer configures the mailer used to send reminder emails.
