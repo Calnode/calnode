@@ -776,7 +776,11 @@ as the desired state:
   bordered header cell). Public-page CSP `img-src` allows `https:`/`data:` so the
   logo/banner load (`strictPublicCSP`). Brand is threaded into every send site
   (booking/cancel/reschedule/reassign + worker reminder).
-- Reminders: scheduled as `jobs` and sent by the worker (§13).
+- Reminders: scheduled as `jobs` and sent by the worker (§13). One job per
+  `hours_before` entry, at `start_at - hours_before`, on create and again on
+  reschedule (`replaceReminderJobs`). A reminder whose moment passed more than
+  `reminderGrace` (5 min) ago is **skipped**, not sent at once: a booking made 5 h out
+  with `[24, 2]` gets only the 2 h reminder, since the confirmation covers the rest.
 - **Deliverability note (ops):** prod sends via **Resend** SMTP
   (`smtp.resend.com`, user `resend`, password = API key, STARTTLS); `orchestratr.ai`
   verified so any `@orchestratr.ai` From works. Email settings are **per-instance in
