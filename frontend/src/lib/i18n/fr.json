@@ -188,7 +188,8 @@
 			"hideResponses": "Masquer les réponses",
 			"showResponses": "Afficher les réponses",
 			"reschedule": "Reprogrammer",
-			"cancel": "Annuler la réservation"
+			"cancel": "Annuler la réservation",
+			"delete": "Supprimer la réservation"
 		},
 		"cancelReschedule": "Annuler la reprogrammation",
 		"details": {
@@ -221,6 +222,20 @@
 		"status": {
 			"confirmed": "confirmée",
 			"cancelled": "annulée"
+		},
+		"confirmDelete": {
+			"title": "Supprimer définitivement cette réservation ?",
+			"description": "Supprime la réservation avec le nom, l'e-mail et les réponses du participant, par exemple pour une demande d'effacement. Personne n'est notifié. L'événement d'une réunion passée reste dans votre agenda ; supprimez-le là-bas sans notifier les invités. Action irréversible.",
+			"confirm": "Supprimer définitivement",
+			"cancel": "Conserver la réservation"
+		},
+		"delete": {
+			"error": {
+				"cancel_first": "Annulez d'abord la réservation à venir, puis supprimez-la.",
+				"paid_booking": "Les réservations payées conservent leur trace et ne peuvent pas être supprimées ici.",
+				"recordings_first": "Supprimez d'abord les enregistrements de cette réservation (Enregistrements).",
+				"calendar_pending": "L'événement d'agenda est encore en cours de suppression. Réessayez dans quelques minutes."
+			}
 		}
 	},
 	"availability": {

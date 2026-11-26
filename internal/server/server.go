@@ -524,6 +524,7 @@ func New(ctx context.Context, cfg *config.Config, db *sql.DB, logger *slog.Logge
 	mux.HandleFunc("GET /v1/bookings/{id}", bookingRL(h.GetBooking))
 	mux.HandleFunc("GET /v1/bookings", h.RequireAuth(h.ListBookings))
 	mux.HandleFunc("POST /v1/bookings/{id}/cancel", h.RequireAuth(h.CancelBooking))
+	mux.HandleFunc("DELETE /v1/bookings/{id}", h.RequireAuth(h.DeleteBooking))
 	mux.HandleFunc("PATCH /v1/bookings/{id}/reschedule", h.RequireAuth(h.RescheduleBooking))
 	mux.HandleFunc("POST /v1/bookings/{id}/reassign", h.RequireAuth(h.ReassignBooking))
 	mux.HandleFunc("GET /v1/bookings/{id}/answers", h.RequireAuth(h.GetBookingAnswers))

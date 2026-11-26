@@ -32,6 +32,17 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
 
 ### Added
 
+- **Delete a booking for an erasure request.** Owners and admins can now permanently remove a
+  booking from the Bookings list (trash icon, confirmation dialog; `DELETE /v1/bookings/{id}`).
+  It removes the booking with its attendees, answers, manage links and host assignments, plus the
+  rows that name the person without a cascade: webhook deliveries and their queued jobs, reminder
+  jobs, idempotency records, transcripts and notes. It sends no email and fires no webhook.
+  Offered only where it is safe: an upcoming booking must be cancelled first (so the booker is
+  told and the calendar event goes); paid bookings keep their record; recordings must be deleted
+  first (they are files in object storage); and a cancelled booking whose calendar event removal
+  is still pending is refused until the reconciler has removed it. A past meeting's event stays on
+  the host's calendar, because removing it through the provider would email the guest; the
+  dialog says so. Database backups keep the data until their own retention ends.
 - **German without du or Sie (`de-x-neutral`).** An opt-in wording variant of the German
   booker catalogue that addresses nobody: "Tag auswählen" rather than "Wählen Sie einen
   Tag". It is for operators whose own site is informal, where the formal widget stands out
