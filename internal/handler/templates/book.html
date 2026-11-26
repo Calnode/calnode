@@ -211,7 +211,12 @@ body {
              .ID is the event type's own intake-question primary key (admin-configured, not
              attacker-controlled at booking time), and Go's html/template context-aware-escapes
              every {{.ID}} below regardless — there is no raw/unescaped output here. */}}
-        {{if .PhoneChoice}}
+        {{if .PhoneRequired}}
+        <div class="field">
+          <label for="f-phone">{{call .T "phone_outbound_number"}} <span class="required-star">*</span></label>
+          <input id="f-phone" name="phone" type="tel" maxlength="40" autocomplete="tel" required data-phone-required="true">
+        </div>
+        {{else if .PhoneChoice}}
         <div class="field">
           <label for="f-phone">{{call .T "phone_call_number"}}</label>
           <input id="f-phone" name="phone" type="tel" maxlength="40" autocomplete="tel">
@@ -682,6 +687,12 @@ body {
     const errEl = $('form-error');
 
     if (!form.name.value.trim() || !form.email.value.trim()) {
+      errEl.textContent = t('required_fields_error');
+      return;
+    }
+    // "We'll call you" event types: the number is required (the server refuses without it).
+    const phoneEl = form.elements.phone;
+    if (phoneEl && phoneEl.dataset.phoneRequired === 'true' && !phoneEl.value.trim()) {
       errEl.textContent = t('required_fields_error');
       return;
     }

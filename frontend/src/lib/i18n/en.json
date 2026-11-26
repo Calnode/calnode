@@ -1642,6 +1642,7 @@
 				"googleMeet": "Google Meet",
 				"livekit": "Calnode Video (LiveKit)",
 				"phone": "Phone call",
+				"phoneOutbound": "We call the attendee",
 				"link": "Video link",
 				"inPerson": "In person"
 			},
@@ -1651,6 +1652,7 @@
 				"meetLink": "Meet link",
 				"teamsLink": "Teams link",
 				"phone": "Phone number",
+				"attendeePhone": "Attendee's phone number",
 				"address": "Address",
 				"details": "Details",
 				"videoRoom": "Video room"
@@ -1682,7 +1684,8 @@
 					"notConfigured": "Zoom isn't set up for this workspace (an admin can add it in Settings → Zoom),",
 					"pasteFallback": "or paste a Zoom link below to use for every booking."
 				},
-				"livekit": "A secure video room is created automatically for each booking — no link needed. Guests join in the browser. (Set up the server in Settings → Video.)"
+				"livekit": "A secure video room is created automatically for each booking — no link needed. Guests join in the browser. (Set up the server in Settings → Video.)",
+				"phoneOutbound": "The booking form asks the attendee for their phone number (required). You call them at the booked time; the number is the booking's location, so it's in the calendar event and emails as a tap-to-call link."
 			}
 		},
 		"invite": {

@@ -29,6 +29,7 @@
 		{ value: 'google_meet',  label: $t('eventTypeEditor.location.types.googleMeet') },
 		{ value: 'livekit',      label: $t('eventTypeEditor.location.types.livekit') },
 		{ value: 'phone',        label: $t('eventTypeEditor.location.types.phone') },
+		{ value: 'phone_outbound', label: $t('eventTypeEditor.location.types.phoneOutbound') },
 		{ value: 'link',         label: $t('eventTypeEditor.location.types.link') },
 		{ value: 'in_person',    label: $t('eventTypeEditor.location.types.inPerson') },
 	]);
@@ -399,7 +400,8 @@
 				invite_delivery: form.invite_delivery,
 				allow_phone_call: allowPhoneCall,
 				location_type: form.location_type,
-				location_value: form.location_value.trim() || null,
+				// "We'll call you" has no host-side value: the attendee gives their number at booking.
+				location_value: form.location_type === 'phone_outbound' ? null : form.location_value.trim() || null,
 				buffer_before_minutes: Number(form.buffer_before_minutes),
 				buffer_after_minutes: Number(form.buffer_after_minutes),
 				min_notice_minutes: Number(form.min_notice_minutes),
@@ -763,6 +765,11 @@
 							</p>
 						{/if}
 						<Input id="et-loc-val" bind:value={form.location_value} placeholder={zoomAutoGen ? $t('eventTypeEditor.location.placeholder.optionalFallback') : $t('eventTypeEditor.location.placeholder.pasteZoom')} />
+					{:else if form.location_type === 'phone_outbound'}
+						<Label>{$t('eventTypeEditor.location.labels.attendeePhone')}</Label>
+						<p class="rounded-md border border-green-600/20 bg-green-50 px-3 py-2 text-sm text-green-700">
+							{$t('eventTypeEditor.location.hint.phoneOutbound')}
+						</p>
 					{:else if form.location_type === 'livekit'}
 						<Label>{$t('eventTypeEditor.location.labels.videoRoom')}</Label>
 						<p class="rounded-md border border-green-600/20 bg-green-50 px-3 py-2 text-sm text-green-700">
