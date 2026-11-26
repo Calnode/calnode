@@ -218,6 +218,38 @@
 		}
 	}
 
+	// Permanent erasure for a data-deletion request (owner/admin only). Offered where the
+	// server can do it: cancelled or already-ended free bookings. The server re-checks and
+	// answers 409 with a code naming the step to take first (recordings, calendar pending).
+	let deleteOpen = $state(false);
+	let pendingDeleteId = $state<string | null>(null);
+	const deleteErrorCodes = ['cancel_first', 'paid_booking', 'recordings_first', 'calendar_pending'];
+
+	function canDelete(b: Booking): boolean {
+		if (!isAdmin || b.payment_status) return false;
+		return b.status === 'cancelled' || new Date(b.end_at).getTime() <= Date.now();
+	}
+
+	function requestDelete(id: string) {
+		pendingDeleteId = id;
+		deleteOpen = true;
+	}
+
+	async function deleteBooking() {
+		const id = pendingDeleteId;
+		if (!id) return;
+		try {
+			await api.del(`/v1/bookings/${id}`);
+			if (expandedId === id) expandedId = null;
+			await load();
+		} catch (e: any) {
+			error = deleteErrorCodes.includes(e.message) ? $t(`bookings.delete.error.${e.message}`) : e.message;
+		} finally {
+			deleteOpen = false;
+			pendingDeleteId = null;
+		}
+	}
+
 	function startReschedule(b: Booking) {
 		reschedulingId = b.id;
 		reschedulingSlug = b.event_type_slug ?? '';
@@ -516,6 +548,19 @@
 											</Tooltip.Root>
 										{/if}
 									{/if}
+
+									{#if canDelete(b)}
+										<Tooltip.Root>
+											<Tooltip.Trigger
+												class={buttonVariants({ variant: 'ghost', size: 'icon' })}
+												onclick={() => requestDelete(b.id)}
+												aria-label={$t('bookings.tooltip.delete')}
+											>
+												<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+											</Tooltip.Trigger>
+											<Tooltip.Content>{$t('bookings.tooltip.delete')}</Tooltip.Content>
+										</Tooltip.Root>
+									{/if}
 								</div>
 							</Tooltip.Provider>
 						</td>
@@ -666,4 +711,14 @@
 	cancelText={$t('bookings.confirmCancel.cancel')}
 	destructive
 	onConfirm={cancel}
+/>
+
+<ConfirmDialog
+	bind:open={deleteOpen}
+	title={$t('bookings.confirmDelete.title')}
+	description={$t('bookings.confirmDelete.description')}
+	confirmText={$t('bookings.confirmDelete.confirm')}
+	cancelText={$t('bookings.confirmDelete.cancel')}
+	destructive
+	onConfirm={deleteBooking}
 />

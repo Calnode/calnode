@@ -188,7 +188,8 @@
 			"hideResponses": "Hide responses",
 			"showResponses": "Show responses",
 			"reschedule": "Reschedule",
-			"cancel": "Cancel booking"
+			"cancel": "Cancel booking",
+			"delete": "Delete booking"
 		},
 		"cancelReschedule": "Cancel reschedule",
 		"details": {
@@ -221,6 +222,20 @@
 		"status": {
 			"confirmed": "confirmed",
 			"cancelled": "cancelled"
+		},
+		"confirmDelete": {
+			"title": "Delete this booking permanently?",
+			"description": "Removes the booking with the attendee's name, email and answers, for a data deletion request. No one is notified. A calendar event of a past meeting stays on your calendar; delete it there without notifying guests. This can't be undone.",
+			"confirm": "Delete permanently",
+			"cancel": "Keep booking"
+		},
+		"delete": {
+			"error": {
+				"cancel_first": "Cancel the upcoming booking first, then delete it.",
+				"paid_booking": "Paid bookings keep their record and cannot be deleted here.",
+				"recordings_first": "Delete the recordings of this booking first (Recordings).",
+				"calendar_pending": "The calendar event is still being removed. Try again in a few minutes."
+			}
 		}
 	},
 	"availability": {

@@ -1821,6 +1821,38 @@ func (h *Handler) CancelBooking(w http.ResponseWriter, r *http.Request) {
 	go h.cancelSideEffects(*b) // #nosec G118 -- deliberately its own context.Background(); see cancelSideEffects' doc comment
 }
 
+// DeleteBooking handles DELETE /v1/bookings/{id} (owner/admin only): permanently erases a
+// booking and the personal data stored with it, for an erasure request. No email, no
+// webhook. booking.Service.Delete lists exactly what is removed and what is refused; the
+// refusals come back as 409 with a stable code the admin UI turns into the next step.
+func (h *Handler) DeleteBooking(w http.ResponseWriter, r *http.Request) {
+	user, ok := h.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	id := r.PathValue("id")
+	err := h.bookingSvc.Delete(r.Context(), id, time.Now().UTC())
+	switch {
+	case err == nil:
+		// Who and which id only: the point of this call is that the person's data is gone.
+		h.logger.InfoContext(r.Context(), "booking deleted on request", "booking_id", id, "by", user.ID)
+		w.WriteHeader(http.StatusNoContent)
+	case errors.Is(err, booking.ErrNotFound):
+		h.writeError(w, http.StatusNotFound, "booking not found")
+	case errors.Is(err, booking.ErrDeleteUpcoming):
+		h.writeError(w, http.StatusConflict, "cancel_first")
+	case errors.Is(err, booking.ErrDeletePaid):
+		h.writeError(w, http.StatusConflict, "paid_booking")
+	case errors.Is(err, booking.ErrDeleteRecordings):
+		h.writeError(w, http.StatusConflict, "recordings_first")
+	case errors.Is(err, booking.ErrDeleteCalendarPending):
+		h.writeError(w, http.StatusConflict, "calendar_pending")
+	default:
+		h.logger.ErrorContext(r.Context(), "delete booking", "error", err, "booking_id", id)
+		h.writeError(w, http.StatusInternalServerError, "internal error")
+	}
+}
+
 // cancelSideEffects removes every assigned host's calendar event, notifies each
 // host, emails the attendee, and fires the webhook for a cancelled booking. Runs
 // in its own context so it can be launched in a goroutine after the response is
