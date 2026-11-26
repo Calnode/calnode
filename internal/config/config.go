@@ -71,6 +71,15 @@ type Config struct {
 	// walk steps over its edge address and lands on the visitor.
 	TrustedProxyCIDRs []string
 
+	// WebhookAllowedCIDRs lists private networks webhooks may be delivered to, as an
+	// exception to the SSRF guard that otherwise refuses every private, loopback,
+	// CGNAT and ULA address - for a receiver in a sibling container. Empty (the
+	// default) keeps the guard whole. Operator-only by design: a workspace admin can
+	// create webhooks, so an in-app setting would let them widen their own reach.
+	// Link-local / cloud metadata stays blocked whatever is listed. Comma-separated
+	// CIDRs; a bare address is taken as a single host.
+	WebhookAllowedCIDRs []string
+
 	// FrameAncestors lists the origins allowed to embed the admin SPA in a frame, as a
 	// Content-Security-Policy frame-ancestors source list. Space-separated, matching the
 	// CSP syntax it becomes. Empty (the default) ⇒ nothing is sent and /admin/ behaves
@@ -134,6 +143,7 @@ func Load() *Config {
 		EmbedAllowedOrigins: splitCSV(getEnv("EMBED_ALLOWED_ORIGINS", "")),
 		DataDir:             getEnv("DATA_DIR", "data"),
 		TrustedProxyCIDRs:   splitCSV(getEnv("TRUSTED_PROXY_CIDRS", "")),
+		WebhookAllowedCIDRs: splitCSV(getEnv("WEBHOOK_ALLOWED_CIDRS", "")),
 		// Space-separated, not comma: the value goes into a CSP source list verbatim, so
 		// it reads the same in the env var as it does in the header.
 		FrameAncestors: strings.Fields(getEnv("FRAME_ANCESTORS", "")),

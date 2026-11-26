@@ -805,6 +805,14 @@ as the desired state:
   secret stored encrypted. The worker's HTTP client is **SSRF-guarded** (resolves
   DNS, blocks private/loopback/CGNAT/ULA IPs, dials the resolved IP to avoid
   re-resolution) since webhook URLs are user-supplied.
+- **`WEBHOOK_ALLOWED_CIDRS`** (operator env, empty by default) exempts listed private
+  networks from that guard, for a receiver in a sibling container. One rule,
+  `netutil.ResolveSafeAllowing`, is applied at save time (`validateWebhookURL`) and at
+  dial time (`SafeTransportAllowing`), so DNS rebinding between the two gains nothing.
+  Link-local / metadata and the unspecified address are refused **before** the list is
+  consulted (`blockedWebhookIP`), so listing `169.254.0.0/16` or `0.0.0.0/0` can't
+  reach `169.254.169.254`. Env-only, never an in-app setting: workspace admins create
+  webhooks, and must not be able to widen where those can reach.
 - **Per-webhook payload fields:** each webhook chooses which fields land in the `data`
   object (`webhooks.fields` JSON, migration 00027) — incl. attendee PII + intake
   answers. NULL ⇒ the original default set (so existing webhooks are unchanged and

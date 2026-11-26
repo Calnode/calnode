@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"slices"
@@ -41,7 +42,7 @@ func (h *Handler) CreateWebhook(w http.ResponseWriter, r *http.Request) {
 		h.writeError(w, http.StatusBadRequest, "url must be a valid http or https URL")
 		return
 	}
-	if err := validateWebhookURL(r.Context(), u); err != nil {
+	if err := validateWebhookURL(r.Context(), u, h.webhookAllowedCIDRs); err != nil {
 		h.writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -200,14 +201,13 @@ func (h *Handler) ListWebhookDeliveries(w http.ResponseWriter, r *http.Request) 
 	h.writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
-// validateWebhookURL resolves the URL host and rejects any address in a
-// loopback, link-local, or private range to prevent SSRF.
 // validateWebhookURL rejects a webhook URL whose host resolves (now) to a private/
-// loopback address — the same SSRF check the worker re-applies at actual delivery
-// time (netutil.ResolveSafe), since DNS can change between saving a URL and
-// delivering to it.
-func validateWebhookURL(ctx context.Context, u *url.URL) error {
-	if _, err := netutil.ResolveSafe(ctx, u.Hostname()); err != nil {
+// loopback address, unless the address is inside an operator-approved network
+// (allowed, from WEBHOOK_ALLOWED_CIDRS) - the same SSRF check the worker re-applies
+// at actual delivery time (netutil.ResolveSafeAllowing), since DNS can change between
+// saving a URL and delivering to it.
+func validateWebhookURL(ctx context.Context, u *url.URL, allowed []*net.IPNet) error {
+	if _, err := netutil.ResolveSafeAllowing(ctx, u.Hostname(), allowed); err != nil {
 		return fmt.Errorf("webhook URL must not resolve to a private or loopback address: %w", err)
 	}
 	return nil

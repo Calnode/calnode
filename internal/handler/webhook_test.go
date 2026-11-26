@@ -3,6 +3,7 @@ package handler_test
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -332,5 +333,38 @@ func TestCreateWebhook_ssrf_cgnat_returns400(t *testing.T) {
 
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("status = %d; want 400 for CGNAT URL", rec.Code)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// WEBHOOK_ALLOWED_CIDRS at save time
+// ---------------------------------------------------------------------------
+
+func TestCreateWebhook_allowedCIDRs(t *testing.T) {
+	_, dockerNet, _ := net.ParseCIDR("10.200.50.0/24")
+	_, linkLocal, _ := net.ParseCIDR("169.254.0.0/16")
+
+	for _, tc := range []struct {
+		name    string
+		allowed []*net.IPNet
+		url     string
+		want    int
+	}{
+		{"private refused by default", nil, "http://10.200.50.7:8080/hook", http.StatusBadRequest},
+		{"listed network accepted", []*net.IPNet{dockerNet}, "http://10.200.50.7:8080/hook", http.StatusCreated},
+		{"unlisted private still refused", []*net.IPNet{dockerNet}, "http://10.0.0.1/hook", http.StatusBadRequest},
+		{"metadata refused even when listed", []*net.IPNet{linkLocal}, "http://169.254.169.254/latest/meta-data", http.StatusBadRequest},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h, apiKey, _ := setupWorkspace(t)
+			h.SetWebhookAllowedCIDRs(tc.allowed)
+			req := authReq(http.MethodPost, "/v1/webhooks",
+				fmt.Sprintf(`{"url":%q,"events":["booking.created"]}`, tc.url), apiKey)
+			rec := httptest.NewRecorder()
+			h.RequireAuth(h.CreateWebhook)(rec, req)
+			if rec.Code != tc.want {
+				t.Errorf("status = %d; want %d — %s", rec.Code, tc.want, rec.Body.String())
+			}
+		})
 	}
 }
