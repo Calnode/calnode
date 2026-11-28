@@ -10,6 +10,7 @@
   "date_picker_aria": "Datumväljare",
   "timezone_aria": "Tidszon",
   "select_day_hint": "Välj en dag för att se lediga tider.",
+  "next_available_hint": "Nästa lediga tid: %[1]s, %[2]s",
   "back": "Tillbaka",
   "name_label": "Namn",
   "name_placeholder": "Ditt fullständiga namn",

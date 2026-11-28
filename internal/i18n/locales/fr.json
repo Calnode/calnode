@@ -10,6 +10,7 @@
   "date_picker_aria": "Sélecteur de date",
   "timezone_aria": "Fuseau horaire",
   "select_day_hint": "Sélectionnez un jour pour voir les créneaux disponibles.",
+  "next_available_hint": "Prochain créneau disponible : %[1]s, %[2]s",
   "back": "Retour",
   "name_label": "Nom",
   "name_placeholder": "Votre nom complet",

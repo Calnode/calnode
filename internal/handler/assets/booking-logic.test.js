@@ -133,6 +133,12 @@ test('earliestFreeSlot skips the excluded slot and returns null when nothing is 
   assert.equal(B.earliestFreeSlot([{ start: '2026-06-15T09:00:00Z' }], 'UTC', '2026-06-15T09:00:00Z'), null);
 });
 
+test('earliestFreeSlot excludes by instant, so an offset spelling that differs does not defeat it', () => {
+  // /slots spells starts in the requested timezone ("+02:00"); the booking's own start is UTC ("Z").
+  const slots = [{ start: '2026-06-15T11:00:00+02:00' }, { start: '2026-06-15T10:00:00Z' }];
+  assert.equal(B.earliestFreeSlot(slots, 'UTC', '2026-06-15T09:00:00Z').slot.start, '2026-06-15T10:00:00Z');
+});
+
 test('earliestFreeSlot ignores a taken slot because it is only ever given the free list', () => {
   // The caller passes data.slots (free), never mergeDaySlots output. If it did pass merged
   // entries, a taken one would win; this pins that the free list is the contract.

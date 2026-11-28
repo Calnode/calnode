@@ -73,7 +73,7 @@
   function earliestFreeSlot(slots, tz, excludeStart) {
     var best = null;
     (slots || []).forEach(function (s) {
-      if (excludeStart && s.start === excludeStart) return;
+      if (excludeStart && Date.parse(s.start) === Date.parse(excludeStart)) return;
       if (best === null || Date.parse(s.start) < Date.parse(best.start)) best = s;
     });
     return best === null ? null : { slot: best, day: dateKeyFromISO(best.start, tz) };

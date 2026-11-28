@@ -10,6 +10,7 @@
   "date_picker_aria": "Datumsauswahl",
   "timezone_aria": "Zeitzone",
   "select_day_hint": "Wählen Sie einen Tag, um verfügbare Zeiten zu sehen.",
+  "next_available_hint": "Nächste verfügbare Zeit: %[1]s, %[2]s",
   "back": "Zurück",
   "name_label": "Name",
   "name_placeholder": "Ihr vollständiger Name",

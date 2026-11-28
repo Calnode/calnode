@@ -10,6 +10,7 @@
   "date_picker_aria": "Seletor de data",
   "timezone_aria": "Fuso horário",
   "select_day_hint": "Selecione um dia para ver os horários disponíveis.",
+  "next_available_hint": "Próximo horário disponível: %[1]s, %[2]s",
   "back": "Voltar",
   "name_label": "Nome",
   "name_placeholder": "O seu nome completo",

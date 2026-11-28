@@ -445,6 +445,17 @@ body {
 
   function dowIndex(date) { return BookingLogic.dowIndex(date); } // 0=Mon…6=Sun
 
+  // One /slots request per month and timezone at a time. The calendar and the next-available
+  // search often ask for the same month in the same tick, and share the answer.
+  const slotsInFlight = {};
+  function fetchSlots(from, to) {
+    const url = `/v1/event-types/${SLUG}/slots?from=${from}&to=${to}&tz=${encodeURIComponent(TZ)}`;
+    return slotsInFlight[url] || (slotsInFlight[url] = fetch(url).then(r => {
+      if (!r.ok) throw new Error(r.status);
+      return r.json();
+    }).finally(() => { delete slotsInFlight[url]; }));
+  }
+
   async function loadMonthAvailability(y, m) {
     // Render immediately, treating every in-window day as available, so the
     // calendar paints without waiting on the (network-bound) slots fetch; refine
@@ -455,9 +466,7 @@ body {
     const lastDay = new Date(y, m + 1, 0).getDate();
     const to   = toDateStr(y, m, lastDay);
     try {
-      const r = await fetch(`/v1/event-types/${SLUG}/slots?from=${from}&to=${to}&tz=${encodeURIComponent(TZ)}`);
-      if (!r.ok) throw new Error(r.status);
-      const data = await r.json();
+      const data = await fetchSlots(from, to);
       Object.assign(hostMeta, data.hosts || {});
       // Cache the whole month's slots grouped by the SELECTED-timezone day (BookingLogic — tested,
       // and tz-correct: the old new Date().toLocaleDateString keyed off the browser tz) so clicking
@@ -857,9 +866,7 @@ body {
       try {
         const from = toDateStr(mo.year, mo.month, 1);
         const to = toDateStr(mo.year, mo.month, new Date(mo.year, mo.month + 1, 0).getDate());
-        const r = await fetch(`/v1/event-types/${SLUG}/slots?from=${from}&to=${to}&tz=${encodeURIComponent(TZ)}`);
-        if (!r.ok) return;
-        data = await r.json();
+        data = await fetchSlots(from, to);
       } catch { return; }
       if (run !== nextAvailableRun) return;
       if (data.degraded) return;
