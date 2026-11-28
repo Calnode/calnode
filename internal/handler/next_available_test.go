@@ -14,7 +14,7 @@ import (
 var showNextTrue = regexp.MustCompile(`SHOW_NEXT\s*=\s*true\b`)
 var showNextFalse = regexp.MustCompile(`SHOW_NEXT\s*=\s*false\b`)
 
-// The next-available line is opt-in per event type (#254): off unless asked for, settable on
+// The next-available button is opt-in per event type (#254): off unless asked for, settable on
 // create and on PATCH, and rendered on the booking page only when on.
 
 func TestShowNextAvailable_defaultsOffAndRoundTripsThroughPatch(t *testing.T) {
@@ -63,7 +63,7 @@ func TestShowNextAvailable_defaultsOffAndRoundTripsThroughPatch(t *testing.T) {
 	}
 }
 
-func TestBookPage_nextAvailableLinkOnlyWhenEnabled(t *testing.T) {
+func TestBookPage_nextAvailableButtonOnlyWhenEnabled(t *testing.T) {
 	h, key, _ := setupWorkspace(t)
 
 	render := func(slug, body string) string {
@@ -101,7 +101,7 @@ func TestBookPage_nextAvailableLinkOnlyWhenEnabled(t *testing.T) {
 }
 
 // The reschedule page carries the same calendar, so it gets the same opt-in (#254).
-func TestManagePage_nextAvailableLinkOnlyWhenEnabled(t *testing.T) {
+func TestManagePage_nextAvailableButtonOnlyWhenEnabled(t *testing.T) {
 	h, database, key, _ := setupWorkspaceWithDB(t)
 	slug, _ := seedEventTypeHTTP(t, h, key)
 	tok := issueTestToken(t, database, createBookingViaHTTP(t, h, slug, "2026-06-20T09:00:00Z"))

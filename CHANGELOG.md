@@ -40,7 +40,7 @@ exact tag (`ghcr.io/calnode/calnode:0.1.0`) if you need stability between upgrad
   select it with `?lang=de-x-neutral` or `<calnode-booking lang="de-x-neutral">`.
 
 - **Next available time on the booking page.** A per-event-type setting, off by default,
-  adds a button above the time list, such as "Next available: Wed, Dec 9, 10:00 AM", that
+  adds a button above the time list, such as "Next available: Wed, Nov 18, 10:00 AM", that
   opens that day. It is worked out from the free times only, walks forward month by month
   but never past `max_future_days`, and shows nothing when the availability check failed or
   was degraded, rather than implying there is none. It appears on the booking and reschedule

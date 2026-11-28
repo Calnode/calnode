@@ -1632,7 +1632,7 @@
 			"showTakenHint": "Les horaires réservés apparaissent barrés sur la page de réservation au lieu d'être masqués, afin que les visiteurs voient le calendrier se remplir. Seuls les horaires dans vos heures de travail sont affichés, jamais le reste de votre journée.",
 			"showTakenWarning": "Quiconque dispose du lien de réservation peut voir quels horaires sont pris.",
 			"showNextAvailable": "Afficher le prochain horaire disponible",
-			"showNextAvailableHint": "Ajoute au-dessus de la liste des horaires un bouton, par exemple « Prochain horaire : mer. 18 nov., 10:00 », qui ouvre ce jour. Il utilise les mêmes horaires que ceux déjà visibles par un visiteur.",
+			"showNextAvailableHint": "Ajoute au-dessus de la liste des horaires un bouton, par exemple « Prochain créneau disponible : mer. 18 nov., 10:00 », qui ouvre ce jour. Il utilise les mêmes horaires que ceux déjà visibles par un visiteur.",
 			"allowPhoneCall": "Permettre aux invités de choisir un appel téléphonique en saisissant leur numéro"
 		},
 		"location": {
