@@ -65,6 +65,32 @@
   }
 
 
+  // earliestFreeSlot — the soonest bookable slot in `slots` (the FREE list from /slots, never
+  // the merged free+taken view: that would advertise a struck-through time), with the
+  // "YYYY-MM-DD" it falls on in the selected tz. `excludeStart` drops one slot (reschedule
+  // excludes the booking's own time). Null when there is none. Does not re-derive the
+  // timezone: the server already applied the requested one, and dateKeyFromISO formats in it.
+  function earliestFreeSlot(slots, tz, excludeStart) {
+    var best = null;
+    (slots || []).forEach(function (s) {
+      if (excludeStart && Date.parse(s.start) === Date.parse(excludeStart)) return;
+      if (best === null || Date.parse(s.start) < Date.parse(best.start)) best = s;
+    });
+    return best === null ? null : { slot: best, day: dateKeyFromISO(best.start, tz) };
+  }
+
+  // monthsToProbe — the months, oldest first, that a search for the next available day should
+  // walk: from `now`'s month up to and including `maxDate`'s month, so it can never run past
+  // the event type's max_future_days. maxDate null means no limit is set, so `capMonths`
+  // (default 12) bounds the walk instead.
+  function monthsToProbe(now, maxDate, capMonths) {
+    var out = [];
+    var first = now.getFullYear() * 12 + now.getMonth();
+    var last = maxDate ? maxDate.getFullYear() * 12 + maxDate.getMonth() : first + (capMonths || 12) - 1;
+    for (var idx = first; idx <= last; idx++) out.push({ year: Math.floor(idx / 12), month: idx % 12 });
+    return out;
+  }
+
   // formatTime — "1:30 PM" in the selected tz.
   function formatTime(iso, tz, locale) {
     return new Intl.DateTimeFormat(locale || [], {
@@ -143,6 +169,8 @@
     ymd: ymd,
     groupSlotsByDay: groupSlotsByDay,
     mergeDaySlots: mergeDaySlots,
+    earliestFreeSlot: earliestFreeSlot,
+    monthsToProbe: monthsToProbe,
     fmt: fmt,
     formatTime: formatTime,
     formatDay: formatDay,

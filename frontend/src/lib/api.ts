@@ -39,6 +39,9 @@ export type EventType = {
 	 *  them. Off by default: the slots endpoint is public, so this makes the host's
 	 *  booked hours visible to anyone with the link. */
 	show_taken_slots: boolean;
+	/** Show the next free time above the booking page's time list, as a button that
+	 *  opens that day. Off by default. */
+	show_next_available: boolean;
 	/** Who sends the booker's calendar invite. 'calendar': each host's connected calendar,
 	 *  from the host's own address. 'calnode': Calnode's own invite, from the email sender
 	 *  in Settings → Email, so no host's personal address reaches the booker. 'none': no

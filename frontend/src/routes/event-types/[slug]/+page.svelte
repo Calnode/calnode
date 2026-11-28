@@ -86,7 +86,7 @@
 	let form = $state({
 		display_order: 0,
 		name: '', slug: '', description: '', duration_minutes: 30, slot_interval_minutes: 30,
-		is_active: true, is_public: true, show_taken_slots: false,
+		is_active: true, is_public: true, show_taken_slots: false, show_next_available: false,
 		invite_delivery: 'calendar' as EventType['invite_delivery'],
 		location_type: 'link', location_value: '',
 		buffer_before_minutes: 0, buffer_after_minutes: 0,
@@ -335,6 +335,7 @@
 				is_active: et.is_active,
 				is_public: et.is_public,
 				show_taken_slots: et.show_taken_slots ?? false,
+				show_next_available: et.show_next_available ?? false,
 				invite_delivery: et.invite_delivery ?? 'calendar',
 				location_type: et.location_type,
 				location_value: et.location_value ?? '',
@@ -396,6 +397,7 @@
 				is_active: form.is_active,
 				is_public: form.is_public,
 				show_taken_slots: form.show_taken_slots,
+				show_next_available: form.show_next_available,
 				invite_delivery: form.invite_delivery,
 				allow_phone_call: allowPhoneCall,
 				location_type: form.location_type,
@@ -701,6 +703,14 @@
 					</span>
 				{/if}
 			</p>
+		</div>
+
+		<div class="mt-4 space-y-1.5">
+			<div class="flex items-center gap-2">
+				<Checkbox id="show-next-available" bind:checked={form.show_next_available} />
+				<Label for="show-next-available" class="cursor-pointer font-normal">{$t('eventTypeEditor.general.showNextAvailable')}</Label>
+			</div>
+			<p class="text-xs text-muted-foreground">{$t('eventTypeEditor.general.showNextAvailableHint')}</p>
 		</div>
 
 		{#if isOnlineMeeting(form.location_type)}

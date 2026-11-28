@@ -363,6 +363,29 @@ in discussion #14, issue #19.
   having something available. Fully booked days *are* still openable, deliberately - a
   list of struck-through times explains itself better than a dead date.
 
+### Showing the next available time
+
+`event_types.show_next_available` (migration 00073, **default off**) opts one event type
+into a button above the time list that opens the soonest free day. Requested in
+discussion #254.
+
+- **Worked out in the browser from the free list.** `loadNextAvailable` in book.html and
+  manage.html reads `/slots` month by month from today and stops at the first free
+  slot. It never reads `taken`, which would advertise a struck-through time, and it never
+  walks past `maxDate`, so it cannot run beyond `max_future_days`. `monthsToProbe` and
+  `earliestFreeSlot` live in `assets/booking-logic.js` and are unit tested.
+- **Silent when unsure.** A failed request or a `degraded` response shows nothing: a
+  check that fell over is not the same as "nothing is available".
+- **Timezone.** The server already applies the requested timezone to `/slots`, so the
+  page only formats. Changing the timezone restarts the search.
+- **Reschedule.** manage.html leaves out the booking's own current start, so the button
+  offers the next time the booking could move to.
+- **Two copies of the button.** On narrow screens the calendar step hides the right
+  column, so a second copy sits above the calendar there and `booking.css` shows one
+  at a time.
+- **Not in the embed widget yet.** It does not load `booking-logic.js`, so it would need
+  its own mirrored copy of the two helpers.
+
 ### Explaining an empty day, and the minimum-notice gap
 
 Two silences on the booker-facing surfaces, issue #20. A day with nothing on it used to

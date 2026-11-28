@@ -72,6 +72,7 @@ type bookPageData struct {
 	PriceCents     int    // raw price for the dataLayer conversion value (0 = free)
 	Currency       string // ISO 4217, lowercase
 	MaxFutureDays  int
+	NextAvailable  bool // show the "next available" button above the time list (#254)
 	Questions      []bookQuestion
 	// AssistantEnabled shows the conversational-booking chat panel when the LLM layer is on.
 	AssistantEnabled bool
@@ -464,16 +465,17 @@ func (h *Handler) BookPage(w http.ResponseWriter, r *http.Request) {
 		msgGreeting    sql.NullString
 		allowPhoneCall bool
 		accentColor    string
+		showNext       bool
 	)
 	err := h.db.QueryRowContext(r.Context(), `
 		SELECT et.id, et.name, COALESCE(et.description, ''),
 		       et.duration_minutes, et.location_type, COALESCE(et.location_value, ''),
 		       et.max_future_days, et.min_notice_minutes, et.routing_mode, u.name, COALESCE(u.avatar_url, ''),
-		       et.price_cents, et.currency, et.msg_greeting, et.allow_phone_call, u.booking_accent
+		       et.price_cents, et.currency, et.msg_greeting, et.allow_phone_call, u.booking_accent, et.show_next_available
 		FROM event_types et
 		JOIN users u ON u.id = et.user_id
 		WHERE et.slug = ? AND et.is_active = 1 AND et.is_public = 1`,
-		slug).Scan(&etID, &name, &description, &durMins, &locType, &locValue, &maxDays, &minNotice, &routingMode, &hostName, &avatarURL, &priceCents, &currency, &msgGreeting, &allowPhoneCall, &accentColor)
+		slug).Scan(&etID, &name, &description, &durMins, &locType, &locValue, &maxDays, &minNotice, &routingMode, &hostName, &avatarURL, &priceCents, &currency, &msgGreeting, &allowPhoneCall, &accentColor, &showNext)
 
 	if errors.Is(err, sql.ErrNoRows) {
 		http.Error(w, "Page not found", http.StatusNotFound)
@@ -559,6 +561,7 @@ func (h *Handler) BookPage(w http.ResponseWriter, r *http.Request) {
 		PriceCents:          priceCents,
 		Currency:            currency,
 		MaxFutureDays:       maxDays,
+		NextAvailable:       showNext,
 		Questions:           questions,
 		BookingLogicJS:      template.JS(bookingLogicJS), // #nosec G203 -- our own bundled JS source constant, not user input
 		AssistantEnabled:    h.getLLM() != nil,

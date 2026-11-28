@@ -10,6 +10,7 @@
   "date_picker_aria": "Date picker",
   "timezone_aria": "Timezone",
   "select_day_hint": "Select a day to see available times.",
+  "next_available_hint": "Next available: %[1]s, %[2]s",
   "back": "Back",
   "name_label": "Name",
   "name_placeholder": "Your full name",

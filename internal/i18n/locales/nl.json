@@ -10,6 +10,7 @@
   "date_picker_aria": "Datumkiezer",
   "timezone_aria": "Tijdzone",
   "select_day_hint": "Kies een dag om de beschikbare tijden te zien.",
+  "next_available_hint": "Eerstvolgende beschikbare tijd: %[1]s, %[2]s",
   "back": "Terug",
   "name_label": "Naam",
   "name_placeholder": "Je volledige naam",

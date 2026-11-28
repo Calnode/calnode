@@ -106,3 +106,62 @@ test('fmt leaves a string with no verbs untouched', () => {
   assert.equal(B.fmt('No available times.', ['unused']), 'No available times.');
   assert.equal(B.fmt('Inga lediga tider.'), 'Inga lediga tider.');
 });
+
+test('earliestFreeSlot picks the soonest slot and the day it falls on in the selected tz', () => {
+  const slots = [
+    { start: '2026-06-16T09:00:00Z' },
+    { start: '2026-06-15T02:00:00Z' }, // NY → 06-14 22:00
+    { start: '2026-06-15T20:00:00Z' }
+  ];
+  const ny = B.earliestFreeSlot(slots, 'America/New_York');
+  assert.equal(ny.slot.start, '2026-06-15T02:00:00Z');
+  assert.equal(ny.day, '2026-06-14'); // the day key follows the selected tz, not UTC
+  assert.equal(B.earliestFreeSlot(slots, 'UTC').day, '2026-06-15');
+});
+
+test('earliestFreeSlot orders by instant, not by string, across offsets', () => {
+  // As strings "…T10:00:00+02:00" sorts after "…T09:30:00Z", but it is the earlier instant.
+  const slots = [{ start: '2026-06-15T09:30:00Z' }, { start: '2026-06-15T10:00:00+02:00' }];
+  assert.equal(B.earliestFreeSlot(slots, 'UTC').slot.start, '2026-06-15T10:00:00+02:00');
+});
+
+test('earliestFreeSlot skips the excluded slot and returns null when nothing is left', () => {
+  const slots = [{ start: '2026-06-15T09:00:00Z' }, { start: '2026-06-15T10:00:00Z' }];
+  assert.equal(B.earliestFreeSlot(slots, 'UTC', '2026-06-15T09:00:00Z').slot.start, '2026-06-15T10:00:00Z');
+  assert.equal(B.earliestFreeSlot([], 'UTC'), null);
+  assert.equal(B.earliestFreeSlot(undefined, 'UTC'), null);
+  assert.equal(B.earliestFreeSlot([{ start: '2026-06-15T09:00:00Z' }], 'UTC', '2026-06-15T09:00:00Z'), null);
+});
+
+test('earliestFreeSlot excludes by instant, so an offset spelling that differs does not defeat it', () => {
+  // /slots spells starts in the requested timezone ("+02:00"); the booking's own start is UTC ("Z").
+  const slots = [{ start: '2026-06-15T11:00:00+02:00' }, { start: '2026-06-15T10:00:00Z' }];
+  assert.equal(B.earliestFreeSlot(slots, 'UTC', '2026-06-15T09:00:00Z').slot.start, '2026-06-15T10:00:00Z');
+});
+
+test('earliestFreeSlot ignores a taken slot because it is only ever given the free list', () => {
+  // The caller passes data.slots (free), never mergeDaySlots output. If it did pass merged
+  // entries, a taken one would win; this pins that the free list is the contract.
+  const free = [{ start: '2026-06-15T11:00:00Z' }];
+  const taken = [{ start: '2026-06-15T09:00:00Z' }];
+  assert.equal(B.earliestFreeSlot(free, 'UTC').slot.start, '2026-06-15T11:00:00Z');
+  assert.equal(B.earliestFreeSlot(B.mergeDaySlots(free, taken), 'UTC').slot.start, '2026-06-15T09:00:00Z');
+});
+
+test('monthsToProbe walks from this month to maxDate\'s month and never past it', () => {
+  const now = new Date(2026, 10, 18); // 18 Nov 2026
+  const max = new Date(2027, 0, 20);  // 20 Jan 2027
+  assert.deepEqual(B.monthsToProbe(now, max), [
+    { year: 2026, month: 10 }, { year: 2026, month: 11 }, { year: 2027, month: 0 }
+  ]);
+});
+
+test('monthsToProbe is one month when maxDate falls in this month', () => {
+  assert.deepEqual(B.monthsToProbe(new Date(2026, 10, 18), new Date(2026, 10, 30)), [{ year: 2026, month: 10 }]);
+});
+
+test('monthsToProbe is bounded by the cap when there is no maxDate', () => {
+  const m = B.monthsToProbe(new Date(2026, 10, 18), null, 3);
+  assert.deepEqual(m, [{ year: 2026, month: 10 }, { year: 2026, month: 11 }, { year: 2027, month: 0 }]);
+  assert.equal(B.monthsToProbe(new Date(2026, 10, 18), null).length, 12);
+});
